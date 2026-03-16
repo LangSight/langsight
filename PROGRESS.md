@@ -8,7 +8,7 @@
 ## Current Status: Phase 1 — In Progress
 
 ```
-Phase 1 (CLI MVP)      ████████░░░░░░░░  40%
+Phase 1 (CLI MVP)      ████████████░░░░  70%
 Phase 2 (API + RCA)    ░░░░░░░░░░░░░░░░   0%
 Phase 3 (Dashboard)    ░░░░░░░░░░░░░░░░   0%
 ```
@@ -88,10 +88,12 @@ $ langsight mcp-health   # Run 2 — no drift
 |------|----------|-------|
 | `health/schema_tracker.py` | ✅ Done | |
 | `storage/sqlite.py` | ✅ Done | |
-| `cli/security_scan.py` | High | `langsight security-scan` command |
-| `security/scanner.py` | High | Orchestrate CVE + OWASP checks |
-| `security/owasp_checker.py` | High | OWASP MCP Top 10 automated checks |
-| `security/cve_checker.py` | Medium | CVE database matching |
+| `security/models.py` | ✅ Done | Severity, SecurityFinding, ScanResult |
+| `security/owasp_checker.py` | ✅ Done | 5 OWASP MCP checks (no auth, destructive tools, no schema, drift, HTTP) |
+| `security/poisoning_detector.py` | ✅ Done | Injection phrases, exfiltration, URLs, hidden unicode, base64 |
+| `security/cve_checker.py` | ✅ Done | OSV API, pyproject.toml + package.json, fail-open |
+| `security/scanner.py` | ✅ Done | Concurrent: OWASP + poisoning + CVE |
+| `cli/security_scan.py` | ✅ Done | Rich table, --json, --ci flag |
 | `cli/monitor.py` | Medium | `langsight monitor` — continuous background monitoring |
 | `alerts/engine.py` | Medium | Alert rule evaluation + deduplication |
 | `alerts/slack.py` | Medium | Slack Block Kit webhook |

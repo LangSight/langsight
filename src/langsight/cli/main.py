@@ -3,6 +3,7 @@ from __future__ import annotations
 import click
 
 from langsight.cli.mcp_health import mcp_health
+from langsight.cli.security_scan import security_scan
 
 
 @click.group()
@@ -16,3 +17,4 @@ def cli() -> None:
 
 
 cli.add_command(mcp_health)
+cli.add_command(security_scan)
