@@ -5,9 +5,9 @@ Two real MCP servers for testing and dogfooding LangSight.
 ## Servers
 
 | Server | Tools | Transport |
-|---|---|---|
-| `postgres-mcp` | query, list_tables, describe_table, get_row_count, get_schema_summary | stdio |
-| `s3-mcp` | list_buckets, list_objects, get_object_metadata, read_object, put_object, delete_object, search_objects | stdio |
+|--------|-------|-----------|
+| `postgres-mcp` | `query`, `list_tables`, `describe_table`, `get_row_count`, `get_schema_summary` | stdio |
+| `s3-mcp` | `list_buckets`, `list_objects`, `get_object_metadata`, `read_object`, `put_object`, `delete_object`, `search_objects` | stdio |
 
 ---
 
@@ -16,38 +16,58 @@ Two real MCP servers for testing and dogfooding LangSight.
 ### 1. Start PostgreSQL
 
 ```bash
+cd test-mcps
 docker compose up -d
 ```
 
-This spins up Postgres on port 5432 with sample data (customers, orders, products, agent_conversations).
+Spins up Postgres 16 on port `5432` with the e-commerce sample data auto-seeded.
 
-### 2. Set up PostgreSQL MCP
+### 2. Set up postgres-mcp
 
 ```bash
 cd postgres-mcp
 cp .env.example .env
-pip install -e .
+uv sync
 ```
 
-### 3. Set up S3 MCP
+### 3. Set up s3-mcp
 
 ```bash
 cd s3-mcp
 cp .env.example .env
-# Edit .env with your AWS credentials
-pip install -e .
+# Fill in your AWS credentials in .env
+uv sync
 ```
 
-### 4. Add to Claude Desktop
+### 4. Test manually (stdio)
 
-Add to `~/.config/claude/claude_desktop_config.json`:
+```bash
+# postgres
+cd postgres-mcp && echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | uv run python server.py
+
+# s3
+cd s3-mcp && echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | uv run python server.py
+```
+
+### 5. Inspect with MCP dev tools
+
+```bash
+uv run mcp dev postgres-mcp/server.py
+uv run mcp dev s3-mcp/server.py
+```
+
+---
+
+## Add to Claude Desktop
+
+`~/.config/claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "langsight-postgres": {
-      "command": "python",
-      "args": ["/path/to/test-mcps/postgres-mcp/server.py"],
+      "command": "uv",
+      "args": ["run", "python", "/path/to/test-mcps/postgres-mcp/server.py"],
       "env": {
         "POSTGRES_HOST": "localhost",
         "POSTGRES_PORT": "5432",
@@ -57,53 +77,59 @@ Add to `~/.config/claude/claude_desktop_config.json`:
       }
     },
     "langsight-s3": {
-      "command": "python",
-      "args": ["/path/to/test-mcps/s3-mcp/server.py"],
+      "command": "uv",
+      "args": ["run", "python", "/path/to/test-mcps/s3-mcp/server.py"],
       "env": {
         "AWS_ACCESS_KEY_ID": "your_key",
         "AWS_SECRET_ACCESS_KEY": "your_secret",
-        "AWS_REGION": "eu-west-1"
+        "AWS_REGION": "eu-central-1"
       }
     }
   }
 }
 ```
 
-### 5. Test PostgreSQL MCP manually
-
-```bash
-cd postgres-mcp
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | python server.py
-```
-
 ---
 
-## Sample Data
+## Sample Data (postgres-mcp)
 
-The Postgres database has 5 tables:
-
-| Table | Description |
-|---|---|
-| `customers` | 10 customers with tiers (standard/premium/enterprise) |
-| `products` | 10 products (software licenses, support plans, credits) |
-| `orders` | 10 orders across various statuses |
-| `order_items` | Line items per order |
-| `agent_conversations` | Sample agent conversation logs for dogfooding |
+| Table | Rows | Description |
+|-------|------|-------------|
+| `customers` | 10 | 3 tiers: standard / premium / enterprise |
+| `products` | 10 | Subscriptions, credits, support plans, add-ons |
+| `orders` | 10 | Various statuses: pending, processing, delivered, cancelled |
+| `order_items` | 13 | Line items linking orders to products |
+| `agent_conversations` | 5 | Sample agent sessions including failures and timeouts |
 
 ### Useful test queries
 
 ```sql
 -- Revenue by customer tier
-SELECT tier, COUNT(*) as customers, SUM(o.total_usd) as total_revenue
-FROM customers c JOIN orders o ON c.customer_id = o.customer_id
+SELECT c.tier, COUNT(DISTINCT c.customer_id) AS customers, SUM(o.total_usd) AS revenue
+FROM customers c
+JOIN orders o ON c.customer_id = o.customer_id
 WHERE o.status = 'delivered'
-GROUP BY tier ORDER BY total_revenue DESC;
+GROUP BY c.tier
+ORDER BY revenue DESC;
 
--- Recent failed agent conversations
-SELECT * FROM agent_conversations WHERE status = 'failed';
+-- Failed agent conversations
+SELECT session_id, agent_name, tool_calls_count, error_message
+FROM agent_conversations
+WHERE status IN ('failed', 'timeout')
+ORDER BY created_at DESC;
 
 -- Top products by revenue
-SELECT p.name, SUM(oi.quantity * oi.unit_price_usd) as revenue
-FROM products p JOIN order_items oi ON p.product_id = oi.product_id
-GROUP BY p.name ORDER BY revenue DESC;
+SELECT p.name, p.category, SUM(oi.quantity * oi.unit_price_usd) AS revenue
+FROM products p
+JOIN order_items oi ON p.product_id = oi.product_id
+GROUP BY p.product_id, p.name, p.category
+ORDER BY revenue DESC;
 ```
+
+---
+
+## Security Notes
+
+- `postgres-mcp` only allows `SELECT`, `WITH`, and `EXPLAIN` statements — all mutating SQL is rejected.
+- `s3-mcp` uses credentials from `.env` only — never hardcoded.
+- `.env` files are gitignored.

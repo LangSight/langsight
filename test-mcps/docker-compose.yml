@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
     container_name: langsight-postgres
     environment:
       POSTGRES_DB: langsight_test
@@ -10,12 +10,23 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./postgres-mcp/seed.sql:/docker-entrypoint-initdb.d/seed.sql
+      - ./postgres-mcp/seed.sql:/docker-entrypoint-initdb.d/01-seed.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d langsight_test"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+    driver: local

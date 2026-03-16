@@ -1,267 +1,281 @@
-"""
-LangSight AWS S3 MCP Server
-Provides tools for interacting with AWS S3 buckets and objects.
-"""
+from __future__ import annotations
 
+import fnmatch
 import os
-import json
-from typing import Optional
-from dotenv import load_dotenv
+from contextlib import asynccontextmanager
+from typing import Any
+
 import boto3
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import BotoCoreError, ClientError
+from dotenv import load_dotenv
 from fastmcp import FastMCP
 
 load_dotenv()
 
-# S3 client config
-def get_s3_client():
-    return boto3.client(
-        "s3",
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+DEFAULT_MAX_ITEMS = 100
+MAX_MAX_ITEMS = 1_000
+DEFAULT_MAX_BYTES = 10_240  # 10 KB
+
+# Module-level client — initialised in lifespan
+_s3: Any = None  # boto3.client("s3")
+
+# ---------------------------------------------------------------------------
+# Lifespan — boto3 session
+# ---------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(server: FastMCP):  # noqa: ARG001
+    global _s3
+    session = boto3.Session(
         aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-        region_name=os.getenv("AWS_REGION", "eu-west-1"),
+        region_name=os.getenv("AWS_REGION", "us-east-1"),
     )
+    _s3 = session.client("s3")
+    try:
+        yield
+    finally:
+        _s3 = None
+
 
 mcp = FastMCP(
-    name="langsight-s3-mcp",
-    instructions="AWS S3 MCP server. Use this to list buckets, browse objects, read files, and upload content to S3.",
+    "s3-mcp",
+    instructions=(
+        "AWS S3 MCP server for LangSight testing. "
+        "Provides bucket listing, object browsing, read, write, delete, and search tools. "
+        "Credentials are read from environment variables."
+    ),
+    lifespan=lifespan,
 )
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def _client() -> Any:
+    if _s3 is None:
+        raise RuntimeError("S3 client is not initialised.")
+    return _s3
 
+
+def _clamp(value: int, lo: int, hi: int) -> int:
+    return max(lo, min(value, hi))
+
+
+def _raise_aws_error(exc: Exception, operation: str) -> None:
+    """Translate boto3 errors into actionable RuntimeError messages."""
+    if isinstance(exc, ClientError):
+        code = exc.response["Error"]["Code"]
+        msg = exc.response["Error"]["Message"]
+        raise RuntimeError(
+            f"S3 error during {operation}: [{code}] {msg}"
+        ) from exc
+    raise RuntimeError(f"Unexpected error during {operation}: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Tools
+# ---------------------------------------------------------------------------
 @mcp.tool()
-def list_buckets() -> str:
-    """
-    List all S3 buckets accessible with the configured credentials.
-    Returns bucket names, creation dates, and regions.
-    """
+async def list_buckets() -> list[dict[str, Any]]:
+    """List all S3 buckets accessible with the configured credentials."""
     try:
-        s3 = get_s3_client()
-        response = s3.list_buckets()
-        buckets = [
+        response = _client().list_buckets()
+        return [
             {
                 "name": b["Name"],
                 "created_at": b["CreationDate"].isoformat(),
             }
             for b in response.get("Buckets", [])
         ]
-        return json.dumps({"buckets": buckets, "count": len(buckets)})
-    except NoCredentialsError:
-        return json.dumps({"error": "AWS credentials not configured. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY."})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    except (BotoCoreError, ClientError) as exc:
+        _raise_aws_error(exc, "list_buckets")
 
 
 @mcp.tool()
-def list_objects(bucket: str, prefix: str = "", max_items: int = 100) -> str:
-    """
-    List objects in an S3 bucket, optionally filtered by prefix (folder path).
+async def list_objects(
+    bucket: str,
+    prefix: str = "",
+    max_items: int = DEFAULT_MAX_ITEMS,
+) -> list[dict[str, Any]]:
+    """List objects in an S3 bucket with optional prefix filtering.
 
     Args:
-        bucket: S3 bucket name
-        prefix: Optional folder prefix to filter results (e.g. 'data/2026/')
-        max_items: Maximum number of objects to return (default 100, max 1000)
+        bucket: S3 bucket name.
+        prefix: Key prefix to filter results (e.g. 'logs/2026/').
+        max_items: Maximum number of objects to return (1–1000, default 100).
     """
-    max_items = min(max_items, 1000)
+    max_items = _clamp(max_items, 1, MAX_MAX_ITEMS)
     try:
-        s3 = get_s3_client()
-        kwargs = {"Bucket": bucket, "MaxKeys": max_items}
-        if prefix:
-            kwargs["Prefix"] = prefix
-
-        response = s3.list_objects_v2(**kwargs)
-        objects = [
-            {
-                "key": obj["Key"],
-                "size_bytes": obj["Size"],
-                "last_modified": obj["LastModified"].isoformat(),
-                "storage_class": obj.get("StorageClass", "STANDARD"),
-            }
-            for obj in response.get("Contents", [])
-        ]
-        return json.dumps({
-            "bucket": bucket,
-            "prefix": prefix,
-            "objects": objects,
-            "count": len(objects),
-            "is_truncated": response.get("IsTruncated", False),
-        })
-    except ClientError as e:
-        return json.dumps({"error": e.response["Error"]["Message"]})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+        paginator = _client().get_paginator("list_objects_v2")
+        objects: list[dict[str, Any]] = []
+        for page in paginator.paginate(
+            Bucket=bucket,
+            Prefix=prefix,
+            PaginationConfig={"MaxItems": max_items},
+        ):
+            for obj in page.get("Contents", []):
+                objects.append(
+                    {
+                        "key": obj["Key"],
+                        "size_bytes": obj["Size"],
+                        "last_modified": obj["LastModified"].isoformat(),
+                        "storage_class": obj.get("StorageClass", "STANDARD"),
+                    }
+                )
+        return objects
+    except (BotoCoreError, ClientError) as exc:
+        _raise_aws_error(exc, f"list_objects(bucket={bucket!r})")
 
 
 @mcp.tool()
-def get_object_metadata(bucket: str, key: str) -> str:
-    """
-    Get metadata for an S3 object without downloading its content.
-    Returns size, content type, last modified, ETag, and custom metadata.
+async def get_object_metadata(bucket: str, key: str) -> dict[str, Any]:
+    """Get metadata for an S3 object without downloading its content.
 
     Args:
-        bucket: S3 bucket name
-        key: Object key (full path)
+        bucket: S3 bucket name.
+        key: Object key (full path, e.g. 'data/report.csv').
     """
     try:
-        s3 = get_s3_client()
-        response = s3.head_object(Bucket=bucket, Key=key)
-        return json.dumps({
+        resp = _client().head_object(Bucket=bucket, Key=key)
+        return {
             "bucket": bucket,
             "key": key,
-            "size_bytes": response.get("ContentLength"),
-            "content_type": response.get("ContentType"),
-            "last_modified": response["LastModified"].isoformat(),
-            "etag": response.get("ETag", "").strip('"'),
-            "metadata": response.get("Metadata", {}),
-            "storage_class": response.get("StorageClass", "STANDARD"),
-        })
-    except ClientError as e:
-        return json.dumps({"error": e.response["Error"]["Message"]})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+            "size_bytes": resp["ContentLength"],
+            "last_modified": resp["LastModified"].isoformat(),
+            "content_type": resp.get("ContentType", "application/octet-stream"),
+            "etag": resp.get("ETag", "").strip('"'),
+            "metadata": resp.get("Metadata", {}),
+        }
+    except (BotoCoreError, ClientError) as exc:
+        _raise_aws_error(exc, f"get_object_metadata({bucket}/{key})")
 
 
 @mcp.tool()
-def read_object(bucket: str, key: str, max_bytes: int = 10000) -> str:
-    """
-    Read the content of an S3 object.
-    For text files (JSON, CSV, TXT, MD, YAML): returns decoded content.
-    For binary files: returns metadata only with a note.
+async def read_object(
+    bucket: str,
+    key: str,
+    max_bytes: int = DEFAULT_MAX_BYTES,
+) -> dict[str, Any]:
+    """Read the content of a text S3 object.
 
     Args:
-        bucket: S3 bucket name
-        key: Object key (full path)
-        max_bytes: Maximum bytes to read (default 10KB, max 1MB)
+        bucket: S3 bucket name.
+        key: Object key to read.
+        max_bytes: Maximum bytes to retrieve (default 10 KB). Larger objects
+                   are truncated — check the 'truncated' flag in the response.
     """
-    max_bytes = min(max_bytes, 1_000_000)
-    text_extensions = {".json", ".csv", ".txt", ".md", ".yaml", ".yml", ".log", ".sql", ".py", ".js", ".ts"}
-
-    file_ext = "." + key.rsplit(".", 1)[-1].lower() if "." in key else ""
-
     try:
-        s3 = get_s3_client()
+        resp = _client().get_object(
+            Bucket=bucket,
+            Key=key,
+            Range=f"bytes=0-{max_bytes - 1}",
+        )
+        raw = resp["Body"].read()
+        total_size_str = resp.get("ContentRange", "").split("/")[-1]
 
-        if file_ext not in text_extensions:
-            # Binary file — return metadata only
-            response = s3.head_object(Bucket=bucket, Key=key)
-            return json.dumps({
-                "bucket": bucket,
-                "key": key,
-                "note": f"Binary file ({file_ext}) — content not returned. Use get_object_metadata for details.",
-                "size_bytes": response.get("ContentLength"),
-                "content_type": response.get("ContentType"),
-            })
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError(
+                f"Object '{key}' is not a UTF-8 text file. "
+                "Use get_object_metadata() to inspect its content type."
+            ) from exc
 
-        response = s3.get_object(Bucket=bucket, Key=key)
-        body = response["Body"].read(max_bytes)
-        content = body.decode("utf-8", errors="replace")
-        truncated = response["ContentLength"] > max_bytes
-
-        return json.dumps({
+        return {
             "bucket": bucket,
             "key": key,
-            "content": content,
-            "size_bytes": response["ContentLength"],
-            "truncated": truncated,
-            "content_type": response.get("ContentType"),
-        })
-    except ClientError as e:
-        return json.dumps({"error": e.response["Error"]["Message"]})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+            "content": text,
+            "bytes_read": len(raw),
+            "total_size_bytes": int(total_size_str) if total_size_str.isdigit() else None,
+            "truncated": len(raw) >= max_bytes,
+        }
+    except (BotoCoreError, ClientError) as exc:
+        _raise_aws_error(exc, f"read_object({bucket}/{key})")
 
 
 @mcp.tool()
-def put_object(bucket: str, key: str, content: str, content_type: str = "text/plain") -> str:
-    """
-    Upload text content to an S3 object.
+async def put_object(
+    bucket: str,
+    key: str,
+    content: str,
+    content_type: str = "text/plain",
+) -> dict[str, str]:
+    """Upload text content to an S3 object.
 
     Args:
-        bucket: S3 bucket name
-        key: Object key (destination path, e.g. 'data/report.txt')
-        content: Text content to upload
-        content_type: MIME type (default: text/plain)
+        bucket: S3 bucket name.
+        key: Destination object key (e.g. 'uploads/report.txt').
+        content: UTF-8 text content to upload.
+        content_type: MIME type (default: text/plain).
     """
     try:
-        s3 = get_s3_client()
-        s3.put_object(
+        resp = _client().put_object(
             Bucket=bucket,
             Key=key,
             Body=content.encode("utf-8"),
             ContentType=content_type,
         )
-        return json.dumps({
-            "success": True,
+        return {
             "bucket": bucket,
             "key": key,
-            "size_bytes": len(content.encode("utf-8")),
-            "content_type": content_type,
-        })
-    except ClientError as e:
-        return json.dumps({"error": e.response["Error"]["Message"]})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+            "etag": resp.get("ETag", "").strip('"'),
+            "status": "uploaded",
+        }
+    except (BotoCoreError, ClientError) as exc:
+        _raise_aws_error(exc, f"put_object({bucket}/{key})")
 
 
 @mcp.tool()
-def delete_object(bucket: str, key: str) -> str:
-    """
-    Delete an object from S3.
+async def delete_object(bucket: str, key: str) -> dict[str, str]:
+    """Delete an object from S3.
 
     Args:
-        bucket: S3 bucket name
-        key: Object key to delete
+        bucket: S3 bucket name.
+        key: Object key to delete.
     """
     try:
-        s3 = get_s3_client()
-        s3.delete_object(Bucket=bucket, Key=key)
-        return json.dumps({"success": True, "bucket": bucket, "key": key, "deleted": True})
-    except ClientError as e:
-        return json.dumps({"error": e.response["Error"]["Message"]})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+        _client().delete_object(Bucket=bucket, Key=key)
+        return {"bucket": bucket, "key": key, "status": "deleted"}
+    except (BotoCoreError, ClientError) as exc:
+        _raise_aws_error(exc, f"delete_object({bucket}/{key})")
 
 
 @mcp.tool()
-def search_objects(bucket: str, pattern: str, prefix: str = "") -> str:
-    """
-    Search for objects in a bucket whose key contains the given pattern.
+async def search_objects(
+    bucket: str,
+    pattern: str,
+    prefix: str = "",
+) -> list[dict[str, Any]]:
+    """Search for S3 objects whose keys match a glob pattern.
 
     Args:
-        bucket: S3 bucket name
-        pattern: String to search for in object keys
-        prefix: Optional folder prefix to limit search scope
+        bucket: S3 bucket name.
+        pattern: Glob pattern to match against object keys
+                 (e.g. '*.json', 'logs/2026-*.csv').
+        prefix: Key prefix to narrow the search scope before pattern matching.
     """
     try:
-        s3 = get_s3_client()
-        paginator = s3.get_paginator("list_objects_v2")
-        kwargs = {"Bucket": bucket}
-        if prefix:
-            kwargs["Prefix"] = prefix
-
-        matches = []
-        for page in paginator.paginate(**kwargs):
+        paginator = _client().get_paginator("list_objects_v2")
+        matches: list[dict[str, Any]] = []
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
             for obj in page.get("Contents", []):
-                if pattern.lower() in obj["Key"].lower():
-                    matches.append({
-                        "key": obj["Key"],
-                        "size_bytes": obj["Size"],
-                        "last_modified": obj["LastModified"].isoformat(),
-                    })
-                if len(matches) >= 100:
-                    break
-            if len(matches) >= 100:
-                break
-
-        return json.dumps({"bucket": bucket, "pattern": pattern, "matches": matches, "count": len(matches)})
-    except ClientError as e:
-        return json.dumps({"error": e.response["Error"]["Message"]})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+                if fnmatch.fnmatch(obj["Key"], pattern):
+                    matches.append(
+                        {
+                            "key": obj["Key"],
+                            "size_bytes": obj["Size"],
+                            "last_modified": obj["LastModified"].isoformat(),
+                        }
+                    )
+        return matches
+    except (BotoCoreError, ClientError) as exc:
+        _raise_aws_error(exc, f"search_objects({bucket}, pattern={pattern!r})")
 
 
-def main():
-    mcp.run(transport="stdio")
-
-
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    main()
+    mcp.run()

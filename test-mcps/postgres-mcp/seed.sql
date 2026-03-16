@@ -1,119 +1,126 @@
--- LangSight Test Database — Sample Data
--- Simulates a simple e-commerce schema for realistic query testing
+-- LangSight test database seed
+-- E-commerce schema with sample data for dogfooding MCP health checks and security scans
 
--- Customers
+-- ---------------------------------------------------------------------------
+-- Schema
+-- ---------------------------------------------------------------------------
+
 CREATE TABLE IF NOT EXISTS customers (
-    customer_id     SERIAL PRIMARY KEY,
-    email           VARCHAR(255) UNIQUE NOT NULL,
-    first_name      VARCHAR(100) NOT NULL,
-    last_name       VARCHAR(100) NOT NULL,
-    country         VARCHAR(100) NOT NULL,
-    tier            VARCHAR(20) NOT NULL DEFAULT 'standard', -- standard, premium, enterprise
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    customer_id   SERIAL PRIMARY KEY,
+    name          TEXT        NOT NULL,
+    email         TEXT        NOT NULL UNIQUE,
+    tier          TEXT        NOT NULL CHECK (tier IN ('standard', 'premium', 'enterprise')),
+    country       TEXT        NOT NULL DEFAULT 'DE',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Products
 CREATE TABLE IF NOT EXISTS products (
-    product_id      SERIAL PRIMARY KEY,
-    name            VARCHAR(255) NOT NULL,
-    category        VARCHAR(100) NOT NULL,
-    price_usd       NUMERIC(10, 2) NOT NULL,
-    stock_quantity  INTEGER NOT NULL DEFAULT 0,
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    product_id    SERIAL PRIMARY KEY,
+    name          TEXT           NOT NULL,
+    category      TEXT           NOT NULL,
+    price_usd     NUMERIC(10, 2) NOT NULL CHECK (price_usd >= 0),
+    active        BOOLEAN        NOT NULL DEFAULT TRUE
 );
 
--- Orders
 CREATE TABLE IF NOT EXISTS orders (
-    order_id        SERIAL PRIMARY KEY,
-    customer_id     INTEGER NOT NULL REFERENCES customers(customer_id),
-    status          VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending, confirmed, shipped, delivered, cancelled
-    total_usd       NUMERIC(10, 2) NOT NULL,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    order_id      SERIAL PRIMARY KEY,
+    customer_id   INTEGER        NOT NULL REFERENCES customers(customer_id),
+    status        TEXT           NOT NULL CHECK (status IN ('pending', 'processing', 'delivered', 'cancelled', 'refunded')),
+    total_usd     NUMERIC(10, 2) NOT NULL CHECK (total_usd >= 0),
+    created_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
 
--- Order Items
 CREATE TABLE IF NOT EXISTS order_items (
     item_id         SERIAL PRIMARY KEY,
-    order_id        INTEGER NOT NULL REFERENCES orders(order_id),
-    product_id      INTEGER NOT NULL REFERENCES products(product_id),
-    quantity        INTEGER NOT NULL,
-    unit_price_usd  NUMERIC(10, 2) NOT NULL
+    order_id        INTEGER        NOT NULL REFERENCES orders(order_id),
+    product_id      INTEGER        NOT NULL REFERENCES products(product_id),
+    quantity        INTEGER        NOT NULL CHECK (quantity > 0),
+    unit_price_usd  NUMERIC(10, 2) NOT NULL CHECK (unit_price_usd >= 0)
 );
 
--- Agent Conversations (useful for LangSight dogfooding)
 CREATE TABLE IF NOT EXISTS agent_conversations (
-    conversation_id VARCHAR(100) PRIMARY KEY,
-    agent_name      VARCHAR(100) NOT NULL,
-    user_query      TEXT NOT NULL,
-    agent_response  TEXT,
-    status          VARCHAR(20) NOT NULL DEFAULT 'completed', -- completed, failed, timeout
-    duration_ms     INTEGER,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    conversation_id  SERIAL PRIMARY KEY,
+    session_id       TEXT        NOT NULL,
+    agent_name       TEXT        NOT NULL,
+    status           TEXT        NOT NULL CHECK (status IN ('success', 'failed', 'timeout', 'in_progress')),
+    tool_calls_count INTEGER     NOT NULL DEFAULT 0,
+    error_message    TEXT,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Seed Customers
-INSERT INTO customers (email, first_name, last_name, country, tier) VALUES
-('alice@acmecorp.com',   'Alice',   'Johnson',  'USA',     'enterprise'),
-('bob@techco.io',        'Bob',     'Smith',     'UK',      'premium'),
-('carol@startup.de',     'Carol',   'Müller',    'Germany', 'standard'),
-('david@bigcorp.com',    'David',   'Lee',       'USA',     'enterprise'),
-('eva@agency.fr',        'Eva',     'Dupont',    'France',  'premium'),
-('frank@indie.io',       'Frank',   'Brown',     'Canada',  'standard'),
-('grace@enterprise.jp',  'Grace',   'Tanaka',    'Japan',   'enterprise'),
-('henry@consulting.au',  'Henry',   'Wilson',    'Australia','premium'),
-('iris@startup.in',      'Iris',    'Patel',     'India',   'standard'),
-('james@corp.sg',        'James',   'Ng',        'Singapore','premium')
+-- ---------------------------------------------------------------------------
+-- Seed data
+-- ---------------------------------------------------------------------------
+
+INSERT INTO customers (name, email, tier, country) VALUES
+    ('Alice Müller',     'alice@acme-corp.de',       'enterprise', 'DE'),
+    ('Bob Schmidt',      'bob@startup.io',            'premium',    'DE'),
+    ('Carol Bauer',      'carol@techfirm.com',        'standard',   'AT'),
+    ('David Klein',      'david@enterprise.co.uk',    'enterprise', 'GB'),
+    ('Eva Fischer',      'eva@digitalagency.nl',      'premium',    'NL'),
+    ('Frank Weber',      'frank@freelance.de',        'standard',   'DE'),
+    ('Grace Hoffmann',   'grace@bigcorp.ch',          'enterprise', 'CH'),
+    ('Hans Schulz',      'hans@startup.berlin',       'standard',   'DE'),
+    ('Iris Koch',        'iris@scaleup.io',           'premium',    'FR'),
+    ('Jan Richter',      'jan@saascompany.eu',        'standard',   'PL')
+ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO products (name, category, price_usd, active) VALUES
+    ('Starter Plan',            'subscription',   29.00,  TRUE),
+    ('Growth Plan',             'subscription',   99.00,  TRUE),
+    ('Enterprise Plan',         'subscription',  499.00,  TRUE),
+    ('Data Credits — 100k',     'credits',        49.00,  TRUE),
+    ('Data Credits — 500k',     'credits',       199.00,  TRUE),
+    ('Data Credits — 1M',       'credits',       349.00,  TRUE),
+    ('Priority Support',        'support',        79.00,  TRUE),
+    ('Enterprise Support SLA',  'support',       299.00,  TRUE),
+    ('API Add-on',              'addon',          49.00,  TRUE),
+    ('Custom Connector',        'addon',         199.00,  FALSE)
 ON CONFLICT DO NOTHING;
 
--- Seed Products
-INSERT INTO products (name, category, price_usd, stock_quantity) VALUES
-('LangSight Pro License',      'Software',    299.00, 999),
-('API Credits 1M',             'Credits',      49.00, 9999),
-('Enterprise Support Plan',    'Support',    1299.00,  100),
-('MCP Monitoring Add-on',      'Software',    149.00,  500),
-('Security Scanner Pro',       'Software',    199.00,  500),
-('Starter Pack',               'Bundle',       99.00,  999),
-('Team License (10 seats)',    'Software',    799.00,  200),
-('Training Workshop',          'Services',    499.00,   50),
-('Custom Integration',         'Services',   2499.00,   20),
-('Data Retention 1yr Add-on',  'Add-on',       79.00,  999)
-ON CONFLICT DO NOTHING;
-
--- Seed Orders
 INSERT INTO orders (customer_id, status, total_usd, created_at) VALUES
-(1, 'delivered',  299.00, NOW() - INTERVAL '30 days'),
-(2, 'delivered',   49.00, NOW() - INTERVAL '25 days'),
-(3, 'shipped',     99.00, NOW() - INTERVAL '10 days'),
-(4, 'delivered', 1299.00, NOW() - INTERVAL '20 days'),
-(5, 'confirmed',  149.00, NOW() - INTERVAL '3 days'),
-(6, 'pending',     49.00, NOW() - INTERVAL '1 day'),
-(7, 'delivered',  799.00, NOW() - INTERVAL '15 days'),
-(8, 'cancelled',  499.00, NOW() - INTERVAL '12 days'),
-(1, 'delivered',  199.00, NOW() - INTERVAL '5 days'),
-(4, 'shipped',   2499.00, NOW() - INTERVAL '7 days')
+    (1, 'delivered',  499.00, NOW() - INTERVAL '30 days'),
+    (1, 'delivered',  299.00, NOW() - INTERVAL '15 days'),
+    (2, 'delivered',   99.00, NOW() - INTERVAL '20 days'),
+    (2, 'processing',  49.00, NOW() - INTERVAL '1 day'),
+    (3, 'delivered',   29.00, NOW() - INTERVAL '45 days'),
+    (4, 'delivered',  798.00, NOW() - INTERVAL '10 days'),
+    (5, 'cancelled',   99.00, NOW() - INTERVAL '5 days'),
+    (6, 'delivered',   29.00, NOW() - INTERVAL '60 days'),
+    (7, 'delivered', 1196.00, NOW() - INTERVAL '7 days'),
+    (8, 'pending',     49.00, NOW() - INTERVAL '2 hours')
 ON CONFLICT DO NOTHING;
 
--- Seed Order Items
 INSERT INTO order_items (order_id, product_id, quantity, unit_price_usd) VALUES
-(1, 1, 1, 299.00),
-(2, 2, 1,  49.00),
-(3, 6, 1,  99.00),
-(4, 3, 1, 1299.00),
-(5, 4, 1, 149.00),
-(6, 2, 1,  49.00),
-(7, 7, 1, 799.00),
-(8, 8, 1, 499.00),
-(9, 5, 1, 199.00),
-(10, 9, 1, 2499.00)
+    -- Order 1: enterprise plan
+    (1, 3, 1, 499.00),
+    -- Order 2: enterprise support
+    (2, 8, 1, 299.00),
+    -- Order 3: growth plan
+    (3, 2, 1, 99.00),
+    -- Order 4: data credits 100k
+    (4, 4, 1, 49.00),
+    -- Order 5: starter plan
+    (5, 1, 1, 29.00),
+    -- Order 6: enterprise plan + enterprise support
+    (6, 3, 1, 499.00),
+    (6, 8, 1, 299.00),
+    -- Order 7: growth plan (cancelled)
+    (7, 2, 1, 99.00),
+    -- Order 8: starter plan
+    (8, 1, 1, 29.00),
+    -- Order 9: enterprise plan x2 + priority support
+    (9, 3, 2, 499.00),
+    (9, 7, 1,  79.00),
+    (9, 8, 1, 119.00),
+    -- Order 10: data credits 100k
+    (10, 4, 1, 49.00)
 ON CONFLICT DO NOTHING;
 
--- Seed Agent Conversations
-INSERT INTO agent_conversations (conversation_id, agent_name, user_query, agent_response, status, duration_ms) VALUES
-('conv-001', 'customer-support-bot', 'What is my refund policy?',       'Your refund window is 14 days.',  'completed', 1240),
-('conv-002', 'customer-support-bot', 'How do I cancel my subscription?', 'You can cancel from Settings.',   'completed', 980),
-('conv-003', 'data-analyst-agent',   'Show me top customers by revenue', NULL,                              'failed',    5000),
-('conv-004', 'customer-support-bot', 'What are enterprise pricing tiers?','Enterprise starts at $1,299/yr.','completed', 1100),
-('conv-005', 'data-analyst-agent',   'Monthly revenue trend',            'Revenue up 12% MoM.',             'completed', 2300)
+INSERT INTO agent_conversations (session_id, agent_name, status, tool_calls_count, error_message, created_at) VALUES
+    ('sess_abc123', 'customer-support-agent', 'success',     4, NULL,                                          NOW() - INTERVAL '2 hours'),
+    ('sess_def456', 'data-analyst-agent',     'success',     7, NULL,                                          NOW() - INTERVAL '1 hour'),
+    ('sess_ghi789', 'billing-agent',          'failed',      2, 'postgres-mcp: timeout after 5000ms',          NOW() - INTERVAL '30 minutes'),
+    ('sess_jkl012', 'customer-support-agent', 'timeout',     1, 'Tool call exceeded max_duration of 10s',      NOW() - INTERVAL '15 minutes'),
+    ('sess_mno345', 'data-analyst-agent',     'in_progress', 3, NULL,                                          NOW())
 ON CONFLICT DO NOTHING;

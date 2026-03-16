@@ -1,213 +1,250 @@
-"""
-LangSight PostgreSQL MCP Server
-Provides tools for querying a PostgreSQL database.
-"""
+from __future__ import annotations
 
 import os
-import json
+import re
+from contextlib import asynccontextmanager
 from typing import Any
+
+import asyncpg
 from dotenv import load_dotenv
-import psycopg2
-import psycopg2.extras
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
 
 load_dotenv()
 
-# Database connection config
-DB_CONFIG = {
-    "host": os.getenv("POSTGRES_HOST", "localhost"),
-    "port": int(os.getenv("POSTGRES_PORT", "5432")),
-    "database": os.getenv("POSTGRES_DB", "langsight_test"),
-    "user": os.getenv("POSTGRES_USER", "postgres"),
-    "password": os.getenv("POSTGRES_PASSWORD", "postgres"),
-}
-
-mcp = FastMCP(
-    name="langsight-postgres-mcp",
-    instructions="PostgreSQL database MCP server. Use this to query data, list tables, and inspect schemas.",
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+_POSTGRES_DSN = (
+    f"postgresql://{os.getenv('POSTGRES_USER', 'postgres')}:"
+    f"{os.getenv('POSTGRES_PASSWORD', 'postgres')}@"
+    f"{os.getenv('POSTGRES_HOST', 'localhost')}:"
+    f"{os.getenv('POSTGRES_PORT', '5432')}/"
+    f"{os.getenv('POSTGRES_DB', 'langsight_test')}"
 )
 
+MAX_QUERY_LIMIT = 1000
+DEFAULT_QUERY_LIMIT = 100
 
-def get_connection():
-    return psycopg2.connect(**DB_CONFIG)
+# Module-level pool — initialised in lifespan, used by all tools
+_pool: asyncpg.Pool | None = None
 
-
-@mcp.tool()
-def query(sql: str, limit: int = 100) -> str:
-    """
-    Execute a SELECT SQL query and return results as JSON.
-    Only SELECT statements are allowed for safety.
-
-    Args:
-        sql: The SQL SELECT query to execute
-        limit: Maximum number of rows to return (default 100, max 1000)
-    """
-    sql = sql.strip()
-    if not sql.upper().startswith("SELECT"):
-        return json.dumps({"error": "Only SELECT queries are allowed"})
-
-    limit = min(limit, 1000)
-
-    # Append LIMIT if not already present
-    if "LIMIT" not in sql.upper():
-        sql = f"{sql} LIMIT {limit}"
-
+# ---------------------------------------------------------------------------
+# Lifespan — connection pool
+# ---------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(server: FastMCP):  # noqa: ARG001
+    global _pool
+    _pool = await asyncpg.create_pool(_POSTGRES_DSN, min_size=2, max_size=10)
     try:
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(sql)
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        return json.dumps({"rows": [dict(r) for r in rows], "count": len(rows)}, default=str)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+        yield
+    finally:
+        await _pool.close()
+        _pool = None
+
+
+mcp = FastMCP(
+    "postgres-mcp",
+    instructions=(
+        "PostgreSQL MCP server for LangSight testing. "
+        "Provides read-only query and schema-inspection tools for a sample e-commerce database. "
+        "Only SELECT, WITH, and EXPLAIN statements are permitted."
+    ),
+    lifespan=lifespan,
+)
+
+# ---------------------------------------------------------------------------
+# Security helpers
+# ---------------------------------------------------------------------------
+_ALLOWED_STMT = re.compile(r"^\s*(SELECT|WITH|EXPLAIN)\b", re.IGNORECASE)
+
+
+def _require_select_only(sql: str) -> None:
+    """Raise ValueError if sql is not a read-only statement."""
+    if not _ALLOWED_STMT.match(sql):
+        raise ValueError(
+            f"Only SELECT, WITH, and EXPLAIN statements are allowed. "
+            f"Received: {sql[:60]!r}"
+        )
+
+
+def _clamp(value: int, lo: int, hi: int) -> int:
+    return max(lo, min(value, hi))
+
+
+def _get_pool() -> asyncpg.Pool:
+    if _pool is None:
+        raise RuntimeError("Database pool is not initialised.")
+    return _pool
+
+
+# ---------------------------------------------------------------------------
+# Tools
+# ---------------------------------------------------------------------------
+@mcp.tool()
+async def query(sql: str, limit: int = DEFAULT_QUERY_LIMIT) -> list[dict[str, Any]]:
+    """Execute a read-only SQL query and return results as a list of row dicts.
+
+    Args:
+        sql: SQL SELECT (or WITH/EXPLAIN) query to execute. Mutating statements
+             are rejected.
+        limit: Maximum number of rows to return (1–1000, default 100). A LIMIT
+               clause is appended automatically when the query has none.
+    """
+    _require_select_only(sql)
+    limit = _clamp(limit, 1, MAX_QUERY_LIMIT)
+
+    normalized = sql.rstrip().rstrip(";")
+    if not re.search(r"\bLIMIT\b", normalized, re.IGNORECASE):
+        normalized = f"{normalized} LIMIT {limit}"
+
+    async with _get_pool().acquire() as conn:
+        rows = await conn.fetch(normalized)
+
+    return [dict(row) for row in rows]
 
 
 @mcp.tool()
-def list_tables(schema: str = "public") -> str:
-    """
-    List all tables in the specified schema.
+async def list_tables(schema: str = "public") -> list[dict[str, Any]]:
+    """List all user tables in a schema with their live row-count estimates.
 
     Args:
-        schema: Database schema name (default: public)
+        schema: PostgreSQL schema name (default: public).
     """
-    sql = """
-        SELECT
+    async with _get_pool().acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                t.table_name,
+                t.table_type,
+                COALESCE(s.n_live_tup::text, '0') AS estimated_rows
+            FROM information_schema.tables t
+            LEFT JOIN pg_stat_user_tables s
+                ON s.schemaname = t.table_schema
+               AND s.relname     = t.table_name
+            WHERE t.table_schema = $1
+            ORDER BY t.table_name
+            """,
+            schema,
+        )
+    return [dict(row) for row in rows]
+
+
+@mcp.tool()
+async def describe_table(
+    table_name: str,
+    schema: str = "public",
+) -> list[dict[str, Any]]:
+    """Return column definitions for a table: name, type, nullability, default.
+
+    Args:
+        table_name: Name of the table to describe.
+        schema: PostgreSQL schema name (default: public).
+    """
+    async with _get_pool().acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                column_name,
+                data_type,
+                is_nullable,
+                column_default,
+                character_maximum_length
+            FROM information_schema.columns
+            WHERE table_schema = $1
+              AND table_name   = $2
+            ORDER BY ordinal_position
+            """,
+            schema,
             table_name,
-            pg_size_pretty(pg_total_relation_size(quote_ident(table_name))) AS size,
-            (SELECT COUNT(*) FROM information_schema.columns
-             WHERE table_schema = t.table_schema AND table_name = t.table_name) AS column_count
-        FROM information_schema.tables t
-        WHERE table_schema = %s
-          AND table_type = 'BASE TABLE'
-        ORDER BY table_name
-    """
-    try:
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(sql, (schema,))
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        return json.dumps({"schema": schema, "tables": [dict(r) for r in rows]})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+        )
+
+    if not rows:
+        raise ValueError(
+            f"Table '{schema}.{table_name}' not found. "
+            "Use list_tables() to see available tables."
+        )
+
+    return [dict(row) for row in rows]
 
 
 @mcp.tool()
-def describe_table(table_name: str, schema: str = "public") -> str:
-    """
-    Get column definitions, types, and constraints for a table.
+async def get_row_count(
+    table_name: str,
+    schema: str = "public",
+) -> dict[str, Any]:
+    """Return the exact and estimated row count for a table.
 
     Args:
-        table_name: Name of the table to describe
-        schema: Database schema name (default: public)
+        table_name: Name of the table.
+        schema: PostgreSQL schema name (default: public).
     """
-    sql = """
-        SELECT
-            c.column_name,
-            c.data_type,
-            c.character_maximum_length,
-            c.is_nullable,
-            c.column_default,
-            CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_primary_key
-        FROM information_schema.columns c
-        LEFT JOIN (
-            SELECT ku.column_name
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage ku
-              ON tc.constraint_name = ku.constraint_name
-             AND tc.table_schema = ku.table_schema
-            WHERE tc.constraint_type = 'PRIMARY KEY'
-              AND tc.table_name = %s
-              AND tc.table_schema = %s
-        ) pk ON c.column_name = pk.column_name
-        WHERE c.table_name = %s
-          AND c.table_schema = %s
-        ORDER BY c.ordinal_position
-    """
-    try:
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(sql, (table_name, schema, table_name, schema))
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        if not rows:
-            return json.dumps({"error": f"Table '{schema}.{table_name}' not found"})
-        return json.dumps({"table": f"{schema}.{table_name}", "columns": [dict(r) for r in rows]})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    async with _get_pool().acquire() as conn:
+        # Validate table exists before building dynamic query
+        exists = await conn.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM information_schema.tables
+            WHERE table_schema = $1 AND table_name = $2
+            """,
+            schema,
+            table_name,
+        )
+        if not exists:
+            raise ValueError(
+                f"Table '{schema}.{table_name}' not found. "
+                "Use list_tables() to see available tables."
+            )
+
+        # Fast stats estimate
+        estimate_row = await conn.fetchrow(
+            """
+            SELECT n_live_tup AS estimate
+            FROM pg_stat_user_tables
+            WHERE schemaname = $1 AND relname = $2
+            """,
+            schema,
+            table_name,
+        )
+
+        # Exact count — safe: name validated above, quoted to handle edge cases
+        exact = await conn.fetchval(
+            f'SELECT COUNT(*) FROM "{schema}"."{table_name}"'
+        )
+
+    return {
+        "table": f"{schema}.{table_name}",
+        "exact_count": exact,
+        "estimated_count": estimate_row["estimate"] if estimate_row else None,
+    }
 
 
 @mcp.tool()
-def get_row_count(table_name: str, schema: str = "public") -> str:
+async def get_schema_summary() -> list[dict[str, Any]]:
+    """Return a summary of all user schemas, tables, and row-count estimates.
+
+    Excludes PostgreSQL internal schemas (pg_catalog, information_schema).
     """
-    Get the approximate row count for a table.
-
-    Args:
-        table_name: Name of the table
-        schema: Database schema name (default: public)
-    """
-    sql = """
-        SELECT reltuples::BIGINT AS estimated_count
-        FROM pg_class c
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE c.relname = %s AND n.nspname = %s
-    """
-    try:
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(sql, (table_name, schema))
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
-        if not row:
-            return json.dumps({"error": f"Table '{schema}.{table_name}' not found"})
-        return json.dumps({"table": f"{schema}.{table_name}", "estimated_row_count": row["estimated_count"]})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    async with _get_pool().acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                t.table_schema,
+                t.table_name,
+                t.table_type,
+                COALESCE(s.n_live_tup, 0) AS estimated_rows
+            FROM information_schema.tables t
+            LEFT JOIN pg_stat_user_tables s
+                ON s.schemaname = t.table_schema
+               AND s.relname     = t.table_name
+            WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema')
+            ORDER BY t.table_schema, t.table_name
+            """
+        )
+    return [dict(row) for row in rows]
 
 
-@mcp.tool()
-def get_schema_summary() -> str:
-    """
-    Get a high-level summary of the entire database: schemas, tables, and row counts.
-    """
-    sql = """
-        SELECT
-            t.table_schema,
-            t.table_name,
-            reltuples::BIGINT AS estimated_rows
-        FROM information_schema.tables t
-        JOIN pg_class c ON c.relname = t.table_name
-        JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
-        WHERE t.table_type = 'BASE TABLE'
-          AND t.table_schema NOT IN ('pg_catalog', 'information_schema')
-        ORDER BY t.table_schema, t.table_name
-    """
-    try:
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(sql)
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-
-        db_name = DB_CONFIG["database"]
-        return json.dumps({
-            "database": db_name,
-            "tables": [dict(r) for r in rows],
-            "total_tables": len(rows)
-        })
-    except Exception as e:
-        return json.dumps({"error": str(e)})
-
-
-def main():
-    mcp.run(transport="stdio")
-
-
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    main()
+    mcp.run()
