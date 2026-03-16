@@ -421,6 +421,90 @@ class TestHealthChecker:
 
 ---
 
+## Testing Workflow — Mandatory
+
+**Tests are written alongside the module, not after.** This is non-negotiable.
+
+### Rule: One module, one test file, same commit
+
+Every time a source file is created or modified, its test file is created or updated in the same commit:
+
+| Source file | Test file |
+|---|---|
+| `src/langsight/models.py` | `tests/unit/test_models.py` |
+| `src/langsight/health/checker.py` | `tests/unit/health/test_checker.py` |
+| `src/langsight/security/scanner.py` | `tests/unit/security/test_scanner.py` |
+| `src/langsight/cli/mcp_health.py` | `tests/unit/cli/test_mcp_health.py` |
+
+No module ships without a corresponding test file. No exceptions.
+
+### Invoke the tester agent after every module
+
+```
+Write module → invoke tester agent → fix gaps → commit both together
+```
+
+The tester agent writes tests, checks coverage, and flags untested paths. Do not skip it.
+
+### pytest markers — use them consistently
+
+```python
+@pytest.mark.unit          # Fast, no external deps, always runs
+@pytest.mark.integration   # Requires docker compose up (postgres-mcp + s3-mcp)
+@pytest.mark.e2e           # Full CLI flow, requires full stack
+```
+
+Run targets:
+```bash
+uv run pytest -m unit                          # Fast — no Docker needed
+uv run pytest -m integration                   # Requires: cd test-mcps && docker compose up -d
+uv run pytest -m "unit or integration"         # Full local suite
+uv run pytest --cov=langsight --cov-report=term-missing  # With coverage
+```
+
+### Integration tests use test-mcps
+
+The `test-mcps/postgres-mcp` and `test-mcps/s3-mcp` servers exist specifically for integration tests. Use them:
+
+```python
+# tests/integration/health/test_checker_integration.py
+import pytest
+from langsight.health.checker import HealthChecker
+from langsight.models import MCPServer
+
+@pytest.mark.integration
+async def test_health_check_against_real_postgres_mcp():
+    server = MCPServer(
+        name="langsight-postgres",
+        transport="stdio",
+        command="uv run python test-mcps/postgres-mcp/server.py",
+    )
+    checker = HealthChecker()
+    result = await checker.check(server)
+    assert result.status == "up"
+    assert result.latency_ms is not None
+```
+
+### conftest.py fixtures — project-wide
+
+```
+tests/
+├── conftest.py              # Shared fixtures: mock MCP server, sample configs
+├── unit/
+│   └── conftest.py          # Unit-level fixtures: in-memory SQLite, mock pools
+└── integration/
+    └── conftest.py          # Integration fixtures: real DB connection, real MCP server path
+```
+
+### What blocks a commit
+
+- Any new public function without at least one test → blocked
+- Coverage drops below 80% overall → blocked
+- Coverage drops below 90% on health/, security/, alerts/ → blocked
+- Any test that makes real network calls without `@pytest.mark.integration` → blocked
+
+---
+
 ## CLI Standards (Click + Rich)
 
 ### Output Quality Matters — This Is the Primary UX
