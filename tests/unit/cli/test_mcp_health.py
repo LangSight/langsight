@@ -61,7 +61,7 @@ class TestMcpHealthCommand:
     def test_shows_table_on_success(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.mcp_health.SQLiteBackend.open", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.mcp_health.open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.mcp_health.HealthChecker") as MockChecker:
                 MockChecker.return_value.check_many = AsyncMock(return_value=[UP_RESULT])
                 result = runner.invoke(cli, ["mcp-health", "--config", str(config_file)])
@@ -73,7 +73,7 @@ class TestMcpHealthCommand:
     def test_exits_1_when_server_down(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.mcp_health.SQLiteBackend.open", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.mcp_health.open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.mcp_health.HealthChecker") as MockChecker:
                 MockChecker.return_value.check_many = AsyncMock(return_value=[DOWN_RESULT])
                 result = runner.invoke(cli, ["mcp-health", "--config", str(config_file)])
@@ -83,7 +83,7 @@ class TestMcpHealthCommand:
     def test_exits_1_when_server_degraded(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.mcp_health.SQLiteBackend.open", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.mcp_health.open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.mcp_health.HealthChecker") as MockChecker:
                 MockChecker.return_value.check_many = AsyncMock(return_value=[DEGRADED_RESULT])
                 result = runner.invoke(cli, ["mcp-health", "--config", str(config_file)])
@@ -93,7 +93,7 @@ class TestMcpHealthCommand:
     def test_json_flag_outputs_valid_json(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.mcp_health.SQLiteBackend.open", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.mcp_health.open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.mcp_health.HealthChecker") as MockChecker:
                 MockChecker.return_value.check_many = AsyncMock(return_value=[UP_RESULT])
                 result = runner.invoke(cli, ["mcp-health", "--config", str(config_file), "--json"])
@@ -114,7 +114,7 @@ class TestMcpHealthCommand:
     def test_shows_latency_in_table(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.mcp_health.SQLiteBackend.open", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.mcp_health.open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.mcp_health.HealthChecker") as MockChecker:
                 MockChecker.return_value.check_many = AsyncMock(return_value=[UP_RESULT])
                 result = runner.invoke(cli, ["mcp-health", "--config", str(config_file)])
@@ -124,7 +124,7 @@ class TestMcpHealthCommand:
     def test_shows_degraded_status(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.mcp_health.SQLiteBackend.open", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.mcp_health.open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.mcp_health.HealthChecker") as MockChecker:
                 MockChecker.return_value.check_many = AsyncMock(return_value=[DEGRADED_RESULT])
                 result = runner.invoke(cli, ["mcp-health", "--config", str(config_file)])
@@ -145,7 +145,7 @@ class TestMcpHealthCommand:
         ]
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.mcp_health.SQLiteBackend.open", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.mcp_health.open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.mcp_health.HealthChecker") as MockChecker:
                 MockChecker.return_value.check_many = AsyncMock(return_value=results)
                 result = runner.invoke(cli, ["mcp-health", "--config", str(cfg)])

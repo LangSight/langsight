@@ -25,7 +25,7 @@ from langsight.alerts.engine import AlertEngine
 from langsight.config import LangSightConfig, Settings, load_config
 from langsight.health.checker import HealthChecker
 from langsight.models import HealthCheckResult, ServerStatus
-from langsight.storage.sqlite import SQLiteBackend
+from langsight.storage.factory import open_storage
 
 logger = structlog.get_logger()
 console = Console()
@@ -98,7 +98,7 @@ async def _monitor_loop(
         latency_spike_multiplier=config.alerts.latency_spike_multiplier,
     )
 
-    async with await SQLiteBackend.open() as storage:
+    async with await open_storage(config.storage) as storage:
         checker = HealthChecker(storage=storage)
         cycle = 0
 

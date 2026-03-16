@@ -22,8 +22,9 @@ class AlertConfig(BaseModel):
 
 
 class StorageConfig(BaseModel):
-    mode: str = "sqlite"
-    sqlite_path: str = "~/.langsight/data.db"
+    mode: str = "sqlite"  # "sqlite" | "postgres"
+    sqlite_path: str = "~/.langsight/data.db"  # used when mode="sqlite"
+    postgres_url: str | None = None  # used when mode="postgres"
 
 
 # ---------------------------------------------------------------------------

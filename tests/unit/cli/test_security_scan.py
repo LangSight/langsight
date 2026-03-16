@@ -54,7 +54,7 @@ class TestSecurityScanCommand:
     def test_shows_clean_for_no_findings(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.security_scan.SQLiteBackend.open", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.security_scan.open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.security_scan.SecurityScanner") as MockScanner:
                 MockScanner.return_value.scan_many = AsyncMock(return_value=[CLEAN_RESULT])
                 result = runner.invoke(cli, ["security-scan", "--config", str(config_file)])
@@ -65,7 +65,7 @@ class TestSecurityScanCommand:
     def test_shows_findings_in_table(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.security_scan.SQLiteBackend.open", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.security_scan.open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.security_scan.SecurityScanner") as MockScanner:
                 MockScanner.return_value.scan_many = AsyncMock(return_value=[CRITICAL_RESULT])
                 result = runner.invoke(cli, ["security-scan", "--config", str(config_file)])
@@ -76,7 +76,7 @@ class TestSecurityScanCommand:
     def test_ci_flag_exits_1_on_critical(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.security_scan.SQLiteBackend.open", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.security_scan.open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.security_scan.SecurityScanner") as MockScanner:
                 MockScanner.return_value.scan_many = AsyncMock(return_value=[CRITICAL_RESULT])
                 result = runner.invoke(cli, ["security-scan", "--config", str(config_file), "--ci"])
@@ -86,7 +86,7 @@ class TestSecurityScanCommand:
     def test_ci_flag_exits_0_on_clean(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.security_scan.SQLiteBackend.open", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.security_scan.open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.security_scan.SecurityScanner") as MockScanner:
                 MockScanner.return_value.scan_many = AsyncMock(return_value=[CLEAN_RESULT])
                 result = runner.invoke(cli, ["security-scan", "--config", str(config_file), "--ci"])
@@ -96,7 +96,7 @@ class TestSecurityScanCommand:
     def test_json_flag_outputs_valid_json(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.security_scan.SQLiteBackend.open", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.security_scan.open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.security_scan.SecurityScanner") as MockScanner:
                 MockScanner.return_value.scan_many = AsyncMock(return_value=[CLEAN_RESULT])
                 result = runner.invoke(cli, ["security-scan", "--config", str(config_file), "--json"])
@@ -124,7 +124,7 @@ class TestSecurityScanCommand:
         )
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.security_scan.SQLiteBackend.open", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.security_scan.open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.security_scan.SecurityScanner") as MockScanner:
                 MockScanner.return_value.scan_many = AsyncMock(return_value=[result_with_findings])
                 result = runner.invoke(cli, ["security-scan", "--config", str(config_file)])

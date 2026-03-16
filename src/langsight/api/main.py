@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from langsight.api.routers import health, security
 from langsight.config import load_config
-from langsight.storage.sqlite import SQLiteBackend
+from langsight.storage.factory import open_storage
 
 logger = structlog.get_logger()
 
@@ -25,7 +25,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.config = load_config(config_path)
-        app.state.storage = await SQLiteBackend.open()
+        app.state.storage = await open_storage(app.state.config.storage)
         logger.info(
             "api.startup",
             servers=len(app.state.config.servers),
