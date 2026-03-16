@@ -5,6 +5,8 @@ import pytest
 from langsight.health.checker import HealthChecker
 from langsight.models import MCPServer, ServerStatus
 
+pytestmark = pytest.mark.integration  # all tests in this file require docker compose up
+
 
 @pytest.mark.integration
 async def test_health_check_postgres_mcp_returns_up(postgres_mcp_server: MCPServer) -> None:

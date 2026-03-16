@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint + type check
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Ruff lint
+        run: uv run ruff check src/
+
+      - name: Ruff format check
+        run: uv run ruff format --check src/
+
+  # ---------------------------------------------------------------------------
+  # Unit + regression tests (no Docker needed)
+  # ---------------------------------------------------------------------------
+  test:
+    name: Unit & Regression Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run unit + regression tests
+        run: uv run pytest --no-header
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: .coverage
+
+  # ---------------------------------------------------------------------------
+  # Integration tests (requires Docker + postgres-mcp)
+  # ---------------------------------------------------------------------------
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Set up postgres-mcp dependencies
+        run: |
+          cd test-mcps/postgres-mcp
+          uv sync
+
+      - name: Start PostgreSQL via Docker Compose
+        run: |
+          cd test-mcps
+          docker compose up -d
+          # Wait for healthy
+          for i in {1..20}; do
+            docker exec langsight-postgres pg_isready -U postgres -d langsight_test && break
+            echo "Waiting for postgres... ($i)"
+            sleep 2
+          done
+
+      - name: Run integration tests
+        run: uv run pytest -m integration --no-cov -v
+
+      - name: Stop Docker Compose
+        if: always()
+        run: cd test-mcps && docker compose down -v

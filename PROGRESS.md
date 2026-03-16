@@ -62,7 +62,8 @@ Phase 3 (Dashboard)    ░░░░░░░░░░░░░░░░   0%
 | `storage/test_sqlite.py` | ✅ Done | 100% | real in-memory SQLite |
 | `cli/test_mcp_health.py` | ✅ Done | — | Click CliRunner, mocked storage |
 | `integration/health/test_checker_integration.py` | ✅ Done | — | requires docker compose up |
-| **Overall coverage** | | **84%** | target: 80% ✅ |
+| `regression/test_health_pipeline.py` | ✅ Done | — | 10 tests: baseline, no-drift, drift, down, recovery — full stack, mocked transport |
+| **Overall coverage** | | **86%** | target: 80% ✅ |
 
 ### Verified End-to-End
 ```
