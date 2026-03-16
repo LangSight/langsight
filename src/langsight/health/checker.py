@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 
@@ -49,9 +49,7 @@ class HealthChecker:
                 )
                 if drift.drifted:
                     status = ServerStatus.DEGRADED
-                    drift_warning = (
-                        f"schema drift: {drift.previous_hash} → {drift.current_hash}"
-                    )
+                    drift_warning = f"schema drift: {drift.previous_hash} → {drift.current_hash}"
 
             result = HealthCheckResult(
                 server_name=server.name,
@@ -60,7 +58,7 @@ class HealthChecker:
                 tools=tools,
                 tools_count=len(tools),
                 schema_hash=schema_hash,
-                checked_at=datetime.now(timezone.utc),
+                checked_at=datetime.now(UTC),
                 error=drift_warning,
             )
 
@@ -83,7 +81,7 @@ class HealthChecker:
             result = HealthCheckResult(
                 server_name=server.name,
                 status=ServerStatus.DOWN,
-                checked_at=datetime.now(timezone.utc),
+                checked_at=datetime.now(UTC),
                 error=f"timeout after {server.timeout_seconds}s",
             )
             if self._storage:
@@ -95,7 +93,7 @@ class HealthChecker:
             result = HealthCheckResult(
                 server_name=server.name,
                 status=ServerStatus.DOWN,
-                checked_at=datetime.now(timezone.utc),
+                checked_at=datetime.now(UTC),
                 error=str(exc),
             )
             if self._storage:
@@ -107,7 +105,7 @@ class HealthChecker:
             result = HealthCheckResult(
                 server_name=server.name,
                 status=ServerStatus.DOWN,
-                checked_at=datetime.now(timezone.utc),
+                checked_at=datetime.now(UTC),
                 error=f"unexpected error: {exc}",
             )
             if self._storage:

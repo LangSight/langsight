@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
 import structlog
 
-from langsight.models import HealthCheckResult, ServerStatus, ToolInfo
+from langsight.models import HealthCheckResult, ServerStatus
 
 logger = structlog.get_logger()
 
@@ -130,7 +129,7 @@ class SQLiteBackend:
                 server_name,
                 schema_hash,
                 tools_count,
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(UTC).isoformat(),
             ),
         )
         await self._conn.commit()
@@ -174,6 +173,7 @@ class SQLiteBackend:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _row_to_result(row: aiosqlite.Row) -> HealthCheckResult:
     return HealthCheckResult(

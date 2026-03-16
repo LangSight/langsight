@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class ServerStatus(str, Enum):
+class ServerStatus(StrEnum):
     UP = "up"
     DEGRADED = "degraded"
     DOWN = "down"
@@ -15,7 +15,7 @@ class ServerStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
-class TransportType(str, Enum):
+class TransportType(StrEnum):
     STDIO = "stdio"
     SSE = "sse"
     STREAMABLE_HTTP = "streamable_http"
@@ -53,7 +53,5 @@ class HealthCheckResult(BaseModel):
     tools: list[ToolInfo] = Field(default_factory=list)
     tools_count: int = 0
     schema_hash: str | None = None
-    checked_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    checked_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     error: str | None = None

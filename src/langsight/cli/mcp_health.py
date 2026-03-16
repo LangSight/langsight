@@ -18,23 +18,25 @@ console = Console()
 err_console = Console(stderr=True)
 
 _STATUS_DISPLAY = {
-    ServerStatus.UP:       "[green]✓ up[/green]",
+    ServerStatus.UP: "[green]✓ up[/green]",
     ServerStatus.DEGRADED: "[yellow]⚠ degraded[/yellow]",
-    ServerStatus.DOWN:     "[red]✗ down[/red]",
-    ServerStatus.STALE:    "[dim]~ stale[/dim]",
-    ServerStatus.UNKNOWN:  "[dim]? unknown[/dim]",
+    ServerStatus.DOWN: "[red]✗ down[/red]",
+    ServerStatus.STALE: "[dim]~ stale[/dim]",
+    ServerStatus.UNKNOWN: "[dim]? unknown[/dim]",
 }
 
 
 @click.command("mcp-health")
 @click.option(
-    "--config", "config_path",
+    "--config",
+    "config_path",
     type=click.Path(path_type=Path),
     default=None,
     help="Path to .langsight.yaml (auto-discovered if not set).",
 )
 @click.option(
-    "--json", "output_json",
+    "--json",
+    "output_json",
     is_flag=True,
     help="Output results as JSON (stdout).",
 )
@@ -65,7 +67,10 @@ def mcp_health(config_path: Path | None, output_json: bool) -> None:
 
 def _display_table(results: list[HealthCheckResult]) -> None:
     table = Table(
-        title=f"MCP Server Health  [dim]({len(results)} server{'s' if len(results) != 1 else ''})[/dim]",
+        title=(
+            f"MCP Server Health  "
+            f"[dim]({len(results)} server{'s' if len(results) != 1 else ''})[/dim]"
+        ),
         show_header=True,
         header_style="bold",
         border_style="dim",

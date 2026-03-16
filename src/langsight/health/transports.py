@@ -3,8 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 import anyio
 from mcp import ClientSession
@@ -14,10 +14,10 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from langsight.exceptions import MCPConnectionError, MCPTimeoutError
 from langsight.models import MCPServer, ToolInfo, TransportType
 
-
 # ---------------------------------------------------------------------------
 # Session factory
 # ---------------------------------------------------------------------------
+
 
 @asynccontextmanager
 async def _open_session(server: MCPServer) -> AsyncGenerator[ClientSession, None]:
@@ -55,6 +55,7 @@ async def _open_session(server: MCPServer) -> AsyncGenerator[ClientSession, None
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 async def ping(server: MCPServer) -> tuple[float, list[ToolInfo]]:
     """Connect to an MCP server, initialise the session, and fetch the tools list.
@@ -99,14 +100,13 @@ def hash_tools(tools: list[ToolInfo]) -> str:
         }
         for t in sorted(tools, key=lambda t: t.name)
     ]
-    return hashlib.sha256(
-        json.dumps(schema, sort_keys=True).encode()
-    ).hexdigest()[:16]
+    return hashlib.sha256(json.dumps(schema, sort_keys=True).encode()).hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _parse_tools(raw_tools: list[object]) -> list[ToolInfo]:
     """Convert MCP SDK Tool objects to LangSight ToolInfo models."""
@@ -116,9 +116,7 @@ def _parse_tools(raw_tools: list[object]) -> list[ToolInfo]:
         if hasattr(t, "inputSchema") and t.inputSchema:  # type: ignore[union-attr]
             raw_schema = t.inputSchema  # type: ignore[union-attr]
             input_schema = (
-                raw_schema.model_dump()
-                if hasattr(raw_schema, "model_dump")
-                else dict(raw_schema)
+                raw_schema.model_dump() if hasattr(raw_schema, "model_dump") else dict(raw_schema)
             )
         tools.append(
             ToolInfo(

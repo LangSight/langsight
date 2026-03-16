@@ -28,6 +28,4 @@ class SchemaChangedError(LangSightError):
         self.server_name = server_name
         self.old_hash = old_hash
         self.new_hash = new_hash
-        super().__init__(
-            f"Schema changed for '{server_name}': {old_hash} → {new_hash}"
-        )
+        super().__init__(f"Schema changed for '{server_name}': {old_hash} → {new_hash}")

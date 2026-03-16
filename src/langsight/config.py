@@ -13,6 +13,7 @@ from langsight.models import MCPServer
 # Sub-configs
 # ---------------------------------------------------------------------------
 
+
 class AlertConfig(BaseModel):
     slack_webhook: str | None = None
     error_rate_threshold: float = 0.05
@@ -29,6 +30,7 @@ class StorageConfig(BaseModel):
 # Top-level project config (.langsight.yaml)
 # ---------------------------------------------------------------------------
 
+
 class LangSightConfig(BaseModel):
     """Parsed contents of .langsight.yaml."""
 
@@ -40,6 +42,7 @@ class LangSightConfig(BaseModel):
 # ---------------------------------------------------------------------------
 # Runtime settings (env vars / .env file)
 # ---------------------------------------------------------------------------
+
 
 class Settings(BaseSettings):
     """Runtime settings loaded from environment variables (LANGSIGHT_ prefix)."""
