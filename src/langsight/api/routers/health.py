@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status as http_status
+
+from langsight.api.dependencies import get_config, get_storage
+from langsight.config import LangSightConfig
+from langsight.health.checker import HealthChecker
+from langsight.models import HealthCheckResult
+from langsight.storage.base import StorageBackend
+
+router = APIRouter(prefix="/health", tags=["health"])
+
+
+@router.get(
+    "/servers",
+    response_model=list[HealthCheckResult],
+    summary="List latest health status for all configured servers",
+)
+async def list_servers_health(
+    storage: StorageBackend = Depends(get_storage),
+    config: LangSightConfig = Depends(get_config),
+) -> list[HealthCheckResult]:
+    """Return the most recent health check result for each configured server.
+
+    Servers with no recorded checks are omitted from the response.
+    """
+    results: list[HealthCheckResult] = []
+    for server in config.servers:
+        history = await storage.get_health_history(server.name, limit=1)
+        if history:
+            results.append(history[0])
+    return results
+
+
+@router.get(
+    "/servers/{server_name}",
+    response_model=HealthCheckResult,
+    summary="Get latest health status for one server",
+    responses={404: {"description": "No health data found for this server"}},
+)
+async def get_server_health(
+    server_name: str,
+    storage: StorageBackend = Depends(get_storage),
+) -> HealthCheckResult:
+    """Return the most recent health check result for a specific server."""
+    history = await storage.get_health_history(server_name, limit=1)
+    if not history:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=f"No health data found for server '{server_name}'. Run a check first.",
+        )
+    return history[0]
+
+
+@router.get(
+    "/servers/{server_name}/history",
+    response_model=list[HealthCheckResult],
+    summary="Get health check history for one server",
+)
+async def get_server_history(
+    server_name: str,
+    limit: int = Query(default=10, ge=1, le=100, description="Number of results to return"),
+    storage: StorageBackend = Depends(get_storage),
+) -> list[HealthCheckResult]:
+    """Return historical health check results for a server, newest first."""
+    return await storage.get_health_history(server_name, limit=limit)
+
+
+@router.post(
+    "/check",
+    response_model=list[HealthCheckResult],
+    status_code=http_status.HTTP_200_OK,
+    summary="Trigger on-demand health check for all servers",
+)
+async def trigger_health_check(
+    storage: StorageBackend = Depends(get_storage),
+    config: LangSightConfig = Depends(get_config),
+) -> list[HealthCheckResult]:
+    """Run a health check against all configured servers immediately.
+
+    Results are persisted and returned. Schema drift detection is active.
+    """
+    if not config.servers:
+        return []
+    checker = HealthChecker(storage=storage)
+    return await checker.check_many(config.servers)

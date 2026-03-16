@@ -5,11 +5,11 @@
 
 ---
 
-## Current Status: Phase 1 — In Progress
+## Current Status: Phase 2 — In Progress
 
 ```
 Phase 1 (CLI MVP)      ████████████████  95%
-Phase 2 (API + RCA)    ░░░░░░░░░░░░░░░░   0%
+Phase 2 (API + RCA)    ████░░░░░░░░░░░░  25%
 Phase 3 (Dashboard)    ░░░░░░░░░░░░░░░░   0%
 ```
 

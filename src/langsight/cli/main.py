@@ -6,6 +6,7 @@ from langsight.cli.init import init
 from langsight.cli.mcp_health import mcp_health
 from langsight.cli.monitor import monitor
 from langsight.cli.security_scan import security_scan
+from langsight.cli.serve import serve
 
 
 @click.group()
@@ -22,3 +23,4 @@ cli.add_command(init)
 cli.add_command(mcp_health)
 cli.add_command(monitor)
 cli.add_command(security_scan)
+cli.add_command(serve)
