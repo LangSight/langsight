@@ -99,7 +99,7 @@ tests/
 | `security-reviewer` | Before every commit, after any security-sensitive code | OWASP checks, secret exposure, MCP security, CVE scan, PII review |
 | `debugger` | Something is broken or a test is failing unexpectedly | Systematic root cause analysis across CLI → API → Service → DB → MCP |
 | `release-engineer` | Preparing a release | Version bump, CHANGELOG, Docker build, PyPI publish, GitHub release |
-| `docs-keeper` | After every architectural decision, schema change, API change, new feature | Updates all 5 docs + CHANGELOG to reflect changes |
+| `docs-keeper` | After every architectural decision, schema change, API change, new feature | Updates all 5 docs + CHANGELOG + **PROGRESS.md** to reflect changes |
 | `git-keeper` | Before every commit and push, when creating PRs | Conventional commits, branch naming, secret checks, PR descriptions |
 
 ### Agent workflow per feature
