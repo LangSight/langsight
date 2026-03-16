@@ -8,7 +8,7 @@
 ## Current Status: Phase 1 — In Progress
 
 ```
-Phase 1 (CLI MVP)      ████████████░░░░  70%
+Phase 1 (CLI MVP)      ████████████████  95%
 Phase 2 (API + RCA)    ░░░░░░░░░░░░░░░░   0%
 Phase 3 (Dashboard)    ░░░░░░░░░░░░░░░░   0%
 ```
@@ -94,10 +94,12 @@ $ langsight mcp-health   # Run 2 — no drift
 | `security/cve_checker.py` | ✅ Done | OSV API, pyproject.toml + package.json, fail-open |
 | `security/scanner.py` | ✅ Done | Concurrent: OWASP + poisoning + CVE |
 | `cli/security_scan.py` | ✅ Done | Rich table, --json, --ci flag |
-| `cli/monitor.py` | Medium | `langsight monitor` — continuous background monitoring |
-| `alerts/engine.py` | Medium | Alert rule evaluation + deduplication |
-| `alerts/slack.py` | Medium | Slack Block Kit webhook |
-| `cli/costs.py` | Low | `langsight costs` — tool call cost attribution |
+| `alerts/engine.py` | ✅ Done | State-transition alerts (DOWN/recovery/drift/latency), deduplication |
+| `alerts/slack.py` | ✅ Done | Slack Block Kit, fail-open |
+| `alerts/webhook.py` | ✅ Done | Generic JSON webhook, fail-open |
+| `cli/monitor.py` | ✅ Done | `langsight monitor --once/--interval`, fires alerts on transitions |
+| `cli/init.py` | ✅ Done | Auto-discovers Claude Desktop, Cursor, VS Code MCP configs |
+| `cli/costs.py` | Low | `langsight costs` — OTEL-based cost attribution (Phase 2) |
 | `cli/init.py` | Low | `langsight init` — interactive setup wizard |
 
 ---

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import click
 
+from langsight.cli.init import init
 from langsight.cli.mcp_health import mcp_health
+from langsight.cli.monitor import monitor
 from langsight.cli.security_scan import security_scan
 
 
@@ -16,5 +18,7 @@ def cli() -> None:
     """
 
 
+cli.add_command(init)
 cli.add_command(mcp_health)
+cli.add_command(monitor)
 cli.add_command(security_scan)
