@@ -25,6 +25,9 @@ build/
 *.langsight.yaml
 !.langsight.yaml.example
 
+# Claude Code — skill content (re-fetchable from skills-lock.json)
+.claude/skills/
+
 # IDE
 .vscode/
 .cursor/
