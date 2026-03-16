@@ -44,9 +44,12 @@ Phase 3 (Dashboard)    ░░░░░░░░░░░░░░░░   0%
 | `models.py` | ✅ Done | 2026-03-16 | MCPServer, HealthCheckResult, ToolInfo, enums |
 | `config.py` | ✅ Done | 2026-03-16 | .langsight.yaml loader, AlertConfig, StorageConfig, Settings |
 | `health/transports.py` | ✅ Done | 2026-03-16 | stdio + SSE via MCP SDK, hash_tools() |
-| `health/checker.py` | ✅ Done | 2026-03-16 | concurrent check_many(), never raises |
+| `health/checker.py` | ✅ Done | 2026-03-16 | concurrent check_many(), storage-aware, drift detection |
+| `health/schema_tracker.py` | ✅ Done | 2026-03-16 | Drift detection — baseline + compare across runs |
+| `storage/base.py` | ✅ Done | 2026-03-16 | StorageBackend Protocol — SaaS-safe abstraction |
+| `storage/sqlite.py` | ✅ Done | 2026-03-16 | SQLite backend, async, DDL on first open, persists across runs |
 | `cli/main.py` | ✅ Done | 2026-03-16 | Click entry point |
-| `cli/mcp_health.py` | ✅ Done | 2026-03-16 | Rich table, --json, exit 1 on DOWN |
+| `cli/mcp_health.py` | ✅ Done | 2026-03-16 | Rich table, --json, exit 1 on DOWN/DEGRADED, SQLite wired |
 
 ### Tests
 | Item | Status | Coverage | Notes |
@@ -54,19 +57,26 @@ Phase 3 (Dashboard)    ░░░░░░░░░░░░░░░░   0%
 | `test_exceptions.py` | ✅ Done | 100% | |
 | `test_models.py` | ✅ Done | 100% | |
 | `test_config.py` | ✅ Done | 98% | |
-| `health/test_checker.py` | ✅ Done | 100% | mocked ping |
-| `cli/test_mcp_health.py` | ✅ Done | — | Click CliRunner |
+| `health/test_checker.py` | ✅ Done | 85% | mocked ping + storage |
+| `health/test_schema_tracker.py` | ✅ Done | 100% | mocked storage |
+| `storage/test_sqlite.py` | ✅ Done | 100% | real in-memory SQLite |
+| `cli/test_mcp_health.py` | ✅ Done | — | Click CliRunner, mocked storage |
 | `integration/health/test_checker_integration.py` | ✅ Done | — | requires docker compose up |
-| **Overall coverage** | | **81%** | target: 80% ✅ |
+| **Overall coverage** | | **84%** | target: 80% ✅ |
 
 ### Verified End-to-End
 ```
-$ langsight mcp-health --config test.yaml
+$ langsight mcp-health   # Run 1 — baselines stored
+  schema_tracker.baseline_stored  server=langsight-postgres  hash=bcf0ec26dff44929
+  schema_tracker.baseline_stored  server=langsight-s3        hash=d2125e3aff0a9aca
+  langsight-postgres  ✓ up   590ms   5 tools
+  langsight-s3        ✓ up   660ms   7 tools
+  2/2 servers healthy  →  saved to ~/.langsight/data.db
 
-langsight-postgres  ✓ up    626ms   5 tools   bcf0ec26dff4…
-langsight-s3        ✓ up   1878ms   7 tools   d2125e3aff0a…
-
-2/2 servers healthy
+$ langsight mcp-health   # Run 2 — no drift
+  schema_tracker.no_drift  server=langsight-postgres
+  schema_tracker.no_drift  server=langsight-s3
+  2/2 servers healthy
 ```
 
 ---
@@ -75,8 +85,8 @@ langsight-s3        ✓ up   1878ms   7 tools   d2125e3aff0a…
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| `health/schema_tracker.py` | High | Persist schema snapshots, detect drift between runs |
-| `storage/sqlite.py` | High | Local SQLite backend — store health check history |
+| `health/schema_tracker.py` | ✅ Done | |
+| `storage/sqlite.py` | ✅ Done | |
 | `cli/security_scan.py` | High | `langsight security-scan` command |
 | `security/scanner.py` | High | Orchestrate CVE + OWASP checks |
 | `security/owasp_checker.py` | High | OWASP MCP Top 10 automated checks |

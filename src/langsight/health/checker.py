@@ -6,14 +6,26 @@ from datetime import datetime, timezone
 import structlog
 
 from langsight.exceptions import MCPConnectionError, MCPTimeoutError
+from langsight.health.schema_tracker import SchemaTracker
 from langsight.health.transports import hash_tools, ping
 from langsight.models import HealthCheckResult, MCPServer, ServerStatus
+from langsight.storage.base import StorageBackend
 
 logger = structlog.get_logger()
 
 
 class HealthChecker:
-    """Checks MCP server health: availability, latency, and tool schema."""
+    """Checks MCP server health: availability, latency, and tool schema drift.
+
+    Args:
+        storage: Optional storage backend. When provided, every result is
+                 persisted and schema drift is detected across runs.
+                 When None, checks are stateless (no history, no drift detection).
+    """
+
+    def __init__(self, storage: StorageBackend | None = None) -> None:
+        self._storage = storage
+        self._schema_tracker = SchemaTracker(storage) if storage else None
 
     async def check(self, server: MCPServer) -> HealthCheckResult:
         """Run a single health check against one MCP server.
@@ -27,49 +39,80 @@ class HealthChecker:
             latency_ms, tools = await ping(server)
             schema_hash = hash_tools(tools)
 
+            status = ServerStatus.UP
+            drift_warning: str | None = None
+
+            # Schema drift detection (only when storage is available)
+            if self._schema_tracker:
+                drift = await self._schema_tracker.check_and_update(
+                    server.name, schema_hash, len(tools)
+                )
+                if drift.drifted:
+                    status = ServerStatus.DEGRADED
+                    drift_warning = (
+                        f"schema drift: {drift.previous_hash} → {drift.current_hash}"
+                    )
+
             result = HealthCheckResult(
                 server_name=server.name,
-                status=ServerStatus.UP,
+                status=status,
                 latency_ms=round(latency_ms, 2),
                 tools=tools,
                 tools_count=len(tools),
                 schema_hash=schema_hash,
                 checked_at=datetime.now(timezone.utc),
+                error=drift_warning,
             )
+
             logger.info(
                 "health_check.ok",
                 server=server.name,
+                status=status,
                 latency_ms=result.latency_ms,
                 tools=result.tools_count,
             )
+
+            # Persist result
+            if self._storage:
+                await self._storage.save_health_result(result)
+
             return result
 
         except MCPTimeoutError as exc:
             logger.warning("health_check.timeout", server=server.name, error=str(exc))
-            return HealthCheckResult(
+            result = HealthCheckResult(
                 server_name=server.name,
                 status=ServerStatus.DOWN,
                 checked_at=datetime.now(timezone.utc),
                 error=f"timeout after {server.timeout_seconds}s",
             )
+            if self._storage:
+                await self._storage.save_health_result(result)
+            return result
 
         except MCPConnectionError as exc:
             logger.error("health_check.connection_error", server=server.name, error=str(exc))
-            return HealthCheckResult(
+            result = HealthCheckResult(
                 server_name=server.name,
                 status=ServerStatus.DOWN,
                 checked_at=datetime.now(timezone.utc),
                 error=str(exc),
             )
+            if self._storage:
+                await self._storage.save_health_result(result)
+            return result
 
         except Exception as exc:  # noqa: BLE001
             logger.error("health_check.unexpected_error", server=server.name, error=str(exc))
-            return HealthCheckResult(
+            result = HealthCheckResult(
                 server_name=server.name,
                 status=ServerStatus.DOWN,
                 checked_at=datetime.now(timezone.utc),
                 error=f"unexpected error: {exc}",
             )
+            if self._storage:
+                await self._storage.save_health_result(result)
+            return result
 
     async def check_many(self, servers: list[MCPServer]) -> list[HealthCheckResult]:
         """Check multiple MCP servers concurrently via asyncio.gather."""

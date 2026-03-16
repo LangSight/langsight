@@ -12,6 +12,7 @@ from rich.table import Table
 from langsight.config import load_config
 from langsight.health.checker import HealthChecker
 from langsight.models import HealthCheckResult, ServerStatus
+from langsight.storage.sqlite import SQLiteBackend
 
 console = Console()
 err_console = Console(stderr=True)
@@ -46,15 +47,19 @@ def mcp_health(config_path: Path | None, output_json: bool) -> None:
         err_console.print("Run [bold]langsight init[/bold] to get started.")
         sys.exit(1)
 
-    checker = HealthChecker()
-    results = asyncio.run(checker.check_many(config.servers))
+    async def _run() -> list[HealthCheckResult]:
+        async with await SQLiteBackend.open() as storage:
+            checker = HealthChecker(storage=storage)
+            return await checker.check_many(config.servers)
+
+    results = asyncio.run(_run())
 
     if output_json:
         click.echo(json.dumps([r.model_dump(mode="json") for r in results], indent=2))
     else:
         _display_table(results)
 
-    if any(r.status == ServerStatus.DOWN for r in results):
+    if any(r.status in (ServerStatus.DOWN, ServerStatus.DEGRADED) for r in results):
         sys.exit(1)
 
 
