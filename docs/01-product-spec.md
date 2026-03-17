@@ -1124,7 +1124,9 @@ Everything in Phases 1-3 as described above is open source. Specifically:
 | Metrics collection agent | Apache 2.0 | Must run in user's infrastructure |
 | Quality scoring algorithm | Apache 2.0 | Transparency builds trust |
 | Alerting engine | Apache 2.0 | Core operational feature |
-| Web dashboard | Apache 2.0 | Drives engagement and contributions |
+| Web dashboard (app.langsight.io) | Apache 2.0 | Drives engagement and contributions |
+| Marketing website (langsight.io) | Apache 2.0 | Public-facing, self-hostable via Vercel |
+| Documentation site (docs.langsight.io) | Apache 2.0 | Mintlify, sourced from docs/ folder |
 | REST/gRPC API | Apache 2.0 | Enables ecosystem integration |
 | Prometheus/OTLP export | Apache 2.0 | Standard interoperability |
 | RCA engine (rule-based) | Apache 2.0 | Core debugging feature |

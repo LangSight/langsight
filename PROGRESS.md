@@ -170,15 +170,41 @@ Phase 4 (Dashboard)             ░░░░░░░░░░░░░░░░
 
 ## Phase 4 — Backlog
 
-| Item | Notes |
-|------|-------|
-| Next.js 15 dashboard | shadcn/ui, App Router |
-| Overview page | fleet health score, active alerts, top degraded tools |
-| MCP Health page | server list, drill-down |
-| Security Posture page | OWASP compliance, CVE list |
-| Tool Reliability page | ranked tool list, latency trends |
-| Cost Attribution page | cost breakdown, anomaly highlights |
-| Alert Management page | view, acknowledge, configure alerts |
+### Marketing Website (langsight.io)
+| Item | Status | Notes |
+|------|--------|-------|
+| Next.js + Tailwind project setup | Not started | `website/` directory |
+| Hero section | Not started | Tagline + GitHub CTA |
+| Features overview section | Not started | Health, security, SDK, investigate |
+| How it works section | Not started | 3-step: init → monitor → investigate |
+| Integrations section | Not started | Claude Desktop, Cursor, LibreChat, CrewAI, Pydantic AI |
+| Providers section | Not started | Claude, OpenAI, Gemini, Ollama |
+| Pricing section | Not started | OSS free + SaaS tiers placeholder |
+| Vercel deployment | Not started | |
+
+### Documentation Site (docs.langsight.io)
+| Item | Status | Notes |
+|------|--------|-------|
+| Mintlify project setup (`docs-site/mint.json`) | Not started | |
+| Quickstart guide | Not started | < 5 min to first health check |
+| CLI reference (6 commands) | Not started | One .mdx per command |
+| Provider setup guide | Not started | Port from `docs/06-provider-setup.md` |
+| SDK integration guide | Not started | |
+| Framework integrations guide | Not started | CrewAI, Pydantic AI, LibreChat |
+| API reference | Not started | Auto-generated from FastAPI OpenAPI spec |
+| Configuration reference | Not started | `.langsight.yaml` full schema |
+| Self-hosting guide | Not started | Docker Compose walkthrough |
+
+### Product Dashboard (app.langsight.io)
+| Item | Status | Notes |
+|------|--------|-------|
+| Next.js 15 dashboard project setup | Not started | shadcn/ui, App Router, `dashboard/` directory |
+| Overview page | Not started | Fleet health score, active alerts, top degraded tools |
+| MCP Health page | Not started | Server list, drill-down |
+| Security Posture page | Not started | OWASP compliance, CVE list |
+| Tool Reliability page | Not started | Ranked tool list, latency trends — requires Phase 3 OTEL data |
+| Cost Attribution page | Not started | Cost breakdown, anomaly highlights — requires Phase 3 cost engine |
+| Alert Management page | Not started | View, acknowledge, configure alerts |
 
 ---
 

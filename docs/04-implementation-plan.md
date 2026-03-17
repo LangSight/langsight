@@ -919,17 +919,99 @@ The current test-mcps/docker-compose.yml is for development only. Phase 3 ships 
 
 ### Phase 4 — Backlog
 
-**Goal**: Next.js 15 web dashboard for teams that prefer a visual interface. Ships after Phase 3 proves the data model is stable.
+**Goal**: Three coordinated web properties that together complete the public-facing product surface. Ships after Phase 3 proves the data model is stable.
 
-#### 4.1 Core Dashboard Pages
+```
+Phase 4 deliverables
+├── langsight.io          — marketing website (Next.js + Tailwind)
+├── docs.langsight.io     — developer docs (Mintlify)
+└── app.langsight.io      — product dashboard (Next.js 15 + shadcn/ui)
+```
+
+---
+
+#### 4.1 Marketing Website (langsight.io)
+
+**Tech**: Next.js + Tailwind CSS, statically generated, deployed to Vercel.
+
+| Page / Section | Content |
+|----------------|---------|
+| Hero | "The missing observability layer for MCP tool infrastructure" + GitHub CTA |
+| Features overview | Health monitoring, security scanning, SDK integration, investigate command |
+| How it works | 3-step flow: `langsight init` → `langsight monitor` → `langsight investigate` |
+| Integrations | Claude Desktop, Cursor, LibreChat, CrewAI, Pydantic AI |
+| Providers | Claude, OpenAI, Gemini, Ollama |
+| Pricing | Open source (free, self-hosted) + SaaS tiers (future, placeholder) |
+| GitHub CTA | Stars badge, link to repo, link to docs |
+
+**Files**:
+
+| File | Purpose |
+|------|---------|
+| `website/src/app/page.tsx` | Landing page — all sections above |
+| `website/src/app/pricing/page.tsx` | Pricing page |
+| `website/src/components/hero.tsx` | Hero section with CTA |
+| `website/src/components/features.tsx` | Feature cards grid |
+| `website/src/components/how-it-works.tsx` | 3-step flow diagram |
+| `website/src/components/integrations.tsx` | Logo grid — clients + providers |
+| `website/tailwind.config.ts` | Theme, fonts, brand colours |
+| `website/next.config.ts` | Static export config |
+| `website/Dockerfile` | Multi-stage build for self-hosting option |
+
+**Acceptance Criteria**:
+- [ ] Lighthouse performance score >= 90 on mobile
+- [ ] GitHub stars badge reflects live count
+- [ ] All integration logos link to respective integration docs on docs.langsight.io
+- [ ] `langsight init` quickstart code block is copy-pasteable and accurate
+
+---
+
+#### 4.2 Documentation Site (docs.langsight.io)
+
+**Tech**: Mintlify, sourced from `docs/` folder + new reference pages auto-generated from FastAPI OpenAPI spec.
+
+| Doc Page | Source / Notes |
+|----------|---------------|
+| Quickstart (< 5 min to first health check) | New — covers `pip install`, `langsight init`, `langsight mcp-health` |
+| CLI reference | All 6 commands: `init`, `mcp-health`, `security-scan`, `monitor`, `costs`, `investigate` |
+| Provider setup guide | `docs/06-provider-setup.md` (already written) |
+| SDK integration guide | New — `from langsight.sdk import wrap` usage |
+| Framework integrations | New — CrewAI, Pydantic AI, LibreChat |
+| API reference | Auto-generated from FastAPI OpenAPI spec via Mintlify's OpenAPI integration |
+| Configuration reference | `.langsight.yaml` schema, all fields with defaults |
+| Self-hosting guide | New — Docker Compose, environment variables, PostgreSQL setup |
+
+**Files**:
+
+| File | Purpose |
+|------|---------|
+| `docs-site/mint.json` | Mintlify config — navigation, colours, logo |
+| `docs-site/quickstart.mdx` | 5-minute getting started guide |
+| `docs-site/cli/` | One `.mdx` per CLI command |
+| `docs-site/sdk/` | SDK and framework integration guides |
+| `docs-site/api/` | OpenAPI reference pages |
+| `docs-site/configuration.mdx` | `.langsight.yaml` full schema reference |
+| `docs-site/self-hosting.mdx` | Self-host with Docker Compose |
+
+**Acceptance Criteria**:
+- [ ] Quickstart guide tested end-to-end: a new user reaches first health check in < 5 minutes
+- [ ] CLI reference output examples match actual `langsight --help` output (no stale docs)
+- [ ] API reference is generated from OpenAPI spec — never manually written
+- [ ] All code examples pass `ruff check` / `mypy` in CI
+
+---
+
+#### 4.3 Product Dashboard (app.langsight.io)
+
+**Tech**: Next.js 15 with App Router, shadcn/ui component library, recharts for time-series charts.
 
 | Page | Purpose |
 |------|---------|
 | Overview | Fleet health score, active alerts, most degraded tools |
 | MCP Health | Server list with health scores, drill-down to tool detail |
 | Security Posture | OWASP compliance, CVE list, poisoning scan timeline |
-| Tool Reliability | Ranked tool list, error rates, latency trends |
-| Cost Attribution | Cost breakdown by tool/team, anomaly highlights |
+| Tool Reliability | Ranked tool list, error rates, latency trends (requires Phase 3 OTEL data) |
+| Cost Attribution | Cost breakdown by tool/agent (requires Phase 3 cost engine) |
 | Alert Management | View/acknowledge/configure alerts |
 
 **Tech choices**:
@@ -938,7 +1020,7 @@ The current test-mcps/docker-compose.yml is for development only. Phase 3 ships 
 - recharts for time-series charts
 - Polls REST API (5s health, 30s metrics) — no WebSocket in v1
 
-**Acceptance Criteria for Phase 4**:
+**Acceptance Criteria**:
 - [ ] Overview page loads in <2 seconds with data from 50 tools
 - [ ] Real-time metric changes appear on dashboard within 10 seconds
 - [ ] Dashboard is responsive at 1920px, 1440px, 1024px
