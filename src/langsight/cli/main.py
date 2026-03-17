@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import click
 
+from langsight.cli.costs import costs
 from langsight.cli.init import init
 from langsight.cli.investigate import investigate
 from langsight.cli.mcp_health import mcp_health
@@ -20,6 +21,7 @@ def cli() -> None:
     """
 
 
+cli.add_command(costs)
 cli.add_command(init)
 cli.add_command(investigate)
 cli.add_command(mcp_health)

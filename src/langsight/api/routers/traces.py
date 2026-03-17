@@ -1,22 +1,29 @@
 """
-POST /api/traces/spans — span ingestion endpoint.
+Trace ingestion endpoints.
 
-Accepts ToolCallSpan batches from the LangSight SDK (and any HTTP client).
-Phase 2: logs spans with structlog for visibility.
-Phase 3: stores in ClickHouse for reliability analysis and cost attribution.
+POST /api/traces/spans  — LangSight SDK (ToolCallSpan JSON)
+POST /api/traces/otlp   — Standard OpenTelemetry OTLP/JSON
+
+Phase 2: spans are logged with structlog (visible in langsight serve output).
+Phase 3: spans are stored in ClickHouse via the storage backend when available.
 """
 
 from __future__ import annotations
 
 import structlog
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi import status as http_status
 
-from langsight.sdk.models import ToolCallSpan
+from langsight.sdk.models import ToolCallSpan, ToolCallStatus
 
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/traces", tags=["traces"])
+
+
+# ---------------------------------------------------------------------------
+# SDK endpoint
+# ---------------------------------------------------------------------------
 
 
 @router.post(
@@ -25,14 +32,11 @@ router = APIRouter(prefix="/traces", tags=["traces"])
     summary="Ingest tool call spans from the LangSight SDK",
     response_model=dict,
 )
-async def ingest_spans(spans: list[ToolCallSpan]) -> dict:
+async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict:
     """Accept a batch of ToolCallSpans from the SDK.
 
-    Phase 2: spans are logged with structlog (visible in `langsight serve` output).
-    Phase 3: stored in ClickHouse for reliability queries, cost attribution,
-             and root cause investigation.
-
-    Returns 202 Accepted immediately — ingestion is async.
+    Phase 2: logs each span with structlog.
+    Phase 3: persists to ClickHouse when storage.mode=clickhouse.
     """
     for span in spans:
         logger.info(
@@ -46,4 +50,136 @@ async def ingest_spans(spans: list[ToolCallSpan]) -> dict:
             session=span.session_id,
         )
 
+    # Persist to ClickHouse if the backend supports it
+    storage = getattr(request.app.state, "storage", None)
+    if storage is not None and hasattr(storage, "save_tool_call_spans"):
+        await storage.save_tool_call_spans(spans)
+
     return {"accepted": len(spans)}
+
+
+# ---------------------------------------------------------------------------
+# OTLP/JSON endpoint
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/otlp",
+    status_code=http_status.HTTP_202_ACCEPTED,
+    summary="Ingest spans via OpenTelemetry OTLP/JSON",
+    response_model=dict,
+)
+async def ingest_otlp(request: Request) -> dict:
+    """Accept OTLP/JSON trace data from any OpenTelemetry-instrumented framework.
+
+    Works with CrewAI, LangChain, Pydantic AI, OpenAI Agents SDK, and any other
+    framework that exports OTLP traces. Point your OTEL exporter here:
+
+        OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8000/api/traces/otlp
+
+    Extracts MCP tool call spans by matching the span name pattern
+    'mcp.{server}.{tool}' or looking for 'gen_ai.tool.name' attributes.
+
+    Phase 2: logs extracted spans.
+    Phase 3: persists to ClickHouse.
+    """
+    body = await request.json()
+    spans = _extract_mcp_spans(body)
+
+    for span in spans:
+        logger.info(
+            "trace.otlp_span",
+            server=span.server_name,
+            tool=span.tool_name,
+            status=span.status,
+            latency_ms=span.latency_ms,
+        )
+
+    storage = getattr(request.app.state, "storage", None)
+    if storage is not None and hasattr(storage, "save_tool_call_spans"):
+        await storage.save_tool_call_spans(spans)
+
+    return {"accepted": len(spans)}
+
+
+# ---------------------------------------------------------------------------
+# OTLP parsing
+# ---------------------------------------------------------------------------
+
+
+def _extract_mcp_spans(otlp_body: dict) -> list[ToolCallSpan]:
+    """Extract MCP tool call spans from an OTLP/JSON payload.
+
+    Handles the OTLP ResourceSpans → ScopeSpans → Span structure.
+    Recognises MCP spans by:
+      1. Span name matches 'mcp.*' or 'gen_ai.tool.*'
+      2. Attribute 'gen_ai.tool.name' present
+      3. Attribute 'mcp.server.name' present
+    """
+
+    extracted: list[ToolCallSpan] = []
+
+    for resource_spans in otlp_body.get("resourceSpans", []):
+        for scope_spans in resource_spans.get("scopeSpans", []):
+            for span in scope_spans.get("spans", []):
+                tool_span = _parse_otlp_span(span)
+                if tool_span:
+                    extracted.append(tool_span)
+
+    return extracted
+
+
+def _parse_otlp_span(span: dict) -> ToolCallSpan | None:
+    """Try to parse a single OTLP span as a ToolCallSpan. Returns None if not MCP."""
+    from datetime import UTC, datetime
+
+    name: str = span.get("name", "")
+    attrs: dict = {
+        a["key"]: a.get("value", {}).get("stringValue", "") for a in span.get("attributes", [])
+    }
+
+    # Detect MCP spans
+    server_name = attrs.get("mcp.server.name") or attrs.get("gen_ai.system")
+    tool_name = attrs.get("gen_ai.tool.name") or attrs.get("mcp.tool.name")
+
+    # Fall back to parsing 'mcp.server_name.tool_name' span names
+    if not tool_name and name.startswith("mcp."):
+        parts = name.split(".", 2)
+        if len(parts) == 3:
+            server_name = server_name or parts[1]
+            tool_name = parts[2]
+
+    if not tool_name:
+        return None
+
+    server_name = server_name or "unknown"
+
+    # Convert OTLP nanoseconds to datetime
+    start_ns = int(span.get("startTimeUnixNano", 0))
+    end_ns = int(span.get("endTimeUnixNano", 0))
+    started_at = datetime.fromtimestamp(start_ns / 1e9, tz=UTC) if start_ns else datetime.now(UTC)
+    ended_at = datetime.fromtimestamp(end_ns / 1e9, tz=UTC) if end_ns else datetime.now(UTC)
+    latency_ms = (end_ns - start_ns) / 1e6 if start_ns and end_ns else 0.0
+
+    # Map OTLP status to ToolCallStatus
+    otlp_status = span.get("status", {}).get("code", 0)
+    error_msg = span.get("status", {}).get("message")
+    if otlp_status == 2:  # STATUS_CODE_ERROR
+        status = ToolCallStatus.ERROR
+    elif "timeout" in (error_msg or "").lower():
+        status = ToolCallStatus.TIMEOUT
+    else:
+        status = ToolCallStatus.SUCCESS
+
+    return ToolCallSpan(
+        server_name=server_name,
+        tool_name=tool_name,
+        started_at=started_at,
+        ended_at=ended_at,
+        latency_ms=round(latency_ms, 2),
+        status=status,
+        error=error_msg if status != ToolCallStatus.SUCCESS else None,
+        trace_id=span.get("traceId"),
+        session_id=attrs.get("session.id"),
+        agent_name=attrs.get("gen_ai.agent.name"),
+    )

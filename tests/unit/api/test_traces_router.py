@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import yaml
@@ -39,7 +39,9 @@ def config_file(tmp_path: Path) -> Path:
 @pytest.fixture
 async def client(config_file: Path):
     app = create_app(config_path=config_file)
-    app.state.storage = MagicMock()
+    mock_storage = MagicMock()
+    mock_storage.save_tool_call_spans = AsyncMock()
+    app.state.storage = mock_storage
     app.state.config = load_config(config_file)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c

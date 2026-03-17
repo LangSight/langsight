@@ -22,9 +22,13 @@ class AlertConfig(BaseModel):
 
 
 class StorageConfig(BaseModel):
-    mode: str = "sqlite"  # "sqlite" | "postgres"
-    sqlite_path: str = "~/.langsight/data.db"  # used when mode="sqlite"
-    postgres_url: str | None = None  # used when mode="postgres"
+    mode: str = "sqlite"  # "sqlite" | "postgres" | "clickhouse"
+    sqlite_path: str = "~/.langsight/data.db"  # mode="sqlite"
+    postgres_url: str | None = None  # mode="postgres"
+    clickhouse_url: str = "http://localhost:8123"  # mode="clickhouse"
+    clickhouse_database: str = "langsight"  # mode="clickhouse"
+    clickhouse_username: str = "default"  # mode="clickhouse"
+    clickhouse_password: str = ""  # mode="clickhouse"
 
 
 class InvestigateConfig(BaseModel):

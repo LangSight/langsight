@@ -1,0 +1,46 @@
+# OTEL Collector config — forwards MCP tool call traces to LangSight
+#
+# Engineers point their framework's OTEL exporter here:
+#   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+#
+# The collector receives spans and forwards them to the LangSight OTLP endpoint.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+
+  # Filter to only MCP-related spans to avoid noise
+  filter/mcp:
+    spans:
+      include:
+        match_type: regexp
+        span_names:
+          - "mcp\\..*"
+          - "gen_ai\\.tool\\..*"
+
+exporters:
+  # Forward to LangSight OTLP endpoint
+  otlphttp/langsight:
+    endpoint: http://api:8000/api/traces/otlp
+    tls:
+      insecure: true
+
+  # Also log to console for debugging (remove in production)
+  logging:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, filter/mcp]
+      exporters: [otlphttp/langsight]

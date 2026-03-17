@@ -46,4 +46,22 @@ async def open_storage(config: StorageConfig) -> StorageBackend:
 
         return await PostgresBackend.open(config.postgres_url)
 
-    raise ConfigError(f"Unknown storage mode '{config.mode}'. Valid values: 'sqlite', 'postgres'.")
+    if mode == "clickhouse":
+        from urllib.parse import urlparse
+
+        from langsight.storage.clickhouse import ClickHouseBackend
+
+        parsed = urlparse(config.clickhouse_url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 8123
+        return await ClickHouseBackend.open(
+            host=host,
+            port=port,
+            database=config.clickhouse_database,
+            username=config.clickhouse_username,
+            password=config.clickhouse_password,
+        )
+
+    raise ConfigError(
+        f"Unknown storage mode '{config.mode}'. Valid values: 'sqlite', 'postgres', 'clickhouse'."
+    )
