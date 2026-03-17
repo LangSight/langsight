@@ -27,6 +27,7 @@ Usage:
 This integration does NOT import langchain at module level — LangSight can
 be installed without langchain.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -66,16 +67,15 @@ class LangSightLangChainCallback(BaseIntegration):
     ) -> None:
         # Lazy import — don't require langchain at module level
         try:
-            from langchain.callbacks.base import BaseCallbackHandler
+            from langchain.callbacks.base import (  # type: ignore[import-not-found]
+                BaseCallbackHandler,
+            )
 
             # Dynamically inherit from BaseCallbackHandler
             self.__class__.__bases__ = (BaseIntegration, BaseCallbackHandler)
             BaseCallbackHandler.__init__(self)
         except ImportError:
-            logger.warning(
-                "langchain not installed. "
-                "Install with: pip install langchain"
-            )
+            logger.warning("langchain not installed. Install with: pip install langchain")
 
         super().__init__(
             client=client,
@@ -100,11 +100,7 @@ class LangSightLangChainCallback(BaseIntegration):
         **kwargs: Any,
     ) -> None:
         """Called when a LangChain tool call begins."""
-        tool_name = (
-            serialized.get("name")
-            or serialized.get("id", ["unknown"])[-1]
-            or "unknown"
-        )
+        tool_name = serialized.get("name") or serialized.get("id", ["unknown"])[-1] or "unknown"
         self._pending[str(run_id)] = (tool_name, datetime.now(UTC))
 
     def on_tool_end(

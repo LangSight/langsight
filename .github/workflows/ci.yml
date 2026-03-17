@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v5
         with:
           version: "latest"
 
@@ -35,6 +35,9 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check src/
 
+      - name: Mypy type check
+        run: uv run mypy src/ --no-error-summary
+
   # ---------------------------------------------------------------------------
   # Unit + regression tests (no Docker needed)
   # ---------------------------------------------------------------------------
@@ -45,7 +48,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v5
         with:
           version: "latest"
 
@@ -66,6 +69,7 @@ jobs:
         with:
           name: coverage-report
           path: .coverage
+          if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
   # Integration tests (requires Docker + postgres-mcp)
@@ -77,7 +81,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v5
         with:
           version: "latest"
 
@@ -98,7 +102,6 @@ jobs:
         run: |
           cd test-mcps
           docker compose up -d
-          # Wait for healthy
           for i in {1..20}; do
             docker exec langsight-postgres pg_isready -U postgres -d langsight_test && break
             echo "Waiting for postgres... ($i)"
