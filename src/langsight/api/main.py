@@ -8,7 +8,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from langsight.api.routers import health, security
+from langsight.api.routers import health, security, traces
 from langsight.config import load_config
 from langsight.storage.factory import open_storage
 
@@ -57,6 +57,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     app.include_router(health.router, prefix="/api")
     app.include_router(security.router, prefix="/api")
+    app.include_router(traces.router, prefix="/api")
 
     @app.get("/api/status", tags=["meta"])
     async def status() -> dict:
