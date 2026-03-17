@@ -1,18 +1,15 @@
 services:
 
-  # ---------------------------------------------------------------------------
-  # ClickHouse — time-series span storage + tool reliability analytics
-  # ---------------------------------------------------------------------------
   clickhouse:
-    image: clickhouse/clickhouse-server:24-alpine
+    image: clickhouse/clickhouse-server:24
     container_name: langsight-clickhouse
     environment:
       CLICKHOUSE_DB: langsight
       CLICKHOUSE_USER: default
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     ports:
-      - "8123:8123"   # HTTP interface (clickhouse-connect)
-      - "9000:9000"   # Native TCP (optional)
+      - "8123:8123"
+      - "9000:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
     healthcheck:
@@ -21,28 +18,18 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    deploy:
-      resources:
-        limits:
-          cpus: "2.0"
-          memory: 2G
-        reservations:
-          cpus: "0.5"
-          memory: 512M
     restart: unless-stopped
 
-  # ---------------------------------------------------------------------------
-  # PostgreSQL — app state: MCP configs, alert rules, API keys
-  # ---------------------------------------------------------------------------
+  # Port 5433 on host — avoids conflict with test-mcps postgres on 5432
   postgres:
     image: postgres:16-alpine
-    container_name: langsight-postgres
+    container_name: langsight-app-postgres
     environment:
       POSTGRES_DB: langsight
       POSTGRES_USER: langsight
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-langsight}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -51,18 +38,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 512M
     restart: unless-stopped
 
-  # ---------------------------------------------------------------------------
-  # OTEL Collector — receives traces from agent frameworks, forwards to LangSight
-  # Configure your framework:
-  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-  # ---------------------------------------------------------------------------
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.120.0
     container_name: langsight-otel-collector
@@ -70,22 +47,13 @@ services:
     volumes:
       - ./otel-collector.yaml:/etc/otel-collector.yaml:ro
     ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
-      - "8888:8888"   # Prometheus metrics (collector self-monitoring)
+      - "4317:4317"
+      - "4318:4318"
     depends_on:
       api:
         condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 256M
     restart: unless-stopped
 
-  # ---------------------------------------------------------------------------
-  # LangSight API — FastAPI REST API + span ingestion
-  # ---------------------------------------------------------------------------
   api:
     image: langsight/api:latest
     build:
@@ -110,12 +78,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 512M
+      start_period: 20s
     restart: unless-stopped
 
 volumes:

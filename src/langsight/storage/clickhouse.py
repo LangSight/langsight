@@ -60,13 +60,16 @@ _DDL = [
     # Tool call spans from the SDK / OTLP — 90-day TTL
     # parent_span_id enables multi-agent tree reconstruction
     # span_type: tool_call | agent | handoff
+    # Note: session_id / parent_span_id / agent_name use String DEFAULT ''
+    # (empty string = absent) because ClickHouse ORDER BY cannot contain Nullable columns.
+    # Query pattern: WHERE session_id != '' to filter sessions.
     """
     CREATE TABLE IF NOT EXISTS mcp_tool_calls (
         span_id        String,
-        parent_span_id Nullable(String),
+        parent_span_id String DEFAULT '',
         span_type      LowCardinality(String) DEFAULT 'tool_call',
-        trace_id       Nullable(String),
-        session_id     Nullable(String),
+        trace_id       String DEFAULT '',
+        session_id     String DEFAULT '',
         server_name    String,
         tool_name      String,
         started_at     DateTime64(3, 'UTC'),
@@ -74,11 +77,11 @@ _DDL = [
         latency_ms     Float64,
         status         LowCardinality(String),
         error          Nullable(String),
-        agent_name     Nullable(String)
+        agent_name     String DEFAULT ''
     )
     ENGINE = MergeTree()
     PARTITION BY toYYYYMM(started_at)
-    ORDER BY (session_id, started_at, span_id)
+    ORDER BY (server_name, tool_name, started_at, span_id)
     TTL toDateTime(started_at) + INTERVAL 90 DAY
     SETTINGS index_granularity = 8192
     """,
@@ -132,7 +135,7 @@ _DDL = [
         sum(latency_ms)                                      AS total_latency_ms,
         groupUniqArray(server_name)                          AS servers_used
     FROM mcp_tool_calls
-    WHERE session_id IS NOT NULL
+    WHERE session_id != ''
     GROUP BY session_id, agent_name
     """,
 ]
@@ -172,7 +175,20 @@ class ClickHouseBackend:
         username: str = "default",
         password: str = "",
     ) -> ClickHouseBackend:
-        """Open a ClickHouse connection and create schema if needed."""
+        """Open a ClickHouse connection and create schema if needed.
+
+        Creates the database automatically if it doesn't exist.
+        """
+        # Connect without database first to create it if missing
+        admin = await clickhouse_connect.get_async_client(
+            host=host,
+            port=port,
+            username=username,
+            password=password,
+        )
+        await admin.command(f"CREATE DATABASE IF NOT EXISTS `{database}`")
+        await admin.close()
+
         client = await clickhouse_connect.get_async_client(
             host=host,
             port=port,
@@ -297,20 +313,21 @@ class ClickHouseBackend:
     ]
 
     def _span_row(self, s: ToolCallSpan) -> list[Any]:
+        # None → '' for String DEFAULT '' columns (no Nullable in ORDER BY)
         return [
             s.span_id,
-            s.parent_span_id,
+            s.parent_span_id or "",
             s.span_type,
-            s.trace_id,
-            s.session_id,
+            s.trace_id or "",
+            s.session_id or "",
             s.server_name,
             s.tool_name,
             s.started_at,
             s.ended_at,
             s.latency_ms,
             s.status.value,
-            s.error,
-            s.agent_name,
+            s.error,  # Nullable(String) — kept for error messages
+            s.agent_name or "",
         ]
 
     async def save_tool_call_span(self, span: ToolCallSpan) -> None:
@@ -350,18 +367,18 @@ class ClickHouseBackend:
             where += " AND server_name = {server_name:String}"
             params["server_name"] = server_name
 
+        # Compute ratios in Python to avoid nested aggregation errors in ClickHouse
         result = await self._client.query(
             f"""
             SELECT
                 server_name,
                 tool_name,
-                sum(total_calls)    AS total_calls,
-                sum(success_calls)  AS success_calls,
-                sum(error_calls)    AS error_calls,
-                sum(timeout_calls)  AS timeout_calls,
-                round(sum(success_calls) / sum(total_calls) * 100, 2) AS success_rate_pct,
-                round(sum(total_latency_ms) / sum(total_calls), 2)    AS avg_latency_ms,
-                max(max_latency_ms) AS max_latency_ms
+                sum(total_calls)       AS total_calls,
+                sum(success_calls)     AS success_calls,
+                sum(error_calls)       AS error_calls,
+                sum(timeout_calls)     AS timeout_calls,
+                sum(total_latency_ms)  AS total_latency_ms,
+                max(max_latency_ms)    AS max_latency_ms
             FROM mv_tool_reliability
             {where}
             GROUP BY server_name, tool_name
@@ -370,18 +387,25 @@ class ClickHouseBackend:
             parameters=params,
         )
 
-        cols = [
-            "server_name",
-            "tool_name",
-            "total_calls",
-            "success_calls",
-            "error_calls",
-            "timeout_calls",
-            "success_rate_pct",
-            "avg_latency_ms",
-            "max_latency_ms",
-        ]
-        return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+        rows = []
+        for row in result.result_rows:
+            total = int(row[2]) or 1  # avoid div-by-zero
+            success = int(row[3])
+            total_lat = float(row[6])
+            rows.append(
+                {
+                    "server_name": row[0],
+                    "tool_name": row[1],
+                    "total_calls": int(row[2]),
+                    "success_calls": success,
+                    "error_calls": int(row[4]),
+                    "timeout_calls": int(row[5]),
+                    "success_rate_pct": round(success / total * 100, 2),
+                    "avg_latency_ms": round(total_lat / total, 2),
+                    "max_latency_ms": float(row[7]),
+                }
+            )
+        return rows
 
     # ---------------------------------------------------------------------------
     # Agent sessions — multi-agent tracing queries

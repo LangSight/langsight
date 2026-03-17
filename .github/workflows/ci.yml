@@ -108,9 +108,47 @@ jobs:
             sleep 2
           done
 
-      - name: Run integration tests
+      - name: Run integration tests (postgres-mcp health checker)
         run: uv run pytest -m integration --no-cov -v
 
       - name: Stop Docker Compose
         if: always()
         run: cd test-mcps && docker compose down -v
+
+  # ---------------------------------------------------------------------------
+  # ClickHouse integration tests
+  # ---------------------------------------------------------------------------
+  integration-clickhouse:
+    name: ClickHouse Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Start ClickHouse
+        run: |
+          docker compose up -d clickhouse
+          for i in {1..30}; do
+            curl -s http://localhost:8123/ping | grep -q Ok && echo "ClickHouse ready after ${i}s" && break
+            echo "Waiting for ClickHouse... ($i)"
+            sleep 2
+          done
+
+      - name: Run ClickHouse integration tests
+        run: uv run pytest tests/integration/storage/test_clickhouse_integration.py -m integration --no-cov -v
+
+      - name: Stop ClickHouse
+        if: always()
+        run: docker compose stop clickhouse && docker compose rm -f clickhouse

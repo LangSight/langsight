@@ -1,0 +1,27 @@
+.git/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Test files not needed in image
+tests/
+test-mcps/
+
+# Dev/docs files
+docs/
+docs-site/
+website/
+dashboard/
+
+# Local config files
+.env
+*.env
+.langsight/
+.langsight.yaml

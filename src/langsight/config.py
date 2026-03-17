@@ -68,18 +68,49 @@ class LangSightConfig(BaseModel):
 
 
 class Settings(BaseSettings):
-    """Runtime settings loaded from environment variables (LANGSIGHT_ prefix)."""
+    """Runtime settings loaded from environment variables (LANGSIGHT_ prefix).
+
+    Storage settings here override whatever is in .langsight.yaml — useful
+    for Docker deployments where env vars are the primary configuration method.
+    """
 
     slack_webhook: str | None = None
     health_check_interval_seconds: int = 30
     security_scan_interval_seconds: int = 3600
     log_level: str = "INFO"
 
+    # Storage overrides (take precedence over .langsight.yaml)
+    storage_mode: str | None = None
+    clickhouse_url: str | None = None
+    clickhouse_database: str | None = None
+    clickhouse_username: str | None = None
+    clickhouse_password: str | None = None
+    postgres_url: str | None = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_prefix="LANGSIGHT_",
         extra="ignore",
     )
+
+    def apply_to_storage(self, storage: StorageConfig) -> StorageConfig:
+        """Return a new StorageConfig with env var overrides applied."""
+        overrides: dict = {}
+        if self.storage_mode:
+            overrides["mode"] = self.storage_mode
+        if self.clickhouse_url:
+            overrides["clickhouse_url"] = self.clickhouse_url
+        if self.clickhouse_database:
+            overrides["clickhouse_database"] = self.clickhouse_database
+        if self.clickhouse_username:
+            overrides["clickhouse_username"] = self.clickhouse_username
+        if self.clickhouse_password is not None:
+            overrides["clickhouse_password"] = self.clickhouse_password
+        if self.postgres_url:
+            overrides["postgres_url"] = self.postgres_url
+        if not overrides:
+            return storage
+        return storage.model_copy(update=overrides)
 
 
 # ---------------------------------------------------------------------------

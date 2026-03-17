@@ -50,7 +50,7 @@ testpaths = ["tests"]
 addopts = "-m 'not integration and not e2e' --cov=langsight --cov-report=term-missing --cov-fail-under=80 -v"
 markers = [
     "unit: fast tests, no external deps",
-    "integration: requires docker compose up (postgres-mcp + s3-mcp)",
+    "integration: requires docker compose up (postgres-mcp / ClickHouse)",
     "e2e: full CLI flow tests, requires full stack",
     "regression: cross-layer tests that verify features work end-to-end without real MCP",
 ]

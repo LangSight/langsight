@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from langsight.api.routers import agents, health, security, traces
-from langsight.config import load_config
+from langsight.config import Settings, load_config
 from langsight.storage.factory import open_storage
 
 logger = structlog.get_logger()
@@ -25,7 +25,11 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        app.state.config = load_config(config_path)
+        config = load_config(config_path)
+        # Apply env var overrides (LANGSIGHT_STORAGE_MODE etc.) — used in Docker
+        settings = Settings()
+        config = config.model_copy(update={"storage": settings.apply_to_storage(config.storage)})
+        app.state.config = config
         app.state.storage = await open_storage(app.state.config.storage)
         logger.info(
             "api.startup",
