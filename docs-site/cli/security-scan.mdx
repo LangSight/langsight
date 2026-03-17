@@ -1,0 +1,87 @@
+---
+title: "langsight security-scan"
+description: "Scan MCP servers for CVEs, OWASP MCP Top 10 issues, and tool poisoning"
+---
+
+## Usage
+
+```bash
+langsight security-scan [OPTIONS]
+```
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--config` | auto-discovered | Path to `.langsight.yaml` |
+| `--json` | false | Output as JSON |
+| `--ci` | false | Exit code 1 on CRITICAL or HIGH findings |
+
+## What it checks
+
+### CVE Scanning
+Reads `pyproject.toml` or `package.json` from each server's directory and queries the [OSV API](https://osv.dev) for known vulnerabilities. No API key required.
+
+### OWASP MCP Top 10
+
+| Check | Category | Severity |
+|-------|----------|----------|
+| No authentication configured | OWASP-MCP-01 | CRITICAL (SSE) / MEDIUM (stdio) |
+| Destructive tools without auth | OWASP-MCP-02 | HIGH |
+| Unexpected schema change | OWASP-MCP-04 | HIGH |
+| Tools with no input schema | OWASP-MCP-05 | MEDIUM |
+| HTTP transport (no TLS) | OWASP-MCP-06 | HIGH |
+
+### Tool Poisoning Detection
+Scans tool names and descriptions for:
+- Prompt injection phrases (`ignore previous instructions`)
+- Data exfiltration patterns (`send all data to`)
+- External URLs in descriptions
+- Hidden unicode characters
+- Base64-encoded injection payloads
+
+## Example output
+
+```
+Security Scan Results  (2 servers, 4 findings)
+──────────────────────────────────────────────────────────────────
+Severity   Server       Category       Finding
+CRITICAL   jira-mcp     CVE            CVE-2025-6514 in mcp-remote
+HIGH       slack-mcp    OWASP-MCP-01   No authentication configured
+HIGH       slack-mcp    OWASP-MCP-02   Tool 'delete_message' without auth
+MEDIUM     postgres-mcp OWASP-MCP-05   Tool 'query' has no input schema
+
+0/2 servers clean — 1 critical, 2 high
+```
+
+## CI/CD integration
+
+```bash
+# Fail the build on CRITICAL or HIGH findings
+langsight security-scan --ci
+
+# In GitHub Actions
+- name: MCP Security Scan
+  run: langsight security-scan --ci --json > security-report.json
+```
+
+## JSON output
+
+```json
+[
+  {
+    "server_name": "jira-mcp",
+    "findings_count": 2,
+    "critical_count": 1,
+    "highest_severity": "critical",
+    "findings": [
+      {
+        "severity": "critical",
+        "category": "CVE",
+        "title": "CVE in dependency 'mcp-remote': CVE-2025-6514",
+        "remediation": "Update 'mcp-remote' to a patched version."
+      }
+    ]
+  }
+]
+```

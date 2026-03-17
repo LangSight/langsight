@@ -1,0 +1,56 @@
+---
+title: "LibreChat"
+description: "Native LangSight plugin for LibreChat — env var setup, no code changes"
+---
+
+LibreChat has a plugin system similar to its native Langfuse integration. The LangSight plugin intercepts MCP tool calls and sends spans — with no changes to LibreChat's core code.
+
+## Setup
+
+### 1. Copy the plugin
+
+```bash
+cp integrations/librechat/langsight-plugin.js /path/to/librechat/plugins/
+```
+
+### 2. Register in librechat.yaml
+
+```yaml
+plugins:
+  - name: langsight
+    path: ./plugins/langsight-plugin.js
+```
+
+### 3. Set environment variables
+
+```bash
+# Required
+LANGSIGHT_URL=http://localhost:8000
+
+# Optional
+LANGSIGHT_API_KEY=your-api-key
+LANGSIGHT_AGENT_NAME=librechat
+```
+
+### 4. Restart LibreChat
+
+All MCP tool calls from LibreChat agents are now traced in LangSight.
+
+## What you see
+
+```
+trace.span_received  server=postgres-mcp  tool=query  status=success  latency_ms=42
+trace.span_received  server=confluence-mcp  tool=search  status=error   latency_ms=1240
+```
+
+## How it works
+
+The plugin hooks into LibreChat's MCP client `callTool()` method before agents use it. It records timing, wraps the original call, and POSTs a span to `POST /api/traces/spans` as a fire-and-forget task.
+
+**Fail-open**: if LangSight is unreachable, the plugin logs a debug message and the tool call proceeds normally.
+
+## Requirements
+
+- Node.js 18+ (uses native `fetch`)
+- LibreChat with plugin support
+- `langsight serve` running

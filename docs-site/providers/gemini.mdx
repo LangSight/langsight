@@ -1,0 +1,60 @@
+---
+title: "Google Gemini"
+description: "Use Gemini for root cause analysis — free tier, 1M context window"
+---
+
+## Why Gemini?
+
+- **Free tier**: 1,500 requests/day on `gemini-2.0-flash` — sufficient for most teams
+- **1M context window**: Feed the full health history of all servers at once
+- **No credit card required** to get started
+
+## Setup
+
+1. Go to [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
+2. Click **Create API key** — free, no credit card needed
+3. Set the environment variable:
+
+```bash
+export GEMINI_API_KEY=AIza...
+```
+
+4. Configure in `.langsight.yaml`:
+
+```yaml
+investigate:
+  provider: gemini
+  model: gemini-2.0-flash    # default
+```
+
+## Models
+
+| Model | Context | Free tier | Best for |
+|-------|---------|-----------|----------|
+| `gemini-2.0-flash` | 1M | 1,500/day | Default — fast, capable |
+| `gemini-2.5-pro` | 1M | 50/day | Best quality analysis |
+| `gemini-1.5-flash` | 1M | 1,500/day | Budget alternative |
+
+## Free tier limits
+
+| Model | Requests/day | Requests/minute |
+|-------|-------------|-----------------|
+| gemini-2.0-flash | 1,500 | 15 |
+| gemini-2.5-pro | 50 | 2 |
+| gemini-1.5-flash | 1,500 | 15 |
+
+## Pricing (after free tier)
+
+| Model | Input | Output |
+|-------|-------|--------|
+| gemini-2.0-flash | $0.10/1M | $0.40/1M |
+| gemini-2.5-pro | $1.25/1M | $10/1M |
+| gemini-1.5-flash | $0.075/1M | $0.30/1M |
+
+## How it works
+
+LangSight uses Gemini via its **OpenAI-compatible API endpoint** — no extra SDK needed. The `openai` package (already installed) is pointed at Google's servers:
+
+```
+POST https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
+```

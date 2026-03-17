@@ -1,0 +1,67 @@
+---
+title: "OpenTelemetry (OTLP)"
+description: "Point any OTEL-instrumented framework at LangSight — zero code changes"
+---
+
+If your agent framework already emits OpenTelemetry spans, point its exporter at LangSight's OTLP endpoint. **No code changes required.**
+
+## Setup
+
+```bash
+# One environment variable
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8000/api/traces/otlp
+```
+
+Or via the OTEL Collector (production):
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+
+## Framework examples
+
+<CodeGroup>
+```python LangChain
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+tracer_provider = TracerProvider()
+tracer_provider.add_span_processor(
+    BatchSpanProcessor(
+        OTLPSpanExporter(endpoint="http://localhost:8000/api/traces/otlp")
+    )
+)
+```
+
+```python CrewAI (OTEL mode)
+import os
+os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = "http://localhost:8000/api/traces/otlp"
+# CrewAI picks this up automatically
+```
+
+```python OpenAI Agents SDK
+from openai.lib.streaming import AsyncAssistantStreamManager
+# Set OTEL_EXPORTER_OTLP_ENDPOINT before importing
+```
+</CodeGroup>
+
+## Span detection
+
+LangSight extracts MCP tool calls from OTLP spans by looking for:
+
+1. Span name matching `mcp.*` (e.g. `mcp.postgres-mcp.query`)
+2. Attribute `gen_ai.tool.name` (OpenAI Agents SDK / GenAI semantic conventions)
+3. Attribute `mcp.server.name` + `mcp.tool.name`
+
+Non-MCP spans are silently ignored.
+
+## OTEL Collector (production)
+
+For production, use the included OTEL Collector config:
+
+```bash
+docker compose up -d otel-collector
+```
+
+The collector receives on ports `4317` (gRPC) and `4318` (HTTP), filters to MCP spans, and forwards to LangSight.

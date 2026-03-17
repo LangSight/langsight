@@ -1,0 +1,67 @@
+---
+title: "langsight serve"
+description: "Start the LangSight REST API server"
+---
+
+## Usage
+
+```bash
+langsight serve [OPTIONS]
+```
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--host` | `0.0.0.0` | Host to bind to |
+| `--port`, `-p` | `8000` | Port to listen on |
+| `--config` | auto-discovered | Path to `.langsight.yaml` |
+| `--reload` | false | Enable auto-reload (development only) |
+
+## What it does
+
+Starts the FastAPI REST API server. The API is used by:
+- The LangSight SDK (`POST /api/traces/spans`)
+- OTLP integrations (`POST /api/traces/otlp`)
+- The Phase 4 dashboard
+- Any custom tooling querying health/security data
+
+## Start the server
+
+```bash
+langsight serve
+```
+
+```
+Starting LangSight API on http://0.0.0.0:8000
+Docs: http://localhost:8000/docs
+```
+
+## API documentation
+
+Once running, interactive docs are available at:
+- **Swagger UI**: `http://localhost:8000/docs`
+- **ReDoc**: `http://localhost:8000/redoc`
+
+## Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/status` | API health check |
+| GET | `/api/health/servers` | Latest health for all servers |
+| GET | `/api/health/servers/{name}` | Latest health for one server |
+| GET | `/api/health/servers/{name}/history` | Health history |
+| POST | `/api/health/check` | Trigger on-demand health check |
+| POST | `/api/security/scan` | Trigger security scan |
+| POST | `/api/traces/spans` | Ingest SDK spans |
+| POST | `/api/traces/otlp` | Ingest OTLP/JSON traces |
+
+## Production deployment
+
+For production, use the root `docker-compose.yml`:
+
+```bash
+docker compose up -d
+```
+
+See [Self-Hosting](/self-hosting/docker-compose) for the full production setup.

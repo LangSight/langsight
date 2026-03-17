@@ -1,0 +1,38 @@
+---
+title: "OpenAI"
+description: "Use GPT-4o or o1-mini for root cause analysis"
+---
+
+## Setup
+
+1. Create an account at [platform.openai.com](https://platform.openai.com)
+2. Generate an API key under **API Keys**
+3. Set the environment variable:
+
+```bash
+export OPENAI_API_KEY=sk-...
+```
+
+4. Configure in `.langsight.yaml`:
+
+```yaml
+investigate:
+  provider: openai
+  model: gpt-4o    # default
+```
+
+## Models
+
+| Model | Context | Best for |
+|-------|---------|----------|
+| `gpt-4o` | 128K | Default — fast, strong reasoning |
+| `gpt-4o-mini` | 128K | Budget-friendly |
+| `o1-mini` | 128K | Complex multi-step root cause reasoning |
+
+## Pricing
+
+| Model | Input | Output |
+|-------|-------|--------|
+| gpt-4o | $2.50/1M | $10/1M |
+| gpt-4o-mini | $0.15/1M | $0.60/1M |
+| o1-mini | $3/1M | $12/1M |

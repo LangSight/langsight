@@ -1,0 +1,70 @@
+---
+title: "langsight monitor"
+description: "Continuously monitor MCP servers and alert on state changes"
+---
+
+## Usage
+
+```bash
+langsight monitor [OPTIONS]
+```
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--config` | auto-discovered | Path to `.langsight.yaml` |
+| `--interval`, `-i` | `30` | Health check interval in seconds |
+| `--once` | false | Run one cycle and exit (useful for cron/CI) |
+
+## What it does
+
+Polls all configured servers on a configurable interval. After each cycle, results are evaluated by the alert engine — alerts fire on **state transitions**, not on every check.
+
+**Alert types:**
+- `SERVER_DOWN` — after N consecutive failures (configurable)
+- `SERVER_RECOVERED` — when a DOWN server comes back
+- `SCHEMA_DRIFT` — when tool schema changes unexpectedly
+- `HIGH_LATENCY` — when latency exceeds 3× baseline
+
+**Deduplication:** A single incident generates one alert, not one per polling cycle.
+
+## Example
+
+```bash
+langsight monitor --interval 30
+```
+
+```
+Cycle #1 — next in 30s
+──────────────────────────────────────────────
+Server           Status      Latency   Tools
+postgres-mcp     ✓ up        142ms     5
+s3-mcp           ✓ up        890ms     7
+
+[Alert] CRITICAL — MCP server 'jira-mcp' is DOWN
+  Server has been unreachable for 2 consecutive checks.
+  Slack notification sent.
+```
+
+## Alert configuration
+
+Configure in `.langsight.yaml`:
+
+```yaml
+alerts:
+  slack_webhook: https://hooks.slack.com/services/...
+  consecutive_failures: 2        # checks before DOWN alert
+  latency_spike_multiplier: 3.0  # 3x baseline = HIGH_LATENCY
+  error_rate_threshold: 0.05     # 5% error rate threshold
+```
+
+## Cron / one-shot usage
+
+```bash
+# Run once (e.g. every 5 minutes via cron)
+langsight monitor --once
+
+# Crontab entry
+*/5 * * * * /usr/local/bin/langsight monitor --once >> /var/log/langsight.log 2>&1
+```

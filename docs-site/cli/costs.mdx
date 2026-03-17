@@ -1,0 +1,71 @@
+---
+title: "langsight costs"
+description: "Show MCP tool call cost attribution by server and tool"
+---
+
+## Usage
+
+```bash
+langsight costs [OPTIONS]
+```
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--config` | auto-discovered | Path to `.langsight.yaml` |
+| `--window`, `-w` | `24h` | Look-back window (24h, 7d, 30d) |
+| `--json` | false | Output as JSON |
+
+<Warning>
+`langsight costs` requires the ClickHouse backend (`storage.mode: clickhouse`) and the LangSight SDK or OTLP integration to be sending spans. It shows "No tool call data found" on SQLite.
+</Warning>
+
+## Example
+
+```bash
+langsight costs --window 7d
+```
+
+```
+MCP Tool Costs  (last 168h — 12,450 total calls)
+────────────────────────────────────────────────────────────
+Server          Tool               Calls     $/call   Total
+openai-mcp      chat_completion    8,200    $0.0050  $41.00
+jira-mcp        get_issue          2,100    $0.0010   $2.10
+confluence-mcp  search             1,150    $0.0010   $1.15
+slack-mcp       post_message         850    $0.0010   $0.85
+postgres-mcp    query                150    $0.0000   $0.00
+
+Total: $45.10 over 168h
+```
+
+## Configuring pricing rules
+
+Add pricing rules to `.langsight.yaml`:
+
+```yaml
+costs:
+  rules:
+    # Specific tool pricing
+    - server: openai-mcp
+      tool: chat_completion
+      cost_per_call: 0.005
+
+    # All tools on a server
+    - server: confluence-mcp
+      tool: "*"
+      cost_per_call: 0.001
+
+    # Self-hosted servers are free
+    - server: postgres-mcp
+      tool: "*"
+      cost_per_call: 0.0
+
+    # Default for anything not matched
+    - server: "*"
+      tool: "*"
+      cost_per_call: 0.001
+```
+
+Rules are evaluated top-to-bottom — first match wins. Both `server` and `tool` support glob patterns (`*`).

@@ -1,0 +1,60 @@
+---
+title: "Health API"
+description: "Query MCP server health status and history"
+---
+
+## GET /api/health/servers
+
+Returns the most recent health check result for each configured server.
+
+```bash
+curl http://localhost:8000/api/health/servers
+```
+
+```json
+[
+  {
+    "server_name": "postgres-mcp",
+    "status": "up",
+    "latency_ms": 42.0,
+    "tools_count": 5,
+    "schema_hash": "bcf0ec26dff44929",
+    "error": null,
+    "checked_at": "2026-03-17T12:00:00Z"
+  }
+]
+```
+
+## GET /api/health/servers/{server_name}
+
+Returns the most recent result for one server. Returns `404` if no data exists.
+
+```bash
+curl http://localhost:8000/api/health/servers/postgres-mcp
+```
+
+## GET /api/health/servers/{server_name}/history
+
+Returns health history, newest first. `limit` parameter: 1–100 (default 10).
+
+```bash
+curl "http://localhost:8000/api/health/servers/postgres-mcp/history?limit=20"
+```
+
+## POST /api/health/check
+
+Triggers an immediate health check against all configured servers. Results are persisted and returned.
+
+```bash
+curl -X POST http://localhost:8000/api/health/check
+```
+
+## Status values
+
+| Status | Meaning |
+|--------|---------|
+| `up` | Server responding normally |
+| `degraded` | Schema drift detected — investigate |
+| `down` | Server unreachable |
+| `stale` | No check in last N minutes |
+| `unknown` | Never checked |

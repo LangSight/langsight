@@ -1,0 +1,73 @@
+---
+title: "langsight mcp-health"
+description: "Check the health of all configured MCP servers"
+---
+
+## Usage
+
+```bash
+langsight mcp-health [OPTIONS]
+```
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--config` | auto-discovered | Path to `.langsight.yaml` |
+| `--json` | false | Output results as JSON |
+
+## What it does
+
+Connects to each configured MCP server, runs `initialize` + `tools/list`, measures latency, and detects schema drift vs. the last stored snapshot.
+
+**Exit codes:**
+- `0` — all servers healthy
+- `1` — one or more servers DOWN or DEGRADED
+
+## Example output
+
+```
+MCP Server Health  (6 servers)
+──────────────────────────────────────────────────────────────────
+Server           Status      Latency   Tools   Schema
+snowflake-mcp    ✓ up        142ms     8       bcf0ec26…
+github-mcp       ✓ up        89ms      12      d2125e3a…
+slack-mcp        ⚠ degraded  1,240ms   4       —         schema drift detected
+jira-mcp         ✗ down      —         —       —         timeout after 5s
+postgres-mcp     ✓ up        31ms      5       f4a2b1c9…
+filesystem-mcp   ✓ up        12ms      6       8e3d7f2a…
+
+4/6 servers healthy
+```
+
+## Schema drift detection
+
+LangSight stores a hash of each server's tool list on the first run. On subsequent runs, if the hash changes, the server is marked **DEGRADED** and a warning appears.
+
+This catches:
+- Unplanned tool additions or removals
+- Changed tool descriptions (potential poisoning)
+- Breaking parameter changes
+
+## JSON output
+
+```bash
+langsight mcp-health --json | jq '.[].status'
+```
+
+```json
+[
+  {
+    "server_name": "postgres-mcp",
+    "status": "up",
+    "latency_ms": 31.4,
+    "tools_count": 5,
+    "schema_hash": "f4a2b1c9...",
+    "checked_at": "2026-03-17T12:00:00Z"
+  }
+]
+```
+
+## Data persistence
+
+Results are stored in `~/.langsight/data.db` (SQLite, default) or ClickHouse (production). Use `--config` to point at a different `.langsight.yaml` with a different storage backend.

@@ -1,0 +1,72 @@
+---
+title: "Ollama (Local)"
+description: "Run LLMs locally — free, air-gapped, no data leaves your machine"
+---
+
+## Why Ollama?
+
+- **Completely free** — no API costs
+- **Privacy** — no data sent to external services
+- **Air-gapped** — works without internet access
+- **No API key** needed
+
+## Setup
+
+1. Install Ollama from [ollama.com/download](https://ollama.com/download)
+2. Pull a model:
+
+```bash
+ollama pull llama3.2        # 3B — fast, good reasoning (~2GB)
+ollama pull llama3.1:8b     # 8B — better quality (~8GB RAM)
+ollama pull mistral          # 7B — strong analysis (~8GB RAM)
+```
+
+3. Verify Ollama is running:
+
+```bash
+ollama list
+```
+
+4. Configure in `.langsight.yaml`:
+
+```yaml
+investigate:
+  provider: ollama
+  model: llama3.2    # default
+```
+
+No `OLLAMA_API_KEY` needed.
+
+## Models
+
+| Model | RAM | Quality | Speed |
+|-------|-----|---------|-------|
+| `llama3.2` | 2 GB | Good | Fast |
+| `llama3.1:8b` | 8 GB | Better | Medium |
+| `mistral` | 8 GB | Good | Medium |
+| `qwen2.5:14b` | 16 GB | Excellent | Slow |
+
+## Remote Ollama
+
+If Ollama runs on another machine:
+
+```yaml
+investigate:
+  provider: ollama
+  model: llama3.2
+  base_url: http://my-gpu-server:11434/v1
+```
+
+## Troubleshooting
+
+```
+ConfigError: Ollama request failed: Connection refused
+```
+
+→ Start Ollama: `ollama serve`
+
+```
+ConfigError: model not found
+```
+
+→ Pull the model: `ollama pull llama3.2`

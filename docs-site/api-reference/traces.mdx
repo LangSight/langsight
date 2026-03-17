@@ -1,0 +1,57 @@
+---
+title: "Traces API"
+description: "Ingest tool call spans from the SDK or OTLP"
+---
+
+## POST /api/traces/spans
+
+Accepts `ToolCallSpan` objects from the LangSight Python SDK.
+
+```bash
+curl -X POST http://localhost:8000/api/traces/spans \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "server_name": "postgres-mcp",
+    "tool_name": "query",
+    "started_at": "2026-03-17T12:00:00Z",
+    "ended_at": "2026-03-17T12:00:00.042Z",
+    "latency_ms": 42.0,
+    "status": "success",
+    "trace_id": "trace-abc123",
+    "agent_name": "support-agent",
+    "session_id": "sess-xyz"
+  }]'
+```
+
+**Response**: `{"accepted": 1}` with HTTP 202.
+
+### ToolCallSpan fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `server_name` | string | ✅ | MCP server name |
+| `tool_name` | string | ✅ | Tool that was called |
+| `started_at` | ISO datetime | ✅ | When call began |
+| `ended_at` | ISO datetime | ✅ | When call completed |
+| `latency_ms` | float | ✅ | Duration in milliseconds |
+| `status` | `success`\|`error`\|`timeout` | ✅ | Outcome |
+| `error` | string | — | Error message if status ≠ success |
+| `span_id` | string | — | UUID (auto-generated if omitted) |
+| `trace_id` | string | — | Groups spans into a trace/conversation |
+| `agent_name` | string | — | Agent that made the call |
+| `session_id` | string | — | Application-level session ID |
+
+## POST /api/traces/otlp
+
+Accepts standard [OTLP/JSON](https://opentelemetry.io/docs/specs/otlp/) trace data from any OpenTelemetry-instrumented framework.
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8000/api/traces/otlp
+```
+
+LangSight extracts MCP tool call spans by matching:
+- Span names matching `mcp.*`
+- Attribute `gen_ai.tool.name` (GenAI semantic conventions)
+- Attribute `mcp.server.name` + `mcp.tool.name`
+
+Non-MCP spans are ignored.

@@ -1,0 +1,70 @@
+---
+title: "API Overview"
+description: "LangSight REST API — health, security, and trace ingestion endpoints"
+---
+
+## Base URL
+
+```
+http://localhost:8000
+```
+
+Start the API with `langsight serve` or `docker compose up -d api`.
+
+## Authentication
+
+The API currently has no authentication in the open-source version. In production, place it behind a reverse proxy (nginx, Caddy) and restrict access to your network.
+
+## Interactive docs
+
+Once the API is running:
+- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+
+## Endpoints
+
+### Meta
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/status` | API health check — returns `{"status": "ok"}` |
+
+### Health
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/health/servers` | Latest health for all configured servers |
+| `GET` | `/api/health/servers/{name}` | Latest health for one server |
+| `GET` | `/api/health/servers/{name}/history` | Health history (newest first) |
+| `POST` | `/api/health/check` | Trigger on-demand health check |
+
+### Security
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/security/scan` | Run security scan on all servers |
+
+### Traces
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/traces/spans` | Ingest `ToolCallSpan` JSON from the SDK |
+| `POST` | `/api/traces/otlp` | Ingest standard OTLP/JSON traces |
+
+## Quick test
+
+```bash
+# Health check
+curl http://localhost:8000/api/status
+
+# Latest server health
+curl http://localhost:8000/api/health/servers | jq .
+
+# Trigger health check
+curl -X POST http://localhost:8000/api/health/check | jq .
+
+# Send a span
+curl -X POST http://localhost:8000/api/traces/spans \
+  -H "Content-Type: application/json" \
+  -d '[{"server_name":"pg","tool_name":"query","started_at":"2026-03-17T12:00:00Z","ended_at":"2026-03-17T12:00:00.042Z","latency_ms":42,"status":"success"}]'
+```

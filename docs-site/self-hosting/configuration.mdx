@@ -1,0 +1,74 @@
+---
+title: "Configuration Reference"
+description: "Complete .langsight.yaml schema"
+---
+
+## Full schema
+
+```yaml
+# .langsight.yaml
+
+# MCP servers to monitor
+servers:
+  - name: postgres-mcp             # required — unique identifier
+    transport: stdio                # stdio | sse | streamable_http
+    command: python                 # stdio only: executable
+    args: [server.py]               # stdio only: arguments
+    env:                            # stdio only: environment variables
+      DB_HOST: localhost
+    url: http://localhost:8080/sse  # sse/streamable_http only
+    tags: [production, data]        # optional labels
+    timeout_seconds: 5              # default: 5
+
+# Alerting configuration
+alerts:
+  slack_webhook: https://hooks.slack.com/...   # optional
+  error_rate_threshold: 0.05                    # 5%
+  latency_spike_multiplier: 3.0                 # 3x baseline
+  consecutive_failures: 2                       # before DOWN alert
+
+# Storage backend
+storage:
+  mode: sqlite                         # sqlite | postgres | clickhouse
+
+  # SQLite (default — local mode, no Docker)
+  sqlite_path: ~/.langsight/data.db
+
+  # PostgreSQL (team/server mode)
+  postgres_url: postgresql://user:pass@localhost:5432/langsight
+
+  # ClickHouse (production — required for costs + reliability)
+  clickhouse_url: http://localhost:8123
+  clickhouse_database: langsight
+  clickhouse_username: default
+  clickhouse_password: ""
+
+# LLM provider for langsight investigate
+investigate:
+  provider: anthropic              # anthropic | openai | gemini | ollama
+  model: claude-sonnet-4-6        # optional — defaults per provider
+  api_key: null                   # optional — prefer env vars
+  base_url: null                  # optional — for Ollama remotes
+
+# Tool call pricing rules for langsight costs
+costs:
+  rules:
+    - server: openai-mcp
+      tool: chat_completion
+      cost_per_call: 0.005
+    - server: "*"
+      tool: "*"
+      cost_per_call: 0.001
+```
+
+## Environment variable overrides
+
+All settings can be overridden with environment variables using the `LANGSIGHT_` prefix:
+
+| YAML key | Env var |
+|----------|---------|
+| `storage.mode` | `LANGSIGHT_STORAGE_MODE` |
+| `storage.clickhouse_url` | `LANGSIGHT_CLICKHOUSE_URL` |
+| `storage.postgres_url` | `LANGSIGHT_POSTGRES_URL` |
+| `alerts.slack_webhook` | `LANGSIGHT_SLACK_WEBHOOK` |
+| `health_check_interval_seconds` | `LANGSIGHT_HEALTH_CHECK_INTERVAL_SECONDS` |

@@ -1,0 +1,90 @@
+---
+title: "Installation"
+description: "Install LangSight on macOS, Linux, or Windows."
+---
+
+## Requirements
+
+- Python 3.11 or higher
+- pip or uv
+
+## Install with uv (recommended)
+
+[uv](https://docs.astral.sh/uv/) is the fastest Python package manager. It installs LangSight as a global tool so `langsight` is available everywhere:
+
+```bash
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install LangSight
+uv tool install langsight
+
+# Verify
+langsight --version
+```
+
+## Install with pip
+
+```bash
+pip install langsight
+langsight --version
+```
+
+## Install from source
+
+```bash
+git clone https://github.com/sumankalyan123/langsight
+cd langsight
+uv sync
+uv run langsight --version
+```
+
+## Verify installation
+
+```bash
+langsight --help
+```
+
+```
+Usage: langsight [OPTIONS] COMMAND [ARGS]...
+
+  LangSight — MCP observability and security platform.
+
+Commands:
+  costs          Show MCP tool call cost attribution.
+  init           Auto-discover MCP servers and generate .langsight.yaml.
+  investigate    Investigate MCP failures and attribute root causes.
+  mcp-health     Check the health of all configured MCP servers.
+  monitor        Continuously monitor MCP servers and alert on state changes.
+  security-scan  Scan MCP servers for security vulnerabilities.
+  serve          Start the LangSight REST API server.
+```
+
+## Platform support
+
+| Platform | Status |
+|----------|--------|
+| macOS (arm64, x86_64) | ✅ Supported |
+| Linux (x86_64, arm64) | ✅ Supported |
+| Windows (WSL2) | ✅ Supported |
+| Windows (native) | ⚠️ Untested |
+
+## Upgrading
+
+```bash
+# uv
+uv tool upgrade langsight
+
+# pip
+pip install --upgrade langsight
+```
+
+## Uninstalling
+
+```bash
+# uv
+uv tool uninstall langsight
+
+# pip
+pip uninstall langsight
+```

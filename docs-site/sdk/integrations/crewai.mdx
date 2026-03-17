@@ -1,0 +1,38 @@
+---
+title: "CrewAI"
+description: "Trace MCP tool calls from CrewAI agents with one line"
+---
+
+## Setup
+
+```python
+from langsight.sdk import LangSightClient
+from langsight.integrations.crewai import LangSightCrewAICallback
+from crewai import Agent
+
+client = LangSightClient(url="http://localhost:8000")
+
+callback = LangSightCrewAICallback(
+    client=client,
+    server_name="my-mcp-server",
+    agent_name="support-agent",   # optional
+)
+
+agent = Agent(
+    role="Support Agent",
+    tools=[my_mcp_tool],
+    callbacks=[callback],          # ← one line added
+)
+```
+
+Every tool call made by this agent is automatically traced in LangSight.
+
+## Callback methods
+
+The `LangSightCrewAICallback` hooks into three CrewAI events:
+
+| Event | Fires when | Records |
+|-------|-----------|---------|
+| `on_tool_start` | Tool call begins | Start timestamp |
+| `on_tool_end` | Tool call succeeds | Latency + SUCCESS status |
+| `on_tool_error` | Tool call fails | Latency + ERROR status + error message |

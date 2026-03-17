@@ -1,0 +1,103 @@
+---
+title: "Python SDK"
+description: "Add 2-line MCP observability to any Python agent"
+---
+
+## Installation
+
+LangSight is already installed — the SDK is part of the main package:
+
+```bash
+pip install langsight
+# or
+uv add langsight
+```
+
+## 2-line integration
+
+```python
+from langsight.sdk import LangSightClient
+
+client = LangSightClient(url="http://localhost:8000")           # line 1
+traced_mcp = client.wrap(mcp_session, server_name="my-server") # line 2
+
+# All call_tool() calls are now traced automatically
+result = await traced_mcp.call_tool("query", {"sql": "SELECT 1"})
+```
+
+## Full example
+
+```python
+import asyncio
+from mcp import ClientSession
+from mcp.client.stdio import stdio_client, StdioServerParameters
+from langsight.sdk import LangSightClient
+
+async def main():
+    # Start LangSight client
+    langsight = LangSightClient(
+        url="http://localhost:8000",
+        api_key="your-api-key",      # optional
+    )
+
+    # Connect to your MCP server
+    params = StdioServerParameters(command="python", args=["server.py"])
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            # Wrap the session — one line
+            traced = langsight.wrap(
+                session,
+                server_name="postgres-mcp",
+                agent_name="support-agent",    # optional metadata
+                session_id="sess-abc123",       # optional metadata
+            )
+
+            # Use exactly like the original session
+            result = await traced.call_tool("query", {"sql": "SELECT COUNT(*) FROM orders"})
+            print(result)
+
+asyncio.run(main())
+```
+
+## How it works
+
+The `wrap()` method returns `MCPClientProxy` — a transparent proxy that:
+1. Calls the original `call_tool()` method
+2. Records start time, end time, and latency
+3. Sends a `ToolCallSpan` to `POST /api/traces/spans` **asynchronously** (fire-and-forget)
+4. Returns the original result unchanged
+
+**Fail-open**: if LangSight is unreachable, the tool call still succeeds and the error is logged. Your agents are never blocked by monitoring.
+
+## Span metadata
+
+```python
+traced = langsight.wrap(
+    session,
+    server_name="my-mcp",      # required — matches MCPServer.name in config
+    agent_name="my-agent",     # shown in investigate output
+    session_id="sess-123",     # groups spans into a conversation
+    trace_id="trace-abc",      # links to a parent trace
+)
+```
+
+## Manual spans
+
+Record spans without wrapping a client:
+
+```python
+from datetime import UTC, datetime
+from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+
+started = datetime.now(UTC)
+# ... your tool call ...
+
+await langsight.send_span(ToolCallSpan.record(
+    server_name="my-server",
+    tool_name="custom_tool",
+    started_at=started,
+    status=ToolCallStatus.SUCCESS,
+))
+```

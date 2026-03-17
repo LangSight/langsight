@@ -1,0 +1,76 @@
+---
+title: "Docker Compose"
+description: "Production deployment with ClickHouse, PostgreSQL, and OTEL Collector"
+---
+
+The root `docker-compose.yml` starts the full LangSight production stack.
+
+## Services
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| `clickhouse` | 8123 | Time-series span storage + reliability analytics |
+| `postgres` | 5432 | App state: configs, alert rules |
+| `otel-collector` | 4317, 4318 | Receives OTLP traces from agent frameworks |
+| `api` | 8000 | LangSight REST API |
+
+## Start the stack
+
+```bash
+# Clone the repo
+git clone https://github.com/sumankalyan123/langsight
+cd langsight
+
+# Set required secrets
+echo "POSTGRES_PASSWORD=your-secure-password" > .env
+
+# Start everything
+docker compose up -d
+
+# Check status
+docker compose ps
+```
+
+## Send your first span
+
+```bash
+curl -X POST http://localhost:8000/api/traces/spans \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "server_name": "my-mcp",
+    "tool_name": "query",
+    "started_at": "2026-03-17T12:00:00Z",
+    "ended_at": "2026-03-17T12:00:00.042Z",
+    "latency_ms": 42.0,
+    "status": "success"
+  }]'
+```
+
+## Connect your OTEL exporter
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+
+## Upgrade
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+## Volumes
+
+Data persists in named Docker volumes:
+
+| Volume | Contains |
+|--------|---------|
+| `clickhouse_data` | All span data, health history, reliability aggregations |
+| `postgres_data` | Server configs, alert rules |
+
+## Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POSTGRES_PASSWORD` | `langsight` | PostgreSQL password |
+| `LANGSIGHT_LOG_LEVEL` | `INFO` | Log verbosity |

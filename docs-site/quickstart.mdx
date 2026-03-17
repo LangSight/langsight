@@ -1,0 +1,112 @@
+---
+title: "Quickstart"
+description: "From install to your first MCP health check in 5 minutes."
+---
+
+## Prerequisites
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- At least one MCP server configured (Claude Desktop, Cursor, or VS Code)
+
+## Step 1 — Install
+
+<CodeGroup>
+```bash uv (recommended)
+uv tool install langsight
+```
+
+```bash pip
+pip install langsight
+```
+
+```bash From source
+git clone https://github.com/sumankalyan123/langsight
+cd langsight
+uv sync
+```
+</CodeGroup>
+
+## Step 2 — Auto-discover your MCP servers
+
+```bash
+langsight init
+```
+
+LangSight scans your local MCP configs and generates `.langsight.yaml`:
+
+```
+LangSight Init — scanning for MCP servers...
+
+  ✓ Claude Desktop (~/.config/claude/claude_desktop_config.json) — 4 servers
+  ✓ Cursor (~/.cursor/mcp.json) — 2 servers
+
+Discovered 6 MCP servers:
+  1. snowflake-mcp    (stdio)
+  2. github-mcp       (stdio)
+  3. slack-mcp        (sse)
+  4. jira-mcp         (stdio)
+  5. postgres-mcp     (stdio)
+  6. filesystem-mcp   (stdio)
+
+✓ Config written to .langsight.yaml
+```
+
+## Step 3 — Check health
+
+```bash
+langsight mcp-health
+```
+
+```
+MCP Server Health  (6 servers)
+──────────────────────────────────────────────────────────────────
+Server           Status      Latency   Tools   Schema
+snowflake-mcp    ✓ up        142ms     8       bcf0ec26…
+github-mcp       ✓ up        89ms      12      d2125e3a…
+slack-mcp        ⚠ degraded  1,240ms   4       abc123de…
+jira-mcp         ✗ down      —         —       —
+postgres-mcp     ✓ up        31ms      5       f4a2b1c9…
+filesystem-mcp   ✓ up        12ms      6       8e3d7f2a…
+
+4/6 servers healthy
+```
+
+## Step 4 — Run a security scan
+
+```bash
+langsight security-scan
+```
+
+```
+Security Scan Results  (6 servers, 3 findings)
+────────────────────────────────────────────────────────
+CRITICAL  jira-mcp      CVE-2025-6514  Remote code execution
+HIGH      slack-mcp     OWASP-MCP-01   No authentication configured
+MEDIUM    postgres-mcp  OWASP-MCP-05   Tool 'query' has no input schema
+```
+
+## Step 5 — Start continuous monitoring
+
+```bash
+langsight monitor --interval 30
+```
+
+LangSight polls every 30 seconds and fires Slack/webhook alerts on state transitions.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="CLI Reference" icon="terminal" href="/cli/mcp-health">
+    All commands and options.
+  </Card>
+  <Card title="AI Providers" icon="brain" href="/providers/overview">
+    Set up Claude, Gemini, or Ollama for `langsight investigate`.
+  </Card>
+  <Card title="SDK Integration" icon="code" href="/sdk/python">
+    Add 2-line tracing to your agent code.
+  </Card>
+  <Card title="Self-Hosting" icon="server" href="/self-hosting/docker-compose">
+    Production deployment with ClickHouse + PostgreSQL.
+  </Card>
+</CardGroup>

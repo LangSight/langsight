@@ -1,0 +1,47 @@
+---
+title: "Security API"
+description: "Trigger security scans and retrieve findings"
+---
+
+## POST /api/security/scan
+
+Runs a full security scan (OWASP MCP Top 10 + CVEs + poisoning detection) on all configured servers. Each scan triggers a health check first to get the live tools list.
+
+```bash
+curl -X POST http://localhost:8000/api/security/scan
+```
+
+```json
+[
+  {
+    "server_name": "postgres-mcp",
+    "scanned_at": "2026-03-17T12:00:00Z",
+    "error": null,
+    "findings_count": 1,
+    "critical_count": 0,
+    "high_count": 0,
+    "highest_severity": "medium",
+    "findings": [
+      {
+        "severity": "medium",
+        "category": "OWASP-MCP-01",
+        "title": "No authentication configured",
+        "description": "Server has no auth credentials in its configuration.",
+        "remediation": "Add an API key or token to the server's env configuration.",
+        "tool_name": null,
+        "cve_id": null
+      }
+    ]
+  }
+]
+```
+
+## Severity levels
+
+| Severity | Examples |
+|----------|---------|
+| `critical` | Remote code execution CVE, prompt injection |
+| `high` | Unauthenticated SSE server, destructive tools without auth |
+| `medium` | No auth on stdio server, missing input schemas |
+| `low` | Minor config warnings |
+| `info` | Informational findings |

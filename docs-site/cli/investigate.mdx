@@ -1,0 +1,92 @@
+---
+title: "langsight investigate"
+description: "AI-powered root cause analysis for MCP server failures"
+---
+
+## Usage
+
+```bash
+langsight investigate [OPTIONS]
+```
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--config` | auto-discovered | Path to `.langsight.yaml` |
+| `--server` | all servers | Focus on a specific server |
+| `--window`, `-w` | `1h` | Look-back window (30m, 2h, 1d) |
+| `--json` | false | Output raw evidence JSON |
+
+## What it does
+
+Gathers evidence from stored health history — DOWN counts, DEGRADED events, schema drift, error messages — and sends it to an LLM for root cause analysis.
+
+**Evidence gathered:**
+- Health check history (last N results in window)
+- Schema drift events
+- Consecutive failure counts
+- Error message patterns
+- Average latency vs. baseline
+
+## AI providers
+
+Configure your preferred provider in `.langsight.yaml`:
+
+```yaml
+investigate:
+  provider: gemini           # anthropic | openai | gemini | ollama
+  model: gemini-2.0-flash
+```
+
+Falls back to rule-based analysis when no provider is configured. See [AI Providers](/providers/overview) for setup.
+
+## Example (with AI)
+
+```bash
+langsight investigate --server jira-mcp --window 2h
+```
+
+```
+Analysing with Gemini  gemini-2.0-flash...
+
+╭─ Root Cause Analysis  (Gemini gemini-2.0-flash) ──────────────────╮
+│                                                                    │
+│ ## jira-mcp                                                        │
+│                                                                    │
+│ **Root Cause**: Authentication token expired or revoked.           │
+│                                                                    │
+│ **Evidence**: 8/8 checks failed with "timeout after 5s" starting   │
+│ at 14:32 UTC. No schema drift. Latency history shows normal        │
+│ response times until the failure began — consistent with auth      │
+│ failure rather than network or process issues.                     │
+│                                                                    │
+│ **Impact**: All agents using jira-mcp for ticket lookup and        │
+│ updates are failing silently.                                      │
+│                                                                    │
+│ **Recommended Actions**:                                           │
+│ 1. Check the Jira API token in the server's .env file              │
+│ 2. Verify the token hasn't expired in the Atlassian console        │
+│ 3. Rotate the token and restart the MCP server                    │
+╰────────────────────────────────────────────────────────────────────╯
+```
+
+## Example (rule-based fallback)
+
+```bash
+# No GEMINI_API_KEY set
+langsight investigate
+```
+
+```
+╭─ Root Cause Analysis  (rule-based) ───────────────────────────────╮
+│ ## jira-mcp                                                        │
+│                                                                    │
+│ **Root Cause**: Server unreachable — connection failure.           │
+│ **Evidence**: 8/8 checks failed (100%). Error: timeout after 5s   │
+│ **Actions**:                                                       │
+│ 1. Check if the MCP server process is running                      │
+│ 2. Verify the command path in .langsight.yaml                      │
+│ 3. Run langsight mcp-health for current status                     │
+╰────────────────────────────────────────────────────────────────────╯
+```

@@ -1,0 +1,46 @@
+---
+title: "Claude (Anthropic)"
+description: "Use Claude for root cause analysis in langsight investigate"
+---
+
+## Setup
+
+1. Create an account at [console.anthropic.com](https://console.anthropic.com)
+2. Generate an API key under **API Keys**
+3. Set the environment variable:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+4. Configure in `.langsight.yaml`:
+
+```yaml
+investigate:
+  provider: anthropic
+  model: claude-sonnet-4-6    # default
+```
+
+## Models
+
+| Model | Context | Best for |
+|-------|---------|----------|
+| `claude-sonnet-4-6` | 200K | Default — best balance of speed and quality |
+| `claude-opus-4-6` | 200K | Deepest analysis, complex multi-server incidents |
+| `claude-haiku-4-5` | 200K | Fast, budget-friendly |
+
+## Why Claude for RCA?
+
+Claude uses **adaptive thinking** on Sonnet and Opus — it reasons through the evidence before producing a report, leading to more accurate root cause identification. This is especially useful for:
+
+- Correlating multiple degraded servers
+- Identifying supply chain attacks via schema drift
+- Distinguishing transient failures from persistent outages
+
+## Pricing
+
+| Model | Input | Output | Typical investigate call |
+|-------|-------|--------|--------------------------|
+| claude-sonnet-4-6 | $3/1M | $15/1M | ~$0.03 |
+| claude-opus-4-6 | $5/1M | $25/1M | ~$0.06 |
+| claude-haiku-4-5 | $1/1M | $5/1M | ~$0.01 |

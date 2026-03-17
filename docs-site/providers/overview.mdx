@@ -1,0 +1,58 @@
+---
+title: "AI Providers"
+description: "Configure Claude, OpenAI, Gemini, or Ollama for langsight investigate"
+---
+
+`langsight investigate` uses an LLM to analyse health evidence and produce root cause reports. You can choose from four providers.
+
+## Quick setup
+
+Add an `investigate` block to `.langsight.yaml`:
+
+```yaml
+investigate:
+  provider: gemini           # anthropic | openai | gemini | ollama
+  model: gemini-2.0-flash    # optional — sensible defaults per provider
+```
+
+## Comparison
+
+| | Claude | OpenAI | Gemini | Ollama |
+|---|--------|--------|--------|--------|
+| **Free tier** | No | No | ✅ 1,500/day | ✅ Unlimited |
+| **Data privacy** | Anthropic | OpenAI | Google | On your machine |
+| **Context window** | 200K | 128K | **1M** | Varies |
+| **RCA quality** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ |
+| **Setup time** | 2 min | 2 min | 2 min | 5 min |
+
+## Environment variables
+
+| Provider | Variable | Where to get it |
+|----------|----------|-----------------|
+| Claude | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) |
+| OpenAI | `OPENAI_API_KEY` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| Gemini | `GEMINI_API_KEY` | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) |
+| Ollama | *(none required)* | — |
+
+<Warning>
+Never put API keys directly in `.langsight.yaml`. Use environment variables. The `api_key` field is only for CI/CD secrets injection.
+</Warning>
+
+## Rule-based fallback
+
+If no provider is configured or the API call fails, `langsight investigate` automatically falls back to deterministic heuristics — no LLM needed.
+
+<CardGroup cols={2}>
+  <Card title="Claude" icon="robot" href="/providers/claude">
+    Best quality RCA with adaptive thinking.
+  </Card>
+  <Card title="OpenAI" icon="openai" href="/providers/openai">
+    GPT-4o for teams already on OpenAI.
+  </Card>
+  <Card title="Gemini" icon="google" href="/providers/gemini">
+    Free tier, 1M context window.
+  </Card>
+  <Card title="Ollama" icon="server" href="/providers/ollama">
+    Local, free, air-gapped.
+  </Card>
+</CardGroup>

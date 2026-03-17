@@ -1,0 +1,62 @@
+---
+title: "Storage Backends"
+description: "Choose between SQLite, PostgreSQL, and ClickHouse"
+---
+
+LangSight supports three storage backends. Switch with one line in `.langsight.yaml`.
+
+## SQLite (default)
+
+Zero setup. Data stored in `~/.langsight/data.db`.
+
+```yaml
+storage:
+  mode: sqlite
+  sqlite_path: ~/.langsight/data.db
+```
+
+**Best for:** local development, single-user CLI use, getting started.
+**Limitations:** no `langsight costs` command (no span tables), no concurrent API access.
+
+## PostgreSQL
+
+For team deployments and the REST API.
+
+```yaml
+storage:
+  mode: postgres
+  postgres_url: postgresql://user:password@localhost:5432/langsight
+```
+
+**Best for:** multi-user API deployments, persistent health history shared across team.
+**Limitations:** no `langsight costs` (tool call spans need ClickHouse).
+
+## ClickHouse
+
+For production scale — required for tool reliability metrics and cost attribution.
+
+```yaml
+storage:
+  mode: clickhouse
+  clickhouse_url: http://localhost:8123
+  clickhouse_database: langsight
+  clickhouse_username: default
+  clickhouse_password: ""
+```
+
+**Best for:** production deployments, `langsight costs`, reliability analytics, OTLP ingestion at scale.
+
+Start ClickHouse with:
+```bash
+docker compose up -d clickhouse
+```
+
+## Migration path
+
+```
+Development     → SQLite   (zero setup)
+Team staging    → Postgres  (shared state)
+Production SaaS → ClickHouse (scale + analytics)
+```
+
+Switching is a one-line config change. The `StorageBackend` protocol ensures all three behave identically from the CLI and API's perspective.

@@ -1,0 +1,82 @@
+---
+title: "Introduction"
+description: "LangSight is an open-source MCP observability and security platform — the missing reliability layer between your AI agents and the tools they depend on."
+---
+
+## What is LangSight?
+
+Your AI agents rely on MCP servers to query databases, call APIs, search documents, and take actions. When an agent produces a wrong answer, responds slowly, or silently returns stale data — you have no way to know whether the problem is the LLM, the prompt, or one of the MCP tools in the chain.
+
+**LangSight gives you:**
+
+<CardGroup cols={2}>
+  <Card title="Health Monitoring" icon="heart-pulse">
+    Continuous availability checks, latency tracking, and schema drift detection for every MCP server.
+  </Card>
+  <Card title="Security Scanning" icon="shield-check">
+    CVE detection, OWASP MCP Top 10 audit, tool poisoning detection, and auth gap analysis.
+  </Card>
+  <Card title="Root Cause Analysis" icon="magnifying-glass">
+    `langsight investigate` uses Claude, GPT-4o, Gemini, or Ollama to attribute failures to their root cause.
+  </Card>
+  <Card title="Cost Attribution" icon="chart-bar">
+    Per-tool call counting and configurable pricing rules so you know what your MCP stack actually costs.
+  </Card>
+</CardGroup>
+
+## How it works
+
+```
+Your agents                LangSight
+──────────                 ──────────────────────────────────────
+CrewAI          ──SDK──►   POST /api/traces/spans
+LangChain       ──OTEL──►  POST /api/traces/otlp
+LibreChat       ──plugin►
+Claude Desktop  ◄──health─ langsight mcp-health
+                ◄──scan──  langsight security-scan
+                ◄──alert─  langsight monitor
+                ◄──rca───  langsight investigate
+```
+
+## Installation
+
+```bash
+# Install with uv (recommended)
+uv tool install langsight
+
+# Or with pip
+pip install langsight
+```
+
+Then run your first health check in under 60 seconds:
+
+```bash
+langsight init          # auto-discovers your MCP servers
+langsight mcp-health    # check health
+```
+
+<Card title="Quickstart →" icon="rocket" href="/quickstart">
+  Get from install to your first health check in 5 minutes.
+</Card>
+
+## Integrations
+
+LangSight works with every major MCP client and agent framework:
+
+| Framework | Integration |
+|-----------|------------|
+| Claude Desktop | Auto-discovered by `langsight init` |
+| Cursor | Auto-discovered by `langsight init` |
+| VS Code | Auto-discovered by `langsight init` |
+| LibreChat | [Native plugin](/sdk/integrations/librechat) |
+| CrewAI | [LangSightCrewAICallback](/sdk/integrations/crewai) |
+| Pydantic AI | [@langsight_tool decorator](/sdk/integrations/pydantic-ai) |
+| Any OTEL framework | [OTLP endpoint](/sdk/integrations/otel) |
+
+## Open source
+
+LangSight is Apache 2.0 licensed. The CLI, API, SDK, and all integrations are free and open source.
+
+```bash
+git clone https://github.com/sumankalyan123/langsight
+```

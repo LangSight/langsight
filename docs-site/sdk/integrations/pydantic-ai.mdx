@@ -1,0 +1,22 @@
+---
+title: "Pydantic AI"
+description: "Trace MCP tool calls from Pydantic AI with a decorator"
+---
+
+## Setup
+
+```python
+from langsight.sdk import LangSightClient
+from langsight.integrations.pydantic_ai import langsight_tool
+
+client = LangSightClient(url="http://localhost:8000")
+
+@langsight_tool(client=client, server_name="postgres-mcp")
+async def query_database(sql: str) -> list[dict]:
+    """Execute a SQL query against the database."""
+    return await mcp_session.call_tool("query", {"sql": sql})
+
+# Use query_database as a Pydantic AI tool — all calls traced automatically
+```
+
+The `@langsight_tool` decorator wraps any async function, records start/end time and success/error/timeout status, and sends a span — while preserving the original function name and signature.
