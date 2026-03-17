@@ -1,0 +1,132 @@
+---
+title: "langsight sessions"
+description: "List agent sessions and display multi-agent call trees"
+---
+
+## Usage
+
+```bash
+langsight sessions [OPTIONS]
+```
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--config` | auto-discovered | Path to `.langsight.yaml` |
+| `--window`, `-w` | `24h` | Look-back window (24h, 7d, 30d) |
+| `--agent`, `-a` | all agents | Filter sessions by agent name |
+| `--id` | — | Show full multi-agent trace tree for one session |
+| `--json` | false | Output as JSON |
+
+<Warning>
+`langsight sessions` requires the ClickHouse backend (`storage.mode: clickhouse`) to show live data.
+On SQLite the command prints: `No session data found. Sessions require the ClickHouse backend. See docs for setup.`
+</Warning>
+
+## Session list
+
+```bash
+langsight sessions --window 7d
+```
+
+```
+Agent Sessions  (last 168h — 42 sessions)
+────────────────────────────────────────────────────────────────────────────────
+Session ID                           Agent            Calls  Failed  Duration  Servers
+a3f1c2b0-1e4d-4a8f-8c9d-7b2e5f0d1a6  research-agent      24       1    14.2s  jira-mcp, confluence-mcp
+b7e9d4c3-2f5e-4b9g-9d0e-8c3f6g1e2b7  data-pipeline        8       0     3.1s  postgres-mcp
+c1a2b3d4-3g6f-4c0h-0e1f-9d4g7h2f3c8  support-agent       31       3    22.8s  jira-mcp, slack-mcp, s3-mcp
+d5b6c7e8-4h7g-4d1i-1f2g-0e5h8i3g4d9  code-reviewer       12       0     5.6s  github-mcp, postgres-mcp
+e9c0d1f2-5i8h-4e2j-2g3h-1f6i9j4h5e0  research-agent      18       2    11.4s  confluence-mcp, s3-mcp
+```
+
+## Single-session trace tree
+
+Use `--id` to drill into a session and see the full multi-agent call tree:
+
+```bash
+langsight sessions --id a3f1c2b0-1e4d-4a8f-8c9d-7b2e5f0d1a6
+```
+
+```
+Session a3f1c2b0  research-agent  24 calls  1 failed  14.2s
+
+research-agent
+├── 🤖 agent_start                                           0ms
+├── 🔧 jira-mcp / search_issues        ✓  342ms
+├── 🔧 jira-mcp / get_issue            ✓   89ms
+├── 🔧 confluence-mcp / search         ✓  214ms
+├── → handoff: research-agent → summarizer-agent
+│   ├── 🤖 agent_start                                       0ms
+│   ├── 🔧 confluence-mcp / get_page   ✓  178ms
+│   ├── 🔧 confluence-mcp / get_page   ✓  163ms
+│   └── 🤖 agent_end                                      1241ms
+├── 🔧 jira-mcp / create_issue         ✓  411ms
+├── 🔧 slack-mcp / post_message        ✗  timeout         5000ms
+│   └── error: connection timeout after 5000ms
+└── 🤖 agent_end                                         14200ms
+```
+
+Legend:
+- `🤖` agent lifecycle span (start / end)
+- `🔧` tool call span
+- `→` handoff — agent-to-agent delegation
+- `✓` success, `✗` failure
+
+## Filter by agent
+
+```bash
+langsight sessions --agent research-agent --window 24h
+```
+
+## JSON output
+
+```bash
+langsight sessions --json --window 7d
+```
+
+Returns a JSON array of session objects:
+
+```json
+[
+  {
+    "session_id": "a3f1c2b0-1e4d-4a8f-8c9d-7b2e5f0d1a6",
+    "agent_name": "research-agent",
+    "total_calls": 24,
+    "failed_calls": 1,
+    "duration_ms": 14200,
+    "servers": ["jira-mcp", "confluence-mcp", "slack-mcp"],
+    "started_at": "2026-03-17T09:14:02Z",
+    "ended_at": "2026-03-17T09:14:16Z"
+  }
+]
+```
+
+For a single session with `--id --json`, the response includes the full span tree with `parent_span_id` fields.
+
+## Requirements
+
+Sessions are recorded by the LangSight SDK or any OTLP-instrumented framework:
+
+```python
+from langsight import LangSightClient, agent_session
+
+client = LangSightClient()
+
+async with agent_session(client, agent_name="research-agent") as session:
+    mcp = await client.wrap(your_mcp_client)
+    result = await mcp.call_tool("jira-mcp", "search_issues", {...})
+```
+
+See the [SDK quickstart](/quickstart) and [multi-agent tracing](/sdk/multi-agent) for full setup instructions.
+
+## Storage backend
+
+| Backend | Sessions support | Notes |
+|---------|-----------------|-------|
+| SQLite | No | Default; zero-config but no session aggregation |
+| PostgreSQL | Partial | Raw spans only; no pre-aggregated view |
+| ClickHouse | Yes | Full support — `mv_agent_sessions` materialized view pre-aggregates session metrics |
+
+To enable ClickHouse, set `storage.mode: clickhouse` in `.langsight.yaml` and run `docker compose up -d`.
