@@ -27,6 +27,23 @@ class StorageConfig(BaseModel):
     postgres_url: str | None = None  # used when mode="postgres"
 
 
+class InvestigateConfig(BaseModel):
+    """LLM provider config for langsight investigate.
+
+    provider: anthropic | openai | gemini | ollama
+    model:    override the default model (optional)
+    api_key:  override the env-var API key (optional — prefer env vars)
+    base_url: override the default base URL (mainly for Ollama remotes)
+
+    See docs/06-provider-setup.md for setup instructions.
+    """
+
+    provider: str = "anthropic"
+    model: str | None = None
+    api_key: str | None = None
+    base_url: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Top-level project config (.langsight.yaml)
 # ---------------------------------------------------------------------------
@@ -38,6 +55,7 @@ class LangSightConfig(BaseModel):
     servers: list[MCPServer] = Field(default_factory=list)
     alerts: AlertConfig = Field(default_factory=AlertConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
+    investigate: InvestigateConfig = Field(default_factory=InvestigateConfig)
 
 
 # ---------------------------------------------------------------------------

@@ -14,7 +14,6 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -26,13 +25,14 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from langsight.config import load_config
+from langsight.exceptions import ConfigError
+from langsight.investigate.providers import create_provider
 from langsight.models import ServerStatus
 from langsight.storage.factory import open_storage
 
 console = Console()
 err_console = Console(stderr=True)
 
-_CLAUDE_MODEL = "claude-sonnet-4-6"
 _DEFAULT_WINDOW_HOURS = 1
 _MAX_HISTORY_RESULTS = 20
 
@@ -148,40 +148,36 @@ async def _run(servers: list, config: Any, window_hours: float, output_json: boo
         click.echo(json.dumps(evidence_by_server, indent=2))
         return
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if api_key:
-        await _analyse_with_claude(evidence_by_server, api_key)
-    else:
+    inv_cfg = config.investigate
+    try:
+        provider = create_provider(
+            provider=inv_cfg.provider,
+            model=inv_cfg.model,
+            api_key=inv_cfg.api_key,
+            base_url=inv_cfg.base_url,
+        )
+        await _analyse_with_llm(evidence_by_server, provider)
+    except ConfigError as exc:
+        err_console.print(f"[yellow]{exc}[/yellow]")
+        err_console.print("[dim]Falling back to rule-based analysis.[/dim]")
         _analyse_with_rules(evidence_by_server)
 
 
 # ---------------------------------------------------------------------------
-# Claude analysis
+# LLM analysis
 # ---------------------------------------------------------------------------
 
+_SYSTEM_PROMPT = (
+    "You are an expert SRE specialising in MCP (Model Context Protocol) server reliability. "
+    "You analyse health check data and schema drift events to identify root causes of failures. "
+    "Be concise, specific, and actionable. Format your response as Markdown."
+)
 
-async def _analyse_with_claude(
-    evidence: dict[str, dict],
-    api_key: str,
-) -> None:
-    """Send evidence to Claude sonnet-4-6 for root cause analysis."""
-    import anthropic
-
-    client = anthropic.AsyncAnthropic(api_key=api_key)
-
-    evidence_text = _format_evidence_for_prompt(evidence)
-
-    system = (
-        "You are an expert SRE specialising in MCP (Model Context Protocol) server reliability. "
-        "You analyse health check data and schema drift events to identify root causes of failures. "
-        "Be concise, specific, and actionable. Format your response as Markdown."
-    )
-
-    prompt = f"""Analyse the following MCP server health evidence and produce a root cause analysis report.
+_USER_PROMPT_TEMPLATE = """Analyse the following MCP server health evidence and produce a root cause analysis report.
 
 ## Evidence
 
-{evidence_text}
+{evidence}
 
 ## Required output format
 
@@ -195,35 +191,26 @@ For each server with issues, provide:
 If all servers are healthy, confirm this with a brief summary.
 Keep the report concise — use bullet points where possible."""
 
-    console.print("\n[dim]Analysing with Claude...[/dim]")
+
+async def _analyse_with_llm(evidence: dict[str, dict], provider: object) -> None:
+    """Send evidence to the configured LLM provider and display the RCA report."""
+    evidence_text = _format_evidence_for_prompt(evidence)
+    prompt = _USER_PROMPT_TEMPLATE.format(evidence=evidence_text)
+
+    console.print(f"\n[dim]Analysing with {provider.display_name}...[/dim]")  # type: ignore[union-attr]
 
     try:
-        response = await client.messages.create(
-            model=_CLAUDE_MODEL,
-            max_tokens=2048,
-            thinking={"type": "adaptive"},
-            system=system,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        report = next((b.text for b in response.content if b.type == "text"), "")
-
+        report = await provider.analyse(prompt, _SYSTEM_PROMPT)  # type: ignore[union-attr]
         console.print(
             Panel(
                 Markdown(report),
-                title=f"[bold]Root Cause Analysis[/bold]  [dim](Claude {_CLAUDE_MODEL})[/dim]",
+                title=f"[bold]Root Cause Analysis[/bold]  [dim]({provider.display_name})[/dim]",  # type: ignore[union-attr]
                 border_style="blue",
             )
         )
-
-    except anthropic.AuthenticationError:
-        err_console.print(
-            "[red]Invalid ANTHROPIC_API_KEY — falling back to rule-based analysis.[/red]"
-        )
-        _analyse_with_rules(evidence)
     except Exception as exc:  # noqa: BLE001
         err_console.print(
-            f"[yellow]Claude unavailable ({exc}) — falling back to rule-based analysis.[/yellow]"
+            f"[yellow]LLM error ({exc}) — falling back to rule-based analysis.[/yellow]"
         )
         _analyse_with_rules(evidence)
 
@@ -236,7 +223,7 @@ Keep the report concise — use bullet points where possible."""
 def _analyse_with_rules(evidence: dict[str, dict]) -> None:
     """Deterministic RCA heuristics — no API key required."""
     lines: list[str] = [
-        "# Root Cause Analysis  *(rule-based — set ANTHROPIC_API_KEY for Claude analysis)*\n"
+        "# Root Cause Analysis  *(rule-based — configure a provider in .langsight.yaml for AI analysis)*\n"
     ]
 
     all_healthy = True
