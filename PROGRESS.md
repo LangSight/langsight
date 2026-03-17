@@ -124,9 +124,23 @@ Phase 4 (Dashboard)             ░░░░░░░░░░░░░░░░
 | `src/langsight/sdk/__init__.py` | Not started | `LangSightClient(url, api_key)` |
 | `src/langsight/sdk/client.py` | Not started | async HTTP client, fire-and-forget span POST |
 | `src/langsight/sdk/wrap.py` | Not started | `wrap(mcp_client, client)` proxy |
-| `src/langsight/sdk/models.py` | Not started | `ToolCallSpan` Pydantic model |
+| `src/langsight/sdk/models.py` | Not started | `ToolCallSpan` Pydantic model with `parent_span_id`, `span_type`, `agent_name` |
 | `api/routers/traces.py` | Not started | `POST /api/traces/spans` ingestion endpoint |
 | Tests for SDK | Not started | |
+
+### Agent Sessions and Multi-Agent Tracing (added 2026-03-17)
+| Item | Status | Notes |
+|------|--------|-------|
+| `parent_span_id` field on `ToolCallSpan` | Not started | Enables tree reconstruction; same model as OTEL |
+| `span_type` field on `ToolCallSpan` | Not started | `tool_call` \| `agent` \| `handoff` |
+| `agent_name` field on `ToolCallSpan` | Not started | For per-agent reliability metrics |
+| Agent spans (lifecycle) | Not started | Start/end spans for agent execution |
+| Handoff spans | Not started | Explicit spans for agent-to-agent delegation |
+| `api/routers/agents.py` | Not started | `GET /api/agents/sessions`, `GET /api/agents/sessions/{id}` |
+| `cli/sessions.py` | Not started | `langsight sessions` and `langsight sessions --id` |
+| ClickHouse `mv_agent_sessions` | Not started | Materialized view — pre-aggregates session metrics; Phase 3 prereq |
+| SDK `agent_session()` context manager | Not started | Auto-propagates session_id and trace_id to nested wrap() calls |
+| Tests for session grouping + tree reconstruction | Not started | |
 
 ### Framework Integrations
 | Item | Status | Notes |

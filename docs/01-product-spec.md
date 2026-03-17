@@ -1,8 +1,8 @@
 # AgentGuard: Product Specification
 
-> **Version**: 1.0.0-draft
-> **Date**: 2026-03-15
-> **Status**: Draft for Review
+> **Version**: 1.1.0
+> **Date**: 2026-03-17
+> **Status**: Updated — agent observability pivot
 > **Author**: Product & Engineering
 
 ---
@@ -24,11 +24,13 @@
 
 ### One-Liner
 
-**AgentGuard is an open-source observability and security platform purpose-built for MCP (Model Context Protocol) tool infrastructure -- the missing "Datadog for MCP" that tells you which tool is broken, which tool is lying, and which tool is draining your budget.**
+**LangSight is the observability layer for AI agent tool calls — traces, costs, and reliability across single and multi-agent workflows, with built-in MCP health monitoring and security scanning.**
 
 ### Elevator Pitch
 
-Your AI agents rely on MCP tools to read databases, call APIs, search documents, and take actions. But when an agent produces a wrong answer, takes 45 seconds to respond, or silently returns stale data -- you have no idea whether the problem is the LLM, the prompt, or one of the 12 MCP tools in the chain. AgentGuard gives you real-time health monitoring, security scanning, and root-cause attribution for every MCP tool your agents depend on. Think of it as the reliability layer between your agents and the tools they call.
+When your AI agent fails, you need to know: what tools did it call, in what order, how long did each one take, which ones failed, and what did it cost? Then you need to know whether those tools are healthy, secure, and not being silently poisoned. LangSight answers both questions. It traces every tool call your agents make across single and multi-agent workflows, then independently monitors the health and security of each MCP server — so you always know what happened and why.
+
+(changed from original: was MCP-health-first positioning, now agent-trace-first; MCP health is still a core feature but secondary to tool call observability)
 
 ### Problem Statement
 
@@ -44,9 +46,15 @@ MCP has become the de facto standard for connecting AI agents to external tools.
 | Exposed MCP servers (no auth) | 8,000+ | Security research, 2025 |
 | Agentic AI projects predicted to fail by 2027 | 40% | Gartner |
 
-**The core problem**: Teams deploying AI agents with MCP tools are flying blind. They cannot answer basic operational questions:
+**The core problem**: Teams deploying AI agents with MCP tools are flying blind. They cannot answer either primary or secondary operational questions:
 
-1. **"Is this tool returning correct data?"** -- A Snowflake MCP tool returns query results, but the schema changed last Tuesday. The agent now hallucinates column names because the tool description is stale. Nobody knows until a customer reports wrong numbers in a dashboard.
+**Primary (agent-level)**: "What did my agent call, in what order, how long did each tool take, which ones failed, and what did it cost?" This is the first question every on-call engineer asks when a multi-agent workflow misbehaves.
+
+**Secondary (infrastructure-level)**: "Are my MCP servers healthy and secure?" Answering the primary question leads immediately to this one.
+
+1. **"What did my agent call?"** -- An orchestrator agent delegates to three sub-agents. Each sub-agent calls multiple MCP tools. When the workflow fails, you have no trace of the full call tree. You cannot tell whether the problem is the orchestrator's routing decision, a sub-agent's tool choice, or a specific tool returning bad data.
+
+2. **"Is this tool returning correct data?"** -- A Snowflake MCP tool returns query results, but the schema changed last Tuesday. The agent now hallucinates column names because the tool description is stale. Nobody knows until a customer reports wrong numbers in a dashboard.
 
 2. **"Which of my 15 tools caused this agent failure?"** -- An agent orchestrating tools for customer support (Jira lookup, knowledge base search, Slack notification, CRM update) fails 12% of the time. The team suspects the Jira tool but has no data to confirm. They spend 3 days manually replaying requests.
 
@@ -60,11 +68,11 @@ MCP has become the de facto standard for connecting AI agents to external tools.
 |------|-------------|----------------|
 | MCPcat | Analytics/logging for MCP calls | No security scanning, no schema tracking, no alerting, analytics only |
 | Datadog | Commercial APM with MCP traces | $$$, no MCP-specific health checks, no tool poisoning detection |
-| Langfuse | LLM observability with basic MCP spans | No MCP health monitoring, no security, designed for LLM traces not tool infra |
+| Langfuse | LLM observability — prompts, completions, token costs, evals | Does not monitor tool infrastructure; no MCP health checks, no CVE scanning, no schema drift, no tool poisoning detection. **Complementary, not competing.** |
 | Sentry | JS-only MCP error tracking (beta) | Single language, beta quality, no proactive monitoring |
 | Portkey | LLM gateway with routing | Not an observability tool, no MCP-specific features |
 
-No existing tool answers all four questions above. AgentGuard does.
+No existing tool answers all questions above. LangSight does. Langfuse is the deliberate exception — it answers different questions and they work together (see Competitive Positioning below).
 
 ### Why Now
 
@@ -173,28 +181,28 @@ No existing tool answers all four questions above. AgentGuard does.
 
 ## 3. Product Vision
 
-### What AgentGuard IS
+### What LangSight IS
 
-AgentGuard is **the observability and security layer for MCP tool infrastructure**. It sits between your AI agents and the MCP tools they depend on, providing:
+LangSight is **the observability layer for AI agent tool calls**. It gives you full trace visibility into every MCP tool call your agents make — across single-agent and multi-agent workflows — and independently monitors the health and security of each MCP server.
 
-1. **Health monitoring** for every MCP server and tool in your fleet
-2. **Security scanning** for vulnerabilities, misconfigurations, and poisoning attacks
-3. **Reliability analytics** with tool-level success rates, latency, and failure patterns
-4. **Root cause attribution** that maps agent failures back to specific tool failures
-5. **Cost attribution** that tracks spend per tool, per agent, per task
-6. **Proactive alerting** that warns you before tools degrade enough to impact users
+1. **Agent session tracing** — what did my agent call, in what order, how long did each tool take, which ones failed, and what did it cost? (PRIMARY)
+2. **Multi-agent tree tracing** — when Agent A hands off to Agent B which calls Agent C, trace the full call tree via `parent_span_id` (PRIMARY)
+3. **Per-session cost attribution** — cost per tool, per agent, per session (PRIMARY)
+4. **MCP health monitoring** — continuous health checks, schema drift detection, latency tracking (SECONDARY but unique vs competitors)
+5. **Security scanning** — CVE, OWASP MCP Top 10, tool poisoning detection, auth audit (SECONDARY but unique vs competitors)
+6. **Proactive alerting** — fires before tools degrade enough to impact users
 
-AgentGuard is **tool-infrastructure focused**. It cares about whether `mcp-snowflake` is healthy, returning correct schemas, and not vulnerable to CVEs. It does NOT care about whether GPT-4 is better than Claude at summarization.
+(changed from original: ordering reflects the product pivot to agent observability as primary; MCP health/security remain in scope and are unique differentiators, but are now framed as supporting capabilities)
 
-### What AgentGuard is NOT
+### What LangSight is NOT
 
-| AgentGuard is NOT... | Because... | Use Instead |
+| LangSight is NOT... | Because... | Use Instead |
 |---------------------|-----------|-------------|
-| An LLM trace viewer | Langfuse/LangSmith already do this well | Langfuse, LangSmith |
+| An LLM prompt/completion tracer | Langfuse does this well; we trace tool calls, not LLM reasoning | Langfuse, LangSmith |
 | An eval framework | Evaluating LLM output quality is a different problem | Ragas, DeepEval, Braintrust |
 | An LLM gateway/router | Routing requests across LLM providers is orthogonal | Portkey, LiteLLM |
 | A prompt management tool | Managing prompt versions is a different workflow | Langfuse, PromptLayer |
-| A general APM tool | We focus exclusively on MCP, not HTTP/gRPC/DB monitoring | Datadog, New Relic |
+| A general APM tool | We focus exclusively on MCP tool calls, not HTTP/gRPC/DB monitoring | Datadog, New Relic |
 | An MCP server framework | We observe MCP servers, we don't help you build them | MCP SDK, FastMCP |
 
 ### Competitive Positioning
@@ -229,7 +237,14 @@ AgentGuard is **tool-infrastructure focused**. It cares about whether `mcp-snowf
                               |
 ```
 
-**vs. Langfuse**: Langfuse is the best LLM observability platform. It traces LLM calls, tracks prompts, and shows you the full agent execution flow. AgentGuard **complements** Langfuse by providing depth on the MCP tool layer that Langfuse intentionally keeps shallow. Langfuse shows you "the agent called `mcp-snowflake.query` and it took 2.3s." AgentGuard shows you "mcp-snowflake has been returning schema-mismatched responses since 14:00 UTC, affecting 34% of calls, because the upstream Snowflake table was altered." We integrate with Langfuse traces and enrich them with tool health context.
+**vs. Langfuse**: LangSight and Langfuse answer different questions and are designed to work together — not compete.
+
+- **Langfuse**: "What did the LLM think and say?" — prompts, completions, token costs, evaluations, the reasoning layer.
+- **LangSight**: "What happened when the agent tried to use its tools?" — tool call traces, tool costs, tool reliability, MCP server health.
+
+Langfuse shows you "the LLM decided to call `postgres-mcp/query`". LangSight shows you "that tool call took 4 seconds and returned an error because the connection pool was exhausted". They are complementary layers of the same observability stack.
+
+LangSight has capabilities Langfuse does not and will not build: MCP server health checks (synthetic probes, not just passive recording), CVE scanning, OWASP MCP Top 10 compliance, schema drift detection, tool poisoning detection, and alerting on DOWN/DEGRADED servers. These are tool-infrastructure features, not LLM-layer features.
 
 **vs. MCPcat**: MCPcat provides analytics and logging for MCP calls. It is a good starting point for understanding MCP usage patterns. AgentGuard goes deeper with proactive health monitoring (synthetic checks, schema validation), security scanning (CVEs, poisoning, OWASP), and root cause attribution. MCPcat tells you what happened; AgentGuard tells you why and warns you before it happens again.
 
@@ -712,6 +727,41 @@ Run 'agentguard health check --all' for detailed health analysis
 **Timeline**: In progress — started 2026-03-17
 **Goal**: Make LangSight a 2-line integration for any Python agent developer. Ship the SDK wrapper, framework adapters, LibreChat plugin, and `langsight investigate` before OTEL infrastructure. (changed from original: was Tool Reliability + Quality Scoring; SDK-first approach adopted after studying Langfuse adoption model)
 
+#### 5.2.0 Agent Sessions and Multi-Agent Tracing (added 2026-03-17)
+
+This is the primary new capability added in the product pivot. The goal is to answer: "What did my agent call, in what order, how long did each tool take, which ones failed, what did it cost?"
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| Agent Sessions | Group all tool calls from one agent run into a session with cost, call count, and failure summary | P0 |
+| Session Trace View | Full ordered trace for one session: `langsight sessions --id sess-abc123` | P0 |
+| Multi-Agent Tree | When Agent A hands off to B which hands off to C, show the full call tree via `parent_span_id` | P0 |
+| `parent_span_id` on ToolCallSpan | Field that links a span to its parent span, enabling tree reconstruction from flat span storage | P0 |
+| Agent spans | Lifecycle spans for agent start/end (not just tool call spans) | P1 |
+| Handoff spans | Explicit spans that record agent-to-agent delegation events | P1 |
+| Per-session cost | "$0.023 on sess-abc123 by support-agent" | P0 |
+| Agent reliability | Success rate per agent (not just per tool) | P1 |
+| `mv_agent_sessions` materialized view | ClickHouse materialized view that pre-aggregates session-level metrics from spans | P0 |
+
+**Multi-Agent Tree Example**:
+
+```
+Task: "Resolve customer complaint #4821"
+│
+├── Agent A: orchestrator
+│   ├── Tool: jira-mcp/get_issue          42ms  ✓
+│   ├── → Handoff to Agent B: "research"
+│   │   ├── Tool: confluence-mcp/search   891ms  ✓
+│   │   └── Tool: web-search/query        120ms  ✓
+│   └── → Handoff to Agent C: "action"
+│       ├── Tool: crm-mcp/update_ticket   89ms   ✓
+│       └── Tool: slack-mcp/notify        —      ✗
+│
+Total: 1,482ms | 3 agents | 5 tool calls | 1 failure | $0.023
+```
+
+**Technical model**: `parent_span_id` on `ToolCallSpan` is the same model as OpenTelemetry distributed tracing. Spans form a tree by following parent-child relationships stored in flat span tables. No separate tree storage is required — tree reconstruction is a recursive query at read time.
+
 #### 5.2.1 SDK Integration
 
 | Feature | Description | Priority |
@@ -970,17 +1020,20 @@ Recommended fixes (in priority order):
 
 This section is as important as what we build. Clear boundaries prevent scope creep and ensure we complement the ecosystem rather than poorly re-inventing what others do well.
 
-### 6.1 Not a Trace Viewer
+### 6.1 Not an LLM Prompt/Completion Tracer
 
-**Langfuse and LangSmith** are purpose-built for viewing LLM execution traces -- the full chain of LLM calls, tool invocations, and agent reasoning steps. They visualize the "what happened in this agent execution" question beautifully.
+**Langfuse and LangSmith** are purpose-built for tracing LLM calls — prompts sent to models, completions returned, token counts, reasoning chains, and evaluation scores. They answer "what did the LLM think and say?"
 
-AgentGuard does NOT build:
-- A trace visualization UI
-- A trace storage backend
-- Prompt/completion logging
-- Agent execution replay
+LangSight does NOT build:
+- Prompt logging or prompt management
+- LLM completion logging or token cost tracking at the LLM level
+- Agent reasoning chain visualization
+- LLM output evals or ground truth comparison
+- Agent execution replay at the LLM layer
 
-AgentGuard DOES: enrich existing traces with tool health context. When you view a trace in Langfuse and see a slow MCP call, AgentGuard provides the "why" -- the tool's health status, recent schema changes, known issues.
+LangSight DOES trace tool calls at the MCP layer. When your agent calls `postgres-mcp/query`, LangSight records the span — timing, result, cost, parent agent. It does NOT record what the LLM was "thinking" when it decided to make that call. Langfuse records that. They are complementary.
+
+(added 2026-03-17: boundary with Langfuse clarified as part of product pivot)
 
 ### 6.2 Not an Eval Framework
 

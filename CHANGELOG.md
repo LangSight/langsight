@@ -18,11 +18,33 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - LibreChat native plugin (`integrations/librechat/langsight-plugin.js`) — LANGSIGHT_URL env var pattern, ~50 lines
 - `POST /api/traces/spans` ingestion endpoint — accepts `ToolCallSpan` batches from SDK and plugins
 - `langsight investigate` command — Claude Agent SDK RCA with rule-based fallback
+- `parent_span_id` field on `ToolCallSpan` — enables multi-agent call tree reconstruction; same model as OpenTelemetry distributed tracing
+- `span_type` field on `ToolCallSpan` — `tool_call` | `agent` | `handoff`
+- `agent_name` field on `ToolCallSpan` — for per-agent reliability metrics
+- Agent spans — lifecycle spans for agent start/end events
+- Handoff spans — explicit spans recording agent-to-agent delegation with parent and child agent names
+- `GET /api/agents/sessions` endpoint — list agent sessions with aggregated cost, call count, failure count
+- `GET /api/agents/sessions/{session_id}` endpoint — full span tree for one session, reconstructed via `parent_span_id`
+- `langsight sessions` CLI command — Rich table of recent sessions with cost and failures
+- `langsight sessions --id <id>` — full multi-agent trace view for one session
+- SDK `agent_session()` context manager — auto-propagates `session_id` and `trace_id` to all nested `wrap()` calls
+- `mv_agent_sessions` ClickHouse materialized view (Phase 3) — pre-aggregates session-level metrics
+
+### Changed
+- Product positioning: primary value proposition is now agent session tracing and multi-agent tree visibility; MCP health monitoring and security scanning are secondary (but still unique vs competitors)
+- Product one-liner updated: "LangSight is the observability layer for AI agent tool calls — traces, costs, and reliability across single and multi-agent workflows, with built-in MCP health monitoring and security scanning."
+- README tagline updated to lead with agent observability
+- Quickstart updated: Step 3 is now "Trace your agent sessions"; health check moved to Step 4
+- `docs/01-product-spec.md`: elevator pitch, feature list, competitor table, "What We Don't Build" all updated
+- `docs/04-implementation-plan.md`: Phase 2 section 2.6 added for agent sessions/multi-agent tracing; ClickHouse schema updated with `parent_span_id`, `session_id`, `agent_name`, `span_type`
 
 ### Architecture Decisions
+- **Agent-observability-first pivot** (2026-03-17): Primary user question is "what did my agent call, in what order, how long did each tool take, which ones failed, what did it cost?" MCP health is a differentiating secondary feature. Repositioning does not change the roadmap — it changes the narrative and the CLI UX entry point.
+- **`parent_span_id` for multi-agent trees** (2026-03-17): Using the OpenTelemetry span parent-child model rather than a proprietary tree structure. No separate tree storage needed — reconstruction is a recursive query on flat span tables. This is the same model Jaeger and Tempo use for distributed traces.
 - **SDK-first before OTEL** (2026-03-17): Engineers integrate via `LangSightClient` + `wrap()` before configuring OTEL infrastructure. OTEL remains in Phase 3 for enterprise teams that already run collectors.
 - **LibreChat plugin, not OTEL** (2026-03-17): LibreChat uses env vars for Langfuse integration natively; LangSight follows the same pattern rather than requiring OTEL.
 - **Framework adapters alongside SDK** (2026-03-17): CrewAI/Pydantic AI users get idiomatic integration objects instead of having to find and wrap the MCP client manually.
+- **LangSight is complementary to Langfuse, not competing** (2026-03-17): Langfuse traces LLM calls (prompts, completions). LangSight traces tool calls (MCP spans). They answer different questions and are used together. This distinction is now explicit in product docs and README.
 
 ---
 

@@ -1,12 +1,12 @@
 # LangSight
 
-**Open-source observability and security platform for MCP tool infrastructure.**
+**The observability layer for AI agent tool calls — traces, costs, and reliability across single and multi-agent workflows, with built-in MCP health monitoring and security scanning.**
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![Status: Pre-release](https://img.shields.io/badge/status-pre--release-orange)]()
 
-Your AI agents rely on MCP tools to read databases, call APIs, and take actions. When an agent produces a wrong answer, responds slowly, or silently returns stale data — you have no way to know whether the problem is the LLM, the prompt, or one of the dozen MCP tools in the chain. **LangSight gives you real-time health monitoring, security scanning, and root-cause attribution for every MCP tool your agents depend on.**
+When your AI agent fails, you need to answer: what tools did it call, in what order, how long did each one take, which ones failed, and what did it cost? Then you need to know whether those tools are healthy and secure. **LangSight answers both questions** — full trace visibility for every MCP tool call your agents make, plus independent health monitoring and security scanning for each MCP server.
 
 ---
 
@@ -14,10 +14,12 @@ Your AI agents rely on MCP tools to read databases, call APIs, and take actions.
 
 | Problem | Without LangSight | With LangSight |
 |---------|-------------------|----------------|
-| Tool returning stale data | Agent hallucinates; you find out from users | Schema drift alert fires in <5 minutes |
+| What did my agent call? | No trace of which tools ran, in what order | `langsight sessions --id` shows the full call tree |
+| Multi-agent handoffs | No visibility across agent boundaries | Full tree via `parent_span_id` — same model as OTEL |
 | Which of 15 tools failed? | 3 days of manual log replay | Root cause in the `investigate` command |
+| Tool call costs | Invisible, discovered on the invoice | Per-session cost attribution in real time |
+| Tool returning stale data | Agent hallucinates; you find out from users | Schema drift alert fires in <5 minutes |
 | CVE in a community MCP server | Unknown until exploited | Automated CVE scan on every check |
-| Tool call costs | Invisible, discovered on the invoice | Per-tool cost attribution in real time |
 
 > [!NOTE]
 > 66% of MCP servers have critical code smells and 8,000+ are exposed without authentication (Invariant Labs, 2025). LangSight is the reliability and security layer that MCP infrastructure has been missing.
@@ -26,13 +28,26 @@ Your AI agents rely on MCP tools to read databases, call APIs, and take actions.
 
 ## Features
 
-**MCP Health Monitoring**
+**Agent Session Tracing** *(Primary)*
+- Full ordered trace for every agent session — every tool call, every handoff, every failure
+- `langsight sessions` — list sessions with cost, call counts, and failure counts
+- `langsight sessions --id` — drill into a single session to see the complete call tree
+- Per-session cost: "$0.023 on sess-abc123 by support-agent"
+- Agent reliability metrics — success rate per agent, not just per tool
+
+**Multi-Agent Tree Tracing** *(Primary)*
+- When Agent A delegates to Agent B which calls Agent C, trace the full tree
+- `parent_span_id` on every span — same model as OpenTelemetry distributed tracing
+- Handoff spans — explicit records of agent-to-agent delegation events
+- Tree reconstruction from flat span storage via recursive parent-child query
+
+**MCP Health Monitoring** *(Secondary, unique vs competitors)*
 - Continuous availability checks (ping, tools list, optional sample invocation)
 - Server state tracking: `UP → DEGRADED → DOWN → STALE`
 - Schema drift detection — alerts when a tool's output format changes
 - p50/p99 latency tracking per server and per tool
 
-**Security Scanning**
+**Security Scanning** *(Secondary, unique vs competitors)*
 - CVE database matching (NVD + GitHub Advisory + MCP-specific advisories)
 - OWASP MCP Top 10 automated checks
 - Tool poisoning detection — baseline hash comparison on every scan
@@ -43,13 +58,8 @@ Your AI agents rely on MCP tools to read databases, call APIs, and take actions.
 - Generic webhook for PagerDuty, Opsgenie, and custom systems
 - Alert deduplication — no alert storms during outages
 
-**Cost Attribution** *(Phase 1)*
-- Per-tool call counting from OTEL traces
-- Cost estimation per task and per agent session
-- Identifies tools being over-called (agent retry loops)
-
 **Root Cause Investigation** *(Phase 2)*
-- Timeline correlation across MCP calls, LLM traces, and agent sessions
+- Timeline correlation across MCP calls and agent sessions
 - `langsight investigate` — narrows failures to a specific tool and time window
 
 ---
@@ -123,6 +133,32 @@ langsight init
 
 LangSight auto-discovers MCP servers from Claude Desktop (`~/.config/claude/claude_desktop_config.json`), Cursor (`~/.cursor/mcp.json`), and VS Code (`~/.vscode/mcp.json`). It writes a `.langsight.yaml` config file you can customize.
 
+### Trace your agent sessions
+
+Add two lines to your agent code:
+
+```python
+from langsight.sdk import LangSightClient
+
+client = LangSightClient(url="http://localhost:8000")
+traced = client.wrap(mcp_session, server_name="postgres-mcp", agent_name="support-agent")
+result = await traced.call_tool("query", {"sql": "SELECT * FROM orders"})
+```
+
+View sessions from the CLI:
+
+```bash
+langsight sessions
+```
+
+```
+Agent Sessions                               last 24 hours
+──────────────────────────────────────────────────────────────────────
+Session          Agent              Duration   Tools   Failures   Cost
+sess-f2a9b1      support-agent      1,482ms       5          1   $0.023
+sess-d4c7e8      data-analyst       4,210ms      12          0   $0.089
+```
+
 ### Run a health check
 
 ```bash
@@ -171,6 +207,8 @@ langsight monitor
 | Command | Description |
 |---------|-------------|
 | `langsight init` | Interactive setup wizard, generates `.langsight.yaml` |
+| `langsight sessions` | List recent agent sessions with cost and failure counts |
+| `langsight sessions --id <id>` | Full multi-agent trace for one session *(Phase 2)* |
 | `langsight mcp-health` | Health status of all configured MCP servers |
 | `langsight security-scan` | CVE + OWASP MCP Top 10 security audit |
 | `langsight monitor` | Start continuous background monitoring with alerts |
@@ -255,8 +293,13 @@ The PostgreSQL database is pre-seeded with an e-commerce schema: `customers`, `p
 - [ ] `langsight costs` — tool call cost attribution from OTEL traces
 - [ ] SQLite backend (no Docker required for local use)
 
-### Phase 2 — API + Investigation
-- [ ] FastAPI REST API (`/api/health`, `/api/security`, `/api/tools`, `/api/costs`)
+### Phase 2 — SDK + Agent Tracing + Investigation
+- [ ] `LangSightClient` Python SDK — 2-line instrumentation for any MCP client
+- [ ] `parent_span_id` on `ToolCallSpan` — multi-agent tree tracing
+- [ ] `langsight sessions` — agent session list and trace drill-down
+- [ ] `GET /api/agents/sessions` and `GET /api/agents/sessions/{id}` endpoints
+- [ ] Agent spans (lifecycle) and Handoff spans (agent-to-agent delegation)
+- [ ] Framework adapters: CrewAI, Pydantic AI, OpenAI Agents SDK
 - [ ] `langsight investigate` — AI-assisted root cause attribution (Claude Agent SDK)
 - [ ] ClickHouse + PostgreSQL backend for production deployments
 - [ ] OTEL Collector integration for trace ingestion from agent frameworks

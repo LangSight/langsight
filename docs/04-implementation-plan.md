@@ -839,6 +839,70 @@ cp integrations/librechat/langsight-plugin.js /path/to/librechat/plugins/
 
 ---
 
+#### 2.6 Agent Sessions and Multi-Agent Tracing (added 2026-03-17)
+
+**Objective**: Answer the primary new product question — "What did my agent call, in what order, how long did each tool take, which ones failed, what did it cost?" — including full multi-agent call trees.
+
+**Why here**: This is now the primary value proposition of the product (see product pivot 2026-03-17). The `parent_span_id` mechanism is a model change and a new set of API endpoints. It can be built on top of the existing SDK and `ToolCallSpan` infrastructure from 2.1.
+
+| Task | Description | Est. Hours |
+|------|-------------|-----------|
+| AG.1 | Add `parent_span_id: str \| None` and `agent_name: str \| None` and `span_type: Literal["tool_call", "agent", "handoff"]` to `ToolCallSpan` model in `src/langsight/sdk/models.py` | 2h |
+| AG.2 | Add `span_type` values to storage schemas (SQLite DDL + PostgreSQL migration) | 2h |
+| AG.3 | `GET /api/agents/sessions` — list all agent sessions with aggregated cost, call count, failure count, start/end time | 4h |
+| AG.4 | `GET /api/agents/sessions/{session_id}` — full ordered span tree for one session; reconstruct hierarchy from `parent_span_id` | 4h |
+| AG.5 | `langsight sessions` CLI command — Rich table of recent sessions with cost and health | 4h |
+| AG.6 | `langsight sessions --id sess-abc123` — full trace view for one session showing multi-agent tree | 4h |
+| AG.7 | Agent span recording: lifecycle spans for agent start/end events (not just tool calls) | 3h |
+| AG.8 | Handoff spans: explicit span type for agent-to-agent delegation; records parent agent, child agent, reason | 3h |
+| AG.9 | SDK: expose `parent_span_id` and `span_type` in `wrap()` so orchestrators can pass context to sub-agents | 3h |
+| AG.10 | SDK: `client.agent_session()` context manager that auto-generates session_id and sets trace_id for all spans within | 4h |
+| AG.11 | ClickHouse `mv_agent_sessions` materialized view: pre-aggregate session-level metrics from span data (Phase 3 prereq) | 3h |
+| AG.12 | Tests: session grouping, parent_span_id tree reconstruction, handoff spans | 4h |
+
+**`parent_span_id` design**: Uses the same model as OpenTelemetry distributed tracing. Every `ToolCallSpan` optionally carries a `parent_span_id` that references another span's `span_id`. Tree reconstruction is a recursive query — no separate tree storage needed. When Agent A triggers Agent B, Agent A emits a handoff span. Agent B's tool call spans set `parent_span_id` to that handoff span's `span_id`.
+
+**CLI output (`langsight sessions`)**:
+
+```
+Agent Sessions                               last 24 hours
+──────────────────────────────────────────────────────────────────────
+Session          Agent              Duration   Tools   Failures   Cost
+sess-f2a9b1      support-agent      1,482ms       5          1   $0.023
+sess-d4c7e8      data-analyst       4,210ms      12          0   $0.089
+sess-a0b3f5      orchestrator        890ms        3          0   $0.012
+```
+
+**CLI output (`langsight sessions --id sess-f2a9b1`)**:
+
+```
+Session: sess-f2a9b1
+Agent:   orchestrator → research → action
+Started: 2026-03-17T14:02:31Z
+Total:   1,482ms | 3 agents | 5 tool calls | 1 failure | $0.023
+
+Task: "Resolve customer complaint #4821"
+│
+├── Agent: orchestrator
+│   ├── Tool: jira-mcp/get_issue        [span-001]   42ms  ✓
+│   ├── → Handoff to Agent: research    [span-002]
+│   │   ├── Tool: confluence-mcp/search [span-003]  891ms  ✓
+│   │   └── Tool: web-search/query      [span-004]  120ms  ✓
+│   └── → Handoff to Agent: action      [span-005]
+│       ├── Tool: crm-mcp/update_ticket [span-006]   89ms  ✓
+│       └── Tool: slack-mcp/notify      [span-007]    —    ✗  connection refused
+```
+
+**Acceptance Criteria**:
+- [ ] `GET /api/agents/sessions` returns sessions grouped by session_id with aggregated metrics
+- [ ] `GET /api/agents/sessions/{session_id}` reconstructs the full span tree via `parent_span_id`
+- [ ] `langsight sessions` renders a Rich table with cost and failure count per session
+- [ ] `langsight sessions --id <id>` renders the multi-agent tree with tool names, latency, and status
+- [ ] Agent B's spans correctly reference Agent A's handoff span via `parent_span_id`
+- [ ] SDK `agent_session()` context manager propagates session_id to all nested `wrap()` calls
+
+---
+
 ### Phase 3 — Backlog
 
 **Goal**: OTEL ingestion pipeline, ClickHouse backend, tool reliability engine, cost attribution. This is the production-scale infrastructure tier — comes after the SDK proves adoption.
@@ -853,7 +917,7 @@ cp integrations/librechat/langsight-plugin.js /path/to/librechat/plugins/
 | OTEL.2 | OTEL Collector (contrib) config: receive on 4317/4318, export to LangSight API |
 | OTEL.3 | ClickHouse backend: `StorageBackend` implementation using `clickhouse-connect` |
 | OTEL.4 | ClickHouse schema: `mcp_tool_calls` table (MergeTree, partitioned by day) |
-| OTEL.5 | Materialized views: `tool_reliability_hourly`, `tool_error_taxonomy` |
+| OTEL.5 | Materialized views: `tool_reliability_hourly`, `tool_error_taxonomy`, `mv_agent_sessions` (pre-aggregates session-level metrics from spans) |
 | OTEL.6 | TTL policy: tool calls 90 days, OTEL traces 30 days |
 | OTEL.7 | Docker Compose (root-level): PostgreSQL + ClickHouse + OTEL Collector + LangSight API |
 
@@ -861,15 +925,20 @@ cp integrations/librechat/langsight-plugin.js /path/to/librechat/plugins/
 
 ```sql
 CREATE TABLE mcp_tool_calls (
-    recorded_at   DateTime,
-    server_name   LowCardinality(String),
-    tool_name     LowCardinality(String),
-    trace_id      String,
-    success       Bool,
-    latency_ms    Float32,
-    error         Nullable(String),
-    input_hash    String,
-    framework     LowCardinality(String)
+    recorded_at     DateTime,
+    server_name     LowCardinality(String),
+    tool_name       LowCardinality(String),
+    trace_id        String,
+    span_id         String,
+    parent_span_id  Nullable(String),   -- added 2026-03-17: enables multi-agent tree reconstruction
+    session_id      Nullable(String),   -- groups spans into agent sessions
+    agent_name      LowCardinality(Nullable(String)),
+    span_type       LowCardinality(String),  -- 'tool_call' | 'agent' | 'handoff'
+    success         Bool,
+    latency_ms      Float32,
+    error           Nullable(String),
+    input_hash      String,
+    framework       LowCardinality(String)
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMMDD(recorded_at)
 ORDER BY (server_name, tool_name, recorded_at)

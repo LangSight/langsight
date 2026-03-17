@@ -50,6 +50,30 @@ Once the API is running:
 |--------|------|-------------|
 | `POST` | `/api/traces/spans` | Ingest `ToolCallSpan` JSON from the SDK |
 | `POST` | `/api/traces/otlp` | Ingest standard OTLP/JSON traces |
+| `GET` | `/api/traces/spans` | Query spans by server, tool, session, time range |
+
+### Agent Sessions
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/agents/sessions` | List agent sessions with aggregated cost, call count, and failure count |
+| `GET` | `/api/agents/sessions/{session_id}` | Full span tree for one session, ordered by time, with `parent_span_id` hierarchy |
+
+**Session object** (returned by both endpoints):
+
+```json
+{
+  "session_id": "sess-f2a9b1",
+  "agent_name": "orchestrator",
+  "started_at": "2026-03-17T14:02:31Z",
+  "ended_at": "2026-03-17T14:02:32Z",
+  "duration_ms": 1482,
+  "tool_call_count": 5,
+  "failure_count": 1,
+  "cost_usd": 0.023,
+  "agents_involved": ["orchestrator", "research", "action"]
+}
+```
 
 ## Quick test
 

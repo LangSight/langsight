@@ -1,6 +1,6 @@
 ---
 title: "Quickstart"
-description: "From install to your first MCP health check in 5 minutes."
+description: "From install to your first agent session trace in 5 minutes."
 ---
 
 ## Prerequisites
@@ -52,7 +52,55 @@ Discovered 6 MCP servers:
 ✓ Config written to .langsight.yaml
 ```
 
-## Step 3 — Check health
+## Step 3 — Trace your agent sessions
+
+Add two lines to your agent code:
+
+```python
+from langsight.sdk import LangSightClient
+
+client = LangSightClient(url="http://localhost:8000")     # line 1
+traced = client.wrap(mcp_session, server_name="my-mcp")  # line 2
+# All call_tool() calls are now traced automatically
+```
+
+Then view sessions from the CLI:
+
+```bash
+langsight sessions
+```
+
+```
+Agent Sessions                               last 24 hours
+──────────────────────────────────────────────────────────────────────
+Session          Agent              Duration   Tools   Failures   Cost
+sess-f2a9b1      support-agent      1,482ms       5          1   $0.023
+sess-d4c7e8      data-analyst       4,210ms      12          0   $0.089
+sess-a0b3f5      orchestrator        890ms        3          0   $0.012
+```
+
+Drill into a session to see the full multi-agent trace:
+
+```bash
+langsight sessions --id sess-f2a9b1
+```
+
+```
+Session: sess-f2a9b1  |  3 agents  |  5 tool calls  |  1 failure  |  $0.023
+
+Task: "Resolve customer complaint #4821"
+│
+├── Agent: orchestrator
+│   ├── Tool: jira-mcp/get_issue        42ms  ✓
+│   ├── → Handoff to Agent: research
+│   │   ├── Tool: confluence-mcp/search 891ms  ✓
+│   │   └── Tool: web-search/query      120ms  ✓
+│   └── → Handoff to Agent: action
+│       ├── Tool: crm-mcp/update_ticket  89ms  ✓
+│       └── Tool: slack-mcp/notify        —    ✗  connection refused
+```
+
+## Step 4 — Check MCP server health
 
 ```bash
 langsight mcp-health
@@ -72,7 +120,7 @@ filesystem-mcp   ✓ up        12ms      6       8e3d7f2a…
 4/6 servers healthy
 ```
 
-## Step 4 — Run a security scan
+## Step 5 — Run a security scan
 
 ```bash
 langsight security-scan
@@ -86,7 +134,7 @@ HIGH      slack-mcp     OWASP-MCP-01   No authentication configured
 MEDIUM    postgres-mcp  OWASP-MCP-05   Tool 'query' has no input schema
 ```
 
-## Step 5 — Start continuous monitoring
+## Step 6 — Start continuous monitoring
 
 ```bash
 langsight monitor --interval 30
