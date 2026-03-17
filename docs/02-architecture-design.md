@@ -1,50 +1,56 @@
-# AgentGuard: Architecture Design
+# LangSight: Architecture Design
 
-> **Version**: 1.0.0-draft
-> **Date**: 2026-03-15
-> **Status**: Draft — overview level, implementation details added during build
+> **Version**: 1.1.0
+> **Date**: 2026-03-17
+> **Status**: Active — updated with SDK, LibreChat integration, and integration paths (decided 2026-03-17)
 
 ---
 
 ## 1. System Architecture Overview
 
 ```
-                         ┌─────────────────────────────────────────────┐
-                         │            AgentGuard Platform               │
-                         │                                             │
-  MCP Servers            │  ┌───────────────┐   ┌──────────────────┐  │
-  ┌──────────┐           │  │  MCP Health    │   │  MCP Security    │  │
-  │ server-1 │◄──────────┤  │  Checker       │   │  Scanner         │  │
-  │ server-2 │◄──────────┤  │  (Python)      │   │  (Python)        │  │
-  │ server-N │◄──────────┤  └───────┬───────┘   └────────┬─────────┘  │
-  └──────────┘           │          │                     │            │
-                         │          ▼                     ▼            │
-  Agent Frameworks       │  ┌─────────────────────────────────────┐   │
-  (CrewAI, Pydantic AI,  │  │           ClickHouse                │   │
-   OpenAI Agents, etc.)  │  │  - MCP health check results         │   │
-         │               │  │  - Tool call metrics (from OTEL)    │   │
-         │ OTLP          │  │  - Security scan results            │   │
-         ▼               │  │  - Cost data                        │   │
-  ┌──────────────┐       │  └─────────────────────────────────────┘   │
-  │ OTEL         │───────┤                                            │
-  │ Collector    │       │  ┌─────────────────────────────────────┐   │
-  └──────────────┘       │  │           PostgreSQL                │   │
-                         │  │  - MCP server configs               │   │
-                         │  │  - Alert rules & history            │   │
-                         │  │  - API keys & users                 │   │
-                         │  └─────────────────────────────────────┘   │
-                         │                                             │
-                         │  ┌───────────────┐   ┌──────────────────┐  │
-                         │  │  FastAPI       │   │  CLI (Click)     │  │
-                         │  │  REST API      │   │  agentguard      │  │
-                         │  └───────┬───────┘   └──────────────────┘  │
-                         │          │                                  │
-                         │          ▼                                  │
-                         │  ┌──────────────────┐  ┌────────────────┐  │
-                         │  │  Next.js          │  │  Slack/Webhook │  │
-                         │  │  Dashboard (Ph.3) │  │  Alerts        │  │
-                         │  └──────────────────┘  └────────────────┘  │
-                         └─────────────────────────────────────────────┘
+  Integration Paths (Phase 2)        LangSight Platform
+  ─────────────────────────────────  ─────────────────────────────────────────────
+                                     ┌───────────────────────────────────────────┐
+  Python agents (CrewAI, Pydantic    │                                           │
+  AI, OpenAI Agents SDK)             │  ┌───────────────┐  ┌──────────────────┐  │
+         │                           │  │  MCP Health    │  │  MCP Security    │  │
+         │  LangSight SDK             │  │  Checker       │  │  Scanner         │  │
+         │  wrap(mcp_client)          │  │  (Python)      │  │  (Python)        │  │
+         ▼                           │  └───────┬───────┘  └────────┬─────────┘  │
+  ┌──────────────────┐               │          │                   │            │
+  │  LangSight SDK   │──── spans ───►│  ┌───────▼───────────────────▼─────────┐  │
+  │  (Python client) │               │  │   FastAPI REST API                   │  │
+  └──────────────────┘               │  │   /api/health/*  /api/security/*     │  │
+                                     │  │   /api/traces/spans  /api/status     │  │
+  LibreChat                          │  └───────────────────┬─────────────────┘  │
+         │                           │                      │                    │
+         │  LANGSIGHT_URL env var     │          ┌──────────▼──────────┐          │
+         │  (~50-line JS plugin)      │          │  Storage Layer      │          │
+         ▼                           │          │  SQLite (local)     │          │
+  ┌──────────────────┐               │          │  PostgreSQL (prod)  │          │
+  │  LangSight       │──── spans ───►│          │  ClickHouse (Ph.3)  │          │
+  │  LibreChat Plugin│               │          └─────────────────────┘          │
+  └──────────────────┘               │                                           │
+                                     │  ┌───────────────┐  ┌──────────────────┐  │
+  Agent Frameworks (Phase 3)         │  │  CLI (Click)  │  │  Slack/Webhook   │  │
+  (OTEL-capable: Pydantic AI,        │  │  langsight    │  │  Alerts          │  │
+   Strands, AG2)                     │  └───────────────┘  └──────────────────┘  │
+         │                           │                                           │
+         │  OTLP spans               │  ┌──────────────────────────────────────┐  │
+         ▼                           │  │  Next.js Dashboard (Phase 4)         │  │
+  ┌──────────────┐                   │  └──────────────────────────────────────┘  │
+  │ OTEL         │──── OTLP ────────►│                                           │
+  │ Collector    │                   └───────────────────────────────────────────┘
+  └──────────────┘
+
+  MCP Servers (health-checked directly by LangSight)
+  ┌──────────┐  ┌──────────┐  ┌──────────┐
+  │ server-1 │  │ server-2 │  │ server-N │
+  └──────────┘  └──────────┘  └──────────┘
+       ▲              ▲             ▲
+       └──────────────┴─────────────┘
+          MCP Health Checker (JSON-RPC)
 ```
 
 ---
@@ -202,7 +208,55 @@
 - JSON responses, standard pagination (offset/limit)
 - WebSocket endpoint for real-time health updates (dashboard use)
 
-### 2.9 Next.js Dashboard (Phase 3)
+### 2.9 LangSight SDK (Phase 2)
+
+**Purpose**: Python client library that wraps any MCP client and records tool call spans to the LangSight API. This is the primary integration path for Python agent developers.
+
+**Design** (decided 2026-03-17 — SDK-first before OTEL):
+- `LangSightClient(url, api_key)`: async HTTP client, reads `LANGSIGHT_URL` + `LANGSIGHT_API_KEY` from env if not provided
+- `wrap(mcp_client, langsight_client)`: returns a proxy object that intercepts `call_tool()`, measures latency, and POSTs a `ToolCallSpan` to `POST /api/traces/spans`
+- Fail-open: SDK errors are logged but never propagate to the wrapped MCP client — observability cannot break an agent
+- Context manager support for lifecycle management
+
+**Source**: `src/langsight/sdk/`
+
+**Key design decisions**:
+- Chose proxy/wrapper pattern over monkey-patching: explicit, debuggable, no magic
+- Fire-and-forget HTTP POST for spans: agent latency is not impacted by LangSight availability
+- `ToolCallSpan` is sent asynchronously using `asyncio.create_task()` — the wrapped `call_tool()` returns to the caller immediately after the underlying call completes
+
+### 2.10 LibreChat Plugin (Phase 2)
+
+**Purpose**: 50-line Node.js integration that intercepts LibreChat's MCP call path and sends spans to the LangSight API.
+
+**Why a native plugin, not OTEL** (decided 2026-03-17):
+- LibreChat does NOT emit OTEL natively
+- LibreChat's Langfuse integration works via env vars (`LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`) read by built-in code — not through an OTEL collector
+- The lowest-friction integration follows the same pattern: `LANGSIGHT_URL` + `LANGSIGHT_API_KEY` env vars, plugin file copied to the LibreChat plugins directory
+
+**How it works**:
+- Plugin intercepts LibreChat's internal MCP dispatch hook
+- Reads `LANGSIGHT_URL` and `LANGSIGHT_API_KEY` from the process environment
+- POSTs `ToolCallSpan`-compatible JSON to `POST /api/traces/spans`
+- Fails open: errors are swallowed, LibreChat continues normally
+
+**Source**: `integrations/librechat/langsight-plugin.js`
+
+### 2.11 Framework Adapters (Phase 2)
+
+**Purpose**: Integration adapters for agent frameworks that have their own tool-call lifecycle hooks. Engineers add one callback/middleware object instead of wrapping the MCP client directly.
+
+**Source**: `src/langsight/integrations/`
+
+| File | Framework | Hook point |
+|------|-----------|-----------|
+| `crewai.py` | CrewAI | `Crew(callbacks=[LangSightCrewAICallback(...)])` |
+| `pydantic_ai.py` | Pydantic AI | Wraps `Tool` objects at registration time |
+| `openai_agents.py` | OpenAI Agents SDK | Hooks into function call events |
+
+All adapters share a common `IntegrationBase` that handles span serialization and HTTP dispatch. Fail-open behavior is enforced at the base class level.
+
+### 2.12 Next.js Dashboard (Phase 4)
 
 **Purpose**: Web UI for teams that prefer a visual interface over CLI.
 
@@ -356,22 +410,44 @@ AgentGuard discovers MCP servers from:
 | **SSE** | HTTP GET to SSE endpoint | Send JSON-RPC over SSE |
 | **StreamableHTTP** | HTTP POST to server endpoint | Send JSON-RPC over HTTP |
 
-### Agent Framework Integration
-No custom integration needed — AgentGuard accepts standard OTEL spans:
-| Framework | OTEL Support | How to connect |
-|---|---|---|
-| Pydantic AI | Native (`Agent.instrument_all()`) | Point OTEL exporter to AgentGuard's Collector |
-| Strands (AWS) | Native (`pip install strands-agents[otel]`) | Point OTEL exporter to AgentGuard's Collector |
-| AG2/AutoGen | Native (`autogen.opentelemetry`) | Point OTEL exporter to AgentGuard's Collector |
-| Claude Agent SDK | Native | Point OTEL exporter to AgentGuard's Collector |
-| CrewAI | Via community OTEL package | Point OTEL exporter to AgentGuard's Collector |
-| OpenAI Agents SDK | Via community instrumentor | Point OTEL exporter to AgentGuard's Collector |
-| LangChain | Via OpenLLMetry | Point OTEL exporter to AgentGuard's Collector |
+### Integration Paths
+
+LangSight supports three distinct integration paths. Engineers choose based on their stack.
+
+**Path 1 — LangSight SDK (Phase 2, primary)**: For Python agents using MCP clients directly.
+
+```python
+from langsight.sdk import LangSightClient, wrap
+
+client = LangSightClient()  # reads LANGSIGHT_URL from env
+mcp_client = wrap(mcp_client, client)
+```
+
+**Path 2 — Framework Adapters (Phase 2)**: For agents built on CrewAI, Pydantic AI, or OpenAI Agents SDK.
+
+```python
+from langsight.integrations.crewai import LangSightCrewAICallback
+crew = Crew(callbacks=[LangSightCrewAICallback()])
+```
+
+**Path 3 — OTEL Collector (Phase 3)**: For frameworks with native OTEL support. Point the OTEL exporter at LangSight's collector endpoint. No code changes needed in the agent.
+
+| Framework | OTEL Support | Path |
+|-----------|-------------|------|
+| Pydantic AI | Native (`Agent.instrument_all()`) | Path 3 (OTEL) or Path 2 (adapter) |
+| Strands (AWS) | Native (`pip install strands-agents[otel]`) | Path 3 (OTEL) |
+| AG2/AutoGen | Native (`autogen.opentelemetry`) | Path 3 (OTEL) |
+| Claude Agent SDK | Native | Path 3 (OTEL) |
+| CrewAI | Via community OTEL package | Path 2 (adapter) preferred |
+| OpenAI Agents SDK | Via community instrumentor | Path 2 (adapter) preferred |
+| LibreChat | No OTEL — native Langfuse env var pattern | Path 4 (LibreChat plugin) |
+
+**Path 4 — LibreChat Plugin (Phase 2)**: Copy one file to LibreChat plugins directory, set two env vars.
 
 ### Optional: Langfuse Integration
-- AgentGuard can read traces from Langfuse API (for enriched RCA in Phase 2)
-- Not required — AgentGuard works standalone with its own OTEL ingestion
-- Config: `langfuse_api_url` + `langfuse_api_key` in .agentguard.yaml
+- LangSight can read traces from Langfuse API (for enriched RCA in Phase 2)
+- Not required — LangSight works standalone
+- Config: `langfuse_api_url` + `langfuse_api_key` in `.langsight.yaml`
 
 ---
 

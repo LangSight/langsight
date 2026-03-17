@@ -707,22 +707,44 @@ Run 'agentguard health check --all' for detailed health analysis
 
 ---
 
-### Phase 2: Tool Reliability + Quality Scoring + Alerting
+### Phase 2: SDK Integration + Framework Adapters + Investigate (revised 2026-03-17)
 
-**Timeline**: 8 weeks after Phase 1
-**Goal**: Move from CLI-only to a lightweight server that continuously monitors MCP tools, collects metrics from live agent traffic, and alerts on problems.
+**Timeline**: In progress — started 2026-03-17
+**Goal**: Make LangSight a 2-line integration for any Python agent developer. Ship the SDK wrapper, framework adapters, LibreChat plugin, and `langsight investigate` before OTEL infrastructure. (changed from original: was Tool Reliability + Quality Scoring; SDK-first approach adopted after studying Langfuse adoption model)
 
-#### 5.2.1 Metrics Collection Agent
+#### 5.2.1 SDK Integration
 
 | Feature | Description | Priority |
 |---------|-------------|----------|
-| MCP proxy mode | Transparent proxy that sits between agents and MCP servers, capturing all tool calls | P0 |
-| SDK instrumentation | Python and TypeScript SDKs that wrap MCP client calls and emit metrics | P0 |
-| OpenTelemetry export | Emit metrics and traces as OTLP for integration with existing observability stacks | P0 |
-| Prometheus endpoint | `/metrics` endpoint with all MCP metrics in Prometheus exposition format | P0 |
-| Langfuse integration | Read trace IDs from context, link AgentGuard data to Langfuse traces | P1 |
+| `LangSightClient` | Python client: `LangSightClient(url, api_key)`, reads `LANGSIGHT_URL` from env | P0 |
+| `wrap(mcp_client)` | Proxy wrapper that intercepts MCP tool calls, records spans, fail-open | P0 |
+| Framework: CrewAI | `LangSightCrewAICallback` — one-line integration for CrewAI agents | P0 |
+| Framework: Pydantic AI | Middleware that wraps Pydantic AI `Tool` objects at registration | P0 |
+| Framework: OpenAI Agents SDK | Hook into OpenAI Agents SDK function call events | P0 |
+| LibreChat plugin | 50-line Node.js plugin using `LANGSIGHT_URL` env var (same pattern as Langfuse) | P0 |
+| Auto-configure | `langsight.integrations.auto_configure()` detects installed frameworks | P1 |
+| Span ingestion API | `POST /api/traces/spans` accepts `ToolCallSpan` batches from SDK and plugins | P0 |
 
-#### 5.2.2 Tool Quality Scoring
+#### 5.2.2 LibreChat Integration
+
+LangSight integrates with LibreChat as a native plugin, NOT via OTEL. LibreChat's existing Langfuse integration uses env vars (`LANGFUSE_SECRET_KEY` etc.) that LibreChat reads natively. The LangSight integration follows the same pattern:
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| LibreChat plugin file | Copy `integrations/librechat/langsight-plugin.js` to LibreChat plugins dir | P0 |
+| Env var configuration | `LANGSIGHT_URL` + `LANGSIGHT_API_KEY` — no other setup required | P0 |
+| Fail-open behavior | Plugin errors are swallowed; LibreChat continues working when LangSight is unreachable | P0 |
+
+#### 5.2.3 Metrics Collection (original Phase 2.1 — moved to Phase 3)
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| MCP proxy mode | Transparent proxy that sits between agents and MCP servers, capturing all tool calls | P1 |
+| OpenTelemetry export | Emit metrics and traces as OTLP for integration with existing observability stacks | P1 (Phase 3) |
+| Prometheus endpoint | `/metrics` endpoint with all MCP metrics in Prometheus exposition format | P1 (Phase 3) |
+| Langfuse integration | Read trace IDs from context, link LangSight data to Langfuse traces | P1 |
+
+#### 5.2.4 Tool Quality Scoring
 
 | Feature | Description | Priority |
 |---------|-------------|----------|
@@ -924,18 +946,23 @@ Recommended fixes (in priority order):
 
 #### 5.3.3 Integrations
 
-| Feature | Description | Priority |
-|---------|-------------|----------|
-| Langfuse bi-directional | Push tool health data to Langfuse, pull trace context from Langfuse | P0 |
-| Prometheus/Grafana | Native metrics export, pre-built Grafana dashboards | P0 |
-| PagerDuty | Alert routing with severity mapping | P0 |
-| Slack | Alert notifications, interactive commands (`/agentguard status`) | P0 |
-| OpsGenie | Alert routing | P1 |
-| Datadog | Forward metrics to Datadog for teams using Datadog as primary | P1 |
-| GitHub Actions | CI/CD step for security scanning in PR pipelines | P1 |
-| Terraform provider | Manage AgentGuard configuration as code | P2 |
-| SIEM export | Forward security events to Splunk, Sentinel, etc. | P2 |
-| Backstage plugin | Service catalog integration for MCP server ownership | P2 |
+| Feature | Description | Priority | Phase |
+|---------|-------------|----------|-------|
+| **LibreChat plugin** | Native plugin using `LANGSIGHT_URL` env var, intercepts MCP calls | P0 | **Phase 2** |
+| **SDK (Python)** | `LangSightClient` + `wrap()` for direct MCP client instrumentation | P0 | **Phase 2** |
+| **CrewAI adapter** | `LangSightCrewAICallback` for CrewAI agent frameworks | P0 | **Phase 2** |
+| **Pydantic AI adapter** | Middleware for Pydantic AI Tool objects | P0 | **Phase 2** |
+| **OpenAI Agents SDK adapter** | Hook into OpenAI Agents SDK function call events | P0 | **Phase 2** |
+| Langfuse bi-directional | Push tool health data to Langfuse, pull trace context | P1 | Phase 3 |
+| Prometheus/Grafana | Native metrics export, pre-built Grafana dashboards | P0 | Phase 3 |
+| PagerDuty | Alert routing with severity mapping | P0 | Phase 3 |
+| Slack | Alert notifications (built in Phase 1) | P0 | Done |
+| OpsGenie | Alert routing | P1 | Phase 3 |
+| Datadog | Forward metrics to Datadog | P1 | Phase 3 |
+| GitHub Actions | CI/CD step for security scanning in PR pipelines | P1 | Phase 3 |
+| Terraform provider | Manage LangSight configuration as code | P2 | Phase 4+ |
+| SIEM export | Forward security events to Splunk, Sentinel, etc. | P2 | Phase 4+ |
+| Backstage plugin | Service catalog integration for MCP server ownership | P2 | Phase 4+ |
 
 ---
 
@@ -992,14 +1019,25 @@ AgentGuard does NOT build:
 
 ### 6.5 Not an MCP Server Framework
 
-**MCP SDK and FastMCP** help you build MCP servers. AgentGuard observes MCP servers that already exist.
+**MCP SDK and FastMCP** help you build MCP servers. LangSight observes MCP servers that already exist.
 
-AgentGuard does NOT build:
+LangSight does NOT build:
 - MCP server scaffolding
 - Tool implementation helpers
 - MCP protocol libraries
 
-AgentGuard DOES: provide a testing/validation framework that MCP server developers can use to verify their server meets health and security standards before deployment.
+LangSight DOES: provide a testing/validation framework that MCP server developers can use to verify their server meets health and security standards before deployment.
+
+### 6.7 Not a Full OTEL Replacement (Phase 2)
+
+LangSight's SDK wrapper and framework adapters do not replace OTEL. They provide a faster on-ramp for teams who want LangSight value before configuring an OTEL collector. For teams already running OTEL, the collector integration (Phase 3) is the preferred path.
+
+LangSight does NOT (in Phase 2):
+- Accept OTLP spans directly from agent frameworks (Phase 3)
+- Replace ClickHouse or Prometheus as a long-term metrics store (Phase 3)
+- Provide a full distributed tracing solution
+
+LangSight DOES: provide a 2-line SDK integration today that produces the same MCP tool call visibility, stored in SQLite/PostgreSQL until ClickHouse is stood up in Phase 3.
 
 ### 6.6 Not a General-Purpose APM
 

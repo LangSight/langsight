@@ -1,9 +1,11 @@
-# AgentGuard: Implementation Plan
+# LangSight: Implementation Plan
 
-> **Version**: 1.0.0-draft
-> **Date**: 2026-03-15
-> **Status**: Draft for Review
+> **Version**: 1.1.0
+> **Date**: 2026-03-17
+> **Status**: Active — updated to reflect actual build state and revised phase structure
 > **Author**: Engineering
+>
+> **Change from 1.0**: Phase 1 is complete (95%). Phases 2-4 rewritten to reflect the SDK-first strategy decided on 2026-03-17 after studying Langfuse's adoption model. Original phases 3-6 (OTEL, RCA, costs, dashboard) remain in scope but reordered. See CHANGELOG.md for full decision history.
 
 ---
 
@@ -15,6 +17,19 @@
 4. [Repo Structure](#4-repo-structure)
 5. [Development Environment Setup](#5-development-environment-setup)
 6. [Verification Plan](#6-verification-plan)
+
+---
+
+## Current Progress Summary (as of 2026-03-17)
+
+```
+Phase 1 (CLI MVP)               ████████████████  95% — COMPLETE
+Phase 2 (SDK + Framework Integ) ████████░░░░░░░░  50% — IN PROGRESS
+Phase 3 (OTEL + Costs)          ░░░░░░░░░░░░░░░░   0% — BACKLOG
+Phase 4 (Dashboard)             ░░░░░░░░░░░░░░░░   0% — BACKLOG
+```
+
+**Shipped metrics**: 262 tests passing, 88% coverage, 5 CLI commands, 6 API endpoints, SQLite + PostgreSQL storage backends, FastAPI REST API, GitHub Actions CI.
 
 ---
 
@@ -184,7 +199,15 @@ The MVP is "done" when all of the following are true:
 
 ---
 
-### Phase 2: Security Scanner (Weeks 4-5)
+---
+
+> **NOTE**: The original implementation plan below (Phase 2 Security Scanner through Phase 6 Dashboard) has been superseded. See the **Revised Phase Structure** section that follows the original Phase 1. The per-feature task breakdowns in Section 3 reflect the original plan and will be updated as Phase 2 work progresses.
+
+---
+
+### Phase 2 (ORIGINAL — Superseded): Security Scanner (Weeks 4-5)
+
+**Status**: COMPLETE — delivered as part of Phase 1. Security scanner (CVE, OWASP, poisoning detection) shipped ahead of schedule.
 
 **Goal**: Full security scanning: CVE detection, tool poisoning analysis, OWASP MCP Top 10 audit, auth audit, security scoring.
 
@@ -622,6 +645,304 @@ The MVP is "done" when all of the following are true:
 - [ ] `docker pull ghcr.io/agentguard/agentguard:0.1.0` works
 - [ ] Helm chart deploys successfully on a fresh Kubernetes cluster
 - [ ] README quickstart works end-to-end in under 5 minutes
+
+---
+
+## 2B. Revised Phase Structure (decided 2026-03-17)
+
+### Why we changed the plan
+
+After studying Langfuse's adoption model, we identified a critical gap: engineers will not configure an OTEL collector before they have seen the tool produce value. The original plan (Phase 3: OTEL ingestion) required Docker infrastructure before any integration was possible.
+
+**Insight**: Langfuse grew because `from langfuse.openai import OpenAI` was two lines. We need the same for LangSight. Engineers should be able to add LangSight instrumentation to an existing agent in under 5 minutes before ever touching a config file.
+
+**Secondary insight**: LibreChat's Langfuse integration is not OTEL-based — it uses env vars (`LANGFUSE_SECRET_KEY`, etc.) that LibreChat reads natively. A LangSight plugin for LibreChat follows the same pattern (`LANGSIGHT_URL`) and is ~50 lines of Node.js.
+
+**Decision**: SDK wrapper and framework integrations ship in Phase 2, OTEL and ClickHouse infrastructure moves to Phase 3. (decided 2026-03-17)
+
+---
+
+### Phase 1 — COMPLETE (95%)
+
+**Completed**: 2026-03-17
+
+| Item | Status |
+|------|--------|
+| CLI: `langsight init` | ✅ Done |
+| CLI: `langsight mcp-health` | ✅ Done |
+| CLI: `langsight security-scan` | ✅ Done |
+| CLI: `langsight monitor` | ✅ Done |
+| CLI: `langsight serve` (FastAPI) | ✅ Done |
+| Storage: SQLiteBackend | ✅ Done |
+| Storage: PostgresBackend | ✅ Done |
+| Storage: `open_storage()` factory | ✅ Done |
+| FastAPI REST API: `/api/health/*` | ✅ Done |
+| FastAPI REST API: `/api/security/scan` | ✅ Done |
+| FastAPI REST API: `/api/status` | ✅ Done |
+| Alerts: engine + Slack + webhook | ✅ Done |
+| Security: CVE, OWASP, poisoning, auth | ✅ Done |
+| CI/CD: GitHub Actions (lint + unit + integration) | ✅ Done |
+| Tests: 262 passing, 88% coverage | ✅ Done |
+
+**Remaining (Phase 1 tail)**:
+- [ ] `langsight costs` command stub (placeholder, full implementation Phase 3)
+- [ ] PyPI packaging and `pip install langsight` verification
+
+---
+
+### Phase 2 — In Progress (50%)
+
+**Goal**: Make LangSight a 2-line integration for any Python agent developer. SDK wrapper ships before OTEL. Framework adapters and LibreChat plugin ship alongside the SDK.
+
+**Timeline estimate**: 4-6 weeks from Phase 1 completion
+
+#### 2.1 LangSight SDK Wrapper
+
+**Objective**: `LangSightClient` + `wrap(mcp_client)` — engineers add two lines to existing agent code and get full MCP call instrumentation.
+
+```python
+# Target developer experience
+from langsight.sdk import LangSightClient
+
+client = LangSightClient(url="http://localhost:8000")
+mcp_client = wrap(mcp_client, client)  # all tool calls now recorded
+```
+
+| Task | Description | Est. Hours |
+|------|-------------|-----------|
+| SDK.1 | `src/langsight/sdk/__init__.py`: `LangSightClient(url, api_key)` — async HTTP client wrapper | 4h |
+| SDK.2 | `LangSightClient.record_tool_call(span)`: POST to `/api/traces/spans`, fire-and-forget | 4h |
+| SDK.3 | `wrap(mcp_client, langsight_client)`: proxy that intercepts `call_tool()`, measures latency, records success/error | 6h |
+| SDK.4 | Context manager support: `async with LangSightClient(...) as client:` | 2h |
+| SDK.5 | `ToolCallSpan` Pydantic model: server_name, tool_name, input_hash, success, latency_ms, error, trace_id | 3h |
+| SDK.6 | Fail-open: SDK errors never propagate to the wrapped MCP client — observability must not break the agent | 3h |
+| SDK.7 | `LANGSIGHT_URL` env var support: `LangSightClient()` with no args reads from env | 2h |
+| SDK.8 | Tests: wrap a mock MCP client, verify spans are sent; verify fail-open on HTTP errors | 4h |
+
+**Deliverables**:
+- `src/langsight/sdk/` package with `LangSightClient`, `wrap()`, `ToolCallSpan`
+- SDK docs with quickstart example
+
+**Acceptance Criteria**:
+- [ ] `wrap(mcp_client, client)` transparently proxies all `call_tool()` calls
+- [ ] A tool call that succeeds produces a span with `success=True`, measured `latency_ms`
+- [ ] A tool call that raises an exception produces a span with `success=False`, `error=str(e)`, and the exception re-raises to the caller
+- [ ] HTTP errors from LangSight API do not surface to the agent (fail-open)
+- [ ] `LangSightClient(url="http://localhost:8000")` and `LangSightClient()` (env var) both work
+
+---
+
+#### 2.2 Framework Integrations
+
+**Objective**: Native integration adapters for CrewAI, Pydantic AI, and OpenAI Agents SDK so engineers do not need to manually call `wrap()`.
+
+| Task | Description | Est. Hours |
+|------|-------------|-----------|
+| FW.1 | `src/langsight/integrations/crewai.py`: `LangSightCrewAICallback` — hooks into CrewAI's tool call lifecycle | 6h |
+| FW.2 | `src/langsight/integrations/pydantic_ai.py`: middleware that wraps Pydantic AI's `Tool` objects | 6h |
+| FW.3 | `src/langsight/integrations/openai_agents.py`: hook into OpenAI Agents SDK's function call events | 6h |
+| FW.4 | Common `IntegrationBase`: shared span-recording logic used by all adapters | 3h |
+| FW.5 | Integration tests: each adapter tested with a minimal real framework agent (mocked MCP server) | 6h |
+| FW.6 | Framework detection: `langsight.integrations.auto_configure()` detects installed frameworks and registers adapters | 3h |
+
+**Integration pattern (CrewAI example)**:
+
+```python
+from langsight.integrations.crewai import LangSightCrewAICallback
+
+crew = Crew(
+    agents=[...],
+    tasks=[...],
+    callbacks=[LangSightCrewAICallback(langsight_url="http://localhost:8000")]
+)
+```
+
+**Acceptance Criteria**:
+- [ ] CrewAI adapter records tool calls without requiring `wrap()` on the MCP client
+- [ ] Pydantic AI adapter records spans for all `Tool` invocations
+- [ ] OpenAI Agents SDK adapter records function call events
+- [ ] All adapters respect fail-open: agent execution continues if LangSight is unreachable
+- [ ] Trace IDs propagate correctly across nested tool calls
+
+---
+
+#### 2.3 LibreChat Plugin
+
+**Objective**: 50-line Node.js plugin that hooks into LibreChat's MCP call path using the `LANGSIGHT_URL` env var — same pattern LibreChat already uses for Langfuse.
+
+**Why this approach** (decided 2026-03-17): LibreChat does not emit OTEL natively. It has Langfuse built in via `LANGFUSE_SECRET_KEY` env vars. Building a native plugin following the same pattern is the path of least resistance for LibreChat users, and it requires no changes to LibreChat core.
+
+| Task | Description | Est. Hours |
+|------|-------------|-----------|
+| LC.1 | `integrations/librechat/langsight-plugin.js`: intercept LibreChat's MCP call path | 6h |
+| LC.2 | Read `LANGSIGHT_URL` + `LANGSIGHT_API_KEY` from env, POST spans to `/api/traces/spans` | 3h |
+| LC.3 | Handle connection errors silently (fail-open, same as Langfuse plugin) | 2h |
+| LC.4 | `integrations/librechat/README.md`: installation instructions (copy file, set env vars) | 2h |
+| LC.5 | Test with a local LibreChat instance (integration test, manual verification) | 3h |
+
+**Installation pattern**:
+
+```bash
+# In LibreChat .env
+LANGSIGHT_URL=http://localhost:8000
+LANGSIGHT_API_KEY=ls_key_...
+
+# Copy plugin to LibreChat plugins directory
+cp integrations/librechat/langsight-plugin.js /path/to/librechat/plugins/
+```
+
+**Acceptance Criteria**:
+- [ ] Plugin file is self-contained — no npm dependencies beyond what LibreChat already has
+- [ ] MCP tool calls in LibreChat appear as spans in LangSight API
+- [ ] Plugin fails open: LibreChat continues working when LangSight is unreachable
+- [ ] Installation requires only two env vars and copying one file
+
+---
+
+#### 2.4 `langsight investigate` Command
+
+**Objective**: AI-powered root cause analysis using Claude Agent SDK. Queries health history, recent alerts, and schema changes to attribute agent failures.
+
+| Task | Description | Est. Hours |
+|------|-------------|-----------|
+| INV.1 | `src/langsight/cli/investigate.py`: Click command — `langsight investigate "description"` | 3h |
+| INV.2 | Evidence collector: query health history, alerts, schema changes for relevant time window | 6h |
+| INV.3 | Claude Agent SDK integration: feed evidence as context, structured output for findings | 6h |
+| INV.4 | Tool functions exposed to Claude: `query_health_history`, `query_recent_alerts`, `query_schema_changes` | 4h |
+| INV.5 | Cost controls: max 50K tokens per investigation, timeout 120s, max 20 tool calls | 3h |
+| INV.6 | Rule-based fallback: when `ANTHROPIC_API_KEY` is not set, use deterministic heuristics | 4h |
+| INV.7 | Tests: mocked Claude responses, verify evidence collection, verify fallback | 4h |
+
+**Acceptance Criteria**:
+- [ ] `langsight investigate "agent returned wrong data"` produces a structured finding with confidence level and recommendations
+- [ ] Investigation completes within 120 seconds for typical failure scenarios
+- [ ] Fallback mode (no API key) produces useful output based on health history alone
+- [ ] Cost per investigation stays under $0.50 for typical scenarios
+
+---
+
+#### 2.5 API: Span Ingestion Endpoint
+
+**Objective**: Add `POST /api/traces/spans` to the FastAPI REST API so the SDK and framework adapters have a target to write to.
+
+| Task | Description | Est. Hours |
+|------|-------------|-----------|
+| API.1 | `src/langsight/api/routers/traces.py`: `POST /api/traces/spans` — accept `ToolCallSpan` batch | 4h |
+| API.2 | Write spans to storage backend (SQLite in dev, PostgreSQL in production) | 3h |
+| API.3 | `GET /api/traces/spans`: query spans by server, tool, time range, success status | 3h |
+| API.4 | Tests: verify ingestion, verify query filtering | 3h |
+
+**Acceptance Criteria**:
+- [ ] `POST /api/traces/spans` accepts a batch of up to 1000 spans
+- [ ] Spans are queryable within 1 second of ingestion (SQLite) and 5 seconds (PostgreSQL)
+- [ ] `GET /api/traces/spans?tool=my_tool&since=2026-03-17T00:00:00Z` returns correct results
+
+---
+
+### Phase 3 — Backlog
+
+**Goal**: OTEL ingestion pipeline, ClickHouse backend, tool reliability engine, cost attribution. This is the production-scale infrastructure tier — comes after the SDK proves adoption.
+
+**Why OTEL comes here, not Phase 2**: Enterprise teams adopting LangSight via the SDK will ask for OTEL integration once they trust the tool. Starting with OTEL-first would have required Docker infrastructure as a prerequisite, blocking adoption for the majority of users who use Python agents directly.
+
+#### 3.1 OTEL Ingestion
+
+| Task | Description |
+|------|-------------|
+| OTEL.1 | `POST /api/traces/otlp`: accept standard OTLP protobuf spans |
+| OTEL.2 | OTEL Collector (contrib) config: receive on 4317/4318, export to LangSight API |
+| OTEL.3 | ClickHouse backend: `StorageBackend` implementation using `clickhouse-connect` |
+| OTEL.4 | ClickHouse schema: `mcp_tool_calls` table (MergeTree, partitioned by day) |
+| OTEL.5 | Materialized views: `tool_reliability_hourly`, `tool_error_taxonomy` |
+| OTEL.6 | TTL policy: tool calls 90 days, OTEL traces 30 days |
+| OTEL.7 | Docker Compose (root-level): PostgreSQL + ClickHouse + OTEL Collector + LangSight API |
+
+**ClickHouse schema (target)**:
+
+```sql
+CREATE TABLE mcp_tool_calls (
+    recorded_at   DateTime,
+    server_name   LowCardinality(String),
+    tool_name     LowCardinality(String),
+    trace_id      String,
+    success       Bool,
+    latency_ms    Float32,
+    error         Nullable(String),
+    input_hash    String,
+    framework     LowCardinality(String)
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMMDD(recorded_at)
+ORDER BY (server_name, tool_name, recorded_at)
+TTL recorded_at + INTERVAL 90 DAY;
+```
+
+#### 3.2 Tool Reliability Engine
+
+| Task | Description |
+|------|-------------|
+| REL.1 | ClickHouse materialized view: success rate, error rate, p95 latency per tool per hour |
+| REL.2 | Failure taxonomy: classify errors into timeout, auth_error, schema_mismatch, rate_limited, unknown |
+| REL.3 | Baseline learning: 7-day rolling baseline per tool, alert on deviation |
+| REL.4 | `GET /api/tools/reliability`: return per-tool metrics over configurable window |
+| REL.5 | Tool quality score v2: incorporate live traffic data (error rate, p95) into scoring |
+
+#### 3.3 Cost Attribution
+
+| Task | Description |
+|------|-------------|
+| COST.1 | Cost rules config in `.langsight.yaml`: per-call, per-token, per-byte pricing per tool |
+| COST.2 | Cost calculation engine: apply rules to `mcp_tool_calls` in ClickHouse |
+| COST.3 | `langsight costs` CLI command: weekly breakdown by tool, anomaly highlights |
+| COST.4 | Budget alerts: configurable spend limits per tool/team, fire at 80% and 100% |
+| COST.5 | `GET /api/costs/breakdown`: return cost aggregation by tool, period |
+
+#### 3.4 Root-Level Docker Compose
+
+The current test-mcps/docker-compose.yml is for development only. Phase 3 ships a production-ready root-level docker-compose.yml:
+
+| Service | Image | Purpose |
+|---------|-------|---------|
+| `langsight-api` | langsight/api | FastAPI REST API |
+| `langsight-worker` | langsight/worker | Health checks, security scans, alerts |
+| `postgres` | postgres:16-alpine | Metadata, configs, alerts |
+| `clickhouse` | clickhouse/clickhouse-server | Time-series tool call data |
+| `otel-collector` | otel/opentelemetry-collector-contrib | OTLP ingestion |
+
+**Acceptance Criteria for Phase 3**:
+- [ ] `docker compose up` starts full stack in under 60 seconds
+- [ ] OTEL span sent via `otel-cli` appears in ClickHouse within 5 seconds
+- [ ] `langsight costs --period 7d` shows real cost data from ClickHouse
+- [ ] Tool reliability queries return in <500ms for 1M spans in ClickHouse
+- [ ] OTEL ingestion handles >10,000 spans/second sustained
+
+---
+
+### Phase 4 — Backlog
+
+**Goal**: Next.js 15 web dashboard for teams that prefer a visual interface. Ships after Phase 3 proves the data model is stable.
+
+#### 4.1 Core Dashboard Pages
+
+| Page | Purpose |
+|------|---------|
+| Overview | Fleet health score, active alerts, most degraded tools |
+| MCP Health | Server list with health scores, drill-down to tool detail |
+| Security Posture | OWASP compliance, CVE list, poisoning scan timeline |
+| Tool Reliability | Ranked tool list, error rates, latency trends |
+| Cost Attribution | Cost breakdown by tool/team, anomaly highlights |
+| Alert Management | View/acknowledge/configure alerts |
+
+**Tech choices**:
+- Next.js 15 with App Router
+- shadcn/ui component library
+- recharts for time-series charts
+- Polls REST API (5s health, 30s metrics) — no WebSocket in v1
+
+**Acceptance Criteria for Phase 4**:
+- [ ] Overview page loads in <2 seconds with data from 50 tools
+- [ ] Real-time metric changes appear on dashboard within 10 seconds
+- [ ] Dashboard is responsive at 1920px, 1440px, 1024px
+- [ ] Alert acknowledgement in dashboard is reflected in CLI within 5 seconds
 
 ---
 

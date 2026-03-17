@@ -1,6 +1,6 @@
 # LangSight — Build Progress
 
-> Last updated: 2026-03-16
+> Last updated: 2026-03-17
 > Maintained by: docs-keeper agent — update after every feature, architectural decision, or milestone
 
 ---
@@ -8,14 +8,29 @@
 ## Current Status: Phase 2 — In Progress
 
 ```
-Phase 1 (CLI MVP)      ████████████████  95%
-Phase 2 (API + RCA)    ████████░░░░░░░░  50%
-Phase 3 (Dashboard)    ░░░░░░░░░░░░░░░░   0%
+Phase 1 (CLI MVP)               ████████████████  95% — COMPLETE
+Phase 2 (SDK + Framework Integ) ████████░░░░░░░░  50% — IN PROGRESS
+Phase 3 (OTEL + Costs)          ░░░░░░░░░░░░░░░░   0% — BACKLOG
+Phase 4 (Dashboard)             ░░░░░░░░░░░░░░░░   0% — BACKLOG
 ```
 
 ---
 
-## What's Been Built
+## Metrics
+
+| Metric | Value |
+|--------|-------|
+| Test count | 262 tests |
+| Coverage | 88% |
+| CLI commands live | 5 (`init`, `mcp-health`, `security-scan`, `monitor`, `serve`) |
+| API endpoints | 6 (`/api/health/*`, `/api/security/scan`, `/api/status`) |
+| Storage backends | 2 (SQLite, PostgreSQL) |
+| Source files | ~25 |
+| Lines of source code | ~1,800 |
+
+---
+
+## Phase 1 — COMPLETE (95%)
 
 ### Infrastructure & Tooling
 | Item | Status | Date | Notes |
@@ -36,7 +51,7 @@ Phase 3 (Dashboard)    ░░░░░░░░░░░░░░░░   0%
 | `docker-compose.yml` | ✅ Done | 2026-03-16 | postgres:16-alpine, health check, resource limits, named volume |
 | `seed.sql` | ✅ Done | 2026-03-16 | 5 tables, 10 customers, 10 orders, 5 agent_conversations |
 
-### Phase 1 — Foundation (`src/langsight/`)
+### Core Source (`src/langsight/`)
 | Item | Status | Date | Notes |
 |------|--------|------|-------|
 | `pyproject.toml` | ✅ Done | 2026-03-16 | src layout, uv, ruff, mypy strict, entry point |
@@ -45,11 +60,35 @@ Phase 3 (Dashboard)    ░░░░░░░░░░░░░░░░   0%
 | `config.py` | ✅ Done | 2026-03-16 | .langsight.yaml loader, AlertConfig, StorageConfig, Settings |
 | `health/transports.py` | ✅ Done | 2026-03-16 | stdio + SSE via MCP SDK, hash_tools() |
 | `health/checker.py` | ✅ Done | 2026-03-16 | concurrent check_many(), storage-aware, drift detection |
-| `health/schema_tracker.py` | ✅ Done | 2026-03-16 | Drift detection — baseline + compare across runs |
+| `health/schema_tracker.py` | ✅ Done | 2026-03-16 | drift detection — baseline + compare across runs |
 | `storage/base.py` | ✅ Done | 2026-03-16 | StorageBackend Protocol — SaaS-safe abstraction |
 | `storage/sqlite.py` | ✅ Done | 2026-03-16 | SQLite backend, async, DDL on first open, persists across runs |
+| `storage/postgres.py` | ✅ Done | 2026-03-17 | PostgreSQL backend, SQLAlchemy async |
+| `storage/__init__.py` | ✅ Done | 2026-03-17 | `open_storage()` factory — selects SQLite or PostgreSQL |
+| `security/models.py` | ✅ Done | 2026-03-16 | Severity, SecurityFinding, ScanResult |
+| `security/owasp_checker.py` | ✅ Done | 2026-03-16 | 5 OWASP MCP checks |
+| `security/poisoning_detector.py` | ✅ Done | 2026-03-16 | injection phrases, exfiltration, URLs, hidden unicode, base64 |
+| `security/cve_checker.py` | ✅ Done | 2026-03-16 | OSV API, pyproject.toml + package.json, fail-open |
+| `security/scanner.py` | ✅ Done | 2026-03-16 | concurrent: OWASP + poisoning + CVE |
+| `alerts/engine.py` | ✅ Done | 2026-03-16 | state-transition alerts (DOWN/recovery/drift/latency), deduplication |
+| `alerts/slack.py` | ✅ Done | 2026-03-16 | Slack Block Kit, fail-open |
+| `alerts/webhook.py` | ✅ Done | 2026-03-16 | generic JSON webhook, fail-open |
 | `cli/main.py` | ✅ Done | 2026-03-16 | Click entry point |
 | `cli/mcp_health.py` | ✅ Done | 2026-03-16 | Rich table, --json, exit 1 on DOWN/DEGRADED, SQLite wired |
+| `cli/security_scan.py` | ✅ Done | 2026-03-16 | Rich table, --json, --ci flag |
+| `cli/monitor.py` | ✅ Done | 2026-03-16 | `langsight monitor --once/--interval`, fires alerts on transitions |
+| `cli/init.py` | ✅ Done | 2026-03-16 | auto-discovers Claude Desktop, Cursor, VS Code MCP configs |
+| `api/main.py` | ✅ Done | 2026-03-17 | FastAPI app factory, `langsight serve` |
+| `api/routers/health.py` | ✅ Done | 2026-03-17 | `/api/health/*` endpoints |
+| `api/routers/security.py` | ✅ Done | 2026-03-17 | `/api/security/scan` endpoint |
+| `api/routers/status.py` | ✅ Done | 2026-03-17 | `/api/status` endpoint |
+
+### CI/CD
+| Item | Status | Date | Notes |
+|------|--------|------|-------|
+| GitHub Actions — lint | ✅ Done | 2026-03-17 | ruff check + ruff format + mypy |
+| GitHub Actions — unit/regression | ✅ Done | 2026-03-17 | pytest, 88% coverage gate |
+| GitHub Actions — integration | ✅ Done | 2026-03-17 | docker compose up, real MCP servers |
 
 ### Tests
 | Item | Status | Coverage | Notes |
@@ -60,69 +99,86 @@ Phase 3 (Dashboard)    ░░░░░░░░░░░░░░░░   0%
 | `health/test_checker.py` | ✅ Done | 85% | mocked ping + storage |
 | `health/test_schema_tracker.py` | ✅ Done | 100% | mocked storage |
 | `storage/test_sqlite.py` | ✅ Done | 100% | real in-memory SQLite |
+| `storage/test_postgres.py` | ✅ Done | — | |
 | `cli/test_mcp_health.py` | ✅ Done | — | Click CliRunner, mocked storage |
+| `cli/test_security_scan.py` | ✅ Done | — | |
+| `cli/test_monitor.py` | ✅ Done | — | |
+| `api/test_health_router.py` | ✅ Done | — | |
 | `integration/health/test_checker_integration.py` | ✅ Done | — | requires docker compose up |
-| `regression/test_health_pipeline.py` | ✅ Done | — | 10 tests: baseline, no-drift, drift, down, recovery — full stack, mocked transport |
-| **Overall coverage** | | **86%** | target: 80% ✅ |
+| `regression/test_health_pipeline.py` | ✅ Done | — | 10 tests: baseline, no-drift, drift, down, recovery |
+| **Overall coverage** | | **88%** | target: 80% ✅ |
 
-### Verified End-to-End
-```
-$ langsight mcp-health   # Run 1 — baselines stored
-  schema_tracker.baseline_stored  server=langsight-postgres  hash=bcf0ec26dff44929
-  schema_tracker.baseline_stored  server=langsight-s3        hash=d2125e3aff0a9aca
-  langsight-postgres  ✓ up   590ms   5 tools
-  langsight-s3        ✓ up   660ms   7 tools
-  2/2 servers healthy  →  saved to ~/.langsight/data.db
-
-$ langsight mcp-health   # Run 2 — no drift
-  schema_tracker.no_drift  server=langsight-postgres
-  schema_tracker.no_drift  server=langsight-s3
-  2/2 servers healthy
-```
-
----
-
-## Phase 1 — Remaining
-
+### Phase 1 — Remaining
 | Item | Priority | Notes |
 |------|----------|-------|
-| `health/schema_tracker.py` | ✅ Done | |
-| `storage/sqlite.py` | ✅ Done | |
-| `security/models.py` | ✅ Done | Severity, SecurityFinding, ScanResult |
-| `security/owasp_checker.py` | ✅ Done | 5 OWASP MCP checks (no auth, destructive tools, no schema, drift, HTTP) |
-| `security/poisoning_detector.py` | ✅ Done | Injection phrases, exfiltration, URLs, hidden unicode, base64 |
-| `security/cve_checker.py` | ✅ Done | OSV API, pyproject.toml + package.json, fail-open |
-| `security/scanner.py` | ✅ Done | Concurrent: OWASP + poisoning + CVE |
-| `cli/security_scan.py` | ✅ Done | Rich table, --json, --ci flag |
-| `alerts/engine.py` | ✅ Done | State-transition alerts (DOWN/recovery/drift/latency), deduplication |
-| `alerts/slack.py` | ✅ Done | Slack Block Kit, fail-open |
-| `alerts/webhook.py` | ✅ Done | Generic JSON webhook, fail-open |
-| `cli/monitor.py` | ✅ Done | `langsight monitor --once/--interval`, fires alerts on transitions |
-| `cli/init.py` | ✅ Done | Auto-discovers Claude Desktop, Cursor, VS Code MCP configs |
-| `cli/costs.py` | Low | `langsight costs` — OTEL-based cost attribution (Phase 2) |
-| `cli/init.py` | Low | `langsight init` — interactive setup wizard |
+| `cli/costs.py` stub | Low | Placeholder command; full implementation Phase 3 |
+| PyPI packaging | Low | `pip install langsight` via TestPyPI |
 
 ---
 
-## Phase 2 — Not Started
+## Phase 2 — In Progress (50%)
 
-| Item | Notes |
-|------|-------|
-| FastAPI REST API | `/api/health`, `/api/security`, `/api/tools`, `/api/costs` |
-| `langsight investigate` | AI-assisted root cause attribution (Claude Agent SDK) |
-| ClickHouse + PostgreSQL backend | For production deployments |
-| OTEL Collector integration | Trace ingestion from agent frameworks |
+### SDK Wrapper
+| Item | Status | Notes |
+|------|--------|-------|
+| `src/langsight/sdk/__init__.py` | Not started | `LangSightClient(url, api_key)` |
+| `src/langsight/sdk/client.py` | Not started | async HTTP client, fire-and-forget span POST |
+| `src/langsight/sdk/wrap.py` | Not started | `wrap(mcp_client, client)` proxy |
+| `src/langsight/sdk/models.py` | Not started | `ToolCallSpan` Pydantic model |
+| `api/routers/traces.py` | Not started | `POST /api/traces/spans` ingestion endpoint |
+| Tests for SDK | Not started | |
+
+### Framework Integrations
+| Item | Status | Notes |
+|------|--------|-------|
+| `src/langsight/integrations/crewai.py` | Not started | `LangSightCrewAICallback` |
+| `src/langsight/integrations/pydantic_ai.py` | Not started | Pydantic AI `Tool` wrapper |
+| `src/langsight/integrations/openai_agents.py` | Not started | OpenAI Agents SDK hook |
+| `src/langsight/integrations/base.py` | Not started | shared span-recording logic |
+
+### LibreChat Plugin
+| Item | Status | Notes |
+|------|--------|-------|
+| `integrations/librechat/langsight-plugin.js` | Not started | ~50 lines, LANGSIGHT_URL env var |
+| `integrations/librechat/README.md` | Not started | Installation instructions |
+
+### Investigate Command
+| Item | Status | Notes |
+|------|--------|-------|
+| `src/langsight/cli/investigate.py` | Not started | `langsight investigate "description"` |
+| Evidence collector | Not started | query health history, alerts, schema changes |
+| Claude Agent SDK integration | Not started | structured RCA output |
+| Rule-based fallback | Not started | deterministic heuristics when no API key |
 
 ---
 
-## Phase 3 — Not Started
+## Phase 3 — Backlog
 
 | Item | Notes |
 |------|-------|
-| Next.js 15 dashboard | shadcn/ui, real-time health overview |
-| Security posture timeline | |
-| Cost attribution charts | |
-| Alert management UI | |
+| `POST /api/traces/otlp` | Accept standard OTLP protobuf spans |
+| OTEL Collector config | Receive 4317/4318, export to LangSight |
+| ClickHouse backend | `StorageBackend` implementation |
+| `mcp_tool_calls` ClickHouse table | MergeTree, partitioned by day, TTL 90 days |
+| Materialized views | `tool_reliability_hourly`, `tool_error_taxonomy` |
+| Tool reliability engine | success rate, p95 latency, error taxonomy from ClickHouse |
+| `langsight costs` command | Full implementation with ClickHouse backend |
+| Cost attribution engine | configurable pricing rules, anomaly detection |
+| Root-level Docker Compose | PostgreSQL + ClickHouse + OTEL Collector + API + worker |
+
+---
+
+## Phase 4 — Backlog
+
+| Item | Notes |
+|------|-------|
+| Next.js 15 dashboard | shadcn/ui, App Router |
+| Overview page | fleet health score, active alerts, top degraded tools |
+| MCP Health page | server list, drill-down |
+| Security Posture page | OWASP compliance, CVE list |
+| Tool Reliability page | ranked tool list, latency trends |
+| Cost Attribution page | cost breakdown, anomaly highlights |
+| Alert Management page | view, acknowledge, configure alerts |
 
 ---
 
@@ -136,17 +192,27 @@ $ langsight mcp-health   # Run 2 — no drift
 | asyncio.gather for concurrent checks | Health check N servers in parallel, not sequentially | 2026-03-16 |
 | Module-level globals for MCP connections | Simpler than FastMCP context API, works reliably | 2026-03-16 |
 | test-mcps built with skills | Used python-mcp-server-generator + mcp-builder + docker-expert | 2026-03-16 |
+| FastAPI REST API in Phase 1 (ahead of plan) | Needed for `langsight serve`; adds no deps already in use | 2026-03-17 |
+| PostgresBackend + open_storage() factory in Phase 1 | Required to make API testable without Docker | 2026-03-17 |
+| **SDK-first before OTEL** | Engineers won't configure OTEL collectors before seeing value. Langfuse grew via `from langfuse.openai import OpenAI`. We need the same 2-line integration path. | 2026-03-17 |
+| **LibreChat plugin, not OTEL** | LibreChat does not emit OTEL natively — it uses env vars for Langfuse. Following the same pattern (`LANGSIGHT_URL`) is lower friction and requires no LibreChat core changes. | 2026-03-17 |
+| **Framework adapters alongside SDK** | CrewAI and Pydantic AI users should not need to find and wrap the MCP client manually — adapter objects are more idiomatic in those frameworks. | 2026-03-17 |
+| **OTEL + ClickHouse moved to Phase 3** | Infrastructure tier comes after SDK proves adoption. Teams that already run OTEL can point at LangSight's collector in Phase 3 with zero code changes. | 2026-03-17 |
 
 ---
 
-## Metrics
+## Verified End-to-End (Phase 1)
 
-| Metric | Value |
-|--------|-------|
-| Test count | 57 unit tests |
-| Coverage | 81% |
-| Source files | 10 |
-| Test files | 6 |
-| Lines of source code | ~450 |
-| CLI commands live | 1 (`mcp-health`) |
-| CLI commands planned | 6 (`init`, `mcp-health`, `security-scan`, `monitor`, `costs`, `investigate`) |
+```
+$ langsight mcp-health   # Run 1 — baselines stored
+  schema_tracker.baseline_stored  server=langsight-postgres  hash=bcf0ec26dff44929
+  schema_tracker.baseline_stored  server=langsight-s3        hash=d2125e3aff0a9aca
+  langsight-postgres  ✓ up   590ms   5 tools
+  langsight-s3        ✓ up   660ms   7 tools
+  2/2 servers healthy  →  saved to ~/.langsight/data.db
+
+$ langsight mcp-health   # Run 2 — no drift
+  schema_tracker.no_drift  server=langsight-postgres
+  schema_tracker.no_drift  server=langsight-s3
+  2/2 servers healthy
+```
