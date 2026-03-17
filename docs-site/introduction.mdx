@@ -1,31 +1,61 @@
 ---
 title: "Introduction"
-description: "LangSight gives you full trace visibility for every MCP tool call your agents make — across single and multi-agent workflows — plus MCP server health monitoring and security scanning."
+description: "LangSight is complete observability for everything an AI agent calls — MCP servers, HTTP APIs, functions, and sub-agents — with built-in health monitoring and security scanning for MCP servers."
 ---
 
 ## What is LangSight?
 
-When your AI agent fails, you need to answer two questions:
+Agents call three types of things:
 
-1. **What did my agent call?** — Every tool call, in order, with timing, result, and cost. Across every agent in the workflow, including handoffs from orchestrators to sub-agents.
-2. **Are those tools healthy and secure?** — Is each MCP server up? Has any tool's schema drifted? Are there known CVEs? Is anything being poisoned?
+1. **MCP servers** (postgres-mcp, jira-mcp, slack-mcp) — via the MCP protocol
+2. **Non-MCP tools** (Stripe API, Sendgrid, Python functions, code execution) — direct calls
+3. **Sub-agents** (agent-to-agent handoffs in multi-agent workflows)
 
-LangSight answers both.
+**LangSight observes all three.** Instrument once at the agent level and you automatically capture everything the agent touched — MCP or not. The `server_name` field in a `ToolCallSpan` can be "stripe-api", "sendgrid", "openai-api", or "postgres-mcp". It is not locked to MCP servers.
+
+**MCP servers get extra depth** because the MCP protocol is standard and inspectable — proactive health checks, security scanning, schema drift detection, and alerting on DOWN/DEGRADED state. Non-MCP tools appear in every trace but cannot be proactively health-checked (no standard protocol to ping).
+
+### What you can do per tool type
+
+| Tool type | Observe calls | Health check | Security scan | Cost tracking |
+|-----------|:------------:|:------------:|:-------------:|:-------------:|
+| MCP servers | Yes | Yes | Yes | Yes |
+| HTTP APIs (Stripe, Sendgrid, etc.) | Yes | No | No | Yes |
+| Python functions | Yes | No | No | Yes |
+| Sub-agents | Yes | No | No | Yes |
+
+### Example: mixed agent session
+
+```
+Agent Session: sess-abc123  (support-agent)
+│
+├── [MCP]      postgres-mcp / query          42ms  ✓  $0.001
+├── [MCP]      jira-mcp / get_issue           89ms  ✓  $0.001
+├── [HTTP API] stripe-api / charge_card      340ms  ✓  $0.005
+├── [function] calculate_discount              0ms  ✓  $0.000
+├── [MCP]      slack-mcp / post_message         —   ✗  timeout
+└── [sub-agent] billing-agent
+    ├── [MCP]  crm-mcp / update_customer     120ms  ✓  $0.001
+    └── [HTTP] sendgrid / send_email          89ms  ✓  $0.002
+
+Total: 680ms | 7 calls | 1 failure | $0.011
+MCP servers: 4 of 7 calls (health-checked and security-scanned independently)
+```
 
 **LangSight gives you:**
 
 <CardGroup cols={2}>
   <Card title="Agent Session Traces" icon="list-tree">
-    Full ordered trace for every agent session — every tool call, every handoff, every failure — with cost per session.
+    Full ordered trace for every agent session — MCP calls, HTTP API calls, function calls, sub-agent handoffs — all in one view with cost per session.
   </Card>
   <Card title="Multi-Agent Support" icon="diagram-project">
     When Agent A hands off to Agent B which calls Agent C, trace the full tree. Parent-child span relationships (same model as OpenTelemetry).
   </Card>
   <Card title="MCP Health Monitoring" icon="heart-pulse">
-    Continuous availability checks, latency tracking, and schema drift detection. Unique: synthetic probes, not just passive recording.
+    Proactive availability checks, latency tracking, and schema drift detection for MCP servers. Unique: synthetic probes, not just passive recording.
   </Card>
-  <Card title="Security Scanning" icon="shield-check">
-    CVE detection, OWASP MCP Top 10 audit, tool poisoning detection, and auth gap analysis — features Langfuse does not have.
+  <Card title="MCP Security Scanning" icon="shield-check">
+    CVE detection, OWASP MCP Top 10 audit, tool poisoning detection, and auth gap analysis — for MCP servers specifically.
   </Card>
 </CardGroup>
 

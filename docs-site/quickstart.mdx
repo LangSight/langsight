@@ -86,19 +86,22 @@ langsight sessions --id sess-f2a9b1
 ```
 
 ```
-Session: sess-f2a9b1  |  3 agents  |  5 tool calls  |  1 failure  |  $0.023
+Session: sess-f2a9b1  |  3 agents  |  7 tool calls  |  1 failure  |  $0.023
 
 Task: "Resolve customer complaint #4821"
 │
 ├── Agent: orchestrator
-│   ├── Tool: jira-mcp/get_issue        42ms  ✓
+│   ├── [MCP]      jira-mcp/get_issue        42ms  ✓  $0.001
+│   ├── [HTTP API] stripe-api/get_charges    210ms  ✓  $0.003
 │   ├── → Handoff to Agent: research
-│   │   ├── Tool: confluence-mcp/search 891ms  ✓
-│   │   └── Tool: web-search/query      120ms  ✓
+│   │   ├── [MCP]  confluence-mcp/search    891ms  ✓  $0.001
+│   │   └── [HTTP] openai-api/embed         120ms  ✓  $0.004
 │   └── → Handoff to Agent: action
-│       ├── Tool: crm-mcp/update_ticket  89ms  ✓
-│       └── Tool: slack-mcp/notify        —    ✗  connection refused
+│       ├── [MCP]      crm-mcp/update_ticket  89ms  ✓  $0.001
+│       └── [MCP]      slack-mcp/notify         —   ✗  connection refused
 ```
+
+LangSight traces every call the agent makes — MCP servers, HTTP APIs, and sub-agents — all in one tree. MCP servers (jira-mcp, confluence-mcp, crm-mcp, slack-mcp) are also independently health-checked and security-scanned. HTTP APIs (stripe-api, openai-api) appear in the trace but are observed passively only.
 
 ## Step 4 — Check MCP server health
 

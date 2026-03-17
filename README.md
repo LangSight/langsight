@@ -1,12 +1,12 @@
 # LangSight
 
-**The observability layer for AI agent tool calls — traces, costs, and reliability across single and multi-agent workflows, with built-in MCP health monitoring and security scanning.**
+**Complete observability for everything an AI agent calls — MCP servers, HTTP APIs, functions, and sub-agents — with built-in health monitoring and security scanning for MCP servers.**
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![Status: Pre-release](https://img.shields.io/badge/status-pre--release-orange)]()
 
-When your AI agent fails, you need to answer: what tools did it call, in what order, how long did each one take, which ones failed, and what did it cost? Then you need to know whether those tools are healthy and secure. **LangSight answers both questions** — full trace visibility for every MCP tool call your agents make, plus independent health monitoring and security scanning for each MCP server.
+Agents call three types of things: MCP servers (postgres-mcp, jira-mcp, slack-mcp), non-MCP tools (Stripe API, Sendgrid, Python functions), and sub-agents. **LangSight observes all three.** Instrument once at the agent level and you automatically capture everything the agent touched — MCP or not. MCP servers get extra depth: proactive health checks, security scanning, schema drift detection, and alerting. Non-MCP tools are observed passively — every call appears in the trace, but there is no standard protocol to ping them proactively.
 
 ---
 
@@ -23,6 +23,19 @@ When your AI agent fails, you need to answer: what tools did it call, in what or
 
 > [!NOTE]
 > 66% of MCP servers have critical code smells and 8,000+ are exposed without authentication (Invariant Labs, 2025). LangSight is the reliability and security layer that MCP infrastructure has been missing.
+
+---
+
+## What LangSight can do per tool type
+
+| Tool type | Observe calls | Health check | Security scan | Cost tracking |
+|-----------|:------------:|:------------:|:-------------:|:-------------:|
+| MCP servers | Yes | Yes | Yes | Yes |
+| HTTP APIs (Stripe, Sendgrid, etc.) | Yes | No | No | Yes |
+| Python functions | Yes | No | No | Yes |
+| Sub-agents | Yes | No | No | Yes |
+
+MCP servers receive proactive health checks and security scanning because the MCP protocol is standard and inspectable. Non-MCP tools appear in every session trace but cannot be pinged or scanned — no standard protocol exists to do so.
 
 ---
 

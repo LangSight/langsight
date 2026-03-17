@@ -3,6 +3,8 @@
 > Last updated: 2026-03-17
 > Maintained by: docs-keeper agent — update after every feature, architectural decision, or milestone
 
+**Project framing**: LangSight is complete observability for everything an AI agent calls — MCP servers, HTTP APIs, Python functions, and sub-agents. Agent-level instrumentation captures all tool types in one trace. MCP servers additionally receive proactive health checks, security scanning, schema drift detection, and alerting because the MCP protocol is standard and inspectable. Non-MCP tools (HTTP APIs, functions) are passively observed in traces only.
+
 ---
 
 ## Current Status: Phase 2 — In Progress

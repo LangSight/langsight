@@ -9,6 +9,21 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Product framing updated to "complete observability for everything an AI agent calls" — MCP servers, HTTP APIs, Python functions, and sub-agents (2026-03-17)
+- One-liner updated: "LangSight is complete observability for everything an AI agent calls — MCP servers, HTTP APIs, functions, and sub-agents — with built-in health monitoring and security scanning for MCP servers."
+- Capability matrix added to docs, README, and introduction page — makes explicit which features apply to all tool types vs MCP-only
+- Agent session example updated in quickstart and product spec to show mixed tool types (MCP + HTTP API + function + sub-agent) in one trace tree
+- Key framing documented: agent-level observability is a superset of MCP observability; `server_name` in `ToolCallSpan` is not locked to MCP servers
+- `docs/01-product-spec.md`: one-liner, elevator pitch, product vision all updated with complete framing
+- `docs-site/introduction.mdx`: description, hero section, capability table, and mixed session example added
+- `docs-site/quickstart.mdx`: session drill-down example updated to show mixed tool types
+- `README.md`: tagline, opening paragraph, and capability table added
+- `PROGRESS.md`: project description at top updated to reflect final framing
+
+### Architecture Decisions
+- **All tool types observed, MCP gets proactive depth** (2026-03-17): The SDK and OTLP ingestion paths capture every call an agent makes regardless of type. The distinction is proactive vs passive: MCP servers can be pinged, listed, schema-checked, and CVE-scanned between agent sessions. Stripe, Sendgrid, and Python functions cannot — no standard protocol exists to do that. This is not a limitation; it is the accurate model of what observability can provide per tool type.
+
 ### Added
 - `LangSightClient` Python SDK wrapper — 2-line MCP client instrumentation
 - `wrap(mcp_client, client)` proxy — intercepts all `call_tool()` calls, records `ToolCallSpan`

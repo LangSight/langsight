@@ -24,13 +24,44 @@
 
 ### One-Liner
 
-**LangSight is the observability layer for AI agent tool calls — traces, costs, and reliability across single and multi-agent workflows, with built-in MCP health monitoring and security scanning.**
+**LangSight is complete observability for everything an AI agent calls — MCP servers, HTTP APIs, functions, and sub-agents — with built-in health monitoring and security scanning for MCP servers.**
 
 ### Elevator Pitch
 
-When your AI agent fails, you need to know: what tools did it call, in what order, how long did each one take, which ones failed, and what did it cost? Then you need to know whether those tools are healthy, secure, and not being silently poisoned. LangSight answers both questions. It traces every tool call your agents make across single and multi-agent workflows, then independently monitors the health and security of each MCP server — so you always know what happened and why.
+Agents call three types of things: MCP servers (postgres-mcp, jira-mcp, slack-mcp), non-MCP tools (Stripe API, Sendgrid, Python functions), and sub-agents (agent-to-agent handoffs). LangSight observes all three via the SDK and OTLP. MCP servers get extra depth because the MCP protocol is standard and inspectable — proactive health checks, security scanning, schema drift detection, and alerting. Non-MCP tools (HTTP APIs, functions) are observed passively — you see every call in the trace but LangSight cannot proactively health-check them because there is no standard protocol to ping.
 
-(changed from original: was MCP-health-first positioning, now agent-trace-first; MCP health is still a core feature but secondary to tool call observability)
+**The key insight**: agent-level observability is a superset of MCP observability. If you instrument at the agent level, you automatically capture everything the agent touched — MCP or not. The `server_name` field in `ToolCallSpan` can be "stripe-api", "sendgrid", "openai-api", or "postgres-mcp" — it is not locked to MCP servers.
+
+(changed from original: was MCP-health-first positioning, then agent-trace-first; now the complete framing — all tool types observed, MCP gets proactive depth)
+
+### Tool Type Capability Matrix
+
+| Tool type | Observe calls | Health check | Security scan | Cost tracking |
+|-----------|:------------:|:------------:|:-------------:|:-------------:|
+| MCP servers | Yes | Yes | Yes | Yes |
+| HTTP APIs (Stripe, Sendgrid, etc.) | Yes | No | No | Yes |
+| Python functions | Yes | No | No | Yes |
+| Sub-agents | Yes | No | No | Yes |
+
+MCP servers receive proactive monitoring because the MCP protocol is standard and inspectable. Non-MCP tools appear in traces but cannot be pinged or scanned — there is no standard protocol to do so.
+
+### Example: Mixed Agent Session
+
+```
+Agent Session: sess-abc123  (support-agent)
+│
+├── [MCP]      postgres-mcp / query          42ms  ✓  $0.001
+├── [MCP]      jira-mcp / get_issue           89ms  ✓  $0.001
+├── [HTTP API] stripe-api / charge_card      340ms  ✓  $0.005
+├── [function] calculate_discount              0ms  ✓  $0.000
+├── [MCP]      slack-mcp / post_message         —   ✗  timeout
+└── [sub-agent] billing-agent
+    ├── [MCP]  crm-mcp / update_customer     120ms  ✓  $0.001
+    └── [HTTP] sendgrid / send_email          89ms  ✓  $0.002
+
+Total: 680ms | 7 calls | 1 failure | $0.011
+MCP servers: 4 of 7 calls (health-checked and security-scanned independently)
+```
 
 ### Problem Statement
 
@@ -183,16 +214,16 @@ No existing tool answers all questions above. LangSight does. Langfuse is the de
 
 ### What LangSight IS
 
-LangSight is **the observability layer for AI agent tool calls**. It gives you full trace visibility into every MCP tool call your agents make — across single-agent and multi-agent workflows — and independently monitors the health and security of each MCP server.
+LangSight is **complete observability for everything an AI agent calls**. It instruments at the agent level — capturing every tool call regardless of type — and adds proactive depth for MCP servers specifically because the MCP protocol is inspectable.
 
-1. **Agent session tracing** — what did my agent call, in what order, how long did each tool take, which ones failed, and what did it cost? (PRIMARY)
-2. **Multi-agent tree tracing** — when Agent A hands off to Agent B which calls Agent C, trace the full call tree via `parent_span_id` (PRIMARY)
-3. **Per-session cost attribution** — cost per tool, per agent, per session (PRIMARY)
-4. **MCP health monitoring** — continuous health checks, schema drift detection, latency tracking (SECONDARY but unique vs competitors)
-5. **Security scanning** — CVE, OWASP MCP Top 10, tool poisoning detection, auth audit (SECONDARY but unique vs competitors)
-6. **Proactive alerting** — fires before tools degrade enough to impact users
+1. **Agent session tracing** — observe every call the agent makes: MCP tools, HTTP APIs, Python functions, sub-agent handoffs, all in one ordered trace (PRIMARY — applies to all tool types)
+2. **Multi-agent tree tracing** — when Agent A hands off to Agent B which calls Agent C, trace the full tree via `parent_span_id` (PRIMARY — applies to all tool types)
+3. **Per-session cost attribution** — cost per tool, per agent, per session (PRIMARY — applies to all tool types)
+4. **MCP health monitoring** — continuous proactive health checks, schema drift detection, latency tracking (MCP servers only — unique vs competitors)
+5. **MCP security scanning** — CVE, OWASP MCP Top 10, tool poisoning detection, auth audit (MCP servers only — unique vs competitors)
+6. **Proactive alerting** — fires before MCP tools degrade enough to impact users (MCP servers only)
 
-(changed from original: ordering reflects the product pivot to agent observability as primary; MCP health/security remain in scope and are unique differentiators, but are now framed as supporting capabilities)
+(changed from original: ordering reflects the complete framing — all tool types observed at the agent level; MCP health/security are proactive extras that only apply to MCP servers)
 
 ### What LangSight is NOT
 
