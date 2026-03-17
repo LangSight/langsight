@@ -2,9 +2,10 @@
 
 **Complete observability for everything an AI agent calls — MCP servers, HTTP APIs, functions, and sub-agents — with built-in health monitoring and security scanning for MCP servers.**
 
+[![PyPI](https://img.shields.io/pypi/v/langsight)](https://pypi.org/project/langsight/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
-[![Status: Pre-release](https://img.shields.io/badge/status-pre--release-orange)]()
+[![CI](https://github.com/sumankalyan123/langsight/actions/workflows/ci.yml/badge.svg)](https://github.com/sumankalyan123/langsight/actions/workflows/ci.yml)
 
 Agents call three types of things: MCP servers (postgres-mcp, jira-mcp, slack-mcp), non-MCP tools (Stripe API, Sendgrid, Python functions), and sub-agents. **LangSight observes all three.** Instrument once at the agent level and you automatically capture everything the agent touched — MCP or not. MCP servers get extra depth: proactive health checks, security scanning, schema drift detection, and alerting. Non-MCP tools are observed passively — every call appears in the trace, but there is no standard protocol to ping them proactively.
 
