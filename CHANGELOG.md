@@ -11,6 +11,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 Post-0.1.0 work: marketing website (`website/`), product dashboard (`dashboard/`).
 
+### Added
+- `LangSightLangChainCallback` — LangChain framework integration covering LangChain agents, Langflow, LangGraph, and LangServe (`src/langsight/integrations/langchain.py`)
+
 ---
 
 ## [0.1.0] — 2026-03-17

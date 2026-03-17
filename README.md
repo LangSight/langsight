@@ -83,6 +83,7 @@ MCP servers receive proactive health checks and security scanning because the MC
 ```
   Agent Frameworks                    ┌──────────────────────────────────┐
   (CrewAI, Pydantic AI,               │         LangSight Platform        │
+   LangChain, Langflow, LangGraph,
    OpenAI Agents SDK, etc.)           │                                  │
          │ OTLP                       │  ┌─────────────┐ ┌────────────┐  │
          ▼                            │  │ MCP Health  │ │  Security  │  │
@@ -297,6 +298,26 @@ The PostgreSQL database is pre-seeded with an e-commerce schema: `customers`, `p
 
 ---
 
+## Integrations
+
+LangSight works with every major MCP client and agent framework:
+
+| Framework | Integration |
+|-----------|------------|
+| Claude Desktop | Auto-discovered by `langsight init` |
+| Cursor | Auto-discovered by `langsight init` |
+| VS Code | Auto-discovered by `langsight init` |
+| LibreChat | Native plugin — `LANGSIGHT_URL` env var |
+| LangChain | `LangSightLangChainCallback` |
+| Langflow | `LangSightLangChainCallback` (LangChain-compatible) |
+| LangGraph | `LangSightLangChainCallback` (LangChain-compatible) |
+| LangServe | `LangSightLangChainCallback` (LangChain-compatible) |
+| CrewAI | `LangSightCrewAICallback` |
+| Pydantic AI | `@langsight_tool` decorator |
+| Any OTEL framework | OTLP endpoint (`POST /api/traces/otlp`) |
+
+---
+
 ## Roadmap
 
 ### Phase 1 — CLI MVP
@@ -313,7 +334,7 @@ The PostgreSQL database is pre-seeded with an e-commerce schema: `customers`, `p
 - [ ] `langsight sessions` — agent session list and trace drill-down
 - [ ] `GET /api/agents/sessions` and `GET /api/agents/sessions/{id}` endpoints
 - [ ] Agent spans (lifecycle) and Handoff spans (agent-to-agent delegation)
-- [ ] Framework adapters: CrewAI, Pydantic AI, OpenAI Agents SDK
+- [x] Framework adapters: CrewAI, Pydantic AI, OpenAI Agents SDK, LangChain, Langflow, LangGraph, LangServe
 - [ ] `langsight investigate` — AI-assisted root cause attribution (Claude Agent SDK)
 - [ ] ClickHouse + PostgreSQL backend for production deployments
 - [ ] OTEL Collector integration for trace ingestion from agent frameworks

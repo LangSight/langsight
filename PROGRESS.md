@@ -28,7 +28,7 @@ Phase 4 (Dashboard + Website)   ████░░░░░░░░░░░░
 | CLI commands live | 8 (`init`, `mcp-health`, `security-scan`, `monitor`, `investigate`, `costs`, `sessions`, `serve`) |
 | API endpoints | 9 (`/api/agents/sessions`, `/api/agents/sessions/{id}`, `/api/health/*`, `/api/security/scan`, `/api/traces/spans`, `/api/traces/otlp`, `/api/status`) |
 | Storage backends | 3 (SQLite, PostgreSQL, ClickHouse) |
-| Framework integrations | 3 (CrewAI, Pydantic AI, LibreChat) |
+| Framework integrations | 4 (CrewAI, Pydantic AI, LibreChat, LangChain/Langflow/LangGraph/LangServe) |
 | LLM providers for investigate | 4 (Claude, OpenAI, Gemini, Ollama) |
 | Mintlify docs pages | 28 |
 | Source files | ~50 |
@@ -154,6 +154,7 @@ Phase 4 (Dashboard + Website)   ████░░░░░░░░░░░░
 | `src/langsight/integrations/crewai.py` | ✅ Done | 2026-03-17 | `LangSightCrewAICallback` |
 | `src/langsight/integrations/pydantic_ai.py` | ✅ Done | 2026-03-17 | Pydantic AI `Tool` decorator |
 | `src/langsight/integrations/base.py` | ✅ Done | 2026-03-17 | Shared span-recording logic |
+| `src/langsight/integrations/langchain.py` | ✅ Done | 2026-03-17 | `LangSightLangChainCallback` — covers LangChain, Langflow, LangGraph, LangServe |
 
 ### LibreChat Plugin
 | Item | Status | Date | Notes |
