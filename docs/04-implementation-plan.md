@@ -1,11 +1,11 @@
 # LangSight: Implementation Plan
 
-> **Version**: 1.1.0
+> **Version**: 1.2.0
 > **Date**: 2026-03-17
-> **Status**: Active — updated to reflect actual build state and revised phase structure
+> **Status**: Active — Phase 1 and Phase 2 COMPLETE. Release 0.1.0 in progress.
 > **Author**: Engineering
 >
-> **Change from 1.0**: Phase 1 is complete (95%). Phases 2-4 rewritten to reflect the SDK-first strategy decided on 2026-03-17 after studying Langfuse's adoption model. Original phases 3-6 (OTEL, RCA, costs, dashboard) remain in scope but reordered. See CHANGELOG.md for full decision history.
+> **Change from 1.1**: Phase 1 and Phase 2 are fully complete (100%). Release 0.1.0 tasks added. Phase 4 updated to reflect post-release scope. See CHANGELOG.md for full decision history.
 
 ---
 
@@ -23,13 +23,14 @@
 ## Current Progress Summary (as of 2026-03-17)
 
 ```
-Phase 1 (CLI MVP)               ████████████████  95% — COMPLETE
-Phase 2 (SDK + Framework Integ) ████████░░░░░░░░  50% — IN PROGRESS
-Phase 3 (OTEL + Costs)          ░░░░░░░░░░░░░░░░   0% — BACKLOG
-Phase 4 (Dashboard)             ░░░░░░░░░░░░░░░░   0% — BACKLOG
+Phase 1 (CLI MVP)               ████████████████ 100% — COMPLETE ✅
+Phase 2 (SDK + Framework Integ) ████████████████ 100% — COMPLETE ✅
+Phase 3 (OTEL + Costs)          ████████████████  95% — COMPLETE ✅
+Release 0.1.0                   ████████░░░░░░░░  40% — IN PROGRESS
+Phase 4 (Dashboard + Website)   ████░░░░░░░░░░░░  25% — IN PROGRESS
 ```
 
-**Shipped metrics**: 262 tests passing, 88% coverage, 5 CLI commands, 6 API endpoints, SQLite + PostgreSQL storage backends, FastAPI REST API, GitHub Actions CI.
+**Shipped metrics**: 371 tests passing, 85% coverage, 8 CLI commands, 9 API endpoints, SQLite + PostgreSQL + ClickHouse storage backends, FastAPI REST API, GitHub Actions CI, 28 Mintlify docs pages.
 
 ---
 
@@ -281,7 +282,35 @@ The MVP is "done" when all of the following are true:
 
 ---
 
+---
+
+### Release 0.1.0 — Pre-Release Checklist (2026-03-17)
+
+**Goal**: Ship the 0.1.0 release to PyPI, tag GitHub, deploy docs, and write the missing sessions CLI page.
+
+**Status**: IN PROGRESS
+
+| Task | ID | Description | Status |
+|------|----|-------------|--------|
+| R.1 | Build package | `uv build` — generate `dist/` with wheel + sdist | Pending |
+| R.2 | Publish to PyPI | `uv publish` — publish `langsight==0.1.0` to PyPI | Pending |
+| R.3 | GitHub release | `git tag v0.1.0` + create GitHub release with CHANGELOG notes | Pending |
+| R.4 | Mintlify deployment | Connect `docs-site/` to Mintlify dashboard; deploy to `docs.langsight.io` | Pending |
+| R.5 | Write sessions docs page | Create `docs-site/cli/sessions.mdx` — the only missing Mintlify page | Pending |
+| R.6 | README badges | Add PyPI version badge (`https://img.shields.io/pypi/v/langsight`) to README | Pending |
+
+**Acceptance Criteria**:
+- [ ] `pip install langsight==0.1.0` installs from PyPI on a clean Python 3.11+ env
+- [ ] `langsight --version` outputs `0.1.0`
+- [ ] GitHub release tagged `v0.1.0` with full CHANGELOG notes
+- [ ] `docs.langsight.io` resolves and shows all 28 pages
+- [ ] `docs-site/cli/sessions.mdx` covers `langsight sessions`, `--id`, `--json` flags, and Rich tree output
+
+---
+
 ### Phase 3: OTEL Ingestion + Tool Reliability (Weeks 6-8)
+
+**Status**: COMPLETE ✅ (delivered 2026-03-17 — ahead of original schedule)
 
 **Goal**: Ingest OpenTelemetry traces from agent frameworks, store in ClickHouse, compute tool reliability metrics, and track costs.
 
@@ -386,6 +415,8 @@ The MVP is "done" when all of the following are true:
 ---
 
 ### Phase 4: Alerting + Monitoring (Weeks 9-10)
+
+**Status**: COMPLETE ✅ — delivered as part of Phase 1 and Phase 2. Alerts engine, Slack Block Kit, webhook, and continuous monitor daemon all shipped.
 
 **Goal**: Production-grade alerting engine with deduplication, Slack integration, and continuous monitoring daemon.
 
@@ -536,6 +567,8 @@ The MVP is "done" when all of the following are true:
 ---
 
 ### Phase 6: Dashboard + Polish (Weeks 13-16)
+
+**Status**: POST-0.1.0 — marketing website (`website/`) and product dashboard (`dashboard/`) are post-release work. The CLI, API, SDK, integrations, and docs ship in 0.1.0. Dashboard deferred to maintain release velocity.
 
 **Goal**: Next.js web dashboard for visual monitoring, final integration testing, documentation, and public release preparation.
 

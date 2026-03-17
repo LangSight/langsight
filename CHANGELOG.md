@@ -9,6 +9,66 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Post-0.1.0 work: marketing website (`website/`), product dashboard (`dashboard/`).
+
+---
+
+## [0.1.0] — 2026-03-17
+
+Phase 1 and Phase 2 complete. First production release.
+
+### Added
+
+#### CLI (8 commands)
+- `langsight init` — auto-discovers Claude Desktop, Cursor, VS Code MCP configs
+- `langsight mcp-health` — Rich table, `--json` flag, exit 1 on DOWN/DEGRADED
+- `langsight security-scan` — Rich table, `--json`, `--ci` flag (exit 1 on CRITICAL)
+- `langsight monitor` — continuous monitoring daemon, `--once` and `--interval` flags
+- `langsight investigate` — Claude Agent SDK RCA with rule-based fallback; supports Claude, OpenAI, Gemini, Ollama
+- `langsight costs` — cost attribution report with ClickHouse backend
+- `langsight sessions` — Rich table of recent agent sessions with cost + failure counts
+- `langsight sessions --id <id>` — full multi-agent trace tree for one session
+- `langsight serve` — starts FastAPI REST API server
+
+#### REST API (9 endpoints)
+- `GET /api/agents/sessions` — list agent sessions with aggregated cost, call count, failure count
+- `GET /api/agents/sessions/{session_id}` — full span tree reconstructed via `parent_span_id`
+- `GET /api/health/servers` — list MCP servers with health status
+- `GET /api/health/servers/{name}` — single server health detail
+- `POST /api/security/scan` — trigger security scan
+- `POST /api/traces/spans` — ingest `ToolCallSpan` batches from SDK and plugins
+- `POST /api/traces/otlp` — ingest standard OTLP protobuf spans
+- `GET /api/status` — API health and component status
+
+#### Multi-Agent Tracing
+- `parent_span_id` field on `ToolCallSpan` — enables multi-agent call tree reconstruction (same model as OpenTelemetry)
+- `span_type` field on `ToolCallSpan` — `tool_call` | `agent` | `handoff`
+- `agent_name` field on `ToolCallSpan` — per-agent reliability metrics
+- `ToolCallSpan.agent_span()` — lifecycle spans for agent start/end events
+- `ToolCallSpan.handoff_span()` — explicit spans recording agent-to-agent delegation
+- `agent_session()` context manager — auto-propagates `session_id` + `trace_id` to nested `wrap()` calls
+
+#### SDK
+- `LangSightClient` Python SDK — 2-line MCP client instrumentation
+- `wrap(mcp_client, client)` proxy — intercepts all `call_tool()` calls, records `ToolCallSpan`
+
+#### Framework Integrations
+- `LangSightCrewAICallback` — CrewAI framework adapter
+- Pydantic AI integration adapter — wraps `Tool` objects at registration
+- LibreChat native plugin (`integrations/librechat/langsight-plugin.js`) — `LANGSIGHT_URL` env var pattern
+
+#### Storage Backends
+- SQLite backend (default) — zero-dependency local mode, async, DDL on first open
+- PostgreSQL backend — SQLAlchemy async
+- ClickHouse backend — `mcp_tool_calls` table with `parent_span_id` + `span_type`, TTL 90 days, `mv_agent_sessions` materialized view
+
+#### Infrastructure
+- Docker Compose (root) — ClickHouse + PostgreSQL + OTEL Collector + API
+- GitHub Actions CI — lint (ruff + mypy), unit/regression (pytest, 85% coverage gate), integration jobs
+
+#### Docs
+- `docs-site/` — 28 Mintlify pages covering all features (quickstart, CLI reference, SDK, integrations, API, self-hosting)
+
 ### Changed
 - Product framing updated to "complete observability for everything an AI agent calls" — MCP servers, HTTP APIs, Python functions, and sub-agents (2026-03-17)
 - One-liner updated: "LangSight is complete observability for everything an AI agent calls — MCP servers, HTTP APIs, functions, and sub-agents — with built-in health monitoring and security scanning for MCP servers."
@@ -60,41 +120,6 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **LibreChat plugin, not OTEL** (2026-03-17): LibreChat uses env vars for Langfuse integration natively; LangSight follows the same pattern rather than requiring OTEL.
 - **Framework adapters alongside SDK** (2026-03-17): CrewAI/Pydantic AI users get idiomatic integration objects instead of having to find and wrap the MCP client manually.
 - **LangSight is complementary to Langfuse, not competing** (2026-03-17): Langfuse traces LLM calls (prompts, completions). LangSight traces tool calls (MCP spans). They answer different questions and are used together. This distinction is now explicit in product docs and README.
-
----
-
-## [0.1.0-alpha] — 2026-03-17
-
-Phase 1 complete (95%). First public-facing code state.
-
-### Added
-- CLI: `langsight init` — auto-discovers Claude Desktop, Cursor, VS Code MCP configs
-- CLI: `langsight mcp-health` — Rich table, --json flag, exit 1 on DOWN/DEGRADED
-- CLI: `langsight security-scan` — Rich table, --json, --ci flag (exit 1 on CRITICAL)
-- CLI: `langsight monitor` — continuous monitoring daemon, `--once` and `--interval` flags
-- CLI: `langsight serve` — starts FastAPI REST API server
-- Health checker: concurrent `check_many()` via `asyncio.gather()`, schema drift detection
-- Schema tracker: baseline + compare across runs, hash-based drift detection
-- Security scanner: CVE (OSV API), OWASP MCP checks (5 rules), tool poisoning detection, auth audit
-- Tool poisoning detector: injection phrases, exfiltration patterns, URLs, hidden unicode, base64
-- Alerts engine: state-transition alerts (DOWN/recovery/schema drift/latency spike), deduplication
-- Slack alerts: Block Kit format, fail-open
-- Webhook alerts: generic JSON, fail-open
-- Storage: `SQLiteBackend` — async, DDL on first open, zero-dependency local mode
-- Storage: `PostgresBackend` — SQLAlchemy async, for server mode
-- Storage: `open_storage()` factory — selects backend from config
-- FastAPI REST API: `/api/health/*`, `/api/security/scan`, `/api/status`
-- Test MCP servers: `postgres-mcp` (5 tools), `s3-mcp` (7 tools)
-- GitHub Actions CI: lint (ruff + mypy), unit/regression (pytest, 88% coverage), integration
-- 262 tests passing, 88% coverage
-
-### Architecture Decisions
-- **CLI-first, SQLite local mode** (2026-03-16): Zero infrastructure required for first run. SQLite is the default backend; no Docker needed for `langsight mcp-health` or `langsight security-scan`.
-- **MCP Python SDK for transport** (2026-03-16): Official SDK instead of raw JSON-RPC — handles protocol edge cases, supported by Anthropic.
-- **asyncio.gather for health checks** (2026-03-16): N servers checked concurrently, not sequentially. Essential for usability at any meaningful fleet size.
-- **Module-level globals for MCP connections** (2026-03-16): Simpler than FastMCP context API for our use case; works reliably across test and prod.
-- **FastAPI REST API in Phase 1 (ahead of original plan)** (2026-03-17): Needed for `langsight serve`; all deps (FastAPI, httpx) were already in use. No additional cost.
-- **PostgresBackend + open_storage() factory in Phase 1** (2026-03-17): Required to make the API testable without Docker. Factory pattern keeps storage backend selection out of application code.
 
 ---
 

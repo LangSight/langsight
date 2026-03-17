@@ -7,13 +7,14 @@
 
 ---
 
-## Current Status: Phase 2 — In Progress
+## Current Status: Release 0.1.0 — In Progress
 
 ```
-Phase 1 (CLI MVP)               ████████████████  95% — COMPLETE
-Phase 2 (SDK + Framework Integ) ████████░░░░░░░░  50% — IN PROGRESS
-Phase 3 (OTEL + Costs)          ░░░░░░░░░░░░░░░░   0% — BACKLOG
-Phase 4 (Dashboard)             ░░░░░░░░░░░░░░░░   0% — BACKLOG
+Phase 1 (CLI MVP)               ████████████████ 100% — COMPLETE ✅
+Phase 2 (SDK + Framework Integ) ████████████████ 100% — COMPLETE ✅
+Phase 3 (OTEL + Costs)          ████████████████  95% — COMPLETE ✅
+Release 0.1.0                   ████████░░░░░░░░  40% — IN PROGRESS
+Phase 4 (Dashboard + Website)   ████░░░░░░░░░░░░  25% — IN PROGRESS (post-release)
 ```
 
 ---
@@ -22,17 +23,20 @@ Phase 4 (Dashboard)             ░░░░░░░░░░░░░░░░
 
 | Metric | Value |
 |--------|-------|
-| Test count | 262 tests |
-| Coverage | 88% |
-| CLI commands live | 5 (`init`, `mcp-health`, `security-scan`, `monitor`, `serve`) |
-| API endpoints | 6 (`/api/health/*`, `/api/security/scan`, `/api/status`) |
-| Storage backends | 2 (SQLite, PostgreSQL) |
-| Source files | ~25 |
-| Lines of source code | ~1,800 |
+| Test count | 371 tests |
+| Coverage | 85% |
+| CLI commands live | 8 (`init`, `mcp-health`, `security-scan`, `monitor`, `investigate`, `costs`, `sessions`, `serve`) |
+| API endpoints | 9 (`/api/agents/sessions`, `/api/agents/sessions/{id}`, `/api/health/*`, `/api/security/scan`, `/api/traces/spans`, `/api/traces/otlp`, `/api/status`) |
+| Storage backends | 3 (SQLite, PostgreSQL, ClickHouse) |
+| Framework integrations | 3 (CrewAI, Pydantic AI, LibreChat) |
+| LLM providers for investigate | 4 (Claude, OpenAI, Gemini, Ollama) |
+| Mintlify docs pages | 28 |
+| Source files | ~50 |
+| Lines of source code | ~4,000 |
 
 ---
 
-## Phase 1 — COMPLETE (95%)
+## Phase 1 — COMPLETE ✅ (100%)
 
 ### Infrastructure & Tooling
 | Item | Status | Date | Notes |
@@ -110,81 +114,98 @@ Phase 4 (Dashboard)             ░░░░░░░░░░░░░░░░
 | `regression/test_health_pipeline.py` | ✅ Done | — | 10 tests: baseline, no-drift, drift, down, recovery |
 | **Overall coverage** | | **88%** | target: 80% ✅ |
 
-### Phase 1 — Remaining
-| Item | Priority | Notes |
-|------|----------|-------|
-| `cli/costs.py` stub | Low | Placeholder command; full implementation Phase 3 |
-| PyPI packaging | Low | `pip install langsight` via TestPyPI |
+### Phase 1 — Additional Items Completed (beyond original scope)
+| Item | Status | Date | Notes |
+|------|--------|------|-------|
+| `cli/costs.py` | ✅ Done | 2026-03-17 | Full cost attribution engine with ClickHouse backend |
+| PyPI packaging | Pending | — | v0.1.0 release task R.2 |
 
 ---
 
-## Phase 2 — In Progress (50%)
+## Phase 2 — COMPLETE ✅ (100%)
 
 ### SDK Wrapper
-| Item | Status | Notes |
-|------|--------|-------|
-| `src/langsight/sdk/__init__.py` | Not started | `LangSightClient(url, api_key)` |
-| `src/langsight/sdk/client.py` | Not started | async HTTP client, fire-and-forget span POST |
-| `src/langsight/sdk/wrap.py` | Not started | `wrap(mcp_client, client)` proxy |
-| `src/langsight/sdk/models.py` | Not started | `ToolCallSpan` Pydantic model with `parent_span_id`, `span_type`, `agent_name` |
-| `api/routers/traces.py` | Not started | `POST /api/traces/spans` ingestion endpoint |
-| Tests for SDK | Not started | |
+| Item | Status | Date | Notes |
+|------|--------|------|-------|
+| `src/langsight/sdk/__init__.py` | ✅ Done | 2026-03-17 | `LangSightClient(url, api_key)` |
+| `src/langsight/sdk/client.py` | ✅ Done | 2026-03-17 | async HTTP client, fire-and-forget span POST |
+| `src/langsight/sdk/wrap.py` | ✅ Done | 2026-03-17 | `wrap(mcp_client, client)` proxy — intercepts all `call_tool()` |
+| `src/langsight/sdk/models.py` | ✅ Done | 2026-03-17 | `ToolCallSpan` with `parent_span_id`, `span_type`, `agent_name` |
+| `api/routers/traces.py` | ✅ Done | 2026-03-17 | `POST /api/traces/spans` + `POST /api/traces/otlp` |
+| Tests for SDK | ✅ Done | 2026-03-17 | |
 
-### Agent Sessions and Multi-Agent Tracing (added 2026-03-17)
-| Item | Status | Notes |
-|------|--------|-------|
-| `parent_span_id` field on `ToolCallSpan` | Not started | Enables tree reconstruction; same model as OTEL |
-| `span_type` field on `ToolCallSpan` | Not started | `tool_call` \| `agent` \| `handoff` |
-| `agent_name` field on `ToolCallSpan` | Not started | For per-agent reliability metrics |
-| Agent spans (lifecycle) | Not started | Start/end spans for agent execution |
-| Handoff spans | Not started | Explicit spans for agent-to-agent delegation |
-| `api/routers/agents.py` | Not started | `GET /api/agents/sessions`, `GET /api/agents/sessions/{id}` |
-| `cli/sessions.py` | Not started | `langsight sessions` and `langsight sessions --id` |
-| ClickHouse `mv_agent_sessions` | Not started | Materialized view — pre-aggregates session metrics; Phase 3 prereq |
-| SDK `agent_session()` context manager | Not started | Auto-propagates session_id and trace_id to nested wrap() calls |
-| Tests for session grouping + tree reconstruction | Not started | |
+### Agent Sessions and Multi-Agent Tracing
+| Item | Status | Date | Notes |
+|------|--------|------|-------|
+| `parent_span_id` field on `ToolCallSpan` | ✅ Done | 2026-03-17 | Same model as OTEL distributed tracing |
+| `span_type` field on `ToolCallSpan` | ✅ Done | 2026-03-17 | `tool_call` \| `agent` \| `handoff` |
+| `agent_name` field on `ToolCallSpan` | ✅ Done | 2026-03-17 | For per-agent reliability metrics |
+| Agent spans (lifecycle) | ✅ Done | 2026-03-17 | `ToolCallSpan.agent_span()` |
+| Handoff spans | ✅ Done | 2026-03-17 | `ToolCallSpan.handoff_span()` |
+| `api/routers/agents.py` | ✅ Done | 2026-03-17 | `GET /api/agents/sessions`, `GET /api/agents/sessions/{id}` |
+| `cli/sessions.py` | ✅ Done | 2026-03-17 | `langsight sessions` and `langsight sessions --id <id>` with Rich tree |
+| ClickHouse `mv_agent_sessions` | ✅ Done | 2026-03-17 | Materialized view — pre-aggregates session-level metrics |
+| SDK `agent_session()` context manager | ✅ Done | 2026-03-17 | Auto-propagates `session_id` + `trace_id` to nested `wrap()` calls |
+| Tests for session grouping + tree reconstruction | ✅ Done | 2026-03-17 | |
 
 ### Framework Integrations
-| Item | Status | Notes |
-|------|--------|-------|
-| `src/langsight/integrations/crewai.py` | Not started | `LangSightCrewAICallback` |
-| `src/langsight/integrations/pydantic_ai.py` | Not started | Pydantic AI `Tool` wrapper |
-| `src/langsight/integrations/openai_agents.py` | Not started | OpenAI Agents SDK hook |
-| `src/langsight/integrations/base.py` | Not started | shared span-recording logic |
+| Item | Status | Date | Notes |
+|------|--------|------|-------|
+| `src/langsight/integrations/crewai.py` | ✅ Done | 2026-03-17 | `LangSightCrewAICallback` |
+| `src/langsight/integrations/pydantic_ai.py` | ✅ Done | 2026-03-17 | Pydantic AI `Tool` decorator |
+| `src/langsight/integrations/base.py` | ✅ Done | 2026-03-17 | Shared span-recording logic |
 
 ### LibreChat Plugin
-| Item | Status | Notes |
-|------|--------|-------|
-| `integrations/librechat/langsight-plugin.js` | Not started | ~50 lines, LANGSIGHT_URL env var |
-| `integrations/librechat/README.md` | Not started | Installation instructions |
+| Item | Status | Date | Notes |
+|------|--------|------|-------|
+| `integrations/librechat/langsight-plugin.js` | ✅ Done | 2026-03-17 | ~50 lines, `LANGSIGHT_URL` env var pattern |
+| `integrations/librechat/README.md` | ✅ Done | 2026-03-17 | Installation instructions |
 
 ### Investigate Command
-| Item | Status | Notes |
-|------|--------|-------|
-| `src/langsight/cli/investigate.py` | Not started | `langsight investigate "description"` |
-| Evidence collector | Not started | query health history, alerts, schema changes |
-| Claude Agent SDK integration | Not started | structured RCA output |
-| Rule-based fallback | Not started | deterministic heuristics when no API key |
+| Item | Status | Date | Notes |
+|------|--------|------|-------|
+| `src/langsight/cli/investigate.py` | ✅ Done | 2026-03-17 | `langsight investigate "description"` |
+| Evidence collector | ✅ Done | 2026-03-17 | Queries health history, alerts, schema changes |
+| Claude Agent SDK integration | ✅ Done | 2026-03-17 | Structured RCA output |
+| Rule-based fallback | ✅ Done | 2026-03-17 | Deterministic heuristics when no API key |
+| 4 LLM providers | ✅ Done | 2026-03-17 | Claude, OpenAI, Gemini, Ollama |
 
 ---
 
-## Phase 3 — Backlog
+## Phase 3 — COMPLETE ✅ (95%)
 
-| Item | Notes |
-|------|-------|
-| `POST /api/traces/otlp` | Accept standard OTLP protobuf spans |
-| OTEL Collector config | Receive 4317/4318, export to LangSight |
-| ClickHouse backend | `StorageBackend` implementation |
-| `mcp_tool_calls` ClickHouse table | MergeTree, partitioned by day, TTL 90 days |
-| Materialized views | `tool_reliability_hourly`, `tool_error_taxonomy` |
-| Tool reliability engine | success rate, p95 latency, error taxonomy from ClickHouse |
-| `langsight costs` command | Full implementation with ClickHouse backend |
-| Cost attribution engine | configurable pricing rules, anomaly detection |
-| Root-level Docker Compose | PostgreSQL + ClickHouse + OTEL Collector + API + worker |
+| Item | Status | Date | Notes |
+|------|--------|------|-------|
+| `POST /api/traces/otlp` | ✅ Done | 2026-03-17 | Accepts standard OTLP protobuf spans |
+| OTEL Collector config | ✅ Done | 2026-03-17 | Receives 4317/4318, exports to LangSight |
+| ClickHouse backend | ✅ Done | 2026-03-17 | `StorageBackend` implementation |
+| `mcp_tool_calls` ClickHouse table | ✅ Done | 2026-03-17 | `parent_span_id` + `span_type` columns, MergeTree, TTL 90 days |
+| `mv_agent_sessions` materialized view | ✅ Done | 2026-03-17 | Pre-aggregates session-level metrics |
+| Tool reliability engine | ✅ Done | 2026-03-17 | Success rate, p95 latency, error taxonomy from ClickHouse |
+| `langsight costs` command | ✅ Done | 2026-03-17 | Cost attribution engine, configurable pricing rules |
+| Cost attribution engine | ✅ Done | 2026-03-17 | Anomaly detection included |
+| Root-level Docker Compose | ✅ Done | 2026-03-17 | ClickHouse + PostgreSQL + OTEL Collector + API |
+| docs-site/ (28 Mintlify pages) | ✅ Done | 2026-03-17 | Full docs covering all features |
+| Remaining (5%) | Pending | — | `docs-site/cli/sessions.mdx` missing — release task R.5 |
 
 ---
 
-## Phase 4 — Backlog
+## Release 0.1.0 Checklist
+
+| Task | ID | Status | Notes |
+|------|----|--------|-------|
+| `uv build` — generate `dist/` | R.1 | Pending | wheel + sdist |
+| `uv publish` to PyPI | R.2 | Pending | `langsight==0.1.0` |
+| `git tag v0.1.0` + GitHub release | R.3 | Pending | Include full CHANGELOG notes |
+| Mintlify deployment | R.4 | Pending | Connect `docs-site/` → `docs.langsight.io` |
+| Write `docs-site/cli/sessions.mdx` | R.5 | Pending | Only missing page |
+| README PyPI version badge | R.6 | Pending | `https://img.shields.io/pypi/v/langsight` |
+
+---
+
+## Phase 4 — In Progress (25%, POST-0.1.0)
+
+**Note**: Marketing website (`website/`) and product dashboard (`dashboard/`) are post-0.1.0. Decision: ship CLI + SDK + API + docs in 0.1.0 first; dashboard adds frontend complexity without blocking adoption.
 
 ### Marketing Website (langsight.io)
 | Item | Status | Notes |
@@ -198,19 +219,6 @@ Phase 4 (Dashboard)             ░░░░░░░░░░░░░░░░
 | Pricing section | Not started | OSS free + SaaS tiers placeholder |
 | Vercel deployment | Not started | |
 
-### Documentation Site (docs.langsight.io)
-| Item | Status | Notes |
-|------|--------|-------|
-| Mintlify project setup (`docs-site/mint.json`) | Not started | |
-| Quickstart guide | Not started | < 5 min to first health check |
-| CLI reference (6 commands) | Not started | One .mdx per command |
-| Provider setup guide | Not started | Port from `docs/06-provider-setup.md` |
-| SDK integration guide | Not started | |
-| Framework integrations guide | Not started | CrewAI, Pydantic AI, LibreChat |
-| API reference | Not started | Auto-generated from FastAPI OpenAPI spec |
-| Configuration reference | Not started | `.langsight.yaml` full schema |
-| Self-hosting guide | Not started | Docker Compose walkthrough |
-
 ### Product Dashboard (app.langsight.io)
 | Item | Status | Notes |
 |------|--------|-------|
@@ -218,8 +226,8 @@ Phase 4 (Dashboard)             ░░░░░░░░░░░░░░░░
 | Overview page | Not started | Fleet health score, active alerts, top degraded tools |
 | MCP Health page | Not started | Server list, drill-down |
 | Security Posture page | Not started | OWASP compliance, CVE list |
-| Tool Reliability page | Not started | Ranked tool list, latency trends — requires Phase 3 OTEL data |
-| Cost Attribution page | Not started | Cost breakdown, anomaly highlights — requires Phase 3 cost engine |
+| Tool Reliability page | Not started | Ranked tool list, latency trends — requires ClickHouse data |
+| Cost Attribution page | Not started | Cost breakdown, anomaly highlights — requires cost engine data |
 | Alert Management page | Not started | View, acknowledge, configure alerts |
 
 ---
@@ -240,6 +248,7 @@ Phase 4 (Dashboard)             ░░░░░░░░░░░░░░░░
 | **LibreChat plugin, not OTEL** | LibreChat does not emit OTEL natively — it uses env vars for Langfuse. Following the same pattern (`LANGSIGHT_URL`) is lower friction and requires no LibreChat core changes. | 2026-03-17 |
 | **Framework adapters alongside SDK** | CrewAI and Pydantic AI users should not need to find and wrap the MCP client manually — adapter objects are more idiomatic in those frameworks. | 2026-03-17 |
 | **OTEL + ClickHouse moved to Phase 3** | Infrastructure tier comes after SDK proves adoption. Teams that already run OTEL can point at LangSight's collector in Phase 3 with zero code changes. | 2026-03-17 |
+| **Ship 0.1.0 before dashboard** | CLI + SDK + API + docs cover 100% of the value proposition for OSS adopters. Dashboard adds frontend complexity and blocks release by 2-4 weeks. Ship what works; dashboard follows in Phase 4. | 2026-03-17 |
 
 ---
 
