@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import structlog
 from fastapi import FastAPI
@@ -61,7 +62,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     app.include_router(traces.router, prefix="/api")
 
     @app.get("/api/status", tags=["meta"])
-    async def status() -> dict:
+    async def status() -> dict[str, Any]:
         """API and storage health check."""
         return {
             "status": "ok",

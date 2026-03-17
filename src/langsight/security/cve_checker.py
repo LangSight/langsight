@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 import httpx
 import structlog
@@ -168,7 +169,7 @@ async def check_cves(server: MCPServer) -> list[SecurityFinding]:
     return findings
 
 
-def _osv_severity(vuln: dict) -> Severity:
+def _osv_severity(vuln: dict[str, Any]) -> Severity:
     """Map OSV severity / CVSS score to LangSight Severity."""
     # Try CVSS score from database_specific
     for db in vuln.get("database_specific", {}).values():

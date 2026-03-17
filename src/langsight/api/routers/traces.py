@@ -10,6 +10,8 @@ Phase 3: spans are stored in ClickHouse via the storage backend when available.
 
 from __future__ import annotations
 
+from typing import Any
+
 import structlog
 from fastapi import APIRouter, Request
 from fastapi import status as http_status
@@ -30,9 +32,9 @@ router = APIRouter(prefix="/traces", tags=["traces"])
     "/spans",
     status_code=http_status.HTTP_202_ACCEPTED,
     summary="Ingest tool call spans from the LangSight SDK",
-    response_model=dict,
+    response_model=dict[str, Any],
 )
-async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict:
+async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str, Any]:
     """Accept a batch of ToolCallSpans from the SDK.
 
     Phase 2: logs each span with structlog.
@@ -67,9 +69,9 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict:
     "/otlp",
     status_code=http_status.HTTP_202_ACCEPTED,
     summary="Ingest spans via OpenTelemetry OTLP/JSON",
-    response_model=dict,
+    response_model=dict[str, Any],
 )
-async def ingest_otlp(request: Request) -> dict:
+async def ingest_otlp(request: Request) -> dict[str, Any]:
     """Accept OTLP/JSON trace data from any OpenTelemetry-instrumented framework.
 
     Works with CrewAI, LangChain, Pydantic AI, OpenAI Agents SDK, and any other
@@ -107,7 +109,7 @@ async def ingest_otlp(request: Request) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _extract_mcp_spans(otlp_body: dict) -> list[ToolCallSpan]:
+def _extract_mcp_spans(otlp_body: dict[str, Any]) -> list[ToolCallSpan]:
     """Extract MCP tool call spans from an OTLP/JSON payload.
 
     Handles the OTLP ResourceSpans → ScopeSpans → Span structure.
@@ -129,12 +131,12 @@ def _extract_mcp_spans(otlp_body: dict) -> list[ToolCallSpan]:
     return extracted
 
 
-def _parse_otlp_span(span: dict) -> ToolCallSpan | None:
+def _parse_otlp_span(span: dict[str, Any]) -> ToolCallSpan | None:
     """Try to parse a single OTLP span as a ToolCallSpan. Returns None if not MCP."""
     from datetime import UTC, datetime
 
     name: str = span.get("name", "")
-    attrs: dict = {
+    attrs: dict[str, Any] = {
         a["key"]: a.get("value", {}).get("stringValue", "") for a in span.get("attributes", [])
     }
 

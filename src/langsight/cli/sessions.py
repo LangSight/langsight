@@ -15,13 +15,14 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
 from rich.table import Table
 from rich.tree import Tree
 
-from langsight.config import load_config
+from langsight.config import LangSightConfig, load_config
 from langsight.storage.factory import open_storage
 
 console = Console()
@@ -64,13 +65,13 @@ def sessions(
 
 
 async def _run(
-    config: object,
+    config: LangSightConfig,
     hours: int,
     agent_name: str | None,
     session_id: str | None,
     output_json: bool,
 ) -> None:
-    async with await open_storage(config.storage) as storage:  # type: ignore[union-attr]
+    async with await open_storage(config.storage) as storage:
         if session_id:
             await _show_trace(storage, session_id, output_json)
         else:
@@ -175,7 +176,7 @@ async def _show_trace(
     _render_trace(session_id, spans)
 
 
-def _render_trace(session_id: str, spans: list[dict]) -> None:
+def _render_trace(session_id: str, spans: list[dict[str, Any]]) -> None:
     """Render spans as an indented tree in the terminal."""
     tool_spans = [s for s in spans if s.get("span_type") == "tool_call"]
     failed = sum(1 for s in tool_spans if s.get("status") != "success")
@@ -208,9 +209,9 @@ def _render_trace(session_id: str, spans: list[dict]) -> None:
 
 def _add_tree_node(
     parent: Tree,
-    span: dict,
-    by_id: dict,
-    all_spans: list[dict],
+    span: dict[str, Any],
+    by_id: dict[str, Any],
+    all_spans: list[dict[str, Any]],
 ) -> None:
     span_type = span.get("span_type", "tool_call")
     status = span.get("status", "success")

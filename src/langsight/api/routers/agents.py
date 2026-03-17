@@ -7,6 +7,8 @@ GET /api/agents/sessions/{session_id} — full span tree for one session
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 from pydantic import BaseModel
@@ -57,8 +59,8 @@ class SessionTrace(BaseModel):
     """Full trace for one agent session — spans as a tree."""
 
     session_id: str
-    spans_flat: list[dict]
-    root_spans: list[dict]  # top-level spans (no parent)
+    spans_flat: list[dict[str, Any]]
+    root_spans: list[dict[str, Any]]  # top-level spans (no parent)
     total_spans: int
     tool_calls: int
     failed_calls: int
@@ -166,15 +168,15 @@ async def get_session(
 # ---------------------------------------------------------------------------
 
 
-def _build_tree(spans: list[dict]) -> list[dict]:
+def _build_tree(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Reconstruct a parent-child tree from a flat list of spans.
 
     Returns the root spans (those with no parent_span_id) with
     their children nested recursively.
     """
-    by_id = {s["span_id"]: dict(s, children=[]) for s in spans}
+    by_id: dict[str, dict[str, Any]] = {s["span_id"]: dict(s, children=[]) for s in spans}
 
-    roots: list[dict] = []
+    roots: list[dict[str, Any]] = []
     for span in by_id.values():
         parent_id = span.get("parent_span_id")
         if parent_id and parent_id in by_id:

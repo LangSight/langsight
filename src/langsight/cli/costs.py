@@ -16,12 +16,13 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
 from rich.table import Table
 
-from langsight.config import load_config
+from langsight.config import LangSightConfig, load_config
 from langsight.costs.engine import CostEngine, load_cost_rules
 from langsight.reliability.engine import ReliabilityEngine
 from langsight.storage.factory import open_storage
@@ -62,8 +63,10 @@ def costs(config_path: Path | None, window: str, output_json: bool) -> None:
     asyncio.run(_run(config, config_path, hours, output_json))
 
 
-async def _run(config: object, config_path: Path | None, hours: int, output_json: bool) -> None:
-    async with await open_storage(config.storage) as storage:  # type: ignore[union-attr]
+async def _run(
+    config: LangSightConfig, config_path: Path | None, hours: int, output_json: bool
+) -> None:
+    async with await open_storage(config.storage) as storage:
         rules = load_cost_rules(config_path)
         reliability = ReliabilityEngine(storage)
         engine = CostEngine(reliability, rules=rules)
@@ -87,7 +90,7 @@ async def _run(config: object, config_path: Path | None, hours: int, output_json
     _display_table(entries, hours)
 
 
-def _display_table(entries: list, hours: int) -> None:
+def _display_table(entries: list[Any], hours: int) -> None:
     total = sum(e.total_cost_usd for e in entries)
     total_calls = sum(e.total_calls for e in entries)
 

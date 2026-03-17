@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from langsight.models import HealthCheckResult
 
@@ -9,7 +9,8 @@ from langsight.models import HealthCheckResult
 class StorageBackend(Protocol):
     """Protocol that all storage backends must implement.
 
-    Implementations: SQLiteBackend (Phase 1), PostgresBackend (Phase 2).
+    Implementations: SQLiteBackend (Phase 1), PostgresBackend (Phase 2),
+    ClickHouseBackend (Phase 3).
     The rest of the codebase talks only to this interface — never to a
     concrete backend directly. Switching backends is a config change.
     """
@@ -41,4 +42,12 @@ class StorageBackend(Protocol):
 
     async def close(self) -> None:
         """Release any resources held by the backend (connections, file handles)."""
+        ...
+
+    async def __aenter__(self) -> StorageBackend:
+        """Enter async context manager."""
+        ...
+
+    async def __aexit__(self, *args: Any) -> None:
+        """Exit async context manager — calls close()."""
         ...

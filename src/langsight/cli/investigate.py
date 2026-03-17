@@ -24,9 +24,9 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from langsight.config import load_config
+from langsight.config import LangSightConfig, load_config
 from langsight.exceptions import ConfigError
-from langsight.investigate.providers import create_provider
+from langsight.investigate.providers import LLMProvider, create_provider
 from langsight.models import ServerStatus
 from langsight.storage.factory import open_storage
 
@@ -104,9 +104,11 @@ def investigate(
 # ---------------------------------------------------------------------------
 
 
-async def _run(servers: list, config: Any, window_hours: float, output_json: bool) -> None:
+async def _run(
+    servers: list[Any], config: LangSightConfig, window_hours: float, output_json: bool
+) -> None:
     async with await open_storage(config.storage) as storage:
-        evidence_by_server: dict[str, dict] = {}
+        evidence_by_server: dict[str, dict[str, Any]] = {}
 
         for server in servers:
             history = await storage.get_health_history(server.name, limit=_MAX_HISTORY_RESULTS)
@@ -192,19 +194,19 @@ If all servers are healthy, confirm this with a brief summary.
 Keep the report concise — use bullet points where possible."""
 
 
-async def _analyse_with_llm(evidence: dict[str, dict], provider: object) -> None:
+async def _analyse_with_llm(evidence: dict[str, dict[str, Any]], provider: LLMProvider) -> None:
     """Send evidence to the configured LLM provider and display the RCA report."""
     evidence_text = _format_evidence_for_prompt(evidence)
     prompt = _USER_PROMPT_TEMPLATE.format(evidence=evidence_text)
 
-    console.print(f"\n[dim]Analysing with {provider.display_name}...[/dim]")  # type: ignore[union-attr]
+    console.print(f"\n[dim]Analysing with {provider.display_name}...[/dim]")
 
     try:
-        report = await provider.analyse(prompt, _SYSTEM_PROMPT)  # type: ignore[union-attr]
+        report = await provider.analyse(prompt, _SYSTEM_PROMPT)
         console.print(
             Panel(
                 Markdown(report),
-                title=f"[bold]Root Cause Analysis[/bold]  [dim]({provider.display_name})[/dim]",  # type: ignore[union-attr]
+                title=f"[bold]Root Cause Analysis[/bold]  [dim]({provider.display_name})[/dim]",
                 border_style="blue",
             )
         )
@@ -220,7 +222,7 @@ async def _analyse_with_llm(evidence: dict[str, dict], provider: object) -> None
 # ---------------------------------------------------------------------------
 
 
-def _analyse_with_rules(evidence: dict[str, dict]) -> None:
+def _analyse_with_rules(evidence: dict[str, dict[str, Any]]) -> None:
     """Deterministic RCA heuristics — no API key required."""
     lines: list[str] = [
         "# Root Cause Analysis  *(rule-based — configure a provider in .langsight.yaml for AI analysis)*\n"
@@ -324,7 +326,7 @@ def _parse_window(window: str) -> float:
     return float(window)  # assume hours
 
 
-def _format_evidence_for_prompt(evidence: dict[str, dict]) -> str:
+def _format_evidence_for_prompt(evidence: dict[str, dict[str, Any]]) -> str:
     """Format evidence as a readable text block for the Claude prompt."""
     parts: list[str] = []
     for server_name, ev in evidence.items():

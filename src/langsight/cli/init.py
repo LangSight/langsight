@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 import yaml
@@ -112,9 +113,9 @@ def init(
 # ---------------------------------------------------------------------------
 
 
-def _discover_servers() -> list[dict]:
+def _discover_servers() -> list[dict[str, Any]]:
     """Scan known MCP config locations and return server dicts."""
-    servers: list[dict] = []
+    servers: list[dict[str, Any]] = []
     for source_name, raw_path in _MCP_CONFIG_SOURCES:
         path = raw_path.expanduser()
         if not path.exists():
@@ -130,13 +131,13 @@ def _discover_servers() -> list[dict]:
     return servers
 
 
-def _parse_mcp_config(path: Path, source: str) -> list[dict]:
+def _parse_mcp_config(path: Path, source: str) -> list[dict[str, Any]]:
     """Parse an MCP config JSON file and return server dicts."""
     raw = json.loads(path.read_text())
     mcp_servers = raw.get("mcpServers", {})
-    servers: list[dict] = []
+    servers: list[dict[str, Any]] = []
     for name, cfg in mcp_servers.items():
-        server: dict = {"name": name, "source": source}
+        server: dict[str, Any] = {"name": name, "source": source}
         if "command" in cfg:
             server["transport"] = "stdio"
             server["command"] = cfg["command"]
@@ -159,7 +160,7 @@ def _parse_mcp_config(path: Path, source: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def _display_discovered(servers: list[dict]) -> None:
+def _display_discovered(servers: list[dict[str, Any]]) -> None:
     table = Table(
         title=f"\nDiscovered {len(servers)} MCP server(s)",
         show_header=True,
@@ -181,9 +182,9 @@ def _display_discovered(servers: list[dict]) -> None:
     console.print(table)
 
 
-def _build_config(servers: list[dict], slack_webhook: str | None) -> dict:
+def _build_config(servers: list[dict[str, Any]], slack_webhook: str | None) -> dict[str, Any]:
     """Build the .langsight.yaml config dict."""
-    config: dict = {
+    config: dict[str, Any] = {
         "servers": [
             {k: v for k, v in srv.items() if k not in ("source",) and v is not None}
             for srv in servers
@@ -194,5 +195,5 @@ def _build_config(servers: list[dict], slack_webhook: str | None) -> dict:
     return config
 
 
-def _write_config(config: dict, path: Path) -> None:
+def _write_config(config: dict[str, Any], path: Path) -> None:
     path.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))

@@ -11,6 +11,7 @@ Design principles:
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import httpx
 import structlog
@@ -166,7 +167,7 @@ class MCPClientProxy:
         """Forward all attribute access to the wrapped client."""
         return getattr(object.__getattribute__(self, "_client"), name)
 
-    async def call_tool(self, name: str, arguments: dict | None = None) -> object:
+    async def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> object:
         """Call a tool and record a ToolCallSpan regardless of outcome."""
         from datetime import UTC, datetime
 

@@ -5,11 +5,13 @@ import json
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import anyio
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.types import Tool
 
 from langsight.exceptions import MCPConnectionError, MCPTimeoutError
 from langsight.models import MCPServer, ToolInfo, TransportType
@@ -108,19 +110,19 @@ def hash_tools(tools: list[ToolInfo]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _parse_tools(raw_tools: list[object]) -> list[ToolInfo]:
+def _parse_tools(raw_tools: list[Tool]) -> list[ToolInfo]:
     """Convert MCP SDK Tool objects to LangSight ToolInfo models."""
     tools: list[ToolInfo] = []
     for t in raw_tools:
-        input_schema: dict = {}
-        if hasattr(t, "inputSchema") and t.inputSchema:  # type: ignore[union-attr]
-            raw_schema = t.inputSchema  # type: ignore[union-attr]
+        input_schema: dict[str, Any] = {}
+        if t.inputSchema:
+            raw_schema = t.inputSchema
             input_schema = (
                 raw_schema.model_dump() if hasattr(raw_schema, "model_dump") else dict(raw_schema)
             )
         tools.append(
             ToolInfo(
-                name=t.name,  # type: ignore[union-attr]
+                name=t.name,
                 description=getattr(t, "description", None),
                 input_schema=input_schema,
             )

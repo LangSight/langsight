@@ -7,6 +7,8 @@ No Slack SDK dependency — plain HTTP POST via httpx.
 
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 import structlog
 
@@ -64,7 +66,7 @@ async def send_alerts(webhook_url: str, alerts: list[Alert]) -> int:
     return sent
 
 
-def _build_payload(alert: Alert) -> dict:
+def _build_payload(alert: Alert) -> dict[str, Any]:
     """Build a Slack Block Kit message payload."""
     severity_emoji = _SEVERITY_EMOJI.get(alert.severity, ":bell:")
     type_emoji = _TYPE_EMOJI.get(alert.alert_type, ":bell:")

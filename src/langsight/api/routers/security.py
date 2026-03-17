@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from fastapi import status as http_status
 from pydantic import BaseModel
@@ -23,7 +25,7 @@ class SecurityScanResponse(BaseModel):
     critical_count: int
     high_count: int
     highest_severity: str | None
-    findings: list[dict]
+    findings: list[dict[str, Any]]
 
 
 def _scan_to_response(scan: ScanResult) -> SecurityScanResponse:

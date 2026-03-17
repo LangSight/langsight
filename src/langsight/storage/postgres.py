@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 import structlog
 
 from langsight.models import HealthCheckResult, ServerStatus

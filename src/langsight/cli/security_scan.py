@@ -4,6 +4,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
@@ -141,7 +142,7 @@ def _display_results(results: list[ScanResult]) -> None:
         )
 
 
-def _results_to_json(results: list[ScanResult]) -> list[dict]:
+def _results_to_json(results: list[ScanResult]) -> list[dict[str, Any]]:
     output = []
     for r in results:
         output.append(

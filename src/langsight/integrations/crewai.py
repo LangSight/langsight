@@ -67,7 +67,7 @@ class LangSightCrewAICallback(BaseIntegration):
     def on_tool_start(
         self,
         tool_name: str,
-        tool_input: str | dict,
+        tool_input: str | dict[str, Any],
         **kwargs: Any,
     ) -> None:
         """Called by CrewAI when a tool call begins."""

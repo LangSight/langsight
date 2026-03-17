@@ -140,11 +140,10 @@ class OpenAIProvider:
     async def analyse(self, evidence: str, system: str) -> str:
         from openai import AsyncOpenAI
 
-        kwargs = {"api_key": self._api_key}
         if self._base_url:
-            kwargs["base_url"] = self._base_url
-
-        client = AsyncOpenAI(**kwargs)
+            client = AsyncOpenAI(api_key=self._api_key, base_url=self._base_url)
+        else:
+            client = AsyncOpenAI(api_key=self._api_key)
         response = await client.chat.completions.create(
             model=self._model,
             max_tokens=2048,

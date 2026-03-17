@@ -25,6 +25,7 @@ Switch from SQLite → ClickHouse in .langsight.yaml:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 import clickhouse_connect
 import structlog
@@ -295,7 +296,7 @@ class ClickHouseBackend:
         "agent_name",
     ]
 
-    def _span_row(self, s: ToolCallSpan) -> list:
+    def _span_row(self, s: ToolCallSpan) -> list[Any]:
         return [
             s.span_id,
             s.parent_span_id,
@@ -336,14 +337,14 @@ class ClickHouseBackend:
         self,
         server_name: str | None = None,
         hours: int = 24,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Return tool reliability metrics for the given time window.
 
         Uses the mv_tool_reliability materialized view for fast aggregation.
         Returns rows sorted by total_calls descending.
         """
         where = "WHERE hour >= now() - INTERVAL {hours:UInt32} HOUR"
-        params: dict = {"hours": hours}
+        params: dict[str, Any] = {"hours": hours}
 
         if server_name:
             where += " AND server_name = {server_name:String}"
@@ -391,13 +392,13 @@ class ClickHouseBackend:
         hours: int = 24,
         agent_name: str | None = None,
         limit: int = 50,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Return recent agent sessions with call counts, failures, and cost estimate.
 
         Uses mv_agent_sessions materialized view for fast aggregation.
         """
         where = "WHERE first_call_at >= now() - INTERVAL {hours:UInt32} HOUR"
-        params: dict = {"hours": hours, "limit": limit}
+        params: dict[str, Any] = {"hours": hours, "limit": limit}
 
         if agent_name:
             where += " AND agent_name = {agent_name:String}"
@@ -436,7 +437,7 @@ class ClickHouseBackend:
         ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
-    async def get_session_trace(self, session_id: str) -> list[dict]:
+    async def get_session_trace(self, session_id: str) -> list[dict[str, Any]]:
         """Return all spans for a session, ordered by start time.
 
         Returns the full flat list — callers reconstruct the tree
@@ -488,7 +489,7 @@ class ClickHouseBackend:
 # ---------------------------------------------------------------------------
 
 
-def _row_to_result(row: tuple) -> HealthCheckResult:
+def _row_to_result(row: Any) -> HealthCheckResult:
     server_name, status, latency_ms, tools_count, schema_hash, error, checked_at = row
     return HealthCheckResult(
         server_name=server_name,

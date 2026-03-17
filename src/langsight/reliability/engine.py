@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
 import structlog
 
@@ -63,7 +64,7 @@ class ToolMetrics:
         """True if success rate is below 95% or avg latency is high."""
         return self.success_rate_pct < 95.0 or self.avg_latency_ms > 2000.0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "server_name": self.server_name,
             "tool_name": self.tool_name,
@@ -127,7 +128,7 @@ class ReliabilityEngine:
 # ---------------------------------------------------------------------------
 
 
-def _row_to_metrics(row: dict, window_hours: int) -> ToolMetrics:
+def _row_to_metrics(row: dict[str, Any], window_hours: int) -> ToolMetrics:
     return ToolMetrics(
         server_name=row["server_name"],
         tool_name=row["tool_name"],

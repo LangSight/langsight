@@ -24,6 +24,7 @@ from __future__ import annotations
 import fnmatch
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -52,7 +53,7 @@ class CostEntry:
     cost_per_call: float
     total_cost_usd: float
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "server_name": self.server_name,
             "tool_name": self.tool_name,
