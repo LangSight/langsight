@@ -57,23 +57,27 @@ _DDL = [
     SETTINGS index_granularity = 8192
     """,
     # Tool call spans from the SDK / OTLP — 90-day TTL
+    # parent_span_id enables multi-agent tree reconstruction
+    # span_type: tool_call | agent | handoff
     """
     CREATE TABLE IF NOT EXISTS mcp_tool_calls (
-        span_id      String,
-        trace_id     Nullable(String),
-        server_name  String,
-        tool_name    String,
-        started_at   DateTime64(3, 'UTC'),
-        ended_at     DateTime64(3, 'UTC'),
-        latency_ms   Float64,
-        status       LowCardinality(String),
-        error        Nullable(String),
-        agent_name   Nullable(String),
-        session_id   Nullable(String)
+        span_id        String,
+        parent_span_id Nullable(String),
+        span_type      LowCardinality(String) DEFAULT 'tool_call',
+        trace_id       Nullable(String),
+        session_id     Nullable(String),
+        server_name    String,
+        tool_name      String,
+        started_at     DateTime64(3, 'UTC'),
+        ended_at       DateTime64(3, 'UTC'),
+        latency_ms     Float64,
+        status         LowCardinality(String),
+        error          Nullable(String),
+        agent_name     Nullable(String)
     )
     ENGINE = MergeTree()
     PARTITION BY toYYYYMM(started_at)
-    ORDER BY (server_name, tool_name, started_at)
+    ORDER BY (session_id, started_at, span_id)
     TTL toDateTime(started_at) + INTERVAL 90 DAY
     SETTINGS index_granularity = 8192
     """,
@@ -108,6 +112,27 @@ _DDL = [
         max(latency_ms)                      AS max_latency_ms
     FROM mcp_tool_calls
     GROUP BY server_name, tool_name, hour
+    """,
+    # Materialized view: agent sessions — one row per session
+    # Drives langsight sessions + GET /api/agents/sessions
+    """
+    CREATE MATERIALIZED VIEW IF NOT EXISTS mv_agent_sessions
+    ENGINE = AggregatingMergeTree()
+    ORDER BY (session_id, agent_name)
+    POPULATE
+    AS SELECT
+        session_id,
+        agent_name,
+        min(started_at)                                      AS first_call_at,
+        max(ended_at)                                        AS last_call_at,
+        count()                                              AS total_spans,
+        countIf(span_type = 'tool_call')                     AS tool_calls,
+        countIf(status != 'success' AND span_type='tool_call') AS failed_calls,
+        sum(latency_ms)                                      AS total_latency_ms,
+        groupUniqArray(server_name)                          AS servers_used
+    FROM mcp_tool_calls
+    WHERE session_id IS NOT NULL
+    GROUP BY session_id, agent_name
     """,
 ]
 
@@ -254,76 +279,56 @@ class ClickHouseBackend:
     # ClickHouse-specific: tool call spans
     # ---------------------------------------------------------------------------
 
+    _SPAN_COLUMNS = [
+        "span_id",
+        "parent_span_id",
+        "span_type",
+        "trace_id",
+        "session_id",
+        "server_name",
+        "tool_name",
+        "started_at",
+        "ended_at",
+        "latency_ms",
+        "status",
+        "error",
+        "agent_name",
+    ]
+
+    def _span_row(self, s: ToolCallSpan) -> list:
+        return [
+            s.span_id,
+            s.parent_span_id,
+            s.span_type,
+            s.trace_id,
+            s.session_id,
+            s.server_name,
+            s.tool_name,
+            s.started_at,
+            s.ended_at,
+            s.latency_ms,
+            s.status.value,
+            s.error,
+            s.agent_name,
+        ]
+
     async def save_tool_call_span(self, span: ToolCallSpan) -> None:
-        """Persist a tool call span from the SDK or OTLP ingestion."""
+        """Persist a single span (tool_call, agent, or handoff)."""
         await self._client.insert(
             "mcp_tool_calls",
-            [
-                [
-                    span.span_id,
-                    span.trace_id,
-                    span.server_name,
-                    span.tool_name,
-                    span.started_at,
-                    span.ended_at,
-                    span.latency_ms,
-                    span.status.value,
-                    span.error,
-                    span.agent_name,
-                    span.session_id,
-                ]
-            ],
-            column_names=[
-                "span_id",
-                "trace_id",
-                "server_name",
-                "tool_name",
-                "started_at",
-                "ended_at",
-                "latency_ms",
-                "status",
-                "error",
-                "agent_name",
-                "session_id",
-            ],
+            [self._span_row(span)],
+            column_names=self._SPAN_COLUMNS,
         )
 
     async def save_tool_call_spans(self, spans: list[ToolCallSpan]) -> None:
-        """Batch insert multiple tool call spans (more efficient than one-by-one)."""
+        """Batch insert multiple spans."""
         if not spans:
             return
-        rows = [
-            [
-                s.span_id,
-                s.trace_id,
-                s.server_name,
-                s.tool_name,
-                s.started_at,
-                s.ended_at,
-                s.latency_ms,
-                s.status.value,
-                s.error,
-                s.agent_name,
-                s.session_id,
-            ]
-            for s in spans
-        ]
+        rows = [self._span_row(s) for s in spans]
         await self._client.insert(
             "mcp_tool_calls",
             rows,
-            column_names=[
-                "span_id",
-                "trace_id",
-                "server_name",
-                "tool_name",
-                "started_at",
-                "ended_at",
-                "latency_ms",
-                "status",
-                "error",
-                "agent_name",
-                "session_id",
-            ],
+            column_names=self._SPAN_COLUMNS,
         )
         logger.debug("storage.clickhouse.spans_saved", count=len(spans))
 
@@ -374,6 +379,96 @@ class ClickHouseBackend:
             "success_rate_pct",
             "avg_latency_ms",
             "max_latency_ms",
+        ]
+        return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+    # ---------------------------------------------------------------------------
+    # Agent sessions — multi-agent tracing queries
+    # ---------------------------------------------------------------------------
+
+    async def get_agent_sessions(
+        self,
+        hours: int = 24,
+        agent_name: str | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        """Return recent agent sessions with call counts, failures, and cost estimate.
+
+        Uses mv_agent_sessions materialized view for fast aggregation.
+        """
+        where = "WHERE first_call_at >= now() - INTERVAL {hours:UInt32} HOUR"
+        params: dict = {"hours": hours, "limit": limit}
+
+        if agent_name:
+            where += " AND agent_name = {agent_name:String}"
+            params["agent_name"] = agent_name
+
+        result = await self._client.query(
+            f"""
+            SELECT
+                session_id,
+                agent_name,
+                first_call_at,
+                last_call_at,
+                tool_calls,
+                failed_calls,
+                total_latency_ms,
+                servers_used,
+                dateDiff('millisecond', first_call_at, last_call_at) AS duration_ms
+            FROM mv_agent_sessions
+            {where}
+            ORDER BY first_call_at DESC
+            LIMIT {{limit:UInt32}}
+            """,
+            parameters=params,
+        )
+
+        cols = [
+            "session_id",
+            "agent_name",
+            "first_call_at",
+            "last_call_at",
+            "tool_calls",
+            "failed_calls",
+            "total_latency_ms",
+            "servers_used",
+            "duration_ms",
+        ]
+        return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+    async def get_session_trace(self, session_id: str) -> list[dict]:
+        """Return all spans for a session, ordered by start time.
+
+        Returns the full flat list — callers reconstruct the tree
+        using parent_span_id.
+        """
+        result = await self._client.query(
+            """
+            SELECT
+                span_id, parent_span_id, span_type,
+                server_name, tool_name, agent_name,
+                started_at, ended_at, latency_ms,
+                status, error, trace_id
+            FROM mcp_tool_calls
+            WHERE session_id = {session_id:String}
+            ORDER BY started_at ASC
+            """,
+            parameters={"session_id": session_id},
+        )
+
+        cols = [
+            "span_id",
+            "parent_span_id",
+            "span_type",
+            "server_name",
+            "tool_name",
+            "agent_name",
+            "started_at",
+            "ended_at",
+            "latency_ms",
+            "status",
+            "error",
+            "trace_id",
         ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -13,23 +14,46 @@ class ToolCallStatus(StrEnum):
     TIMEOUT = "timeout"
 
 
-class ToolCallSpan(BaseModel):
-    """A single recorded MCP tool call — the unit of observability in the SDK.
+# Span types for multi-agent tracing
+SpanType = Literal["tool_call", "agent", "handoff"]
 
-    Sent to POST /api/traces/spans and stored for reliability analysis.
+
+class ToolCallSpan(BaseModel):
+    """A single span in an agent trace.
+
+    Three span types:
+    - tool_call: an MCP tool call, HTTP API call, or function call by an agent
+    - agent:     an agent lifecycle span (agent started/finished a task)
+    - handoff:   one agent delegating work to another agent
+
+    Multi-agent tracing:
+        parent_span_id links child spans to their parent, forming a tree.
+        Agent A emits a handoff span when delegating to Agent B.
+        Agent B's tool_call spans set parent_span_id to the handoff span's span_id.
+        trace_id groups the entire task (all agents, all tools) under one root.
+
+    Example tree:
+        trace_id: "trace-123"
+        ├── span: agent      / support-agent         / no parent
+        │   ├── span: tool_call / jira-mcp/get_issue   / parent=above
+        │   ├── span: handoff   / → billing-agent      / parent=above
+        │   │   ├── span: tool_call / crm-mcp/update   / parent=handoff
+        │   │   └── span: tool_call / slack-mcp/notify  / parent=handoff
     """
 
     span_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    trace_id: str | None = None  # session / conversation ID — groups spans into a trace
-    server_name: str  # MCP server name (matches MCPServer.name)
-    tool_name: str  # Tool that was called
-    started_at: datetime  # When the call was initiated
-    ended_at: datetime  # When the call completed (or failed)
-    latency_ms: float  # ended_at - started_at in milliseconds
-    status: ToolCallStatus  # success / error / timeout
-    error: str | None = None  # Error message if status != success
-    agent_name: str | None = None  # Name of the agent that made the call
-    session_id: str | None = None  # Application-level session identifier
+    parent_span_id: str | None = None  # enables multi-agent tree reconstruction
+    span_type: SpanType = "tool_call"  # tool_call | agent | handoff
+    trace_id: str | None = None  # groups all spans in one task/conversation
+    session_id: str | None = None  # application-level session identifier
+    server_name: str  # tool server / agent name / "handoff"
+    tool_name: str  # tool called / agent task / target agent name
+    started_at: datetime
+    ended_at: datetime
+    latency_ms: float
+    status: ToolCallStatus
+    error: str | None = None
+    agent_name: str | None = None  # which agent emitted this span
 
     @classmethod
     def record(
@@ -42,6 +66,8 @@ class ToolCallSpan(BaseModel):
         trace_id: str | None = None,
         agent_name: str | None = None,
         session_id: str | None = None,
+        parent_span_id: str | None = None,
+        span_type: SpanType = "tool_call",
     ) -> ToolCallSpan:
         """Convenience constructor — computes ended_at and latency_ms automatically."""
         ended_at = datetime.now(UTC)
@@ -57,4 +83,55 @@ class ToolCallSpan(BaseModel):
             trace_id=trace_id,
             agent_name=agent_name,
             session_id=session_id,
+            parent_span_id=parent_span_id,
+            span_type=span_type,
+        )
+
+    @classmethod
+    def agent_span(
+        cls,
+        agent_name: str,
+        task: str,
+        started_at: datetime,
+        status: ToolCallStatus = ToolCallStatus.SUCCESS,
+        trace_id: str | None = None,
+        session_id: str | None = None,
+        parent_span_id: str | None = None,
+        error: str | None = None,
+    ) -> ToolCallSpan:
+        """Create an agent lifecycle span (agent started/finished a task)."""
+        return cls.record(
+            server_name=agent_name,
+            tool_name=task,
+            started_at=started_at,
+            status=status,
+            error=error,
+            trace_id=trace_id,
+            agent_name=agent_name,
+            session_id=session_id,
+            parent_span_id=parent_span_id,
+            span_type="agent",
+        )
+
+    @classmethod
+    def handoff_span(
+        cls,
+        from_agent: str,
+        to_agent: str,
+        started_at: datetime,
+        trace_id: str | None = None,
+        session_id: str | None = None,
+        parent_span_id: str | None = None,
+    ) -> ToolCallSpan:
+        """Create a handoff span when one agent delegates to another."""
+        return cls.record(
+            server_name=from_agent,
+            tool_name=f"→ {to_agent}",
+            started_at=started_at,
+            status=ToolCallStatus.SUCCESS,
+            trace_id=trace_id,
+            agent_name=from_agent,
+            session_id=session_id,
+            parent_span_id=parent_span_id,
+            span_type="handoff",
         )

@@ -47,19 +47,57 @@ class LangSightClient:
         self._api_key = api_key
         self._timeout = timeout
 
-    def wrap(self, mcp_client: object, **kwargs: object) -> MCPClientProxy:
+    def wrap(
+        self,
+        mcp_client: object,
+        server_name: str = "unknown",
+        agent_name: str | None = None,
+        session_id: str | None = None,
+        trace_id: str | None = None,
+        parent_span_id: str | None = None,
+    ) -> MCPClientProxy:
         """Wrap an MCP client to automatically trace all tool calls.
 
         Args:
             mcp_client: Any object with a `call_tool(name, arguments)` method.
-            **kwargs: Metadata to attach to every span from this proxy
-                      (agent_name, session_id, trace_id, server_name).
+            server_name: MCP server or tool source name (e.g. "postgres-mcp").
+            agent_name: Name of the agent making the calls.
+            session_id: Groups all calls in one agent run/conversation.
+            trace_id: Groups all spans across a multi-agent task.
+            parent_span_id: For multi-agent tracing — the handoff span ID
+                that spawned this sub-agent. Enables tree reconstruction.
 
-        Returns:
-            An MCPClientProxy that forwards all calls to the original client
-            and sends a ToolCallSpan to LangSight for each call.
+        Multi-agent example:
+            # Orchestrator wraps its MCP client normally
+            orchestrator_mcp = client.wrap(mcp, server_name="jira-mcp",
+                                           agent_name="orchestrator",
+                                           session_id=session_id,
+                                           trace_id=trace_id)
+
+            # When handing off to a sub-agent, pass the handoff span ID
+            handoff = ToolCallSpan.handoff_span(
+                from_agent="orchestrator", to_agent="billing-agent",
+                started_at=datetime.now(UTC),
+                trace_id=trace_id, session_id=session_id,
+            )
+            await client.send_span(handoff)
+
+            # Sub-agent wraps its client with parent_span_id=handoff.span_id
+            billing_mcp = client.wrap(mcp, server_name="crm-mcp",
+                                      agent_name="billing-agent",
+                                      session_id=session_id,
+                                      trace_id=trace_id,
+                                      parent_span_id=handoff.span_id)
         """
-        return MCPClientProxy(mcp_client, langsight=self, **kwargs)
+        return MCPClientProxy(
+            mcp_client,
+            langsight=self,
+            server_name=server_name,
+            agent_name=agent_name,
+            session_id=session_id,
+            trace_id=trace_id,
+            parent_span_id=parent_span_id,
+        )
 
     async def send_span(self, span: ToolCallSpan) -> None:
         """Send a single span to the LangSight API (fire-and-forget wrapper).
@@ -113,6 +151,7 @@ class MCPClientProxy:
         agent_name: str | None = None,
         session_id: str | None = None,
         trace_id: str | None = None,
+        parent_span_id: str | None = None,
     ) -> None:
         # Use object.__setattr__ to avoid triggering our __getattr__
         object.__setattr__(self, "_client", client)
@@ -121,6 +160,7 @@ class MCPClientProxy:
         object.__setattr__(self, "_agent_name", agent_name)
         object.__setattr__(self, "_session_id", session_id)
         object.__setattr__(self, "_trace_id", trace_id)
+        object.__setattr__(self, "_parent_span_id", parent_span_id)
 
     def __getattr__(self, name: str) -> object:
         """Forward all attribute access to the wrapped client."""
@@ -138,6 +178,7 @@ class MCPClientProxy:
         agent_name = object.__getattribute__(self, "_agent_name")
         session_id = object.__getattribute__(self, "_session_id")
         trace_id = object.__getattribute__(self, "_trace_id")
+        parent_span_id = object.__getattribute__(self, "_parent_span_id")
 
         started_at = datetime.now(UTC)
         status = ToolCallStatus.SUCCESS
@@ -164,5 +205,7 @@ class MCPClientProxy:
                 trace_id=trace_id,
                 agent_name=agent_name,
                 session_id=session_id,
+                parent_span_id=parent_span_id,
+                span_type="tool_call",
             )
             await langsight.send_span(span)

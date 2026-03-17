@@ -9,6 +9,7 @@ from langsight.cli.mcp_health import mcp_health
 from langsight.cli.monitor import monitor
 from langsight.cli.security_scan import security_scan
 from langsight.cli.serve import serve
+from langsight.cli.sessions import sessions
 
 
 @click.group()
@@ -23,6 +24,7 @@ def cli() -> None:
 
 cli.add_command(costs)
 cli.add_command(init)
+cli.add_command(sessions)
 cli.add_command(investigate)
 cli.add_command(mcp_health)
 cli.add_command(monitor)
