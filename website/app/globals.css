@@ -3,136 +3,44 @@
 @tailwind utilities;
 
 :root {
-  --bg: #09090B;
-  --surface: #18181B;
-  --border: #27272A;
-  --indigo: #6366F1;
-  --indigo-dim: rgba(99, 102, 241, 0.12);
-  --green: #22C55E;
-  --red: #EF4444;
-  --yellow: #EAB308;
-  --text: #FAFAFA;
-  --muted: #71717A;
+  --bg: #FAFAFA; --bg-deep: #F4F4F5; --surface: #FFFFFF; --border: #E4E4E7;
+  --border-dim: #F0F0F2; --text: #09090B; --muted: #71717A; --dimmer: #A1A1AA;
+  --indigo: #6366F1; --indigo-dim: rgba(99,102,241,0.08); --indigo-glow: rgba(99,102,241,0.12);
+  --green: #16A34A; --red: #DC2626; --yellow: #CA8A04;
+  --terminal-bg: #F8F8FA; --terminal-bar: #F0F0F2; --code-text: #4338CA;
+}
+.dark {
+  --bg: #09090B; --bg-deep: #0D0D10; --surface: #18181B; --border: #27272A;
+  --border-dim: #1F1F23; --text: #FAFAFA; --muted: #71717A; --dimmer: #52525B;
+  --indigo: #6366F1; --indigo-dim: rgba(99,102,241,0.10); --indigo-glow: rgba(99,102,241,0.18);
+  --green: #22C55E; --red: #EF4444; --yellow: #EAB308;
+  --terminal-bg: #0D0D10; --terminal-bar: #18181B; --code-text: #818CF8;
 }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--font-dm-sans),system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 
-html {
-  scroll-behavior: smooth;
-}
+.grid-bg{background-image:linear-gradient(var(--border-dim) 1px,transparent 1px),linear-gradient(90deg,var(--border-dim) 1px,transparent 1px);background-size:64px 64px}
 
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-dm-sans), system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
+.terminal{background:var(--terminal-bg);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.dark .terminal{box-shadow:0 4px 40px rgba(0,0,0,0.4)}
+.terminal-bar{background:var(--terminal-bar);border-bottom:1px solid var(--border);padding:11px 16px;display:flex;align-items:center;gap:7px}
+.terminal-dot{width:12px;height:12px;border-radius:50%}
+.term-line{opacity:0;animation:revealLine 0.2s ease forwards}
+@keyframes revealLine{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
 
-/* Grid background */
-.grid-bg {
-  background-image:
-    linear-gradient(rgba(99, 102, 241, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(99, 102, 241, 0.04) 1px, transparent 1px);
-  background-size: 64px 64px;
-}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;transition:border-color 0.2s,box-shadow 0.2s,transform 0.2s}
+.card:hover{border-color:var(--indigo);box-shadow:0 0 0 1px var(--indigo-dim),0 8px 32px var(--indigo-glow);transform:translateY(-2px)}
 
-/* Glow */
-.glow-indigo {
-  box-shadow: 0 0 60px rgba(99, 102, 241, 0.15);
-}
+.gradient-text{background:linear-gradient(135deg,var(--text) 0%,var(--muted) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.gradient-indigo{background:linear-gradient(135deg,#818CF8 0%,#6366F1 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 
-/* Terminal */
-.terminal {
-  background: #0D0D10;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
-}
+[data-reveal]{opacity:0;transform:translateY(18px);transition:opacity 0.55s ease,transform 0.55s ease}
+[data-reveal].visible{opacity:1;transform:translateY(0)}
 
-.terminal-bar {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.terminal-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-
-/* Animated terminal lines */
-.term-line {
-  opacity: 0;
-  animation: revealLine 0.25s ease forwards;
-}
-
-@keyframes revealLine {
-  from { opacity: 0; transform: translateX(-4px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-
-/* Card hover glow */
-.feature-card {
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-.feature-card:hover {
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: 0 0 30px rgba(99, 102, 241, 0.08);
-}
-
-/* Gradient text */
-.gradient-text {
-  background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.gradient-text-indigo {
-  background: linear-gradient(135deg, #818CF8 0%, #6366F1 50%, #4F46E5 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* Fade up animation with delay */
-.animate-fade-up { animation: fadeUp 0.6s ease forwards; }
-.delay-100 { animation-delay: 0.1s; }
-.delay-200 { animation-delay: 0.2s; }
-.delay-300 { animation-delay: 0.3s; }
-.delay-400 { animation-delay: 0.4s; }
-.delay-500 { animation-delay: 0.5s; }
-
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* Noise texture overlay */
-.noise::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-  pointer-events: none;
-  border-radius: inherit;
-}
-
-/* Scroll reveal — JS-free version using intersection */
-[data-reveal] {
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-[data-reveal].visible {
-  opacity: 1;
-  transform: translateY(0);
-}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.fade-up{animation:fadeUp 0.6s ease both}
+.delay-1{animation-delay:0.1s}.delay-2{animation-delay:0.2s}.delay-3{animation-delay:0.3s}.delay-4{animation-delay:0.4s}.delay-5{animation-delay:0.5s}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.cursor{animation:blink 1s step-end infinite}
