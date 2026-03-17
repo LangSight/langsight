@@ -1,0 +1,140 @@
+---
+title: "LangChain + Langflow + LangGraph"
+description: "Trace every tool call in LangChain agents, LangGraph workflows, and Langflow — one callback, all frameworks"
+---
+
+A single callback handler covers LangChain and every framework built on top of it — including **Langflow**, **LangGraph**, and **LangServe**.
+
+## Installation
+
+```bash
+pip install langsight langchain
+```
+
+## Setup
+
+```python
+from langsight.sdk import LangSightClient
+from langsight.integrations.langchain import LangSightLangChainCallback
+
+client = LangSightClient(url="http://localhost:8000")
+
+callback = LangSightLangChainCallback(
+    client=client,
+    server_name="my-tools",        # shown in langsight sessions
+    agent_name="my-agent",         # optional
+    session_id="sess-abc123",      # optional — groups calls into a session
+)
+```
+
+## LangChain agents
+
+```python
+from langchain.agents import initialize_agent, AgentType
+
+agent = initialize_agent(
+    tools=tools,
+    llm=llm,
+    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+    callbacks=[callback],          # ← one line
+)
+
+agent.run("What is the weather in Berlin?")
+```
+
+## LangGraph
+
+```python
+from langgraph.graph import StateGraph
+
+graph = StateGraph(...)
+# ... define your graph ...
+
+# Pass callback in config
+graph.invoke(
+    {"input": "your task"},
+    config={"callbacks": [callback]},   # ← one line
+)
+```
+
+## Langflow
+
+In Langflow, add the callback to any component that uses tools:
+
+1. Open your flow in the Langflow UI
+2. Click on the **Agent** or **Tool** component
+3. Under **Advanced Settings**, add to the callbacks list:
+
+```python
+from langsight.integrations.langchain import LangSightLangChainCallback
+from langsight.sdk import LangSightClient
+
+callback = LangSightLangChainCallback(
+    client=LangSightClient(url=os.getenv("LANGSIGHT_URL", "http://localhost:8000")),
+    agent_name="langflow-agent",
+)
+```
+
+## What gets traced
+
+Every time a LangChain `Tool` is called — whether it's a database lookup, web search, API call, or MCP server tool — LangSight records:
+
+- Tool name
+- Start time + latency
+- Success / error / timeout status
+- Error message (if failed)
+- Agent name + session ID
+
+## View traces
+
+```bash
+langsight sessions
+
+Agent Sessions  (last 24h)
+────────────────────────────────────────────────────────────
+Session          Agent           Calls   Failed   Duration
+sess-abc123      langflow-agent  8       1        3.4s
+```
+
+```bash
+langsight sessions --id sess-abc123
+
+Trace: sess-abc123  (langflow-agent)
+├── 🔧 search-tool/search           340ms  ✓
+├── 🔧 postgres-mcp/query            42ms  ✓
+├── 🔧 calculator/evaluate            1ms  ✓
+└── 🔧 slack-mcp/post_message          —   ✗  timeout
+```
+
+## Multi-agent (LangGraph)
+
+For LangGraph workflows with multiple agents, pass `trace_id` to group all agents under one task:
+
+```python
+import uuid
+trace_id = str(uuid.uuid4())
+
+orchestrator_callback = LangSightLangChainCallback(
+    client=client,
+    agent_name="orchestrator",
+    trace_id=trace_id,
+    session_id=session_id,
+)
+
+researcher_callback = LangSightLangChainCallback(
+    client=client,
+    agent_name="researcher",
+    trace_id=trace_id,       # same trace_id — links all agents
+    session_id=session_id,
+)
+```
+
+## MCP servers in LangChain
+
+If your LangChain agent uses MCP servers as tools, LangSight gives you full observability:
+
+- Tool call traces via this callback
+- MCP server health via `langsight mcp-health`
+- Security scanning via `langsight security-scan`
+
+No extra setup needed — the callback + CLI work independently and complement each other.

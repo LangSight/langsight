@@ -77,6 +77,7 @@
       "group": "SDK & Integrations",
       "pages": [
         "sdk/python",
+        "sdk/integrations/langchain",
         "sdk/integrations/crewai",
         "sdk/integrations/pydantic-ai",
         "sdk/integrations/librechat",
