@@ -224,13 +224,13 @@ langsight monitor
 |---------|-------------|
 | `langsight init` | Interactive setup wizard, generates `.langsight.yaml` |
 | `langsight sessions` | List recent agent sessions with cost and failure counts |
-| `langsight sessions --id <id>` | Full multi-agent trace for one session *(Phase 2)* |
+| `langsight sessions --id <id>` | Full multi-agent trace for one session |
 | `langsight mcp-health` | Health status of all configured MCP servers |
 | `langsight security-scan` | CVE + OWASP MCP Top 10 security audit |
 | `langsight monitor` | Start continuous background monitoring with alerts |
 | `langsight costs` | Tool call cost attribution by server and agent session |
-| `langsight investigate` | Root cause analysis for a specific failure *(Phase 2)* |
-| `langsight config` | Manage `.langsight.yaml` — add/remove/edit servers |
+| `langsight investigate` | Root cause analysis for a specific failure |
+| `langsight serve` | Start the LangSight REST API server |
 
 All commands support `--help`, `--json`, and `--verbose`.
 
@@ -322,30 +322,37 @@ LangSight works with every major MCP client and agent framework:
 ## Roadmap
 
 ### Phase 1 — CLI MVP
-- [ ] `langsight init` with auto-discovery
-- [ ] `langsight mcp-health` — health checks for stdio, SSE, StreamableHTTP transports
-- [ ] `langsight security-scan` — CVE + OWASP MCP Top 10
-- [ ] `langsight monitor` — continuous monitoring with Slack/webhook alerts
-- [ ] `langsight costs` — tool call cost attribution from OTEL traces
-- [ ] SQLite backend (no Docker required for local use)
+- [x] `langsight init` with auto-discovery
+- [x] `langsight mcp-health` — health checks for stdio, SSE, StreamableHTTP transports
+- [x] `langsight security-scan` — CVE + OWASP MCP Top 10
+- [x] `langsight monitor` — continuous monitoring with Slack/webhook alerts
+- [x] `langsight costs` — tool call cost attribution from OTEL traces
+- [x] SQLite backend (no Docker required for local use)
 
 ### Phase 2 — SDK + Agent Tracing + Investigation
-- [ ] `LangSightClient` Python SDK — 2-line instrumentation for any MCP client
-- [ ] `parent_span_id` on `ToolCallSpan` — multi-agent tree tracing
-- [ ] `langsight sessions` — agent session list and trace drill-down
-- [ ] `GET /api/agents/sessions` and `GET /api/agents/sessions/{id}` endpoints
-- [ ] Agent spans (lifecycle) and Handoff spans (agent-to-agent delegation)
+- [x] `LangSightClient` Python SDK — 2-line instrumentation for any MCP client
+- [x] `parent_span_id` on `ToolCallSpan` — multi-agent tree tracing
+- [x] `langsight sessions` — agent session list and trace drill-down
+- [x] `GET /api/agents/sessions` and `GET /api/agents/sessions/{id}` endpoints
+- [x] Agent spans (lifecycle) and Handoff spans (agent-to-agent delegation)
 - [x] Framework adapters: CrewAI, Pydantic AI, OpenAI Agents SDK, LangChain, Langflow, LangGraph, LangServe
-- [ ] `langsight investigate` — AI-assisted root cause attribution (Claude Agent SDK)
-- [ ] ClickHouse + PostgreSQL backend for production deployments
-- [ ] OTEL Collector integration for trace ingestion from agent frameworks
+- [x] `langsight investigate` — AI-assisted root cause attribution (Claude Agent SDK)
+- [x] ClickHouse + PostgreSQL backend for production deployments
+- [x] OTLP/JSON endpoint for trace ingestion from agent frameworks (`POST /api/traces/otlp`)
+- [ ] OTEL Collector infrastructure (separate service — collector config + Docker Compose wiring)
 
 ### Phase 3 — Dashboard
-- [ ] Next.js 15 web dashboard
-- [ ] Real-time health overview across all MCP servers
-- [ ] Security posture timeline
-- [ ] Cost attribution charts by server, tool, and agent session
-- [ ] Alert management UI
+- [x] Next.js 15 web dashboard (`dashboard/`)
+- [x] Real-time health overview across all MCP servers
+- [x] Security posture timeline
+- [x] Cost attribution charts by server, tool, and agent session
+- [x] Alert management UI
+- [x] Marketing website (`website/`)
+- [x] Docs site (28 Mintlify pages, `docs-site/`)
+- [x] FastAPI REST API with `langsight serve`
+- [ ] Dashboard: Vercel deploy (manual step pending)
+- [ ] API key auth
+- [ ] RBAC
 
 ---
 
@@ -358,7 +365,7 @@ LangSight works with every major MCP client and agent framework:
 | API | FastAPI (async) |
 | MCP client | `mcp` Python SDK |
 | OLAP storage | ClickHouse |
-| Metadata DB | PostgreSQL (SQLAlchemy async) |
+| Metadata DB | PostgreSQL (asyncpg direct) |
 | Local mode | SQLite |
 | Trace ingestion | OTEL Collector (contrib) |
 | RCA agent | Claude Agent SDK (Phase 2) |

@@ -117,7 +117,7 @@ Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░
 | `health/schema_tracker.py` | ✅ Done | 2026-03-16 | drift detection — baseline + compare across runs |
 | `storage/base.py` | ✅ Done | 2026-03-16 | StorageBackend Protocol — SaaS-safe abstraction |
 | `storage/sqlite.py` | ✅ Done | 2026-03-16 | SQLite backend, async, DDL on first open, persists across runs |
-| `storage/postgres.py` | ✅ Done | 2026-03-17 | PostgreSQL backend, SQLAlchemy async |
+| `storage/postgres.py` | ✅ Done | 2026-03-17 | PostgreSQL backend, asyncpg direct (no SQLAlchemy) |
 | `storage/__init__.py` | ✅ Done | 2026-03-17 | `open_storage()` factory — selects SQLite or PostgreSQL |
 | `security/models.py` | ✅ Done | 2026-03-16 | Severity, SecurityFinding, ScanResult |
 | `security/owasp_checker.py` | ✅ Done | 2026-03-16 | 5 OWASP MCP checks |
@@ -135,7 +135,7 @@ Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░
 | `api/main.py` | ✅ Done | 2026-03-17 | FastAPI app factory, `langsight serve` |
 | `api/routers/health.py` | ✅ Done | 2026-03-17 | `/api/health/*` endpoints |
 | `api/routers/security.py` | ✅ Done | 2026-03-17 | `/api/security/scan` endpoint |
-| `api/routers/status.py` | ✅ Done | 2026-03-17 | `/api/status` endpoint |
+| `api/main.py` (`@app.get("/api/status")`) | ✅ Done | 2026-03-17 | `/api/status` endpoint defined inline in main.py (no separate status.py) |
 
 ### CI/CD
 | Item | Status | Date | Notes |
@@ -177,7 +177,7 @@ Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░
 |------|--------|------|-------|
 | `src/langsight/sdk/__init__.py` | ✅ Done | 2026-03-17 | `LangSightClient(url, api_key)` |
 | `src/langsight/sdk/client.py` | ✅ Done | 2026-03-17 | async HTTP client, fire-and-forget span POST |
-| `src/langsight/sdk/wrap.py` | ✅ Done | 2026-03-17 | `wrap(mcp_client, client)` proxy — intercepts all `call_tool()` |
+| `src/langsight/sdk/client.py` (`wrap()`) | ✅ Done | 2026-03-17 | `LangSightClient.wrap(mcp_client)` proxy — intercepts all `call_tool()` (no separate wrap.py) |
 | `src/langsight/sdk/models.py` | ✅ Done | 2026-03-17 | `ToolCallSpan` with `parent_span_id`, `span_type`, `agent_name` |
 | `api/routers/traces.py` | ✅ Done | 2026-03-17 | `POST /api/traces/spans` + `POST /api/traces/otlp` |
 | Tests for SDK | ✅ Done | 2026-03-17 | |
@@ -225,7 +225,7 @@ Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░
 
 | Item | Status | Date | Notes |
 |------|--------|------|-------|
-| `POST /api/traces/otlp` | ✅ Done | 2026-03-17 | Accepts standard OTLP protobuf spans |
+| `POST /api/traces/otlp` | ✅ Done | 2026-03-17 | Accepts OTLP/JSON spans (`request.json()` — not binary protobuf) |
 | OTEL Collector config | ✅ Done | 2026-03-17 | Receives 4317/4318, exports to LangSight |
 | ClickHouse backend | ✅ Done | 2026-03-17 | `StorageBackend` implementation |
 | `mcp_tool_calls` ClickHouse table | ✅ Done | 2026-03-17 | `parent_span_id` + `span_type` columns, MergeTree, TTL 90 days |
