@@ -9,6 +9,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed (2026-03-18 — documentation correctness)
+- `README.md`: sessions example output now matches actual CLI columns (`Session`, `Agent`, `Calls`, `Failed`, `Duration`, `Servers`) — removed non-existent `Cost` column
+- `README.md`: features section and CLI reference table no longer claim `langsight sessions` shows per-session cost; cost field is absent from the current implementation
+- `README.md`: architecture diagram and Phase 2 roadmap no longer list OpenAI Agents SDK integration — that file (`src/langsight/integrations/openai_agents.py`) does not exist; shipped integrations are CrewAI, Pydantic AI, LangChain/Langflow/LangGraph/LangServe, and LibreChat
+- `CHANGELOG.md`: removed two references to `agent_session()` context manager — no such symbol exists in `src/`; session propagation is via explicit `session_id`/`trace_id` fields on `ToolCallSpan`
+- `CHANGELOG.md`: removed OpenAI Agents SDK integration adapter entry (file never shipped)
+- `PROGRESS.md`: corrected `agent_session()` context manager row to accurately describe what exists (`session_id` propagated via span fields, no context manager)
+- `docs/04-implementation-plan.md`: Section 2.2 framework integration task FW.3 now references `langchain.py` (shipped) instead of `openai_agents.py` (not shipped); acceptance criteria updated accordingly
+- `docs/04-implementation-plan.md`: Section 1 annotated with historical note explaining that `agentguard` CLI names and `pip install agentguard` are from the original pre-rename plan; current entry point is `langsight`
+
 Pre-production security hardening required before 0.2.0 can be positioned as production-grade.
 
 ### Planned (Security Hardening S.1-S.10 — required before 0.2.0 production positioning)
@@ -79,7 +89,6 @@ Phase 1, Phase 2, Phase 3, and Phase 4 (website + dashboard) complete. First pub
 - `agent_name` field on `ToolCallSpan` — per-agent reliability metrics
 - `ToolCallSpan.agent_span()` — lifecycle spans for agent start/end events
 - `ToolCallSpan.handoff_span()` — explicit spans recording agent-to-agent delegation
-- `agent_session()` context manager — auto-propagates `session_id` + `trace_id` to nested `wrap()` calls
 
 #### SDK
 - `LangSightClient` Python SDK — 2-line MCP client instrumentation
@@ -122,7 +131,6 @@ Phase 1, Phase 2, Phase 3, and Phase 4 (website + dashboard) complete. First pub
 - `wrap(mcp_client, client)` proxy — intercepts all `call_tool()` calls, records `ToolCallSpan`
 - `LangSightCrewAICallback` framework adapter for CrewAI agents
 - Pydantic AI integration adapter — wraps `Tool` objects at registration
-- OpenAI Agents SDK integration adapter — hooks into function call events
 - LibreChat native plugin (`integrations/librechat/langsight-plugin.js`) — LANGSIGHT_URL env var pattern, ~50 lines
 - `POST /api/traces/spans` ingestion endpoint — accepts `ToolCallSpan` batches from SDK and plugins
 - `langsight investigate` command — Claude Agent SDK RCA with rule-based fallback
@@ -135,7 +143,6 @@ Phase 1, Phase 2, Phase 3, and Phase 4 (website + dashboard) complete. First pub
 - `GET /api/agents/sessions/{session_id}` endpoint — full span tree for one session, reconstructed via `parent_span_id`
 - `langsight sessions` CLI command — Rich table of recent sessions with cost and failures
 - `langsight sessions --id <id>` — full multi-agent trace view for one session
-- SDK `agent_session()` context manager — auto-propagates `session_id` and `trace_id` to all nested `wrap()` calls
 - `mv_agent_sessions` ClickHouse materialized view (Phase 3) — pre-aggregates session-level metrics
 
 ### Changed

@@ -193,7 +193,7 @@ Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░
 | `api/routers/agents.py` | ✅ Done | 2026-03-17 | `GET /api/agents/sessions`, `GET /api/agents/sessions/{id}` |
 | `cli/sessions.py` | ✅ Done | 2026-03-17 | `langsight sessions` and `langsight sessions --id <id>` with Rich tree |
 | ClickHouse `mv_agent_sessions` | ✅ Done | 2026-03-17 | Materialized view — pre-aggregates session-level metrics |
-| SDK `agent_session()` context manager | ✅ Done | 2026-03-17 | Auto-propagates `session_id` + `trace_id` to nested `wrap()` calls |
+| SDK session propagation via `wrap()` + `parent_span_id` | ✅ Done | 2026-03-17 | `session_id` and `trace_id` propagated via `ToolCallSpan` fields — no `agent_session()` context manager exists; propagation is explicit via span fields |
 | Tests for session grouping + tree reconstruction | ✅ Done | 2026-03-17 | |
 
 ### Framework Integrations

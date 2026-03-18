@@ -45,9 +45,8 @@ MCP servers receive proactive health checks and security scanning because the MC
 
 **Agent Session Tracing** *(Primary)*
 - Full ordered trace for every agent session — every tool call, every handoff, every failure
-- `langsight sessions` — list sessions with cost, call counts, and failure counts
+- `langsight sessions` — list sessions with call counts, failure counts, duration, and servers used
 - `langsight sessions --id` — drill into a single session to see the complete call tree
-- Per-session cost: "$0.023 on sess-abc123 by support-agent"
 - Agent reliability metrics — success rate per agent, not just per tool
 
 **Multi-Agent Tree Tracing** *(Primary)*
@@ -85,7 +84,7 @@ MCP servers receive proactive health checks and security scanning because the MC
   Agent Frameworks                    ┌──────────────────────────────────┐
   (CrewAI, Pydantic AI,               │         LangSight Platform        │
    LangChain, Langflow, LangGraph,
-   OpenAI Agents SDK, etc.)           │                                  │
+   LibreChat, etc.)                   │                                  │
          │ OTLP                       │  ┌─────────────┐ ┌────────────┐  │
          ▼                            │  │ MCP Health  │ │  Security  │  │
   ┌─────────────┐                     │  │  Checker    │ │  Scanner   │  │
@@ -168,11 +167,11 @@ langsight sessions
 ```
 
 ```
-Agent Sessions                               last 24 hours
-──────────────────────────────────────────────────────────────────────
-Session          Agent              Duration   Tools   Failures   Cost
-sess-f2a9b1      support-agent      1,482ms       5          1   $0.023
-sess-d4c7e8      data-analyst       4,210ms      12          0   $0.089
+Agent Sessions  (last 24h — 2 sessions)
+──────────────────────────────────────────────────────────────────────────
+Session          Agent              Calls   Failed   Duration   Servers
+sess-f2a9b1      support-agent          5        1    1,482ms   postgres-mcp
+sess-d4c7e8      data-analyst          12        0    4,210ms   postgres-mcp, s3-mcp
 ```
 
 ### Run a health check
@@ -223,7 +222,7 @@ langsight monitor
 | Command | Description |
 |---------|-------------|
 | `langsight init` | Interactive setup wizard, generates `.langsight.yaml` |
-| `langsight sessions` | List recent agent sessions with cost and failure counts |
+| `langsight sessions` | List recent agent sessions with call counts, failures, duration, and servers |
 | `langsight sessions --id <id>` | Full multi-agent trace for one session |
 | `langsight mcp-health` | Health status of all configured MCP servers |
 | `langsight security-scan` | CVE + OWASP MCP Top 10 security audit |
@@ -335,7 +334,7 @@ LangSight works with every major MCP client and agent framework:
 - [x] `langsight sessions` — agent session list and trace drill-down
 - [x] `GET /api/agents/sessions` and `GET /api/agents/sessions/{id}` endpoints
 - [x] Agent spans (lifecycle) and Handoff spans (agent-to-agent delegation)
-- [x] Framework adapters: CrewAI, Pydantic AI, OpenAI Agents SDK, LangChain, Langflow, LangGraph, LangServe
+- [x] Framework adapters: CrewAI, Pydantic AI, LangChain, Langflow, LangGraph, LangServe, LibreChat
 - [x] `langsight investigate` — AI-assisted root cause attribution (Claude Agent SDK)
 - [x] ClickHouse + PostgreSQL backend for production deployments
 - [x] OTLP/JSON endpoint for trace ingestion from agent frameworks (`POST /api/traces/otlp`)

@@ -37,6 +37,8 @@ Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░
 
 ## 1. MVP Definition
 
+> **Historical note**: Section 1 below was written under the original project name "AgentGuard" before the project was renamed to LangSight. CLI commands shown here (`agentguard ...`, `pip install agentguard`) reflect the original plan. The shipped product uses `langsight` as the CLI entry point and package name. This section is preserved as-is for historical traceability; see Section 2 onward for current implementation details.
+
 ### 1.1 What is IN the MVP
 
 The MVP is a **CLI-first tool** that any engineer can install and run in under 60 seconds against their local MCP configuration. No server infrastructure required. SQLite for local storage.
@@ -797,13 +799,13 @@ mcp_client = wrap(mcp_client, client)  # all tool calls now recorded
 
 #### 2.2 Framework Integrations
 
-**Objective**: Native integration adapters for CrewAI, Pydantic AI, and OpenAI Agents SDK so engineers do not need to manually call `wrap()`.
+**Objective**: Native integration adapters for CrewAI, Pydantic AI, LangChain/Langflow/LangGraph/LangServe, and LibreChat so engineers do not need to manually call `wrap()`.
 
 | Task | Description | Est. Hours |
 |------|-------------|-----------|
 | FW.1 | `src/langsight/integrations/crewai.py`: `LangSightCrewAICallback` — hooks into CrewAI's tool call lifecycle | 6h |
 | FW.2 | `src/langsight/integrations/pydantic_ai.py`: middleware that wraps Pydantic AI's `Tool` objects | 6h |
-| FW.3 | `src/langsight/integrations/openai_agents.py`: hook into OpenAI Agents SDK's function call events | 6h |
+| FW.3 | `src/langsight/integrations/langchain.py`: `LangSightLangChainCallback` — covers LangChain, Langflow, LangGraph, LangServe | 6h |
 | FW.4 | Common `IntegrationBase`: shared span-recording logic used by all adapters | 3h |
 | FW.5 | Integration tests: each adapter tested with a minimal real framework agent (mocked MCP server) | 6h |
 | FW.6 | Framework detection: `langsight.integrations.auto_configure()` detects installed frameworks and registers adapters | 3h |
@@ -823,7 +825,7 @@ crew = Crew(
 **Acceptance Criteria**:
 - [ ] CrewAI adapter records tool calls without requiring `wrap()` on the MCP client
 - [ ] Pydantic AI adapter records spans for all `Tool` invocations
-- [ ] OpenAI Agents SDK adapter records function call events
+- [ ] LangChain callback adapter records spans for LangChain, Langflow, LangGraph, and LangServe agents
 - [ ] All adapters respect fail-open: agent execution continues if LangSight is unreachable
 - [ ] Trace IDs propagate correctly across nested tool calls
 
