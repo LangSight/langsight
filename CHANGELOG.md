@@ -9,6 +9,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed (2026-03-18 — agent-first repositioning)
+- Product positioning updated from "MCP observability and security platform" to "observability platform for AI agent actions — full traces of every tool call across single and multi-agent workflows, with deep MCP health monitoring and security scanning built in." MCP remains a deep feature, not the lead identity.
+- `README.md`: tagline updated to lead with agent action tracing; "Why LangSight" table reordered — agent session traces and multi-agent handoffs now first and second, cost attribution moved up to third, MCP health and security remain as fourth/fifth; NOTE callout rewritten to contrast with Langfuse/LangSmith ("what your agent thought" vs "what your agent did")
+- `docs/01-product-spec.md`: One-Liner updated to agent-first framing; Elevator Pitch now opens with the primary on-call question before listing tool types; Problem Statement now leads with the agent visibility gap as the primary problem rather than MCP infrastructure
+- `docs-site/introduction.mdx`: frontmatter description updated; "What is LangSight?" section now opens with the Langfuse/LangSmith contrast and the primary on-call question before explaining tool type breakdown; CardGroup card copy updated — MCP cards now explicitly scoped as "for MCP servers specifically"
+- `website/app/page.tsx`: hero subheadline rewritten to lead with agent action tracing and multi-agent workflows; MCP depth framed as an additional capability, not the primary hook
+- `CLAUDE.md`: "What We're Building" section updated to agent-first description
+
+
+
 ### Fixed (2026-03-18 — documentation correctness)
 - `README.md`: sessions example output now matches actual CLI columns (`Session`, `Agent`, `Calls`, `Failed`, `Duration`, `Servers`) — removed non-existent `Cost` column
 - `README.md`: features section and CLI reference table no longer claim `langsight sessions` shows per-session cost; cost field is absent from the current implementation

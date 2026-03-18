@@ -1,6 +1,6 @@
 # LangSight
 
-**Complete observability for everything an AI agent calls — MCP servers, HTTP APIs, functions, and sub-agents — with built-in health monitoring and security scanning for MCP servers.**
+**Observability for AI agent actions — full traces of every tool call across single and multi-agent workflows, with deep MCP health monitoring and security scanning built in.**
 
 [![PyPI](https://img.shields.io/pypi/v/langsight)](https://pypi.org/project/langsight/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -18,13 +18,13 @@ Agents call three types of things: MCP servers (postgres-mcp, jira-mcp, slack-mc
 |---------|-------------------|----------------|
 | What did my agent call? | No trace of which tools ran, in what order | `langsight sessions --id` shows the full call tree |
 | Multi-agent handoffs | No visibility across agent boundaries | Full tree via `parent_span_id` — same model as OTEL |
-| Which of 15 tools failed? | 3 days of manual log replay | Root cause in the `investigate` command |
 | Tool call costs | Invisible, discovered on the invoice | Per-session cost attribution in real time |
+| Which of 15 tools failed? | 3 days of manual log replay | Root cause in the `investigate` command |
 | Tool returning stale data | Agent hallucinates; you find out from users | Schema drift alert fires in <5 minutes |
 | CVE in a community MCP server | Unknown until exploited | Automated CVE scan on every check |
 
 > [!NOTE]
-> 66% of MCP servers have critical code smells and 8,000+ are exposed without authentication (Invariant Labs, 2025). LangSight is the reliability and security layer that MCP infrastructure has been missing.
+> Langfuse and LangSmith show what your agent *thought* (prompts, completions, evals). LangSight shows what your agent *did* — every tool call, in order, with latency, cost, and errors. For MCP servers specifically, LangSight goes deeper: proactive health checks, CVE scanning, schema drift detection, and poisoning detection. 66% of MCP servers have critical code smells and 8,000+ are exposed without authentication (Invariant Labs, 2025).
 
 ---
 

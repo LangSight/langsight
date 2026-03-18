@@ -107,7 +107,7 @@ function Hero() {
               <span className="gradient-indigo">failed.</span>
             </h1>
             <p className="fade-up delay-2 text-lg leading-relaxed max-w-md" style={{ color: "var(--muted)" }}>
-              Full observability for every tool call your AI agents make — MCP servers, HTTP APIs, Python functions, and sub-agents.
+              Trace every action your AI agents take — tool calls, handoffs, costs, and failures — across single and multi-agent workflows. MCP servers get extra depth: health checks, CVE scanning, and drift detection.
               <strong style={{ color: "var(--text)" }}> Two lines to instrument. Zero infra to start.</strong>
             </p>
             <div className="fade-up delay-3 flex flex-wrap gap-3">

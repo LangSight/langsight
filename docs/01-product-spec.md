@@ -47,9 +47,11 @@ These gaps are tracked as tasks S.1-S.10 in `docs/04-implementation-plan.md` und
 
 ### One-Liner
 
-**LangSight is complete observability for everything an AI agent calls — MCP servers, HTTP APIs, functions, and sub-agents — with built-in health monitoring and security scanning for MCP servers.**
+**LangSight is the observability platform for AI agent actions — full traces of every tool call across single and multi-agent workflows, with deep MCP health monitoring and security scanning built in.**
 
 ### Elevator Pitch
+
+The primary question every on-call engineer asks when a multi-agent workflow breaks is: "What did my agent call, in what order, how long did each tool take, which ones failed, and what did it cost?" LangSight answers that question first.
 
 Agents call three types of things: MCP servers (postgres-mcp, jira-mcp, slack-mcp), non-MCP tools (Stripe API, Sendgrid, Python functions), and sub-agents (agent-to-agent handoffs). LangSight observes all three via the SDK and OTLP. MCP servers get extra depth because the MCP protocol is standard and inspectable — proactive health checks, security scanning, schema drift detection, and alerting. Non-MCP tools (HTTP APIs, functions) are observed passively — you see every call in the trace but LangSight cannot proactively health-check them because there is no standard protocol to ping.
 
@@ -100,7 +102,7 @@ MCP has become the de facto standard for connecting AI agents to external tools.
 | Exposed MCP servers (no auth) | 8,000+ | Security research, 2025 |
 | Agentic AI projects predicted to fail by 2027 | 40% | Gartner |
 
-**The core problem**: Teams deploying AI agents with MCP tools are flying blind. They cannot answer either primary or secondary operational questions:
+**The core problem**: Teams deploying AI agents are flying blind on what those agents actually do. The primary question — "what did my agent call, in what order, how long did each take, which failed, what did it cost?" — is unanswerable without dedicated tooling. Answering it immediately surfaces the secondary infrastructure question: "are my tools healthy and secure?"
 
 **Primary (agent-level)**: "What did my agent call, in what order, how long did each tool take, which ones failed, and what did it cost?" This is the first question every on-call engineer asks when a multi-agent workflow misbehaves.
 

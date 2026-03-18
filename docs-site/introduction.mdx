@@ -1,9 +1,11 @@
 ---
 title: "Introduction"
-description: "LangSight is complete observability for everything an AI agent calls — MCP servers, HTTP APIs, functions, and sub-agents — with built-in health monitoring and security scanning for MCP servers."
+description: "LangSight is the observability platform for AI agent actions — full traces of every tool call across single and multi-agent workflows, with deep MCP health monitoring and security scanning built in."
 ---
 
 ## What is LangSight?
+
+LangSight answers the question every on-call engineer asks first: "What did my agent call, in what order, how long did each tool take, which ones failed, and what did it cost?" Langfuse and LangSmith show what your agent *thought* — prompts, completions, evals. LangSight shows what your agent *did* — every tool action, in sequence, with latency, errors, and cost attribution.
 
 Agents call three types of things:
 
@@ -46,16 +48,16 @@ MCP servers: 4 of 7 calls (health-checked and security-scanned independently)
 
 <CardGroup cols={2}>
   <Card title="Agent Session Traces" icon="list-tree">
-    Full ordered trace for every agent session — MCP calls, HTTP API calls, function calls, sub-agent handoffs — all in one view with cost per session.
+    Full ordered trace for every agent session — MCP calls, HTTP API calls, function calls, sub-agent handoffs — all in one view. The primary answer to "what did my agent do?"
   </Card>
-  <Card title="Multi-Agent Support" icon="diagram-project">
-    When Agent A hands off to Agent B which calls Agent C, trace the full tree. Parent-child span relationships (same model as OpenTelemetry).
+  <Card title="Multi-Agent Call Trees" icon="diagram-project">
+    When Agent A hands off to Agent B which calls Agent C, trace the full tree. Parent-child span relationships (same model as OpenTelemetry distributed tracing).
   </Card>
   <Card title="MCP Health Monitoring" icon="heart-pulse">
-    Proactive availability checks, latency tracking, and schema drift detection for MCP servers. Unique: synthetic probes, not just passive recording.
+    For MCP servers specifically: proactive availability checks, latency tracking, and schema drift detection. Synthetic probes, not just passive recording.
   </Card>
   <Card title="MCP Security Scanning" icon="shield-check">
-    CVE detection, OWASP MCP Top 10 audit, tool poisoning detection, and auth gap analysis — for MCP servers specifically.
+    For MCP servers specifically: CVE detection, OWASP MCP Top 10 audit, tool poisoning detection, and auth gap analysis.
   </Card>
 </CardGroup>
 
