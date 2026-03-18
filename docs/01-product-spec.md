@@ -1,8 +1,8 @@
 # AgentGuard: Product Specification
 
-> **Version**: 1.1.0
-> **Date**: 2026-03-17
-> **Status**: Updated — agent observability pivot
+> **Version**: 1.2.0
+> **Date**: 2026-03-18
+> **Status**: Alpha — security assessment completed 2026-03-18; production gaps documented below
 > **Author**: Product & Engineering
 
 ---
@@ -17,6 +17,29 @@
 6. [What We Don't Build](#6-what-we-dont-build)
 7. [Success Metrics](#7-success-metrics)
 8. [Open Source Strategy](#8-open-source-strategy)
+
+---
+
+## Alpha Status and Current Limitations (as of v0.1.0)
+
+> **v0.1.0 is an alpha release.** The API is currently unauthenticated. Do not expose LangSight to the internet or untrusted networks without adding an auth layer in front of it.
+
+### What "alpha" means here
+
+LangSight v0.1.0 has 378 tests, 83.69% coverage, a coherent architecture, and all core features working end-to-end. It is suitable for local development, internal pilots within trusted networks, and contributor evaluation. It is not yet suitable for production deployment or internet-facing use.
+
+### Production Readiness Gaps (must be resolved before 0.2.0 production claim)
+
+| # | Gap | Severity |
+|---|-----|----------|
+| 1 | API is unauthenticated — wildcard CORS, no auth middleware | P0 — blocker |
+| 2 | Dashboard auth is demo-only — hardcoded users, any password accepted | P0 — blocker |
+| 3 | Docker Compose uses insecure defaults — default credentials, DB ports exposed to host | P1 |
+| 4 | Feature matrix conflates shipped with roadmap — `langsight sessions` cost field is a placeholder | P1 |
+| 5 | No rate limiting, audit logging, or operational metrics | P1 |
+| 6 | No threat model, deployment topology docs, or vulnerability disclosure policy | P1 |
+
+These gaps are tracked as tasks S.1-S.10 in `docs/04-implementation-plan.md` under "Pre-Production Security Hardening".
 
 ---
 

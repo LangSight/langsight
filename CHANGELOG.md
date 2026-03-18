@@ -9,10 +9,30 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Post-0.1.0 work: marketing website (`website/`), product dashboard (`dashboard/`).
+Post-0.1.0 work: marketing website (`website/`), product dashboard (`dashboard/`), pre-production security hardening.
 
 ### Added
 - `LangSightLangChainCallback` — LangChain framework integration covering LangChain agents, Langflow, LangGraph, and LangServe (`src/langsight/integrations/langchain.py`)
+- Dashboard v2 live with Next.js 15, shadcn/ui — all core pages (health, security, reliability, costs, alerts) implemented
+- Security assessment completed 2026-03-18 — findings documented in `PROGRESS.md` and `docs/04-implementation-plan.md`
+
+### Planned (Pre-Production Security Hardening — required before 0.2.0 production positioning)
+- S.1: API key middleware for all API endpoints (currently unauthenticated — P0)
+- S.2: RBAC — admin and viewer roles at router dependency level
+- S.3: Dashboard real credential store or OIDC integration (currently demo-only — P0)
+- S.4: Rate limiting on `POST /api/traces/spans` and `POST /api/traces/otlp`
+- S.5: Audit logging for security-sensitive actions (scans triggered, auth failures, config changes)
+- S.6: No default secrets in `docker-compose.yml` — require explicit env var injection
+- S.7: ClickHouse and Postgres ports removed from host binding in compose (internal network only)
+- S.8: Alembic migrations for Postgres; versioned SQL scripts for ClickHouse
+- S.9: `docs/06-threat-model.md` — trust boundaries, attack surface, vulnerability disclosure policy
+- S.10: Split `GET /api/status` into `/readiness` and `/liveness` for correct Kubernetes probe behavior
+
+### Security Assessment Findings (2026-03-18)
+- P0.1: `api/main.py` line 56 — wildcard CORS origin; no auth dependency on routers (line 63). Any client reaching port 8000 can trigger scans and read all data.
+- P0.2: `dashboard/lib/auth.ts` — hardcoded users, any password accepted, static secret fallback. Dashboard auth is explicitly demo-mode.
+- P1.1: `docker-compose.yml` — ClickHouse default user, default Postgres password, databases exposed to host, hardcoded dashboard secret.
+- P1.2: README claims per-session cost in `langsight sessions` output; cost field is absent from CLI and cost engine `total` is a placeholder.
 
 ---
 

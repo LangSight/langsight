@@ -1,11 +1,11 @@
 # LangSight: Implementation Plan
 
-> **Version**: 1.2.0
-> **Date**: 2026-03-17
-> **Status**: Active — Phase 1 and Phase 2 COMPLETE. Release 0.1.0 in progress.
+> **Version**: 1.3.0
+> **Date**: 2026-03-18
+> **Status**: Active — Phase 1-3 COMPLETE (alpha). Pre-Production Security Hardening phase added. Release 0.1.0 is an alpha release.
 > **Author**: Engineering
 >
-> **Change from 1.1**: Phase 1 and Phase 2 are fully complete (100%). Release 0.1.0 tasks added. Phase 4 updated to reflect post-release scope. See CHANGELOG.md for full decision history.
+> **Change from 1.2**: Pre-Production Security Hardening phase (S.1-S.10) added based on 2026-03-18 security assessment. Metrics corrected to 378 tests / 83.69% coverage. Dashboard v2 noted as demo-auth-only. See CHANGELOG.md and PROGRESS.md for full assessment details.
 
 ---
 
@@ -30,7 +30,7 @@ Release 0.1.0                   ████████░░░░░░░░
 Phase 4 (Dashboard + Website)   ████░░░░░░░░░░░░  25% — IN PROGRESS
 ```
 
-**Shipped metrics**: 371 tests passing, 85% coverage, 8 CLI commands, 9 API endpoints, SQLite + PostgreSQL + ClickHouse storage backends, FastAPI REST API, GitHub Actions CI, 28 Mintlify docs pages.
+**Shipped metrics**: 378 tests passing, 83.69% coverage, 8 CLI commands, 9 API endpoints, SQLite + PostgreSQL + ClickHouse storage backends, FastAPI REST API, GitHub Actions CI, 28 Mintlify docs pages. Dashboard v2 live with demo-mode auth (P0 gap — auth is not production-grade).
 
 ---
 
@@ -411,6 +411,35 @@ The MVP is "done" when all of the following are true:
 - [ ] Anomaly detection fires when cost-per-task increases 3x from baseline
 - [ ] Budget alert fires at 80% of configured limit
 - [ ] `agentguard costs --period 7d` shows weekly breakdown by tool
+
+---
+
+### Pre-Production Security Hardening (Security Assessment 2026-03-18)
+
+**Status**: NOT STARTED — required before production positioning or internet-facing deployment.
+
+**Context**: A security review on 2026-03-18 identified two P0 blockers and two P1 gaps that prevent honest production claims. This phase must be completed before 0.2.0 can be called production-grade. See `PROGRESS.md` for the full assessment summary.
+
+| Task | ID | Description | Priority |
+|------|----|-------------|----------|
+| API key middleware on all API routes | S.1 | Add FastAPI dependency that validates `X-API-Key` header against a configurable key list. Wildcard CORS in `api/main.py` must be restricted to known origins. | P0 |
+| RBAC — admin and viewer roles | S.2 | Admin: full access including triggering scans and ingesting spans. Viewer: read-only. Enforce at the router dependency level. | P0 |
+| Dashboard real credential store or OIDC | S.3 | Replace hardcoded users in `dashboard/lib/auth.ts` with either a proper credential store or OIDC provider integration. Any-password-accepted logic must be removed. | P0 |
+| Rate limiting on ingestion endpoints | S.4 | Apply per-IP rate limiting on `POST /api/traces/spans` and `POST /api/traces/otlp` to prevent abuse. Use `slowapi` or similar. | P1 |
+| Audit logging for security-sensitive actions | S.5 | Log (structured, to storage) all security scans triggered, auth failures, and config changes. Include actor, timestamp, source IP. | P1 |
+| No default secrets in docker-compose | S.6 | Remove hardcoded Postgres password, ClickHouse default user, and dashboard secret from `docker-compose.yml`. Require explicit env var injection. Add `.env.example` with placeholder values only. | P1 |
+| Close public DB ports in compose | S.7 | ClickHouse and Postgres ports must not be bound to host by default. Move to internal Docker network; only the API and OTEL Collector should be reachable from outside. | P1 |
+| Schema migration strategy | S.8 | Implement Alembic for Postgres schema migrations. Document ClickHouse migration approach (versioned SQL scripts). Neither database schema should be managed by application startup DDL in production. | P1 |
+| Threat model document | S.9 | Write `docs/06-threat-model.md` covering: trust boundaries, attack surface, deployment topology, data classification, and vulnerability disclosure policy. | P1 |
+| Readiness/liveness probe split | S.10 | Split `GET /api/status` into `/readiness` (can serve traffic) and `/liveness` (process is alive). Required for correct Kubernetes and Docker health check behavior. | P1 |
+
+**Acceptance criteria for this phase**:
+- [ ] `POST /api/traces/spans` with no API key returns HTTP 401
+- [ ] `docker-compose.yml` has no hardcoded secrets; `docker compose up` fails fast with a clear error if required env vars are absent
+- [ ] ClickHouse and Postgres ports are not bound to `0.0.0.0` in the default compose
+- [ ] Dashboard login rejects invalid credentials
+- [ ] `docs/06-threat-model.md` exists and covers all 6 trust boundary areas
+- [ ] Alembic `alembic upgrade head` applies all Postgres schema without errors on a fresh database
 
 ---
 

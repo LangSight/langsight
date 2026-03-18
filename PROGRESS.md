@@ -1,13 +1,55 @@
 # LangSight — Build Progress
 
-> Last updated: 2026-03-17
+> Last updated: 2026-03-18
 > Maintained by: docs-keeper agent — update after every feature, architectural decision, or milestone
 
 **Project framing**: LangSight is complete observability for everything an AI agent calls — MCP servers, HTTP APIs, Python functions, and sub-agents. Agent-level instrumentation captures all tool types in one trace. MCP servers additionally receive proactive health checks, security scanning, schema drift detection, and alerting because the MCP protocol is standard and inspectable. Non-MCP tools (HTTP APIs, functions) are passively observed in traces only.
 
 ---
 
-## Current Status: Release 0.1.0 — In Progress
+## Security Assessment — Action Required (2026-03-18)
+
+A security review was conducted against the codebase as of 2026-03-18. The overall assessment is: **strong OSS alpha with critical gaps that must be resolved before production positioning**.
+
+### P0 — Blockers (must fix before any public deployment)
+
+| ID | Finding | Location |
+|----|---------|----------|
+| P0.1 | API is unauthenticated | `api/main.py` line 56 (wildcard CORS), no auth dependency on routers line 63. Anyone who can reach port 8000 can trigger scans, ingest spans, and read all data. |
+| P0.2 | Dashboard auth is demo-only | `dashboard/lib/auth.ts` — hardcoded users, any password accepted, static secret fallback. UI appears productized; identity layer is not. |
+
+### P1 — Important (fix before broader adoption)
+
+| ID | Finding | Location |
+|----|---------|----------|
+| P1.1 | Docker Compose uses insecure defaults | ClickHouse default user, default Postgres password, databases exposed to host network, known dashboard secret as default value |
+| P1.2 | README overstates production completeness | Claims per-session costs in sessions output, but cost field is absent from `langsight sessions` CLI; cost engine `total` is a placeholder |
+
+### Production Readiness Gaps
+
+The following items are required before LangSight can be positioned as production-grade:
+
+| # | Gap | Priority |
+|---|-----|----------|
+| 1 | Real authn/authz for API (API keys or OIDC) and dashboard | P0 |
+| 2 | Hardened deployment assets — no default secrets, no public DB ports, TLS, secret injection | P1 |
+| 3 | Schema migration strategy — Alembic for Postgres, ClickHouse migration tooling | P1 |
+| 4 | Honest feature matrix — separate shipped features from roadmap items | P1 |
+| 5 | Operational hardening — rate limiting, audit logging, Prometheus metrics, readiness/liveness probes | P1 |
+| 6 | Security posture docs — threat model, deployment topology, vulnerability disclosure policy | P1 |
+
+### Current Honest Positioning
+
+LangSight v0.1.0 is a **promising self-hosted observability and security toolkit for MCP and agent workflows**. It is suitable for:
+- Local development and experimentation
+- Internal pilots within trusted networks
+- Contributor adoption and OSS evaluation
+
+It is **not yet suitable** for internet-facing or multi-tenant deployment without the P0/P1 gaps above resolved.
+
+---
+
+## Current Status: Release 0.1.0 — Alpha
 
 ```
 Phase 1 (CLI MVP)               ████████████████ 100% — COMPLETE ✅
@@ -23,8 +65,8 @@ Phase 4 (Dashboard + Website)   ████░░░░░░░░░░░░
 
 | Metric | Value |
 |--------|-------|
-| Test count | 371 tests |
-| Coverage | 85% |
+| Test count | 378 tests |
+| Coverage | 83.69% |
 | CLI commands live | 8 (`init`, `mcp-health`, `security-scan`, `monitor`, `investigate`, `costs`, `sessions`, `serve`) |
 | API endpoints | 9 (`/api/agents/sessions`, `/api/agents/sessions/{id}`, `/api/health/*`, `/api/security/scan`, `/api/traces/spans`, `/api/traces/otlp`, `/api/status`) |
 | Storage backends | 3 (SQLite, PostgreSQL, ClickHouse) |
@@ -220,16 +262,18 @@ Phase 4 (Dashboard + Website)   ████░░░░░░░░░░░░
 | Pricing section | Not started | OSS free + SaaS tiers placeholder |
 | Vercel deployment | Not started | |
 
-### Product Dashboard (app.langsight.io)
+### Product Dashboard v2 (app.langsight.io)
 | Item | Status | Notes |
 |------|--------|-------|
-| Next.js 15 dashboard project setup | Not started | shadcn/ui, App Router, `dashboard/` directory |
-| Overview page | Not started | Fleet health score, active alerts, top degraded tools |
-| MCP Health page | Not started | Server list, drill-down |
-| Security Posture page | Not started | OWASP compliance, CVE list |
-| Tool Reliability page | Not started | Ranked tool list, latency trends — requires ClickHouse data |
-| Cost Attribution page | Not started | Cost breakdown, anomaly highlights — requires cost engine data |
-| Alert Management page | Not started | View, acknowledge, configure alerts |
+| Next.js 15 dashboard project setup | ✅ Done | shadcn/ui, App Router, `dashboard/` directory |
+| Auth layer (demo mode) | ✅ Done | Hardcoded users, any password accepted — **demo only, not production** (P0.2) |
+| Overview page | ✅ Done | Fleet health score, active alerts, top degraded tools |
+| MCP Health page | ✅ Done | Server list, drill-down |
+| Security Posture page | ✅ Done | OWASP compliance, CVE list |
+| Tool Reliability page | ✅ Done | Ranked tool list, latency trends |
+| Cost Attribution page | ✅ Done | Cost breakdown, anomaly highlights |
+| Alert Management page | ✅ Done | View, acknowledge, configure alerts |
+| Real auth (API keys or OIDC) | Not started | Required before production deployment — P0 gap |
 
 ---
 
