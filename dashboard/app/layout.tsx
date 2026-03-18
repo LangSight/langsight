@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
-import { GeistSans } from "geist/font/sans";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import { GeistMono } from "geist/font/mono";
+
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  variable: "--font-geist-sans",   // reuse existing CSS var so tailwind picks it up
+  display: "swap",
+});
 import { Providers } from "@/components/providers";
 import { auth } from "@/lib/auth";
 import "./globals.css";
@@ -13,7 +19,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   return (
-    <html lang="en" suppressHydrationWarning className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${plusJakarta.variable} ${GeistMono.variable}`}>
       <body>
         <Providers session={session}>{children}</Providers>
       </body>
