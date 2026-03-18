@@ -59,6 +59,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    env_file:
+      - ./test-mcps/s3-mcp/.env
     container_name: langsight-api
     environment:
       LANGSIGHT_STORAGE_MODE: clickhouse
@@ -68,13 +70,22 @@ services:
       LANGSIGHT_LOG_LEVEL: INFO
     ports:
       - "8000:8000"
+    volumes:
+      - ./.langsight.yaml:/app/.langsight.yaml:ro
+      - ./test-mcps:/app/test-mcps:ro
     depends_on:
       clickhouse:
         condition: service_healthy
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/api/status | grep -q ok"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/status')",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -82,22 +93,25 @@ services:
     restart: unless-stopped
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Dashboard — Next.js 15 product UI (port 3002)
+  # Dashboard — Next.js 15 product UI (host port 3003)
   # ─────────────────────────────────────────────────────────────────────────────
   dashboard:
     image: langsight/dashboard:latest
     build:
       context: ./dashboard
       dockerfile: Dockerfile
+      args:
+        LANGSIGHT_API_URL: http://api:8000
     container_name: langsight-dashboard
     environment:
       LANGSIGHT_API_URL: http://api:8000
-      NEXTAUTH_URL: http://localhost:3002
+      NEXTAUTH_URL: http://localhost:3003
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-langsight-change-in-production}
+      AUTH_TRUST_HOST: "true"
       NODE_ENV: production
       PORT: 3002
     ports:
-      - "3002:3002"
+      - "3003:3002"
     depends_on:
       api:
         condition: service_healthy

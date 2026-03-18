@@ -392,37 +392,44 @@ otel:
 
 ## 4. Web Dashboard (Phase 3 — Overview)
 
-The dashboard is built on the same FastAPI REST API that powers the CLI. Six pages:
+The dashboard is built on the same FastAPI REST API that powers the CLI.
+The current IA is agent-first: **Overview → Agents → Workflows → Tools & MCPs → Security → Costs**.
 
 ### 4.1 Dashboard Home
-- **Health summary cards**: Total servers, Healthy/Degraded/Down counts, Security score, Total cost today
+- **Agent/workflow summary cards**: Active workflows, healthy agents, tool/MCP backend status, cost snapshot
 - **Active alerts**: List of currently firing alerts with severity badges
-- **Health trend**: Sparklines showing server availability over last 24h
+- **Workflow + infrastructure split**: Agent workflows are primary; MCP/tool infrastructure is secondary drill-down
 
-### 4.2 MCP Health Page
+### 4.2 Agents Page
+- **Agent fleet view**: Per-agent session count, tool calls, failures, runtime, and cost
+- **Agent drill-down**: Touched tools/MCPs, recent workflows, operational summary
+
+### 4.3 Workflows Page
+- **Session table**: One row per workflow/session with agent, tool-call count, failures, duration, and touched backends
+- **Trace drawer**: Tree of `agent`, `handoff`, and `tool_call` spans for one workflow
+
+### 4.4 Tools & MCPs Page
 - **Server list table**: Name, status badge, p99 latency, schema status, tools count, last check time
 - **Click server → detail view**: Latency time-series chart, availability history, schema changelog, tool list with per-tool latency
 - **Filters**: By status, transport type, tag
 
-### 4.3 Tool Reliability Page
+### 4.5 Tool Reliability Page
 - **Metrics table**: Tool name, success rate (with sparkline), p50/p95/p99 latency, error rate, call volume
 - **Color coding**: Green (>95% success), Yellow (80-95%), Red (<80%)
 - **Click tool → drill-down**: Error breakdown by category, latency histogram, recent failures with trace links
 
-### 4.4 Security Page
+### 4.6 Security Page
 - **OWASP MCP Top 10 scorecard**: Visual card per category (pass/warn/fail)
 - **Vulnerability list**: Sortable by severity, filterable by server
 - **Tool poisoning alerts**: Description diff viewer (before/after)
 - **Remediation panel**: Fix suggestions per finding
 
-### 4.5 Cost Analytics Page
-- **Summary cards**: Today / 7d / 30d total cost
-- **Cost by tool**: Horizontal bar chart
-- **Cost by agent**: Horizontal bar chart
-- **Cost trend**: Line chart over time
-- **Anomaly highlights**: Flagged cost spikes
+### 4.7 Cost Analytics Page
+- **Shipped now**: Summary cards plus live breakdowns by tool, by agent, and by session
+- **Data source**: `/api/costs/breakdown` from ClickHouse-backed traced tool calls
+- **Next layer**: Trend charts, anomaly highlights, and budget alerts
 
-### 4.6 Alerts Page
+### 4.8 Alerts Page
 - **Alert timeline**: Newest first, severity color-coded
 - **Filters**: By severity, status (firing/ack/resolved), server, type
 - **Alert detail**: What triggered, when, context data, linked health check

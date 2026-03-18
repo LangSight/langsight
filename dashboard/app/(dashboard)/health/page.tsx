@@ -151,9 +151,9 @@ export default function HealthPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>MCP Health</h1>
+          <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Tools & MCPs</h1>
           <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
-            {isLoading ? "Loading…" : `${up}/${total} servers healthy · refreshes every 30s`}
+            {isLoading ? "Loading…" : `${up}/${total} tool backends healthy · refreshes every 30s`}
           </p>
         </div>
         <button onClick={runCheck} disabled={checking}
@@ -176,8 +176,8 @@ export default function HealthPage() {
       ) : servers?.length === 0 ? (
         <div className="rounded-xl border p-12 text-center" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
           <Clock size={40} className="mx-auto mb-4 opacity-20"/>
-          <p className="font-medium mb-1" style={{ color: "hsl(var(--foreground))" }}>No servers configured</p>
-          <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Run <code>langsight init</code> to discover your MCP servers</p>
+          <p className="font-medium mb-1" style={{ color: "hsl(var(--foreground))" }}>No tools configured</p>
+          <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Run <code>langsight init</code> to discover MCP servers and tool backends</p>
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">

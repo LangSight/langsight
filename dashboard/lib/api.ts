@@ -1,6 +1,7 @@
 import type {
   AgentSession,
   ApiStatus,
+  CostsBreakdownResponse,
   HealthResult,
   SecurityScanResult,
   SessionTrace,
@@ -40,6 +41,10 @@ export const getServerHealth = () => get<HealthResult[]>("/health/servers");
 export const getServerHistoty = (name: string, limit = 20) =>
   get<HealthResult[]>(`/health/servers/${encodeURIComponent(name)}/history?limit=${limit}`);
 export const triggerHealthCheck = () => post<HealthResult[]>("/health/check");
+
+// ─── Costs ────────────────────────────────────────────────────────────────────
+export const getCostsBreakdown = (hours = 24) =>
+  get<CostsBreakdownResponse>(`/costs/breakdown?hours=${hours}`);
 
 // ─── Security ─────────────────────────────────────────────────────────────────
 export const triggerSecurityScan = () =>

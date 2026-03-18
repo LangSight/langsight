@@ -497,6 +497,40 @@ class ClickHouseBackend:
         ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
+    async def get_cost_call_counts(self, hours: int = 24) -> list[dict[str, Any]]:
+        """Return aggregated tool-call counts for cost attribution.
+
+        Groups by server, tool, agent, and session so higher-level cost reports
+        can derive per-tool, per-agent, and per-session totals in Python while
+        applying pricing rules consistently in one place.
+        """
+        result = await self._client.query(
+            """
+            SELECT
+                server_name,
+                tool_name,
+                nullIf(agent_name, '') AS agent_name,
+                nullIf(session_id, '') AS session_id,
+                count() AS total_calls
+            FROM mcp_tool_calls
+            WHERE
+                span_type = 'tool_call'
+                AND started_at >= now() - INTERVAL {hours:UInt32} HOUR
+            GROUP BY server_name, tool_name, agent_name, session_id
+            ORDER BY total_calls DESC, server_name, tool_name
+            """,
+            parameters={"hours": hours},
+        )
+
+        cols = [
+            "server_name",
+            "tool_name",
+            "agent_name",
+            "session_id",
+            "total_calls",
+        ]
+        return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
     # ---------------------------------------------------------------------------
     # Context manager
     # ---------------------------------------------------------------------------

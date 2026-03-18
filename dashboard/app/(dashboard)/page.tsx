@@ -2,10 +2,10 @@
 
 import useSWR from "swr";
 import { useState } from "react";
-import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
-import { Activity, AlertTriangle, CheckCircle, Server, GitBranch, RefreshCw, TrendingUp } from "lucide-react";
+import { Area, AreaChart, ResponsiveContainer } from "recharts";
+import { Activity, CheckCircle, Server, GitBranch, RefreshCw, Bot } from "lucide-react";
 import { fetcher, triggerHealthCheck } from "@/lib/api";
-import { cn, STATUS_BG, STATUS_ICON, timeAgo, formatLatency } from "@/lib/utils";
+import { cn, STATUS_BG, timeAgo, formatLatency } from "@/lib/utils";
 import { toast } from "sonner";
 import Link from "next/link";
 import type { HealthResult, AgentSession } from "@/lib/types";
@@ -86,7 +86,7 @@ export default function OverviewPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Overview</h1>
-          <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Agent observability at a glance</p>
+          <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Start with agent workflows, then drill into the tools and MCPs they touched</p>
         </div>
         <button onClick={runCheck} disabled={checking}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
@@ -108,20 +108,20 @@ export default function OverviewPage() {
           ))
         ) : (
           <>
-            <MetricCard label="Servers Online" value={`${up}/${total}`} sub="MCP servers" icon={Server} trend={spark.map(s => s.v)} color="#6366f1"/>
-            <MetricCard label="Down" value={down} sub={down > 0 ? "action required" : "all clear"} icon={AlertTriangle} color={down > 0 ? "#ef4444" : "#22c55e"}/>
-            <MetricCard label="Degraded" value={degraded} sub="schema drift / slow" icon={Activity} color={degraded > 0 ? "#eab308" : "#6366f1"}/>
-            <MetricCard label="Sessions 24h" value={sessTotal} sub={`${sessFailed} with failures`} icon={GitBranch} trend={spark.map(s => s.v)} color="#6366f1"/>
+            <MetricCard label="Active Workflows" value={sessTotal} sub={`${sessFailed} with failures`} icon={GitBranch} trend={spark.map(s => s.v)} color="#6366f1"/>
+            <MetricCard label="Healthy Agents" value={Math.max(sessTotal - sessFailed, 0)} sub="agents without failed sessions in window" icon={Bot} color={sessFailed > 0 ? "#eab308" : "#22c55e"}/>
+            <MetricCard label="Tools & MCPs Online" value={`${up}/${total}`} sub={`${degraded} degraded · ${down} down`} icon={Server} trend={spark.map(s => s.v)} color="#6366f1"/>
+            <MetricCard label="Tool Alerts" value={down + degraded} sub={(down + degraded) > 0 ? "infrastructure drill-down needed" : "all clear"} icon={Activity} color={(down + degraded) > 0 ? "#ef4444" : "#22c55e"}/>
           </>
         )}
       </div>
 
       <div className="grid lg:grid-cols-5 gap-5">
-        {/* Server health (3/5) */}
+        {/* Recent agent workflows (3/5) */}
         <div className="lg:col-span-3 rounded-xl border" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
           <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "hsl(var(--border))" }}>
-            <h2 className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>MCP Servers</h2>
-            <Link href="/health" className="text-xs font-medium" style={{ color: "hsl(var(--primary))" }}>View all →</Link>
+            <h2 className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>Recent Agent Workflows</h2>
+            <Link href="/sessions" className="text-xs font-medium" style={{ color: "hsl(var(--primary))" }}>View all →</Link>
           </div>
           <div className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
             {sl ? (
@@ -131,22 +131,25 @@ export default function OverviewPage() {
                   <div className="flex items-center gap-3"><Skeleton className="h-4 w-12"/><Skeleton className="h-5 w-16 rounded-full"/></div>
                 </div>
               ))
-            ) : servers?.length === 0 ? (
+            ) : !sessions || sessions.length === 0 ? (
               <div className="px-5 py-12 text-center">
-                <Server size={32} className="mx-auto mb-3 opacity-20"/>
-                <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>No servers configured</p>
-                <p className="text-xs mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>Run <code className="text-primary">langsight init</code></p>
+                <GitBranch size={32} className="mx-auto mb-3 opacity-20"/>
+                <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>No agent workflows yet</p>
+                <p className="text-xs mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>Instrument with the LangSight SDK or OTLP</p>
               </div>
-            ) : servers?.map(s => (
-              <div key={s.server_name} className="flex items-center justify-between px-5 py-3.5 hover:bg-accent/50 transition-colors">
+            ) : sessions?.slice(0, 6).map(s => (
+              <div key={s.session_id} className="flex items-center justify-between px-5 py-3.5 hover:bg-accent/50 transition-colors">
                 <div className="flex items-center gap-3">
-                  <StatusDot status={s.status}/>
-                  <span className="text-sm font-mono" style={{ color: "hsl(var(--foreground))" }}>{s.server_name}</span>
+                  <StatusDot status={s.failed_calls > 0 ? "down" : "up"}/>
+                  <div>
+                    <span className="text-sm font-mono block" style={{ color: "hsl(var(--foreground))" }}>{s.session_id.slice(0, 16)}…</span>
+                    <span className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>{s.agent_name || "unknown agent"}</span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>{formatLatency(s.latency_ms)}</span>
-                  <span className={cn("text-xs px-2 py-0.5 rounded-full border font-medium", STATUS_BG[s.status as keyof typeof STATUS_BG])}>
-                    {STATUS_ICON[s.status as keyof typeof STATUS_ICON]} {s.status}
+                  <span className="text-xs font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>{s.tool_calls} calls</span>
+                  <span className={cn("text-xs px-2 py-0.5 rounded-full border font-medium", s.failed_calls > 0 ? STATUS_BG.down : STATUS_BG.up)}>
+                    {s.failed_calls > 0 ? `${s.failed_calls} failed` : "clean"}
                   </span>
                 </div>
               </div>
@@ -154,11 +157,11 @@ export default function OverviewPage() {
           </div>
         </div>
 
-        {/* Recent sessions (2/5) */}
+        {/* Tool infrastructure (2/5) */}
         <div className="lg:col-span-2 rounded-xl border" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
           <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "hsl(var(--border))" }}>
-            <h2 className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>Recent Sessions</h2>
-            <Link href="/sessions" className="text-xs font-medium" style={{ color: "hsl(var(--primary))" }}>View all →</Link>
+            <h2 className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>Tools & MCPs</h2>
+            <Link href="/health" className="text-xs font-medium" style={{ color: "hsl(var(--primary))" }}>View all →</Link>
           </div>
           <div className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
             {ssl ? (
@@ -167,28 +170,28 @@ export default function OverviewPage() {
                   <Skeleton className="h-3.5 w-28"/><Skeleton className="h-3 w-40"/>
                 </div>
               ))
-            ) : !sessions || sessions.length === 0 ? (
+            ) : !servers || servers.length === 0 ? (
               <div className="px-5 py-12 text-center">
-                <GitBranch size={32} className="mx-auto mb-3 opacity-20"/>
-                <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>No sessions yet</p>
-                <p className="text-xs mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>Instrument with LangSight SDK</p>
+                <Server size={32} className="mx-auto mb-3 opacity-20"/>
+                <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>No tools configured</p>
+                <p className="text-xs mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>Run <code className="text-primary">langsight init</code></p>
               </div>
-            ) : sessions?.map(s => (
-              <Link href="/sessions" key={s.session_id}>
+            ) : servers?.map(s => (
+              <Link href="/health" key={s.server_name}>
                 <div className="px-5 py-3.5 hover:bg-accent/50 transition-colors">
                   <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-xs font-mono" style={{ color: "hsl(var(--foreground))" }}>{s.session_id.slice(0, 14)}…</span>
-                    {s.failed_calls > 0
-                      ? <span className="text-xs text-red-500 font-medium">{s.failed_calls} failed</span>
-                      : <span className="text-xs text-emerald-500 font-medium"><CheckCircle size={11} className="inline mr-0.5"/>clean</span>
+                    <span className="text-xs font-mono" style={{ color: "hsl(var(--foreground))" }}>{s.server_name}</span>
+                    {s.status !== "up"
+                      ? <span className="text-xs text-red-500 font-medium">{s.status}</span>
+                      : <span className="text-xs text-emerald-500 font-medium"><CheckCircle size={11} className="inline mr-0.5"/>up</span>
                     }
                   </div>
                   <div className="flex items-center gap-2 text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>
-                    <span>{s.agent_name || "unknown agent"}</span>
+                    <span>{s.tools_count} tools</span>
                     <span>·</span>
-                    <span>{s.tool_calls} calls</span>
+                    <span>{formatLatency(s.latency_ms)}</span>
                     <span>·</span>
-                    <span>{timeAgo(s.first_call_at)}</span>
+                    <span>{timeAgo(s.checked_at)}</span>
                   </div>
                 </div>
               </Link>

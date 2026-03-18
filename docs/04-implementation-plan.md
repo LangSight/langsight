@@ -25,7 +25,7 @@
 ```
 Phase 1 (CLI MVP)               ████████████████ 100% — COMPLETE ✅
 Phase 2 (SDK + Framework Integ) ████████████████ 100% — COMPLETE ✅
-Phase 3 (OTEL + Costs)          ████████████████  95% — COMPLETE ✅
+Phase 3 (OTEL + Costs)          ████████████████ 100% — COMPLETE ✅
 Release 0.1.0                   ████████████████ 100% — SHIPPED ✅ (PyPI + GitHub)
 Phase 4 (Dashboard + Website)   █████████████░░░  85% — website + dashboard built; Vercel deploy pending
 Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░   0% — NOT STARTED
@@ -1148,17 +1148,18 @@ Phase 4 deliverables
 
 **Status**: Built at `dashboard/`. All core pages implemented. Auth is demo-only (hardcoded users, any password accepted). Real auth (API keys or OIDC) is tracked as security hardening item S.3.
 
-**Pages built**: Overview (`(dashboard)/page.tsx`), Health (`health/page.tsx`), Sessions (`sessions/page.tsx`), Security (`security/page.tsx`), Costs (`costs/page.tsx`).
+**Pages built**: Overview (`(dashboard)/page.tsx`), Agents (`agents/page.tsx`), Health (`health/page.tsx`), Sessions (`sessions/page.tsx`), Security (`security/page.tsx`), Costs (`costs/page.tsx`).
 
 **Tech**: Next.js 15 with App Router, shadcn/ui component library, recharts for time-series charts.
 
 | Page | Purpose |
 |------|---------|
-| Overview | Fleet health score, active alerts, most degraded tools |
-| MCP Health | Server list with health scores, drill-down to tool detail |
+| Overview | Agent/workflow summary first, with tool infrastructure as a drill-down |
+| Agents | Per-agent activity, failures, cost, and touched tools/MCPs |
+| Tools & MCPs | Tool backend health, schema status, and MCP infrastructure drill-down |
 | Security Posture | OWASP compliance, CVE list, poisoning scan timeline |
 | Tool Reliability | Ranked tool list, error rates, latency trends (requires Phase 3 OTEL data) |
-| Cost Attribution | Cost breakdown by tool/agent (requires Phase 3 cost engine) |
+| Cost Attribution | Live cost breakdown by tool, agent, and session from traced calls |
 | Alert Management | View/acknowledge/configure alerts |
 
 **Tech choices**:

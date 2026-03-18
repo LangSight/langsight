@@ -155,9 +155,9 @@ export default function SessionsPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Agent Sessions</h1>
+          <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Workflows</h1>
           <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
-            {sessions ? `${sessions.length} sessions · ${totalCalls} tool calls · ${totalFailed} failures` : "Loading…"}
+            {sessions ? `${sessions.length} runs · ${totalCalls} tool calls · ${totalFailed} failures across agent workflows` : "Loading…"}
           </p>
         </div>
         <select value={hours} onChange={e => setHours(Number(e.target.value))}
@@ -182,13 +182,13 @@ export default function SessionsPage() {
         ) : error ? (
           <div className="p-8 text-center">
             <AlertCircle size={32} className="mx-auto mb-3 opacity-30"/>
-            <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Could not load sessions — is ClickHouse running?</p>
+            <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Could not load workflows — check ClickHouse-backed session traces</p>
           </div>
         ) : !sessions || sessions.length === 0 ? (
           <div className="p-12 text-center">
             <GitBranch size={40} className="mx-auto mb-4 opacity-20"/>
-            <p className="font-medium mb-1" style={{ color: "hsl(var(--foreground))" }}>No sessions yet</p>
-            <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Instrument your agents with the LangSight SDK</p>
+            <p className="font-medium mb-1" style={{ color: "hsl(var(--foreground))" }}>No workflows yet</p>
+            <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Instrument your agents to capture workflow traces, handoffs, and tool usage</p>
           </div>
         ) : (
           <table className="w-full">

@@ -14,8 +14,10 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+ARG LANGSIGHT_API_URL=http://localhost:8000
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV LANGSIGHT_API_URL=${LANGSIGHT_API_URL}
 
 RUN npm run build
 

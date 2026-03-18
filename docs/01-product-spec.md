@@ -1,6 +1,6 @@
-# AgentGuard: Product Specification
+# LangSight: Product Specification
 
-> **Version**: 1.2.0
+> **Version**: 1.3.0
 > **Date**: 2026-03-18
 > **Status**: Alpha — security assessment completed 2026-03-18; production gaps documented below
 > **Author**: Product & Engineering
@@ -158,7 +158,7 @@ No existing tool answers all questions above. LangSight does. Langfuse is the de
 - Cannot distinguish between "the LLM chose the wrong tool" and "the right tool returned bad data"
 - Gets paged at 2 AM for agent failures that turn out to be a downstream API timeout in one MCP server
 
-**What She Needs from AgentGuard**:
+**What She Needs from LangSight**:
 - Dashboard showing health status of all 18 MCP tools at a glance
 - Alerts when a tool's error rate exceeds threshold, BEFORE agents start failing
 - Schema change detection so she knows when a tool's output format drifts
@@ -180,7 +180,7 @@ No existing tool answers all questions above. LangSight does. Langfuse is the de
 - Community MCP servers update frequently; he has no way to know if an update changes behavior
 - Resource allocation is guesswork -- some MCP servers need 2GB RAM, others need 256MB, and usage patterns are invisible
 
-**What He Needs from AgentGuard**:
+**What He Needs from LangSight**:
 - CLI tool that scans all deployed MCP servers and reports health, version, capabilities
 - Prometheus-compatible metrics exporter so MCP data fits into existing monitoring stack
 - Inventory management: what servers exist, what tools they expose, what version they run
@@ -202,7 +202,7 @@ No existing tool answers all questions above. LangSight does. Langfuse is the de
 - OWASP MCP Top 10 was published, but she has no automated way to audit compliance.
 - Authentication and authorization on MCP servers is inconsistent. Some use OAuth, some use API keys in environment variables, some have no auth at all.
 
-**What She Needs from AgentGuard**:
+**What She Needs from LangSight**:
 - Automated CVE scanning for all MCP server dependencies
 - Tool poisoning detection: alert when a tool's description changes in suspicious ways (e.g., added instructions to "ignore previous instructions" or "send data to external endpoint")
 - OWASP MCP Top 10 compliance audit with actionable remediation guidance
@@ -225,7 +225,7 @@ No existing tool answers all questions above. LangSight does. Langfuse is the de
 - Teams duplicate MCP tool integrations because there is no central registry or visibility.
 - Needs to report AI system reliability to the board but has no standardized metrics framework.
 
-**What He Needs from AgentGuard**:
+**What He Needs from LangSight**:
 - Executive dashboard: overall MCP health score, reliability trends, cost trends
 - Cost attribution: $/tool/team/task with ability to identify cost anomalies
 - Cross-team visibility: which teams use which tools, where is duplication
@@ -264,53 +264,49 @@ LangSight is **complete observability for everything an AI agent calls**. It ins
 ### Competitive Positioning
 
 ```
-                        MCP-Specific Focus
-                              ^
-                              |
-                    AgentGuard|
-                       *******|
-                      *       |
-                     *        |
-   MCPcat           *         |
-     *             *          |
-                  *           |
-                 *            |
-  Sentry (MCP) *             |
-     *         *              |
-              *               |
--------------*----------------+-------------------------------->
-             *                |              Security + Health
-   Analytics *                |              Monitoring Depth
-   Only      *                |
-              *               |
-               *              |
-                *             |
-                 Langfuse     |
-                   *          |
-                              |
-                    Datadog   |
-                      *       |
-                              |
+                               Action-Layer Depth
+                                     ^
+                                     |
+                            LangSight|
+                               ******|
+                              *      |
+                             *       |
+               MCPcat       *        |
+                 *         *         |
+                *         *          |
+               *         *           |
+   Langfuse / LangSmith  *           |
+             *          *            |
+            *          *             |
+-----------*----------*--------------+---------------------------->
+           *          *              |     MCP Health + Security
+           *          *              |     Monitoring Depth
+           *           \             |
+           *            \            |
+           *             \           |
+           *              \          |
+           *               \ Datadog |
+           *                \        |
 ```
 
 **vs. Langfuse**: LangSight and Langfuse answer different questions and are designed to work together — not compete.
 
-- **Langfuse**: "What did the LLM think and say?" — prompts, completions, token costs, evaluations, the reasoning layer.
-- **LangSight**: "What happened when the agent tried to use its tools?" — tool call traces, tool costs, tool reliability, MCP server health.
+- **Langfuse / LangSmith**: "What happened in the LLM and reasoning layer?" — prompts, completions, traces, token costs, evaluations.
+- **LangSight**: "What did the agent actually do?" — tool call traces, handoffs, action-level costs, tool reliability, MCP server health.
 
-Langfuse shows you "the LLM decided to call `postgres-mcp/query`". LangSight shows you "that tool call took 4 seconds and returned an error because the connection pool was exhausted". They are complementary layers of the same observability stack.
+Langfuse shows you the model span, prompt, and completion that led to a tool decision. LangSight shows you the execution path that followed: which tool ran, in what order, how long it took, whether it failed, how much it cost, and which sub-agent was involved. They are complementary layers of the same observability stack.
 
 LangSight has capabilities Langfuse does not and will not build: MCP server health checks (synthetic probes, not just passive recording), CVE scanning, OWASP MCP Top 10 compliance, schema drift detection, tool poisoning detection, and alerting on DOWN/DEGRADED servers. These are tool-infrastructure features, not LLM-layer features.
 
-**vs. MCPcat**: MCPcat provides analytics and logging for MCP calls. It is a good starting point for understanding MCP usage patterns. AgentGuard goes deeper with proactive health monitoring (synthetic checks, schema validation), security scanning (CVEs, poisoning, OWASP), and root cause attribution. MCPcat tells you what happened; AgentGuard tells you why and warns you before it happens again.
+**vs. MCPcat**: MCPcat provides analytics and logging for MCP calls. It is a good starting point for understanding MCP usage patterns. LangSight goes deeper with proactive health monitoring, security scanning, multi-agent trees, and root cause attribution. MCPcat tells you what happened; LangSight tells you what the agent did across the whole workflow and warns you before it happens again.
 
-**vs. Datadog**: Datadog offers commercial APM with MCP-aware traces. For teams already invested in Datadog, it provides basic MCP visibility within their existing platform. AgentGuard offers MCP-specific features Datadog lacks (schema drift detection, tool poisoning, OWASP compliance, MCP health scoring) and is open-source with no per-host pricing. For many teams, AgentGuard feeds metrics into Datadog/Grafana rather than replacing them.
+**vs. Datadog**: Datadog offers commercial APM with AI and MCP-adjacent tracing inside a broad observability suite. LangSight is narrower and deeper at the agent action layer: multi-agent trees, action-level RCA, MCP health checks, schema drift detection, tool poisoning detection, and OWASP-driven security scanning. For many teams, LangSight should feed Datadog/Grafana rather than replace them.
 
-**vs. Sentry (MCP)**: Sentry's MCP integration is JavaScript-only and in beta. It provides error tracking, not health monitoring or security scanning. AgentGuard is language-agnostic, production-ready, and covers the full observability + security spectrum.
+**vs. Sentry (MCP)**: Sentry's MCP integration is oriented around error tracking. LangSight is built for action-layer execution visibility and MCP operational depth: traces, handoffs, health monitoring, schema drift, and security scanning.
 
 ### The Complement Story
 
-AgentGuard's position in the AI observability stack:
+LangSight's position in the AI observability stack:
 
 ```
 +------------------------------------------------------------------+
@@ -322,7 +318,7 @@ AgentGuard's position in the AI observability stack:
 +------------------+  +------------------+  +------------------+
 |   LLM Layer      |  |   Tool Layer     |  |   Data Layer     |
 |                  |  |                  |  |                  |
-|  Langfuse        |  |  AgentGuard     |  |  Great           |
+|  Langfuse        |  |  LangSight      |  |  Great           |
 |  LangSmith       |  |  <<<< HERE      |  |  Expectations    |
 |  Braintrust      |  |                  |  |  Soda            |
 |                  |  |                  |  |  Monte Carlo     |
@@ -336,12 +332,12 @@ AgentGuard's position in the AI observability stack:
 ```
 
 **Integration points with Langfuse**:
-- AgentGuard reads Langfuse trace IDs from MCP call context and links tool health data to specific traces
-- Langfuse users can click through from a slow MCP span to AgentGuard's detailed tool health view
-- AgentGuard publishes tool health scores that Langfuse can display as trace annotations
+- LangSight reads Langfuse trace IDs from MCP call context and links tool health data to specific traces
+- Langfuse users can click through from a slow MCP span to LangSight's detailed tool health view
+- LangSight publishes tool health scores that Langfuse can display as trace annotations
 
 **Integration points with Prometheus/Grafana**:
-- AgentGuard exposes a `/metrics` endpoint in Prometheus exposition format
+- LangSight exposes a `/metrics` endpoint in Prometheus exposition format
 - Pre-built Grafana dashboard JSON included in the repo
 - Alert rules compatible with Alertmanager
 
@@ -353,7 +349,7 @@ AgentGuard's position in the AI observability stack:
 
 **Problem**: MCP servers fail silently. A tool might return 200 OK but with empty results, stale data, or a changed schema. Traditional health checks (HTTP ping) miss these failures.
 
-**What AgentGuard Does**:
+**What LangSight Does**:
 
 - **Synthetic health probes**: Periodically calls each MCP tool with known-good inputs and validates the response against expected schema and content patterns. This catches silent failures that HTTP health checks miss.
 
@@ -368,7 +364,7 @@ AgentGuard's position in the AI observability stack:
 **Example: Schema Drift Detection**
 
 ```
-$ agentguard health check mcp-snowflake
+$ langsight mcp-health mcp-snowflake
 
 MCP Server: mcp-snowflake (v2.1.3)
 Endpoint:   stdio://localhost:3001
@@ -396,7 +392,7 @@ Overall Health Score: 72/100 (was 98/100 yesterday)
 
 **Problem**: MCP servers are a new and poorly understood attack surface. Teams install community MCP servers with no security review. Tool poisoning, dependency vulnerabilities, and missing authentication create real risk.
 
-**What AgentGuard Does**:
+**What LangSight Does**:
 
 - **CVE scanning**: Scans MCP server dependencies against the National Vulnerability Database. Identifies known vulnerabilities in the packages that MCP servers depend on.
 
@@ -411,7 +407,7 @@ Overall Health Score: 72/100 (was 98/100 yesterday)
 **Example: Security Scan Output**
 
 ```
-$ agentguard security scan --all
+$ langsight security-scan
 
 Scanning 35 MCP servers...
 
@@ -470,7 +466,7 @@ Next scan scheduled: 2026-03-16T02:00:00Z
 
 **Problem**: Teams know their agent has a 15% failure rate but cannot attribute failures to specific tools. Without tool-level reliability data, optimization is guesswork.
 
-**What AgentGuard Does**:
+**What LangSight Does**:
 
 - **Per-tool success rates**: Tracks success, failure, timeout, and partial-success rates for every tool over configurable time windows.
 
@@ -486,7 +482,7 @@ Next scan scheduled: 2026-03-16T02:00:00Z
 
 ```
 +------------------------------------------------------------------------+
-|  AgentGuard - Tool Reliability Dashboard            2026-03-15 16:00   |
+|  LangSight - Tool Reliability Dashboard            2026-03-15 16:00   |
 +------------------------------------------------------------------------+
 
   Overall MCP Health: 87/100                     Tools: 47 | Agents: 8
@@ -521,9 +517,9 @@ Next scan scheduled: 2026-03-16T02:00:00Z
 
 **Problem**: When an agent fails, the failure could be the LLM (bad reasoning), the prompt (missing context), or any of the N tools in the chain. Teams lack the data to attribute failures to root causes, leading to days of manual debugging.
 
-**What AgentGuard Does**:
+**What LangSight Does**:
 
-- **Failure correlation**: When an agent task fails, AgentGuard correlates the failure with tool-level events (errors, timeouts, schema mismatches, rate limits) that occurred during the same execution.
+- **Failure correlation**: When an agent task fails, LangSight correlates the failure with tool-level events (errors, timeouts, schema mismatches, rate limits) that occurred during the same execution.
 
 - **Probabilistic attribution**: Uses statistical analysis to estimate the probability that a specific tool caused the failure. Considers timing, error rates, historical patterns, and the agent's tool call sequence.
 
@@ -534,7 +530,7 @@ Next scan scheduled: 2026-03-16T02:00:00Z
 **Example: Root Cause Analysis Output**
 
 ```
-$ agentguard rca --trace-id LF-trace-a8f3c2
+$ langsight investigate --trace-id LF-trace-a8f3c2
 
 Trace: LF-trace-a8f3c2
 Agent: customer-support-agent
@@ -561,7 +557,7 @@ Root Cause Attribution:
     3. Configure agent fallback: skip CRM enrichment if timeout, proceed with
        available data
 
-  Similar Failures: 23 in past hour (view all: agentguard failures --tool internal-crm)
+  Similar Failures: 23 in past hour (view all: langsight failures --tool internal-crm)
 ```
 
 ---
@@ -570,7 +566,7 @@ Root Cause Attribution:
 
 **Problem**: AI infrastructure costs are rising, but teams cannot attribute costs to specific tools, agents, or tasks. Tool-level cost is invisible: a single agent task might call a geocoding API 47 times, but the cost appears only as a line item on the monthly API bill.
 
-**What AgentGuard Does**:
+**What LangSight Does**:
 
 - **Per-tool cost tracking**: Assigns cost to each tool call based on configurable pricing rules (per-call, per-token, per-byte, time-based).
 
@@ -583,7 +579,7 @@ Root Cause Attribution:
 **Example: Cost Report**
 
 ```
-$ agentguard cost report --period 7d
+$ langsight costs --period 7d
 
 Cost Report: 2026-03-08 to 2026-03-15
 
@@ -623,7 +619,7 @@ Cost by Agent:
 
 **Problem**: Teams learn about MCP tool problems when users complain or agents fail. By then, the damage is done -- incorrect data has been served, customers have been affected, and trust is eroded.
 
-**What AgentGuard Does**:
+**What LangSight Does**:
 
 - **Threshold-based alerts**: Configurable alerts for error rate, latency, availability, cost, and schema changes per tool.
 
@@ -711,7 +707,7 @@ alerts:
 **CLI Example**:
 
 ```
-$ agentguard inventory
+$ langsight init
 
 Discovered 4 MCP server configurations:
 
@@ -728,7 +724,7 @@ Source: ~/project/.mcp.json
 +-------------------+-----------+--------+-------+------------------+
 
 Total: 4 servers, 16+ tools, 1 server unreachable
-Run 'agentguard health check --all' for detailed health analysis
+Run 'langsight mcp-health' for detailed health analysis
 ```
 
 #### 5.1.2 MCP Health Checks
@@ -758,13 +754,13 @@ Run 'agentguard health check --all' for detailed health analysis
 
 | Feature | Description | Priority |
 |---------|-------------|----------|
-| `agentguard inventory` | Discover and list all MCP servers | P0 |
-| `agentguard health check` | Run health checks on one or all servers | P0 |
-| `agentguard security scan` | Run security scan on one or all servers | P0 |
-| `agentguard schema diff` | Show schema changes since last snapshot | P0 |
-| `agentguard report` | Generate combined health + security report (terminal, JSON, HTML) | P1 |
-| `agentguard watch` | Continuous monitoring mode with configurable interval | P1 |
-| `agentguard ci` | Non-interactive mode for CI/CD pipelines (exit codes, SARIF, JUnit XML) | P1 |
+| `langsight init` | Discover MCP servers and write `.langsight.yaml` | P0 |
+| `langsight mcp-health` | Run health checks on configured MCP servers | P0 |
+| `langsight security-scan` | Run security scan on configured MCP servers | P0 |
+| `langsight sessions` | Show agent session traces and multi-agent trees | P0 |
+| `langsight investigate` | Root cause analysis for failed sessions | P1 |
+| `langsight monitor` | Continuous monitoring mode with configurable interval | P1 |
+| `langsight serve` | Start the API for SDK and dashboard integrations | P1 |
 
 #### 5.1.5 Data Storage (Local)
 
@@ -863,7 +859,7 @@ LangSight integrates with LibreChat as a native plugin, NOT via OTEL. LibreChat'
 **Quality Score Breakdown Example**:
 
 ```
-$ agentguard quality mcp-pdf.extract
+$ langsight investigate "mcp-pdf.extract reliability"
 
 Tool: mcp-pdf.extract
 Server: mcp-pdf (v1.3.2)
@@ -928,7 +924,7 @@ Recommendation:
 |---------|-------------|----------|
 | Lightweight Go binary | Single binary server, minimal dependencies | P0 |
 | PostgreSQL storage | Production-grade storage for metrics, events, configurations | P0 |
-| REST API | Full CRUD API for all AgentGuard data and configuration | P0 |
+| REST API | Full CRUD API for all LangSight data and configuration | P0 |
 | gRPC ingest | High-performance metrics ingestion endpoint | P1 |
 | Multi-tenancy | Namespace support for multi-team deployments | P1 |
 | Helm chart | Kubernetes deployment via Helm | P1 |
@@ -955,9 +951,9 @@ Recommendation:
 **RCA Agent Interaction Example**:
 
 ```
-$ agentguard rca explain --trace-id LF-trace-a8f3c2
+$ langsight investigate --trace-id LF-trace-a8f3c2
 
-AgentGuard RCA Analysis:
+LangSight RCA Analysis:
 
 The customer-support-agent failed to complete the task "Update customer
 ticket with shipping status" because the internal-crm.get_customer tool
@@ -1004,7 +1000,7 @@ Recommended fixes (in priority order):
 
 ```
 +------------------------------------------------------------------------+
-| AgentGuard                           [Settings]  [Alerts: 3]  [user]   |
+| LangSight                            [Settings]  [Alerts: 3]  [user]   |
 +------------------------------------------------------------------------+
 |                                                                        |
 |  Fleet Health: 87/100  [============================----]              |
@@ -1095,33 +1091,33 @@ LangSight DOES trace tool calls at the MCP layer. When your agent calls `postgre
 
 **Ragas, DeepEval, and Braintrust** evaluate whether LLM outputs are correct, relevant, and faithful. They answer "did the agent give a good answer?"
 
-AgentGuard does NOT build:
+LangSight does NOT build:
 - LLM output scoring
 - Ground truth comparison
 - Retrieval quality metrics (precision, recall, MRR)
 - Human feedback collection
 - A/B testing for prompts
 
-AgentGuard DOES: provide tool reliability data that helps explain eval failures. If your evals show declining answer quality, AgentGuard can tell you whether a degraded tool is the cause.
+LangSight DOES: provide tool reliability data that helps explain eval failures. If your evals show declining answer quality, LangSight can tell you whether a degraded tool is the cause.
 
 ### 6.3 Not an LLM Gateway
 
 **Portkey and LiteLLM** route LLM requests across providers, handle failover, manage rate limits, and track token costs.
 
-AgentGuard does NOT build:
+LangSight does NOT build:
 - LLM request routing
 - Provider failover
 - Token cost tracking (we track tool costs, not token costs)
 - API key management for LLM providers
 - Prompt caching
 
-AgentGuard DOES: integrate with LLM gateways to correlate LLM-level events with tool-level events for complete failure analysis.
+LangSight DOES: integrate with LLM gateways to correlate LLM-level events with tool-level events for complete failure analysis.
 
 ### 6.4 Not a Prompt Management Tool
 
 **Langfuse (Prompt Management), PromptLayer, and Humanloop** manage prompt versions, A/B testing, and deployment.
 
-AgentGuard does NOT build:
+LangSight does NOT build:
 - Prompt versioning
 - Prompt deployment pipelines
 - Prompt analytics (which prompt version performs better)
@@ -1152,14 +1148,14 @@ LangSight DOES: provide a 2-line SDK integration today that produces the same MC
 
 **Datadog, New Relic, and Grafana Cloud** monitor HTTP services, databases, infrastructure, and applications.
 
-AgentGuard does NOT build:
+LangSight does NOT build:
 - HTTP endpoint monitoring
 - Database query monitoring
 - Infrastructure metrics (CPU, memory, disk)
 - Application performance monitoring
 - Log aggregation
 
-AgentGuard DOES: export metrics in formats (Prometheus, OTLP) that feed into existing APM platforms, and consumes infrastructure data when it helps explain MCP tool behavior (e.g., "the MCP server is slow because the pod is OOM-throttled").
+LangSight DOES: export metrics in formats (Prometheus, OTLP) that feed into existing APM platforms, and consumes infrastructure data when it helps explain MCP tool behavior (e.g., "the MCP server is slow because the pod is OOM-throttled").
 
 ---
 
@@ -1173,7 +1169,7 @@ AgentGuard DOES: export metrics in formats (Prometheus, OTLP) that feed into exi
 | Mean Time to Root Cause (MTTRC) | Time from alert to confirmed root cause | <30 minutes | <10 minutes |
 | False Alert Rate | % of alerts that are not actionable | <15% | <5% |
 | Security Coverage | % of OWASP MCP Top 10 rules with automated checks | 80% | 100% |
-| CVE Detection Latency | Time from CVE publication to AgentGuard detection | <24 hours | <6 hours |
+| CVE Detection Latency | Time from CVE publication to LangSight detection | <24 hours | <6 hours |
 | Schema Drift Detection | % of breaking schema changes caught before agent impact | 80% | 95% |
 
 ### 7.2 Adoption Metrics (Are people using it?)
@@ -1181,9 +1177,9 @@ AgentGuard DOES: export metrics in formats (Prometheus, OTLP) that feed into exi
 | Metric | Definition | Target (6 months) | Target (12 months) |
 |--------|-----------|-------------------|---------------------|
 | GitHub Stars | Repository stars | 2,000 | 8,000 |
-| Monthly Active CLI Users | Unique users running `agentguard` commands per month | 500 | 5,000 |
+| Monthly Active CLI Users | Unique users running `langsight` commands per month | 500 | 5,000 |
 | Monthly Active Dashboard Users | Unique users accessing the web dashboard per month | -- (Phase 2) | 1,000 |
-| MCP Servers Monitored | Total MCP servers across all AgentGuard deployments | 2,000 | 20,000 |
+| MCP Servers Monitored | Total MCP servers across all LangSight deployments | 2,000 | 20,000 |
 | Community Contributors | Unique contributors with merged PRs | 25 | 100 |
 | Integration Partnerships | Active integrations with other tools (Langfuse, etc.) | 3 | 8 |
 
@@ -1273,7 +1269,7 @@ Commercial features are available under a separate commercial license (BSL or pr
 **Phase 1: Seed (Months 1-3)**
 
 - Launch on GitHub with comprehensive README, quickstart guide, and architecture docs
-- Write a launch blog post: "Why We Built AgentGuard: The Missing Observability Layer for MCP"
+- Write a launch blog post: "Why We Built LangSight: The Missing Action Layer for AI Agents"
 - Post to Hacker News, Reddit (r/MachineLearning, r/LocalLLaMA, r/devops), and MCP community channels
 - Create a Discord server for community discussion and support
 - Reach out to 10 MCP server maintainers to beta test and provide feedback
@@ -1293,7 +1289,7 @@ Commercial features are available under a separate commercial license (BSL or pr
 **Phase 3: Sustain (Months 6-12)**
 
 - Establish a public roadmap driven by community votes
-- Create an "AgentGuard Certified" badge for MCP servers that pass health + security checks
+- Create a "LangSight Certified" badge for MCP servers that pass health + security checks
 - Launch ambassador program for power users who create content and help others
 - Establish a Technical Advisory Board with members from adopter organizations
 - Apply to CNCF Sandbox (long-term aspiration: CNCF project for AI infrastructure observability)
@@ -1307,11 +1303,11 @@ Commercial features are available under a separate commercial license (BSL or pr
 
 3. **Batteries included, but swappable**: Ship with sensible defaults (SQLite storage, built-in alerting, embedded dashboard) but allow every component to be swapped for an external equivalent (PostgreSQL, Alertmanager, Grafana).
 
-4. **MCP-native**: Use MCP protocol primitives wherever possible. AgentGuard itself could expose an MCP server that agents can call to check tool health before invoking tools.
+4. **MCP-native**: Use MCP protocol primitives wherever possible. LangSight itself could expose an MCP server that agents can call to check tool health before invoking tools.
 
-5. **Privacy by design**: AgentGuard never stores tool call payloads by default. Metrics and metadata are collected; actual data flowing through tools is not. Users can opt-in to payload logging with explicit configuration and data masking.
+5. **Privacy by design**: LangSight never stores tool call payloads by default. Metrics and metadata are collected; actual data flowing through tools is not. Users can opt-in to payload logging with explicit configuration and data masking.
 
-6. **Incremental adoption**: Users can start with `agentguard security scan` in 30 seconds and gradually adopt more features. No big-bang deployment required.
+6. **Incremental adoption**: Users can start with `langsight security-scan` in 30 seconds and gradually adopt more features. No big-bang deployment required.
 
 ### 8.6 Technology Choices
 
@@ -1345,7 +1341,7 @@ Commercial features are available under a separate commercial license (BSL or pr
 
 ## Appendix A: Real MCP Failure Scenarios
 
-These are real or realistic scenarios based on known MCP vulnerabilities and operational patterns. They illustrate why AgentGuard exists.
+These are real or realistic scenarios based on known MCP vulnerabilities and operational patterns. They illustrate why LangSight exists.
 
 ### Scenario 1: The Silent Schema Change
 
@@ -1353,7 +1349,7 @@ These are real or realistic scenarios based on known MCP vulnerabilities and ope
 
 **Impact**: 3 days of incorrect customer reports before a human noticed.
 
-**How AgentGuard prevents it**: Schema drift detection catches the mismatch between the tool's advertised schema and the actual response shape. An alert fires within 5 minutes of the first mismatched response. The team fixes the tool description within an hour.
+**How LangSight prevents it**: Schema drift detection catches the mismatch between the tool's advertised schema and the actual response shape. An alert fires within 5 minutes of the first mismatched response. The team fixes the tool description within an hour.
 
 ### Scenario 2: The Tool Poisoning Attack
 
@@ -1361,7 +1357,7 @@ These are real or realistic scenarios based on known MCP vulnerabilities and ope
 
 **Impact**: Sensitive internal documents leaked for 48 hours before the compromised package was reported.
 
-**How AgentGuard prevents it**: Tool description analysis flags the suspicious external URL and the injected instruction pattern. A CRITICAL security alert fires immediately when the tool description changes to include an external endpoint. The team reverts to the previous version within minutes.
+**How LangSight prevents it**: Tool description analysis flags the suspicious external URL and the injected instruction pattern. A CRITICAL security alert fires immediately when the tool description changes to include an external endpoint. The team reverts to the previous version within minutes.
 
 ### Scenario 3: The Runaway Cost Loop
 
@@ -1369,7 +1365,7 @@ These are real or realistic scenarios based on known MCP vulnerabilities and ope
 
 **Impact**: $4,800/month in unnecessary API calls (discovered only during quarterly budget review).
 
-**How AgentGuard prevents it**: Cost anomaly detection notices the 15x increase in calls-per-task within 24 hours. An alert identifies the specific tool and the retry pattern. The team adds result caching and fixes the address parsing logic, saving $4,500/month.
+**How LangSight prevents it**: Cost anomaly detection notices the 15x increase in calls-per-task within 24 hours. An alert identifies the specific tool and the retry pattern. The team adds result caching and fixes the address parsing logic, saving $4,500/month.
 
 ### Scenario 4: The Cascading Failure
 
@@ -1377,7 +1373,7 @@ These are real or realistic scenarios based on known MCP vulnerabilities and ope
 
 **Impact**: 2-hour outage for all customer-facing agents.
 
-**How AgentGuard prevents it**: Health monitoring detects the CRM tool's availability drop within 60 seconds. The dependency map shows which agents are affected. The alerting engine sends a single correlated alert (not one per agent). The recommended fix includes: increase memory limits, add a readiness probe, implement a circuit breaker. Long-term, the capacity planning data shows the CRM server needs 2x its current memory allocation.
+**How LangSight prevents it**: Health monitoring detects the CRM tool's availability drop within 60 seconds. The dependency map shows which agents are affected. The alerting engine sends a single correlated alert (not one per agent). The recommended fix includes: increase memory limits, add a readiness probe, implement a circuit breaker. Long-term, the capacity planning data shows the CRM server needs 2x its current memory allocation.
 
 ---
 
@@ -1390,7 +1386,7 @@ These are real or realistic scenarios based on known MCP vulnerabilities and ope
 | **MCP Tool** | A specific capability exposed by an MCP server (e.g., `snowflake.query`, `jira.get_issue`) |
 | **Tool Poisoning** | An attack where a malicious MCP server modifies tool descriptions to inject instructions that manipulate agent behavior |
 | **Schema Drift** | When a tool's actual input/output format changes from what is documented in the tool description |
-| **Quality Score** | AgentGuard's composite 0-100 rating of a tool's operational health |
+| **Quality Score** | LangSight's composite 0-100 rating of a tool's operational health |
 | **OWASP MCP Top 10** | The Open Web Application Security Project's top 10 security risks specific to MCP |
 | **RCA** | Root Cause Analysis -- the process of identifying the underlying cause of a failure |
 | **Synthetic Health Probe** | An automated test that calls a tool with known inputs to verify it is working correctly |

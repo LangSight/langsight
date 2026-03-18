@@ -8,8 +8,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-# Copy dependency manifests first (cache layer)
-COPY pyproject.toml uv.lock ./
+# Copy dependency manifests and package metadata first (cache layer)
+COPY pyproject.toml uv.lock README.md ./
 
 # Install dependencies into /app/.venv (no project itself yet)
 RUN uv sync --frozen --no-install-project --no-dev
@@ -17,6 +17,10 @@ RUN uv sync --frozen --no-install-project --no-dev
 # Copy source and install the project
 COPY src/ ./src/
 RUN uv sync --frozen --no-dev
+
+# Test MCP servers executed by the health checker need these runtime deps.
+# Install them after the final sync so uv does not remove them again.
+RUN uv pip install --python /app/.venv/bin/python fastmcp boto3
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2: runtime — minimal image with only what's needed to run
@@ -31,6 +35,8 @@ WORKDIR /app
 
 # Copy the virtual environment from builder
 COPY --from=builder --chown=langsight:langsight /app/.venv /app/.venv
+# Copy uv/uvx so stdio MCP commands configured with uvx work inside Docker
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Copy source
 COPY --from=builder --chown=langsight:langsight /app/src /app/src
 

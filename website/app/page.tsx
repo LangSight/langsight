@@ -176,7 +176,7 @@ function Features() {
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-center mb-14" data-reveal>
           <p className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: "var(--indigo)" }}>Features</p>
-          <h2 className="font-display text-3xl sm:text-4xl font-bold gradient-text">Full-stack agent observability</h2>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold gradient-text">Observability for agent actions</h2>
           <p className="mt-4 max-w-xl mx-auto" style={{ color: "var(--muted)" }}>
             Instrument once. Every tool type is traced. MCP servers get proactive health checks and security scanning on top — because the protocol makes it possible.
           </p>
@@ -319,13 +319,13 @@ const OSS_PILLARS = [
 ];
 
 const COMPARE: { feature: string; ls: boolean | string; datadog: boolean | string; langfuse: boolean | string }[] = [
-  { feature: "Agent tool call traces",            ls: true,  datadog: true,      langfuse: "partial" },
+  { feature: "Agent action traces",               ls: true,  datadog: true,      langfuse: "partial" },
   { feature: "Multi-agent tree reconstruction",   ls: true,  datadog: false,     langfuse: false },
   { feature: "MCP server health checks",          ls: true,  datadog: false,     langfuse: false },
   { feature: "CVE + OWASP security scanning",     ls: true,  datadog: false,     langfuse: false },
   { feature: "Tool poisoning detection",          ls: true,  datadog: false,     langfuse: false },
   { feature: "Schema drift detection",            ls: true,  datadog: false,     langfuse: false },
-  { feature: "AI root cause analysis",            ls: true,  datadog: false,     langfuse: false },
+  { feature: "Action-layer root cause analysis",  ls: true,  datadog: false,     langfuse: false },
   { feature: "Self-hostable",                     ls: true,  datadog: false,     langfuse: true },
   { feature: "Open source (Apache 2.0)",          ls: true,  datadog: false,     langfuse: true },
   { feature: "Free forever",                      ls: true,  datadog: false,     langfuse: "partial" },

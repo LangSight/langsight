@@ -76,3 +76,35 @@ export interface ApiStatus {
   version: string;
   servers_configured: number;
 }
+
+export interface CostBreakdownEntry {
+  server_name: string;
+  tool_name: string;
+  total_calls: number;
+  cost_per_call_usd: number;
+  total_cost_usd: number;
+}
+
+export interface AgentCostBreakdownEntry {
+  agent_name: string;
+  total_calls: number;
+  total_cost_usd: number;
+}
+
+export interface SessionCostBreakdownEntry {
+  session_id: string;
+  agent_name: string | null;
+  total_calls: number;
+  total_cost_usd: number;
+}
+
+export interface CostsBreakdownResponse {
+  storage_mode: string;
+  supports_costs: boolean;
+  hours: number;
+  total_calls: number;
+  total_cost_usd: number;
+  by_tool: CostBreakdownEntry[];
+  by_agent: AgentCostBreakdownEntry[];
+  by_session: SessionCostBreakdownEntry[];
+}

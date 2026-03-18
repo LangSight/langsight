@@ -6,7 +6,7 @@ import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
 import { useState } from "react";
 import {
-  LayoutDashboard, Activity, Shield, GitBranch, DollarSign,
+  LayoutDashboard, Activity, Shield, GitBranch, DollarSign, Bot,
   ChevronDown, LogOut, Sun, Moon, Settings, User, ExternalLink,
   Bell
 } from "lucide-react";
@@ -14,10 +14,11 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const NAV = [
-  { href: "/",         label: "Overview",  icon: LayoutDashboard },
-  { href: "/health",   label: "MCP Health", icon: Activity },
+  { href: "/",         label: "Overview",   icon: LayoutDashboard },
+  { href: "/agents",   label: "Agents",     icon: Bot },
+  { href: "/sessions", label: "Workflows",  icon: GitBranch },
+  { href: "/health",   label: "Tools & MCPs", icon: Activity },
   { href: "/security", label: "Security",   icon: Shield },
-  { href: "/sessions", label: "Sessions",   icon: GitBranch },
   { href: "/costs",    label: "Costs",      icon: DollarSign },
 ];
 

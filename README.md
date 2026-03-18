@@ -24,7 +24,7 @@ Agents call three types of things: MCP servers (postgres-mcp, jira-mcp, slack-mc
 | CVE in a community MCP server | Unknown until exploited | Automated CVE scan on every check |
 
 > [!NOTE]
-> Langfuse and LangSmith show what your agent *thought* (prompts, completions, evals). LangSight shows what your agent *did* — every tool call, in order, with latency, cost, and errors. For MCP servers specifically, LangSight goes deeper: proactive health checks, CVE scanning, schema drift detection, and poisoning detection. 66% of MCP servers have critical code smells and 8,000+ are exposed without authentication (Invariant Labs, 2025).
+> Langfuse and LangSmith cover the LLM and reasoning layer: prompts, completions, traces, token costs, and evals. LangSight covers the action layer: every tool call, in order, with latency, cost, errors, and agent handoffs. For MCP servers specifically, LangSight goes deeper with proactive health checks, CVE scanning, schema drift detection, and poisoning detection. 66% of MCP servers have critical code smells and 8,000+ are exposed without authentication (Invariant Labs, 2025).
 
 ---
 

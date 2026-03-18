@@ -35,7 +35,7 @@ exporters:
       insecure: true
 
   # Also log to console for debugging (remove in production)
-  logging:
+  debug:
     verbosity: detailed
 
 service:
