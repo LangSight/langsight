@@ -1,6 +1,6 @@
 # LangSight — Build Progress
 
-> Last updated: 2026-03-18
+> Last updated: 2026-03-18 (costs API + agents dashboard)
 > Maintained by: docs-keeper agent — update after every feature, architectural decision, or milestone
 
 **Project framing**: LangSight is complete observability for everything an AI agent calls — MCP servers, HTTP APIs, Python functions, and sub-agents. Agent-level instrumentation captures all tool types in one trace. MCP servers additionally receive proactive health checks, security scanning, schema drift detection, and alerting because the MCP protocol is standard and inspectable. Non-MCP tools (HTTP APIs, functions) are passively observed in traces only.
@@ -56,7 +56,7 @@ Phase 1 (CLI MVP)               ████████████████
 Phase 2 (SDK + Framework Integ) ████████████████ 100% — COMPLETE ✅
 Phase 3 (OTEL + Costs)          ████████████████  95% — COMPLETE ✅
 Release 0.1.0                   ████████████████ 100% — SHIPPED ✅ (PyPI + GitHub)
-Phase 4 (Dashboard + Website)   █████████████░░░  85% — website built, Vercel deploy pending
+Phase 4 (Dashboard + Website)   ██████████████░░  90% — costs API + agents page added, Vercel deploy pending
 Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░   0% — NOT STARTED
 ```
 
@@ -66,10 +66,10 @@ Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░
 
 | Metric | Value |
 |--------|-------|
-| Test count | 378 tests |
-| Coverage | 83.69% |
+| Test count | 385 tests |
+| Coverage | 85.39% |
 | CLI commands live | 8 (`init`, `mcp-health`, `security-scan`, `monitor`, `investigate`, `costs`, `sessions`, `serve`) |
-| API endpoints | 9 (`/api/agents/sessions`, `/api/agents/sessions/{id}`, `/api/health/*`, `/api/security/scan`, `/api/traces/spans`, `/api/traces/otlp`, `/api/status`) |
+| API endpoints | 12 (`/api/agents/sessions`, `/api/agents/sessions/{id}`, `/api/health/*`, `/api/security/scan`, `/api/traces/spans`, `/api/traces/otlp`, `/api/status`, `/api/costs/breakdown`, `/api/costs/by-agent`, `/api/costs/by-session`) |
 | Storage backends | 3 (SQLite, PostgreSQL, ClickHouse) |
 | Framework integrations | 5 (LangChain/Langflow/LangGraph/LangServe, CrewAI, Pydantic AI, LibreChat, OTEL) |
 | LLM providers for investigate | 4 (Claude, OpenAI, Gemini, Ollama) |
@@ -160,7 +160,10 @@ Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░
 | `api/test_health_router.py` | ✅ Done | — | |
 | `integration/health/test_checker_integration.py` | ✅ Done | — | requires docker compose up |
 | `regression/test_health_pipeline.py` | ✅ Done | — | 10 tests: baseline, no-drift, drift, down, recovery |
-| **Overall coverage** | | **88%** | target: 80% ✅ |
+| `unit/test_cost_engine.py` | ✅ Done | 2026-03-18 | 86 lines — `AgentCostEntry`, `SessionCostEntry`, `aggregate_cost_rows()` |
+| `unit/api/test_costs_router.py` | ✅ Done | 2026-03-18 | 134 lines — all three cost endpoints |
+| `integration/storage/test_costs_integration.py` | ✅ Done | 2026-03-18 | ClickHouse `get_cost_call_counts()` integration |
+| **Overall coverage** | | **85.39%** | target: 80% ✅ (385 tests) |
 
 ### Phase 1 — Additional Items Completed (beyond original scope)
 | Item | Status | Date | Notes |
@@ -236,6 +239,11 @@ Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░
 | Root-level Docker Compose | ✅ Done | 2026-03-17 | ClickHouse + PostgreSQL + OTEL Collector + API |
 | docs-site/ (28 Mintlify pages) | ✅ Done | 2026-03-17 | Full docs covering all features |
 | `docs-site/cli/sessions.mdx` | ✅ Done | 2026-03-18 | Written and present at `docs-site/cli/sessions.mdx` |
+| `costs/engine.py` — `AgentCostEntry` + `SessionCostEntry` dataclasses | ✅ Done | 2026-03-18 | Per-agent and per-session cost aggregation types |
+| `costs/engine.py` — `aggregate_cost_rows()` helper | ✅ Done | 2026-03-18 | Shared aggregation logic used by all three cost endpoints |
+| `storage/clickhouse.py` — `get_cost_call_counts()` | ✅ Done | 2026-03-18 | ClickHouse query for per-tool call counts, used by costs router |
+| `api/routers/costs.py` | ✅ Done | 2026-03-18 | `GET /api/costs/breakdown`, `GET /api/costs/by-agent`, `GET /api/costs/by-session` |
+| Costs router registered in `api/main.py` | ✅ Done | 2026-03-18 | `config_path` also stored in `app.state` for router access |
 
 ---
 
@@ -274,10 +282,12 @@ Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░
 | Next.js 15 dashboard project setup | ✅ Done | 2026-03-18 | shadcn/ui, App Router, `dashboard/` directory |
 | Auth layer (demo mode) | ✅ Done | 2026-03-18 | Hardcoded users, any password accepted — **demo only, not production** (P0.2) |
 | Overview page | ✅ Done | 2026-03-18 | Fleet health score, active alerts, top degraded tools (`dashboard/app/(dashboard)/page.tsx`) |
-| MCP Health page | ✅ Done | 2026-03-18 | Server list, drill-down (`dashboard/app/(dashboard)/health/page.tsx`) |
+| Tool Health page | ✅ Done | 2026-03-18 | Renamed from "MCP Health" — server list, drill-down (`dashboard/app/(dashboard)/health/page.tsx`) |
 | Sessions page | ✅ Done | 2026-03-18 | Agent session list (`dashboard/app/(dashboard)/sessions/page.tsx`) |
-| Security Posture page | ✅ Done | 2026-03-18 | OWASP compliance, CVE list (`dashboard/app/(dashboard)/security/page.tsx`) |
-| Cost Attribution page | ✅ Done | 2026-03-18 | Cost breakdown, anomaly highlights (`dashboard/app/(dashboard)/costs/page.tsx`) |
+| Agents page | ✅ Done | 2026-03-18 | NEW — per-agent summary: sessions/calls/failures/cost/duration/servers (`dashboard/app/(dashboard)/agents/page.tsx`) |
+| MCP Security page | ✅ Done | 2026-03-18 | Renamed from "Security Posture" — OWASP compliance, CVE list (`dashboard/app/(dashboard)/security/page.tsx`) |
+| Cost Attribution page (upgraded) | ✅ Done | 2026-03-18 | Full breakdown tables by tool, agent, and session (`dashboard/app/(dashboard)/costs/page.tsx`) |
+| Dashboard nav reordered | ✅ Done | 2026-03-18 | Agent-first hierarchy: Overview → Sessions → Agents → Costs → Tool Health → MCP Security (`dashboard/components/sidebar.tsx`) |
 | Real auth (API keys or OIDC) | Not started | — | Required before production deployment — P0 gap (S.3) |
 
 ---

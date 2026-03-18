@@ -151,7 +151,7 @@ export default function HealthPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Tools & MCPs</h1>
+          <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Tool Health</h1>
           <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
             {isLoading ? "Loading…" : `${up}/${total} tool backends healthy · refreshes every 30s`}
           </p>

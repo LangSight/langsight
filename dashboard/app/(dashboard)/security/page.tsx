@@ -42,7 +42,7 @@ export default function SecurityPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Security</h1>
+          <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>MCP Security</h1>
           <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>CVE · OWASP MCP Top 10 · Tool poisoning</p>
         </div>
         <button onClick={runScan} disabled={scanning}

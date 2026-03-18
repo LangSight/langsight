@@ -14,12 +14,12 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const NAV = [
-  { href: "/",         label: "Overview",   icon: LayoutDashboard },
-  { href: "/agents",   label: "Agents",     icon: Bot },
-  { href: "/sessions", label: "Workflows",  icon: GitBranch },
-  { href: "/health",   label: "Tools & MCPs", icon: Activity },
-  { href: "/security", label: "Security",   icon: Shield },
-  { href: "/costs",    label: "Costs",      icon: DollarSign },
+  { href: "/",         label: "Overview",    icon: LayoutDashboard },
+  { href: "/sessions", label: "Sessions",    icon: GitBranch },
+  { href: "/agents",   label: "Agents",      icon: Bot },
+  { href: "/costs",    label: "Costs",       icon: DollarSign },
+  { href: "/health",   label: "Tool Health", icon: Activity },
+  { href: "/security", label: "MCP Security", icon: Shield },
 ];
 
 function ThemeToggle() {

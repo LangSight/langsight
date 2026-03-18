@@ -9,6 +9,24 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (2026-03-18 — costs API + agents dashboard)
+- `GET /api/costs/breakdown` — per-tool cost breakdown endpoint
+- `GET /api/costs/by-agent` — per-agent cost aggregation endpoint
+- `GET /api/costs/by-session` — per-session cost aggregation endpoint
+- `AgentCostEntry` and `SessionCostEntry` dataclasses in `costs/engine.py` — typed aggregation records for agent-level and session-level cost rollups
+- `aggregate_cost_rows()` helper in `costs/engine.py` — shared aggregation logic used across all three cost endpoints
+- `get_cost_call_counts()` method on ClickHouse backend (`storage/clickhouse.py`) — per-tool call count query
+- Agents dashboard page (`dashboard/app/(dashboard)/agents/page.tsx`) — per-agent summary table showing sessions, calls, failures, total cost, duration, and unique MCP servers per agent
+- Costs page upgraded to full breakdown view (`dashboard/app/(dashboard)/costs/page.tsx`) — three breakdown tables: by tool, by agent, by session
+- `config_path` stored in `app.state` in `api/main.py` — routers can now access the config path without a global
+- `tests/unit/test_cost_engine.py` (86 lines) and `tests/unit/api/test_costs_router.py` (134 lines) — unit coverage for new cost layer
+- `tests/integration/storage/test_costs_integration.py` — integration test for `get_cost_call_counts()` against real ClickHouse
+
+### Changed (2026-03-18 — dashboard nav and page renames)
+- Dashboard sidebar nav reordered to agent-first hierarchy: Overview → Sessions → Agents → Costs → Tool Health → MCP Security (`dashboard/components/sidebar.tsx`)
+- "MCP Health" dashboard page renamed to "Tool Health" (`dashboard/app/(dashboard)/health/page.tsx`) — scoping is honest: the page monitors tool-level health, not only MCP
+- "Security Posture" dashboard page renamed to "MCP Security" (`dashboard/app/(dashboard)/security/page.tsx`) — scoping is honest: deep security scanning is MCP-specific
+
 ### Changed (2026-03-18 — agent-first repositioning)
 - Product positioning updated from "MCP observability and security platform" to "observability platform for AI agent actions — full traces of every tool call across single and multi-agent workflows, with deep MCP health monitoring and security scanning built in." MCP remains a deep feature, not the lead identity.
 - `README.md`: tagline updated to lead with agent action tracing; "Why LangSight" table reordered — agent session traces and multi-agent handoffs now first and second, cost attribution moved up to third, MCP health and security remain as fourth/fifth; NOTE callout rewritten to contrast with Langfuse/LangSmith ("what your agent thought" vs "what your agent did")
