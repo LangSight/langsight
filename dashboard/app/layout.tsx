@@ -1,21 +1,21 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import { Sidebar } from "@/components/sidebar";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
+import { Providers } from "@/components/providers";
+import { auth } from "@/lib/auth";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-
 export const metadata: Metadata = {
-  title: "LangSight Dashboard",
+  title: { default: "LangSight", template: "%s · LangSight" },
   description: "Agent tool observability platform",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const session = await auth();
   return (
-    <html lang="en" className={inter.variable}>
-      <body className="flex h-screen overflow-hidden">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+    <html lang="en" suppressHydrationWarning className={`${GeistSans.variable} ${GeistMono.variable}`}>
+      <body>
+        <Providers session={session}>{children}</Providers>
       </body>
     </html>
   );
