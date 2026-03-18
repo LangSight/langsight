@@ -49,14 +49,15 @@ It is **not yet suitable** for internet-facing or multi-tenant deployment withou
 
 ---
 
-## Current Status: Release 0.1.0 — Alpha
+## Current Status: Release 0.1.0 — Shipped ✅
 
 ```
 Phase 1 (CLI MVP)               ████████████████ 100% — COMPLETE ✅
 Phase 2 (SDK + Framework Integ) ████████████████ 100% — COMPLETE ✅
 Phase 3 (OTEL + Costs)          ████████████████  95% — COMPLETE ✅
-Release 0.1.0                   ████████░░░░░░░░  40% — IN PROGRESS
-Phase 4 (Dashboard + Website)   ████░░░░░░░░░░░░  25% — IN PROGRESS (post-release)
+Release 0.1.0                   ████████████████ 100% — SHIPPED ✅ (PyPI + GitHub)
+Phase 4 (Dashboard + Website)   █████████████░░░  85% — website built, Vercel deploy pending
+Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░   0% — NOT STARTED
 ```
 
 ---
@@ -70,9 +71,14 @@ Phase 4 (Dashboard + Website)   ████░░░░░░░░░░░░
 | CLI commands live | 8 (`init`, `mcp-health`, `security-scan`, `monitor`, `investigate`, `costs`, `sessions`, `serve`) |
 | API endpoints | 9 (`/api/agents/sessions`, `/api/agents/sessions/{id}`, `/api/health/*`, `/api/security/scan`, `/api/traces/spans`, `/api/traces/otlp`, `/api/status`) |
 | Storage backends | 3 (SQLite, PostgreSQL, ClickHouse) |
-| Framework integrations | 4 (CrewAI, Pydantic AI, LibreChat, LangChain/Langflow/LangGraph/LangServe) |
+| Framework integrations | 5 (LangChain/Langflow/LangGraph/LangServe, CrewAI, Pydantic AI, LibreChat, OTEL) |
 | LLM providers for investigate | 4 (Claude, OpenAI, Gemini, Ollama) |
-| Mintlify docs pages | 28 |
+| Mintlify docs pages | 28 (including `sessions.mdx`) |
+| PyPI release | `langsight==0.1.0` published |
+| GitHub release | `v0.1.0` tagged |
+| dist/ artifacts | `langsight-0.1.0-py3-none-any.whl` + `langsight-0.1.0.tar.gz` |
+| Marketing website | Built (`website/app/page.tsx`) — Vercel deploy pending |
+| Product dashboard | Built (`dashboard/`) — demo auth only (P0.2 gap) |
 | Source files | ~50 |
 | Lines of source code | ~4,000 |
 
@@ -160,7 +166,7 @@ Phase 4 (Dashboard + Website)   ████░░░░░░░░░░░░
 | Item | Status | Date | Notes |
 |------|--------|------|-------|
 | `cli/costs.py` | ✅ Done | 2026-03-17 | Full cost attribution engine with ClickHouse backend |
-| PyPI packaging | Pending | — | v0.1.0 release task R.2 |
+| PyPI packaging | ✅ Done | 2026-03-18 | `langsight==0.1.0` published to PyPI; dist/ wheel + sdist generated |
 
 ---
 
@@ -229,51 +235,50 @@ Phase 4 (Dashboard + Website)   ████░░░░░░░░░░░░
 | Cost attribution engine | ✅ Done | 2026-03-17 | Anomaly detection included |
 | Root-level Docker Compose | ✅ Done | 2026-03-17 | ClickHouse + PostgreSQL + OTEL Collector + API |
 | docs-site/ (28 Mintlify pages) | ✅ Done | 2026-03-17 | Full docs covering all features |
-| Remaining (5%) | Pending | — | `docs-site/cli/sessions.mdx` missing — release task R.5 |
+| `docs-site/cli/sessions.mdx` | ✅ Done | 2026-03-18 | Written and present at `docs-site/cli/sessions.mdx` |
 
 ---
 
-## Release 0.1.0 Checklist
+## Release 0.1.0 Checklist — SHIPPED ✅
 
 | Task | ID | Status | Notes |
 |------|----|--------|-------|
-| `uv build` — generate `dist/` | R.1 | Pending | wheel + sdist |
-| `uv publish` to PyPI | R.2 | Pending | `langsight==0.1.0` |
-| `git tag v0.1.0` + GitHub release | R.3 | Pending | Include full CHANGELOG notes |
-| Mintlify deployment | R.4 | Pending | Connect `docs-site/` → `docs.langsight.io` |
-| Write `docs-site/cli/sessions.mdx` | R.5 | Pending | Only missing page |
-| README PyPI version badge | R.6 | Pending | `https://img.shields.io/pypi/v/langsight` |
+| `uv build` — generate `dist/` | R.1 | ✅ Done | `dist/langsight-0.1.0-py3-none-any.whl` + `langsight-0.1.0.tar.gz` |
+| `uv publish` to PyPI | R.2 | ✅ Done | https://pypi.org/project/langsight/ |
+| `git tag v0.1.0` + GitHub release | R.3 | ✅ Done | GitHub release `v0.1.0` exists |
+| Mintlify deployment | R.4 | Pending (manual) | Manual step — connect `docs-site/` on mintlify.com dashboard |
+| Write `docs-site/cli/sessions.mdx` | R.5 | ✅ Done | `docs-site/cli/sessions.mdx` exists |
+| README PyPI version badge | R.6 | ✅ Done | Badge present in `README.md` |
 
 ---
 
-## Phase 4 — In Progress (25%, POST-0.1.0)
+## Phase 4 — 85% Complete (POST-0.1.0)
 
-**Note**: Marketing website (`website/`) and product dashboard (`dashboard/`) are post-0.1.0. Decision: ship CLI + SDK + API + docs in 0.1.0 first; dashboard adds frontend complexity without blocking adoption.
+**Note**: Marketing website (`website/`) and product dashboard (`dashboard/`) shipped post-0.1.0. Both are built. Website awaits Vercel deployment. Dashboard is live with demo auth only (P0.2 gap).
 
 ### Marketing Website (langsight.io)
-| Item | Status | Notes |
-|------|--------|-------|
-| Next.js + Tailwind project setup | Not started | `website/` directory |
-| Hero section | Not started | Tagline + GitHub CTA |
-| Features overview section | Not started | Health, security, SDK, investigate |
-| How it works section | Not started | 3-step: init → monitor → investigate |
-| Integrations section | Not started | Claude Desktop, Cursor, LibreChat, CrewAI, Pydantic AI |
-| Providers section | Not started | Claude, OpenAI, Gemini, Ollama |
-| Pricing section | Not started | OSS free + SaaS tiers placeholder |
-| Vercel deployment | Not started | |
+| Item | Status | Date | Notes |
+|------|--------|------|-------|
+| Next.js + Tailwind project setup | ✅ Done | 2026-03-18 | `website/app/page.tsx` exists |
+| Hero section | ✅ Done | 2026-03-18 | Tagline + GitHub CTA |
+| Features overview section | ✅ Done | 2026-03-18 | Health, security, SDK, investigate |
+| How it works section | ✅ Done | 2026-03-18 | 3-step: init → monitor → investigate |
+| Integrations section | ✅ Done | 2026-03-18 | Claude Desktop, Cursor, LibreChat, CrewAI, Pydantic AI |
+| Providers section | ✅ Done | 2026-03-18 | Claude, OpenAI, Gemini, Ollama |
+| Pricing section | ✅ Done | 2026-03-18 | OSS free + SaaS tiers placeholder |
+| Vercel deployment | Pending (manual) | — | Manual step — connect repo on vercel.com |
 
 ### Product Dashboard v2 (app.langsight.io)
-| Item | Status | Notes |
-|------|--------|-------|
-| Next.js 15 dashboard project setup | ✅ Done | shadcn/ui, App Router, `dashboard/` directory |
-| Auth layer (demo mode) | ✅ Done | Hardcoded users, any password accepted — **demo only, not production** (P0.2) |
-| Overview page | ✅ Done | Fleet health score, active alerts, top degraded tools |
-| MCP Health page | ✅ Done | Server list, drill-down |
-| Security Posture page | ✅ Done | OWASP compliance, CVE list |
-| Tool Reliability page | ✅ Done | Ranked tool list, latency trends |
-| Cost Attribution page | ✅ Done | Cost breakdown, anomaly highlights |
-| Alert Management page | ✅ Done | View, acknowledge, configure alerts |
-| Real auth (API keys or OIDC) | Not started | Required before production deployment — P0 gap |
+| Item | Status | Date | Notes |
+|------|--------|------|-------|
+| Next.js 15 dashboard project setup | ✅ Done | 2026-03-18 | shadcn/ui, App Router, `dashboard/` directory |
+| Auth layer (demo mode) | ✅ Done | 2026-03-18 | Hardcoded users, any password accepted — **demo only, not production** (P0.2) |
+| Overview page | ✅ Done | 2026-03-18 | Fleet health score, active alerts, top degraded tools (`dashboard/app/(dashboard)/page.tsx`) |
+| MCP Health page | ✅ Done | 2026-03-18 | Server list, drill-down (`dashboard/app/(dashboard)/health/page.tsx`) |
+| Sessions page | ✅ Done | 2026-03-18 | Agent session list (`dashboard/app/(dashboard)/sessions/page.tsx`) |
+| Security Posture page | ✅ Done | 2026-03-18 | OWASP compliance, CVE list (`dashboard/app/(dashboard)/security/page.tsx`) |
+| Cost Attribution page | ✅ Done | 2026-03-18 | Cost breakdown, anomaly highlights (`dashboard/app/(dashboard)/costs/page.tsx`) |
+| Real auth (API keys or OIDC) | Not started | — | Required before production deployment — P0 gap (S.3) |
 
 ---
 

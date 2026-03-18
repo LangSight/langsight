@@ -26,11 +26,12 @@
 Phase 1 (CLI MVP)               ████████████████ 100% — COMPLETE ✅
 Phase 2 (SDK + Framework Integ) ████████████████ 100% — COMPLETE ✅
 Phase 3 (OTEL + Costs)          ████████████████  95% — COMPLETE ✅
-Release 0.1.0                   ████████░░░░░░░░  40% — IN PROGRESS
-Phase 4 (Dashboard + Website)   ████░░░░░░░░░░░░  25% — IN PROGRESS
+Release 0.1.0                   ████████████████ 100% — SHIPPED ✅ (PyPI + GitHub)
+Phase 4 (Dashboard + Website)   █████████████░░░  85% — website + dashboard built; Vercel deploy pending
+Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░   0% — NOT STARTED
 ```
 
-**Shipped metrics**: 378 tests passing, 83.69% coverage, 8 CLI commands, 9 API endpoints, SQLite + PostgreSQL + ClickHouse storage backends, FastAPI REST API, GitHub Actions CI, 28 Mintlify docs pages. Dashboard v2 live with demo-mode auth (P0 gap — auth is not production-grade).
+**Shipped metrics**: 378 tests passing, 83.69% coverage, 8 CLI commands, 9 API endpoints, SQLite + PostgreSQL + ClickHouse storage backends, FastAPI REST API, GitHub Actions CI, 28 Mintlify docs pages (including sessions.mdx), marketing website built, dashboard v2 built with demo-mode auth (P0.2 gap — auth is not production-grade), PyPI 0.1.0 published, GitHub release v0.1.0 tagged.
 
 ---
 
@@ -284,27 +285,27 @@ The MVP is "done" when all of the following are true:
 
 ---
 
-### Release 0.1.0 — Pre-Release Checklist (2026-03-17)
+### Release 0.1.0 — Checklist (2026-03-18)
 
 **Goal**: Ship the 0.1.0 release to PyPI, tag GitHub, deploy docs, and write the missing sessions CLI page.
 
-**Status**: IN PROGRESS
+**Status**: COMPLETE ✅ — all automated tasks done; one manual deployment step remaining.
 
 | Task | ID | Description | Status |
 |------|----|-------------|--------|
-| R.1 | Build package | `uv build` — generate `dist/` with wheel + sdist | Pending |
-| R.2 | Publish to PyPI | `uv publish` — publish `langsight==0.1.0` to PyPI | Pending |
-| R.3 | GitHub release | `git tag v0.1.0` + create GitHub release with CHANGELOG notes | Pending |
-| R.4 | Mintlify deployment | Connect `docs-site/` to Mintlify dashboard; deploy to `docs.langsight.io` | Pending |
-| R.5 | Write sessions docs page | Create `docs-site/cli/sessions.mdx` — the only missing Mintlify page | Pending |
-| R.6 | README badges | Add PyPI version badge (`https://img.shields.io/pypi/v/langsight`) to README | Pending |
+| R.1 | Build package | `uv build` — generate `dist/` with wheel + sdist | ✅ Done — `dist/langsight-0.1.0-py3-none-any.whl` + `.tar.gz` |
+| R.2 | Publish to PyPI | `uv publish` — publish `langsight==0.1.0` to PyPI | ✅ Done — https://pypi.org/project/langsight/ |
+| R.3 | GitHub release | `git tag v0.1.0` + create GitHub release with CHANGELOG notes | ✅ Done — GitHub release `v0.1.0` exists |
+| R.4 | Mintlify deployment | Connect `docs-site/` to Mintlify dashboard; deploy to `docs.langsight.io` | Pending (manual) — requires connecting repo on mintlify.com |
+| R.5 | Write sessions docs page | Create `docs-site/cli/sessions.mdx` — the only missing Mintlify page | ✅ Done — `docs-site/cli/sessions.mdx` exists |
+| R.6 | README badges | Add PyPI version badge (`https://img.shields.io/pypi/v/langsight`) to README | ✅ Done — badge in `README.md` |
 
 **Acceptance Criteria**:
-- [ ] `pip install langsight==0.1.0` installs from PyPI on a clean Python 3.11+ env
-- [ ] `langsight --version` outputs `0.1.0`
-- [ ] GitHub release tagged `v0.1.0` with full CHANGELOG notes
-- [ ] `docs.langsight.io` resolves and shows all 28 pages
-- [ ] `docs-site/cli/sessions.mdx` covers `langsight sessions`, `--id`, `--json` flags, and Rich tree output
+- [x] `pip install langsight==0.1.0` installs from PyPI on a clean Python 3.11+ env
+- [x] `langsight --version` outputs `0.1.0`
+- [x] GitHub release tagged `v0.1.0` with full CHANGELOG notes
+- [ ] `docs.langsight.io` resolves and shows all 28 pages (blocked on R.4 manual step)
+- [x] `docs-site/cli/sessions.mdx` covers `langsight sessions`, `--id`, `--json` flags, and Rich tree output
 
 ---
 
@@ -1048,9 +1049,14 @@ The current test-mcps/docker-compose.yml is for development only. Phase 3 ships 
 
 ---
 
-### Phase 4 — Backlog
+### Phase 4 — 85% Complete (2026-03-18)
 
-**Goal**: Three coordinated web properties that together complete the public-facing product surface. Ships after Phase 3 proves the data model is stable.
+**Goal**: Three coordinated web properties that complete the public-facing product surface.
+
+**Status summary**:
+- 4.1 Marketing website: COMPLETE ✅ — built at `website/`; Vercel deployment pending (manual step)
+- 4.2 Docs site: COMPLETE ✅ — 28 Mintlify pages including `sessions.mdx`; Mintlify deployment pending (manual step)
+- 4.3 Product dashboard: COMPLETE ✅ — built at `dashboard/`; demo auth only (P0.2 gap — see Security Hardening)
 
 ```
 Phase 4 deliverables
@@ -1061,7 +1067,9 @@ Phase 4 deliverables
 
 ---
 
-#### 4.1 Marketing Website (langsight.io)
+#### 4.1 Marketing Website (langsight.io) — COMPLETE ✅ (Vercel deploy pending)
+
+**Status**: Built at `website/app/page.tsx`. All sections implemented. Vercel deployment is a manual step.
 
 **Tech**: Next.js + Tailwind CSS, statically generated, deployed to Vercel.
 
@@ -1097,7 +1105,9 @@ Phase 4 deliverables
 
 ---
 
-#### 4.2 Documentation Site (docs.langsight.io)
+#### 4.2 Documentation Site (docs.langsight.io) — COMPLETE ✅ (Mintlify deployment pending)
+
+**Status**: 28 pages built in `docs-site/` including `sessions.mdx`. Mintlify deployment to `docs.langsight.io` is a manual step on mintlify.com dashboard.
 
 **Tech**: Mintlify, sourced from `docs/` folder + new reference pages auto-generated from FastAPI OpenAPI spec.
 
@@ -1132,7 +1142,11 @@ Phase 4 deliverables
 
 ---
 
-#### 4.3 Product Dashboard (app.langsight.io)
+#### 4.3 Product Dashboard (app.langsight.io) — COMPLETE ✅ (demo auth only — P0.2 gap)
+
+**Status**: Built at `dashboard/`. All core pages implemented. Auth is demo-only (hardcoded users, any password accepted). Real auth (API keys or OIDC) is tracked as security hardening item S.3.
+
+**Pages built**: Overview (`(dashboard)/page.tsx`), Health (`health/page.tsx`), Sessions (`sessions/page.tsx`), Security (`security/page.tsx`), Costs (`costs/page.tsx`).
 
 **Tech**: Next.js 15 with App Router, shadcn/ui component library, recharts for time-series charts.
 

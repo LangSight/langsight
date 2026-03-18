@@ -9,14 +9,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Post-0.1.0 work: marketing website (`website/`), product dashboard (`dashboard/`), pre-production security hardening.
+Pre-production security hardening required before 0.2.0 can be positioned as production-grade.
 
-### Added
-- `LangSightLangChainCallback` — LangChain framework integration covering LangChain agents, Langflow, LangGraph, and LangServe (`src/langsight/integrations/langchain.py`)
-- Dashboard v2 live with Next.js 15, shadcn/ui — all core pages (health, security, reliability, costs, alerts) implemented
-- Security assessment completed 2026-03-18 — findings documented in `PROGRESS.md` and `docs/04-implementation-plan.md`
-
-### Planned (Pre-Production Security Hardening — required before 0.2.0 production positioning)
+### Planned (Security Hardening S.1-S.10 — required before 0.2.0 production positioning)
 - S.1: API key middleware for all API endpoints (currently unauthenticated — P0)
 - S.2: RBAC — admin and viewer roles at router dependency level
 - S.3: Dashboard real credential store or OIDC integration (currently demo-only — P0)
@@ -28,19 +23,34 @@ Post-0.1.0 work: marketing website (`website/`), product dashboard (`dashboard/`
 - S.9: `docs/06-threat-model.md` — trust boundaries, attack surface, vulnerability disclosure policy
 - S.10: Split `GET /api/status` into `/readiness` and `/liveness` for correct Kubernetes probe behavior
 
-### Security Assessment Findings (2026-03-18)
-- P0.1: `api/main.py` line 56 — wildcard CORS origin; no auth dependency on routers (line 63). Any client reaching port 8000 can trigger scans and read all data.
-- P0.2: `dashboard/lib/auth.ts` — hardcoded users, any password accepted, static secret fallback. Dashboard auth is explicitly demo-mode.
-- P1.1: `docker-compose.yml` — ClickHouse default user, default Postgres password, databases exposed to host, hardcoded dashboard secret.
-- P1.2: README claims per-session cost in `langsight sessions` output; cost field is absent from CLI and cost engine `total` is a placeholder.
+### Planned (Phase 4 remaining — manual deployment steps)
+- R.4: Mintlify deployment — connect `docs-site/` on mintlify.com dashboard to `docs.langsight.io`
+- Phase 4 website Vercel deployment — connect `website/` repo on vercel.com
 
 ---
 
-## [0.1.0] — 2026-03-17
+## [0.1.0] — 2026-03-18
 
-Phase 1 and Phase 2 complete. First production release.
+Phase 1, Phase 2, Phase 3, and Phase 4 (website + dashboard) complete. First public release: PyPI published, GitHub release tagged.
 
 ### Added
+
+#### Phase 4: Website + Dashboard (2026-03-18)
+- Marketing website built with Next.js 15 + Tailwind CSS at `website/` — all sections: hero, features, how-it-works, integrations, providers, pricing
+- Product dashboard v2 built with Next.js 15 + shadcn/ui at `dashboard/` — Overview, Health, Sessions, Security, Costs pages
+- `LangSightLangChainCallback` — LangChain framework integration covering LangChain agents, Langflow, LangGraph, and LangServe (`src/langsight/integrations/langchain.py`)
+- PyPI release: `langsight==0.1.0` published at https://pypi.org/project/langsight/
+- GitHub release `v0.1.0` tagged with full CHANGELOG notes
+- `dist/langsight-0.1.0-py3-none-any.whl` and `dist/langsight-0.1.0.tar.gz` generated
+- `docs-site/cli/sessions.mdx` — previously the only missing Mintlify page, now written
+- README PyPI version badge added
+
+#### Security Assessment (2026-03-18)
+- Security review completed — findings documented in `PROGRESS.md` and `docs/04-implementation-plan.md`
+- P0.1: `api/main.py` — wildcard CORS, no auth on routers — any client reaching port 8000 can trigger scans and read all data
+- P0.2: `dashboard/lib/auth.ts` — hardcoded users, any password accepted, static secret fallback — explicitly demo-mode only
+- P1.1: `docker-compose.yml` — ClickHouse default user, default Postgres password, databases exposed to host
+- P1.2: Cost engine `total` is a placeholder; per-session cost field absent from `langsight sessions` CLI output
 
 #### CLI (8 commands)
 - `langsight init` — auto-discovers Claude Desktop, Cursor, VS Code MCP configs
