@@ -69,7 +69,7 @@ langsight/
         │   └── webhook.py           # Generic webhook
         ├── storage/                 # Data storage layer
         │   ├── clickhouse.py        # ClickHouse client + queries
-        │   ├── postgres.py          # SQLAlchemy async + models
+        │   ├── postgres.py          # asyncpg direct (no SQLAlchemy)
         │   └── sqlite.py            # Local mode (CLI-only, no Docker)
         ├── api/                     # FastAPI REST API (Phase 2)
         │   ├── main.py
@@ -572,7 +572,7 @@ src/langsight/api/
 
 ## Database Standards
 
-### PostgreSQL (via SQLAlchemy async + Alembic)
+### PostgreSQL (via asyncpg direct — no SQLAlchemy)
 
 - All schema changes via Alembic migrations — never `CREATE TABLE` in application code
 - Use `TIMESTAMPTZ` (not `TIMESTAMP`) for all timestamps — timezone aware always
