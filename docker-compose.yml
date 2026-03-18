@@ -81,6 +81,34 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Dashboard — Next.js 15 product UI (port 3002)
+  # ─────────────────────────────────────────────────────────────────────────────
+  dashboard:
+    image: langsight/dashboard:latest
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: langsight-dashboard
+    environment:
+      LANGSIGHT_API_URL: http://api:8000
+      NEXTAUTH_URL: http://localhost:3002
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-langsight-change-in-production}
+      NODE_ENV: production
+      PORT: 3002
+    ports:
+      - "3002:3002"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/login || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
 volumes:
   clickhouse_data:
     driver: local
