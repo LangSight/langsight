@@ -40,5 +40,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   session: { strategy: "jwt" },
-  secret: process.env.NEXTAUTH_SECRET ?? "langsight-dev-secret",
+  // NextAuth v5 reads AUTH_SECRET automatically; fallback for dev
+  secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET ?? "langsight-dev-secret",
 });
