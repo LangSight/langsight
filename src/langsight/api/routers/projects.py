@@ -124,11 +124,12 @@ async def list_projects(
 
     env_keys: list[str] = getattr(request.app.state, "api_keys", [])
     api_key = request.headers.get("X-API-Key", "")
+    auth_disabled = not env_keys
 
     # Global admin check
-    is_admin = api_key in env_keys
+    is_admin = auth_disabled or api_key in env_keys
     if not is_admin and hasattr(storage, "get_api_key_by_hash") and api_key:
-        import hashlib, inspect
+        import hashlib
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
         record = await storage.get_api_key_by_hash(key_hash)
         if record and record.role.value == "admin":
@@ -173,7 +174,7 @@ async def create_project(
     if existing:
         slug = f"{slug}-{uuid.uuid4().hex[:6]}"
 
-    # Determine creator id from api key
+    # Determine creator id from api key or fall back to first admin user
     creator_id = "system"
     api_key = request.headers.get("X-API-Key", "")
     if api_key and hasattr(storage, "get_api_key_by_hash"):
@@ -182,6 +183,15 @@ async def create_project(
         record = await storage.get_api_key_by_hash(key_hash)
         if record:
             creator_id = record.id
+    elif not api_key and hasattr(storage, "list_users"):
+        # Auth disabled — use the first admin user as creator
+        try:
+            users = await storage.list_users()
+            admins = [u for u in users if getattr(u, "role", None) and u.role.value == "admin"]
+            if admins:
+                creator_id = admins[0].id
+        except Exception:  # noqa: BLE001
+            pass
 
     project = Project(
         id=uuid.uuid4().hex,

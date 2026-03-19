@@ -7,12 +7,12 @@ import useSWR from "swr";
 import {
   Key, Plus, Trash2, Copy, Check, ExternalLink, Shield, Database,
   Info, AlertTriangle, Eye, EyeOff, Users, UserPlus, UserX, ShieldCheck,
-  DollarSign, Pencil, X,
+  DollarSign, Pencil, X, Folder, ChevronDown, ChevronRight,
 } from "lucide-react";
-import { fetcher, getApiKeys, createApiKey, revokeApiKey, listUsers, inviteUser, deactivateUser, updateUserRole, listModelPricing, createModelPricing, updateModelPricing, deactivateModelPricing } from "@/lib/api";
+import { fetcher, getApiKeys, createApiKey, revokeApiKey, listUsers, inviteUser, deactivateUser, updateUserRole, listModelPricing, createModelPricing, updateModelPricing, deactivateModelPricing, listProjects, createProject, deleteProject, listProjectMembers, addProjectMember, removeProjectMember } from "@/lib/api";
+import type { ApiKeyResponse, ApiKeyCreatedResponse, ApiStatus, DashboardUser, InviteResponse, ModelPricingEntry, ProjectResponse, ProjectMember } from "@/lib/types";
 import { cn, timeAgo } from "@/lib/utils";
 import { toast } from "sonner";
-import type { ApiKeyResponse, ApiKeyCreatedResponse, ApiStatus, DashboardUser, InviteResponse, ModelPricingEntry } from "@/lib/types";
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn("skeleton", className)} />;
@@ -262,18 +262,339 @@ function Section({ title, description, icon: Icon, children }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-      <div className="px-6 py-4 border-b" style={{ borderColor: "hsl(var(--border))" }}>
-        <div className="flex items-center gap-2.5">
-          <Icon size={15} style={{ color: "hsl(var(--primary))" }} />
-          <h2 className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>{title}</h2>
+    <div
+      className="rounded-xl border overflow-hidden"
+      style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
+    >
+      <div
+        className="flex items-start gap-3 px-5 py-4 border-b"
+        style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card-raised))" }}
+      >
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+          style={{ background: "hsl(var(--primary) / 0.1)" }}
+        >
+          <Icon size={14} style={{ color: "hsl(var(--primary))" }} />
         </div>
-        {description && (
-          <p className="text-xs mt-0.5 ml-[23px]" style={{ color: "hsl(var(--muted-foreground))" }}>{description}</p>
+        <div>
+          <h2 className="text-[13px] font-semibold text-foreground">{title}</h2>
+          {description && (
+            <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
+          )}
+        </div>
+      </div>
+      <div className="px-5 py-5">{children}</div>
+    </div>
+  );
+}
+
+// ─── Projects Section ──────────────────────────────────────────────────────────
+
+function ProjectRow({ project, onDeleted }: { project: ProjectResponse; onDeleted: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [members, setMembers] = useState<ProjectMember[] | null>(null);
+  const [users, setUsers] = useState<DashboardUser[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [addingUser, setAddingUser] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [selectedRole, setSelectedRole] = useState<"member" | "viewer" | "owner">("member");
+
+  async function loadMembers() {
+    if (members !== null) return;
+    setLoadingMembers(true);
+    try {
+      const [m, u] = await Promise.all([listProjectMembers(project.id), listUsers()]);
+      setMembers(m);
+      setUsers(u);
+    } catch {
+      toast.error("Failed to load members");
+    } finally {
+      setLoadingMembers(false);
+    }
+  }
+
+  async function handleExpand() {
+    const next = !expanded;
+    setExpanded(next);
+    if (next) await loadMembers();
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await deleteProject(project.id);
+      toast.success(`Project "${project.name}" deleted`);
+      onDeleted();
+    } catch (err) {
+      toast.error(`Failed to delete: ${err instanceof Error ? err.message : "unknown"}`);
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
+
+  async function handleAddMember() {
+    if (!selectedUserId) return;
+    setAddingUser(true);
+    try {
+      const m = await addProjectMember(project.id, selectedUserId, selectedRole);
+      setMembers((prev) => [...(prev ?? []), m]);
+      setSelectedUserId("");
+      toast.success("Member added");
+    } catch (err) {
+      toast.error(`Failed to add member: ${err instanceof Error ? err.message : "unknown"}`);
+    } finally {
+      setAddingUser(false);
+    }
+  }
+
+  async function handleRemoveMember(userId: string) {
+    try {
+      await removeProjectMember(project.id, userId);
+      setMembers((prev) => (prev ?? []).filter((m) => m.user_id !== userId));
+      toast.success("Member removed");
+    } catch {
+      toast.error("Failed to remove member");
+    }
+  }
+
+  const nonMembers = users.filter((u) => !(members ?? []).find((m) => m.user_id === u.id));
+
+  return (
+    <div
+      className="rounded-xl border overflow-hidden"
+      style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card-raised))" }}
+    >
+      {/* Row header */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button
+          onClick={handleExpand}
+          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+        >
+          {expanded
+            ? <ChevronDown size={13} className="text-muted-foreground flex-shrink-0" />
+            : <ChevronRight size={13} className="text-muted-foreground flex-shrink-0" />}
+          <Folder size={14} className="text-primary flex-shrink-0" />
+          <span className="text-[13px] font-medium text-foreground truncate">{project.name}</span>
+          <code
+            className="text-[10px] text-muted-foreground ml-1 hidden sm:inline"
+            style={{ fontFamily: "var(--font-geist-mono)" }}
+          >
+            /{project.slug}
+          </code>
+        </button>
+
+        <span className="text-[11px] text-muted-foreground tabular-nums flex-shrink-0">
+          {project.member_count} {project.member_count === 1 ? "member" : "members"}
+        </span>
+
+        {!confirmDelete ? (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="btn btn-ghost p-1.5 text-muted-foreground hover:text-red-500 flex-shrink-0"
+            title={`Delete ${project.name}`}
+          >
+            <Trash2 size={13} />
+          </button>
+        ) : (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-[11px] text-red-500">Delete?</span>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-[11px] font-semibold px-2 py-0.5 rounded badge-danger transition-colors"
+            >
+              {deleting ? "…" : "Yes"}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="text-[11px] px-2 py-0.5 rounded badge-muted transition-colors"
+            >
+              No
+            </button>
+          </div>
         )}
       </div>
-      <div className="px-6 py-5">{children}</div>
+
+      {/* Expanded: members */}
+      {expanded && (
+        <div
+          className="border-t px-4 py-4 space-y-3"
+          style={{ borderColor: "hsl(var(--border))" }}
+        >
+          {loadingMembers ? (
+            <div className="space-y-2">
+              {[1,2].map(i => <div key={i} className="skeleton h-8 rounded-lg" />)}
+            </div>
+          ) : (
+            <>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                Members
+              </p>
+              {(members ?? []).length === 0 ? (
+                <p className="text-xs text-muted-foreground">No members yet</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {(members ?? []).map((m) => {
+                    const user = users.find((u) => u.id === m.user_id);
+                    return (
+                      <div
+                        key={m.user_id}
+                        className="flex items-center justify-between px-3 py-2 rounded-lg"
+                        style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
+                      >
+                        <div>
+                          <span className="text-[12.5px] text-foreground">
+                            {user?.email ?? m.user_id.slice(0, 16) + "…"}
+                          </span>
+                          <span
+                            className="text-[10px] ml-2 px-1.5 py-0.5 rounded-full capitalize badge-primary"
+                          >
+                            {m.role}
+                          </span>
+                        </div>
+                        {m.role !== "owner" && (
+                          <button
+                            onClick={() => handleRemoveMember(m.user_id)}
+                            className="btn btn-ghost p-1 text-muted-foreground hover:text-red-500"
+                          >
+                            <UserX size={12} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Add member */}
+              {nonMembers.length > 0 && (
+                <div className="flex items-center gap-2 pt-1">
+                  <select
+                    value={selectedUserId}
+                    onChange={(e) => setSelectedUserId(e.target.value)}
+                    className="input-base text-[12px] h-8 flex-1"
+                  >
+                    <option value="">Add member…</option>
+                    {nonMembers.map((u) => (
+                      <option key={u.id} value={u.id}>{u.email}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedRole}
+                    onChange={(e) => setSelectedRole(e.target.value as "member" | "viewer" | "owner")}
+                    className="input-base text-[12px] h-8 w-24"
+                  >
+                    <option value="member">Member</option>
+                    <option value="viewer">Viewer</option>
+                    <option value="owner">Owner</option>
+                  </select>
+                  <button
+                    onClick={handleAddMember}
+                    disabled={addingUser || !selectedUserId}
+                    className="btn btn-primary py-1 px-3 text-[12px]"
+                  >
+                    <UserPlus size={12} />
+                    {addingUser ? "…" : "Add"}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+function ProjectsSection() {
+  const { data: projects, isLoading, mutate } = useSWR<ProjectResponse[]>(
+    "/api/projects",
+    fetcher,
+    { refreshInterval: 30_000 }
+  );
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleCreate() {
+    const name = newName.trim();
+    if (!name) return;
+    setSubmitting(true);
+    try {
+      await createProject(name);
+      await mutate();
+      setNewName("");
+      setCreating(false);
+      toast.success(`Project "${name}" created`);
+    } catch (err) {
+      toast.error(`Failed to create project: ${err instanceof Error ? err.message : "unknown"}`);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Section
+      title="Projects"
+      description="Isolate traces, costs, and agents by team or workload. Each project has its own member list."
+      icon={Folder}
+    >
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2].map(i => <div key={i} className="skeleton h-12 rounded-xl" />)}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {(projects ?? []).map((p) => (
+            <ProjectRow key={p.id} project={p} onDeleted={() => mutate()} />
+          ))}
+
+          {(projects ?? []).length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              No projects yet. Create one below.
+            </p>
+          )}
+
+          {/* Create new project */}
+          {creating ? (
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                placeholder="Project name…"
+                autoFocus
+                className="input-base text-[13px] h-9 flex-1"
+              />
+              <button
+                onClick={handleCreate}
+                disabled={submitting || !newName.trim()}
+                className="btn btn-primary py-1.5 px-4"
+              >
+                {submitting ? "Creating…" : "Create"}
+              </button>
+              <button
+                onClick={() => { setCreating(false); setNewName(""); }}
+                className="btn btn-ghost py-1.5 px-3"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setCreating(true)}
+              className="btn btn-secondary w-full justify-center py-2 text-[13px]"
+            >
+              <Plus size={14} /> New project
+            </button>
+          )}
+        </div>
+      )}
+    </Section>
   );
 }
 
@@ -968,15 +1289,15 @@ function AboutSection() {
 
 export default function SettingsPage() {
   return (
-    <div className="space-y-6 max-w-3xl">
-      {/* Header */}
+    <div className="space-y-5 max-w-3xl page-in">
       <div>
-        <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>Settings</h1>
-        <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
-          Manage API keys, instance configuration, and account preferences
+        <h1 className="text-xl font-bold text-foreground">Settings</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Manage users, model pricing, API keys, and instance configuration
         </p>
       </div>
 
+      <ProjectsSection />
       <UsersSection />
       <ModelPricingSection />
       <ApiKeysSection />

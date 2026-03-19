@@ -27,80 +27,196 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "hsl(var(--background))" }}>
-      {/* Background gradient */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full opacity-20 blur-[100px]"
-          style={{ background: "hsl(var(--primary))" }} />
+    <div
+      className="min-h-screen flex"
+      style={{ background: "hsl(var(--background))" }}
+    >
+      {/* ── Left panel — branding ──────────────────────────────── */}
+      <div
+        className="hidden lg:flex lg:w-[44%] flex-col justify-between p-10 relative overflow-hidden"
+        style={{ background: "hsl(240 10% 5%)" }}
+      >
+        {/* Glow */}
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] h-[480px] rounded-full blur-[120px] pointer-events-none"
+          style={{ background: "hsl(var(--primary) / 0.12)" }}
+        />
+
+        {/* Logo */}
+        <div className="relative flex items-center gap-2.5">
+          <div
+            className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg"
+            style={{ background: "hsl(var(--primary))" }}
+          >
+            <svg width="16" height="16" viewBox="0 0 14 14" fill="none">
+              <path d="M2 7h10M7 2v10M4 4l6 6M10 4l-6 6" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </div>
+          <span className="font-bold text-[15px] text-white">LangSight</span>
+          <span
+            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full ml-1"
+            style={{ background: "hsl(var(--primary) / 0.2)", color: "hsl(var(--primary))" }}
+          >
+            v0.2
+          </span>
+        </div>
+
+        {/* Center copy */}
+        <div className="relative space-y-8">
+          <div>
+            <h2
+              className="font-bold leading-tight mb-4"
+              style={{ fontSize: "clamp(1.6rem, 3vw, 2.4rem)", color: "white" }}
+            >
+              Full visibility into<br />
+              everything your<br />
+              <span style={{ color: "hsl(var(--primary))" }}>agents call.</span>
+            </h2>
+            <p className="text-sm leading-relaxed" style={{ color: "hsl(0 0% 60%)" }}>
+              Traces, costs, MCP health checks, and security scanning — instrument once,
+              see everything.
+            </p>
+          </div>
+
+          {/* Feature list */}
+          <div className="space-y-3">
+            {[
+              { icon: "🔭", text: "Full session traces across multi-agent trees" },
+              { icon: "💰", text: "Per-tool, per-agent cost attribution" },
+              { icon: "♥", text: "Proactive MCP health monitoring" },
+              { icon: "🛡", text: "CVE + OWASP security scanning" },
+            ].map((f, i) => (
+              <div key={i} className="flex items-center gap-3 text-sm" style={{ color: "hsl(0 0% 70%)" }}>
+                <span className="text-base">{f.icon}</span>
+                <span>{f.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Bottom */}
+        <div className="relative">
+          <p className="text-xs" style={{ color: "hsl(0 0% 35%)" }}>
+            Apache 2.0 · Self-hosted · Your data stays yours
+          </p>
+        </div>
       </div>
 
-      <div className="relative w-full max-w-md">
-        {/* Card */}
-        <div className="rounded-2xl border p-8 shadow-2xl" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-          {/* Logo */}
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg" style={{ background: "hsl(var(--primary))" }}>
-              <svg width="20" height="20" viewBox="0 0 14 14" fill="none">
-                <path d="M2 7h10M7 2v10M4 4l6 6M10 4l-6 6" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-lg font-bold" style={{ color: "hsl(var(--foreground))" }}>LangSight</h1>
-              <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Observability Platform</p>
-            </div>
+      {/* ── Right panel — form ─────────────────────────────────── */}
+      <div className="flex-1 flex items-center justify-center p-6">
+        {/* Mobile logo */}
+        <div className="absolute top-6 left-6 flex items-center gap-2 lg:hidden">
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center"
+            style={{ background: "hsl(var(--primary))" }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M2 7h10M7 2v10M4 4l6 6M10 4l-6 6" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </div>
+          <span className="font-bold text-[14px] text-foreground">LangSight</span>
+        </div>
+
+        <div className="w-full max-w-[380px]">
+          {/* Heading */}
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-foreground mb-1.5">Sign in</h1>
+            <p className="text-sm text-muted-foreground">
+              Enter your credentials to access the dashboard
+            </p>
           </div>
 
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold mb-1" style={{ color: "hsl(var(--foreground))" }}>Sign in</h2>
-            <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Monitor your AI agents and MCP servers</p>
-          </div>
-
+          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Email */}
             <div>
-              <label className="text-sm font-medium block mb-1.5" style={{ color: "hsl(var(--foreground))" }}>Email</label>
+              <label
+                htmlFor="email"
+                className="block text-[13px] font-medium text-foreground mb-1.5"
+              >
+                Email
+              </label>
               <input
+                id="email"
                 type="email"
                 value={email}
-                onChange={e => setEmail(e.target.value)}
+                onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-colors"
-                style={{ background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))" }}
+                className="input-base"
                 placeholder="admin@langsight.io"
+                autoComplete="email"
               />
             </div>
+
+            {/* Password */}
             <div>
-              <label className="text-sm font-medium block mb-1.5" style={{ color: "hsl(var(--foreground))" }}>Password</label>
+              <label
+                htmlFor="password"
+                className="block text-[13px] font-medium text-foreground mb-1.5"
+              >
+                Password
+              </label>
               <div className="relative">
                 <input
+                  id="password"
                   type={show ? "text" : "password"}
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full px-3 py-2.5 pr-10 rounded-lg text-sm outline-none transition-colors"
-                  style={{ background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))" }}
+                  className="input-base pr-10"
                   placeholder="••••••••"
+                  autoComplete="current-password"
                 />
-                <button type="button" onClick={() => setShow(s => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2"
-                  style={{ color: "hsl(var(--muted-foreground))" }}>
-                  {show ? <EyeOff size={16}/> : <Eye size={16}/>}
+                <button
+                  type="button"
+                  onClick={() => setShow((s) => !s)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={show ? "Hide password" : "Show password"}
+                >
+                  {show ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
             </div>
+
+            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
-              style={{ background: "hsl(var(--primary))" }}>
-              {loading && <Loader2 size={16} className="animate-spin"/>}
-              Sign in
+              className="btn btn-primary w-full justify-center py-2.5 text-[14px]"
+            >
+              {loading && <Loader2 size={15} className="animate-spin" />}
+              {loading ? "Signing in…" : "Sign in"}
             </button>
           </form>
 
           {/* Demo hint */}
-          <div className="mt-5 p-3 rounded-lg text-xs" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
-            <strong>Demo:</strong> admin@langsight.io / any password
+          <div
+            className="mt-6 p-3.5 rounded-xl text-[12px] leading-relaxed"
+            style={{
+              background: "hsl(var(--primary) / 0.06)",
+              border: "1px solid hsl(var(--primary) / 0.15)",
+            }}
+          >
+            <p className="font-semibold mb-0.5" style={{ color: "hsl(var(--primary))" }}>
+              Demo credentials
+            </p>
+            <p className="text-muted-foreground font-mono">
+              admin@langsight.io / demo
+            </p>
           </div>
+
+          {/* Footer */}
+          <p className="mt-8 text-center text-xs text-muted-foreground">
+            New users are invited by an admin.{" "}
+            <a
+              href="https://lngsight.mintlify.app/users"
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-2 transition-colors hover:text-foreground"
+            >
+              Learn more →
+            </a>
+          </p>
         </div>
       </div>
     </div>

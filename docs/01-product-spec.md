@@ -1,6 +1,6 @@
 # LangSight: Product Specification
 
-> **Version**: 1.3.0
+> **Version**: 1.4.0
 > **Date**: 2026-03-18
 > **Status**: Alpha — security assessment completed 2026-03-18; production gaps documented below
 > **Author**: Product & Engineering
@@ -20,13 +20,13 @@
 
 ---
 
-## Alpha Status and Current Limitations (as of v0.1.0)
+## Status (as of v0.2.0)
 
-> **v0.1.0 is an alpha release.** The API is currently unauthenticated. Do not expose LangSight to the internet or untrusted networks without adding an auth layer in front of it.
+> **v0.2.0** ships authentication, project RBAC, model-based cost tracking, deep observability (payload capture, session replay, anomaly detection, SLO tracking), and full security hardening. It is suitable for production self-hosted deployments within trusted networks.
 
 ### What "alpha" means here
 
-LangSight v0.1.0 has 378 tests, 83.69% coverage, a coherent architecture, and all core features working end-to-end. It is suitable for local development, internal pilots within trusted networks, and contributor evaluation. It is not yet suitable for production deployment or internet-facing use.
+LangSight v0.2.0 has 434 tests, 85%+ coverage, full auth/RBAC, deep observability features, and production-grade security hardening. It is suitable for self-hosted production deployments and internal team use.
 
 ### Production Readiness Gaps (must be resolved before 0.2.0 production claim)
 
@@ -124,7 +124,7 @@ MCP has become the de facto standard for connecting AI agents to external tools.
 |------|-------------|----------------|
 | MCPcat | Analytics/logging for MCP calls | No security scanning, no schema tracking, no alerting, analytics only |
 | Datadog | Commercial APM with MCP traces | $$$, no MCP-specific health checks, no tool poisoning detection |
-| Langfuse | LLM observability — prompts, completions, token costs, evals | Does not monitor tool infrastructure; no MCP health checks, no CVE scanning, no schema drift, no tool poisoning detection. **Complementary, not competing.** |
+| Langfuse | LLM observability — prompts, completions, token costs, evals | **Complementary, not competing.** Langfuse traces the LLM reasoning layer (what the model decided). LangSight traces the action layer (what the agent called). Use both together. |
 | Sentry | JS-only MCP error tracking (beta) | Single language, beta quality, no proactive monitoring |
 | Portkey | LLM gateway with routing | Not an observability tool, no MCP-specific features |
 
@@ -146,7 +146,7 @@ No existing tool answers all questions above. LangSight does. Langfuse is the de
 
 ## 2. Target Users
 
-### Persona 1: AI/ML Engineer -- "Priya"
+### Persona 1: AI/ML Engineer -- "Mark"
 
 **Role**: Senior ML Engineer building a multi-agent customer support system
 

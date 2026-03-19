@@ -59,3 +59,5 @@ logs/
 *.pem
 *.key
 credentials.json
+dashboard/test-results/
+dashboard/playwright-report/
