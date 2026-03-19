@@ -35,6 +35,7 @@ _DDL_STATEMENTS = [
         key_prefix   TEXT        NOT NULL,
         key_hash     TEXT        UNIQUE NOT NULL,
         role         TEXT        NOT NULL DEFAULT 'admin',
+        user_id      TEXT,
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         last_used_at TIMESTAMPTZ,
         revoked_at   TIMESTAMPTZ
@@ -42,6 +43,9 @@ _DDL_STATEMENTS = [
     """,
     """
     CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys (key_hash)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys (user_id)
     """,
     """
     CREATE TABLE IF NOT EXISTS health_results (
