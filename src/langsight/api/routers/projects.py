@@ -118,6 +118,24 @@ def _project_to_response(
     )
 
 
+async def _projects_with_counts(
+    storage: StorageBackend, projects: list[Project],
+) -> list[ProjectResponse]:
+    """Build project responses with member counts in a single batch query."""
+    if not projects:
+        return []
+    get_counts = getattr(storage, "get_member_counts", None)
+    if get_counts is not None:
+        counts = await get_counts([p.id for p in projects])
+    else:
+        # Fallback for backends without batch method
+        counts = {}
+        for p in projects:
+            members = await storage.list_members(p.id)
+            counts[p.id] = len(members)
+    return [_project_to_response(p, member_count=counts.get(p.id, 0)) for p in projects]
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -142,11 +160,7 @@ async def list_projects(
             projects = await storage.list_projects()
         else:
             projects = await storage.list_projects_for_user(user_id)
-        result = []
-        for p in projects:
-            members = await storage.list_members(p.id)
-            result.append(_project_to_response(p, member_count=len(members)))
-        return result
+        return await _projects_with_counts(storage, projects)
 
     env_keys: list[str] = getattr(request.app.state, "api_keys", [])
     api_key = _read_api_key(request) or ""
@@ -186,11 +200,7 @@ async def list_projects(
             if record:
                 projects = await storage.list_projects_for_user(record.user_id or record.id)
 
-    result = []
-    for p in projects:
-        members = await storage.list_members(p.id)
-        result.append(_project_to_response(p, member_count=len(members)))
-    return result
+    return await _projects_with_counts(storage, projects)
 
 
 @router.post(

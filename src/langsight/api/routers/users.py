@@ -209,7 +209,7 @@ async def invite_user(
     logger.info("audit.user.invite_created", email=body.email, role=body.role.value, client_ip=client_ip)
     append_audit(
         "user.invite_created",
-        None,
+        inviter_id,
         client_ip,
         {"email": body.email, "role": body.role.value},
         storage=storage,

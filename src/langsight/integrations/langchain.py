@@ -31,6 +31,7 @@ be installed without langchain.
 from __future__ import annotations
 
 import asyncio
+import threading
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -42,6 +43,22 @@ from langsight.sdk.client import LangSightClient
 from langsight.sdk.models import ToolCallStatus
 
 logger = structlog.get_logger()
+
+
+def _fire_and_forget(coro: Any) -> None:
+    """Schedule a coroutine from a synchronous LangChain callback.
+
+    Tries create_task if a loop is already running (async context).
+    Falls back to running in a daemon thread (sync/test context) to
+    avoid 'coroutine was never awaited' warnings.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(coro)
+    except RuntimeError:
+        # No running loop — run in a background thread so the coroutine is awaited
+        thread = threading.Thread(target=asyncio.run, args=(coro,), daemon=True)
+        thread.start()
 
 
 class LangSightLangChainCallback(BaseIntegration):
@@ -115,7 +132,7 @@ class LangSightLangChainCallback(BaseIntegration):
         if key not in self._pending:
             return
         tool_name, started_at = self._pending.pop(key)
-        asyncio.ensure_future(
+        _fire_and_forget(
             self._record(
                 tool_name=tool_name,
                 started_at=started_at,
@@ -136,7 +153,7 @@ class LangSightLangChainCallback(BaseIntegration):
         if key not in self._pending:
             return
         tool_name, started_at = self._pending.pop(key)
-        asyncio.ensure_future(
+        _fire_and_forget(
             self._record(
                 tool_name=tool_name,
                 started_at=started_at,

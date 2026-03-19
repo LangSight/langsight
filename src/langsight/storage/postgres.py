@@ -464,6 +464,16 @@ class PostgresBackend:
         )
         return [_row_to_member(r) for r in rows]
 
+    async def get_member_counts(self, project_ids: list[str]) -> dict[str, int]:
+        """Return {project_id: member_count} in a single query (avoids N+1)."""
+        if not project_ids:
+            return {}
+        rows = await self._pool.fetch(
+            "SELECT project_id, COUNT(*) AS cnt FROM project_members WHERE project_id = ANY($1) GROUP BY project_id",
+            project_ids,
+        )
+        return {r["project_id"]: int(r["cnt"]) for r in rows}
+
     async def update_member_role(self, project_id: str, user_id: str, role: str) -> bool:
         result: str = await self._pool.execute(
             "UPDATE project_members SET role = $1 WHERE project_id = $2 AND user_id = $3",
