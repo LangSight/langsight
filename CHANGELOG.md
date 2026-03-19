@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (2026-03-19 — S.9 Threat Model)
+- S.9: `docs/06-threat-model.md` — comprehensive threat model covering 5 trust boundaries, full attack surface table for all API endpoints and the OTEL Collector, data classification table with PII risk guidance, 10 threat scenarios (T-01 through T-10) each with attack path / impact / mitigations / residual risk, recommended production deployment topology with firewall rules, 8 documented known gaps (G-01 through G-08) with severity and mitigation notes, and a vulnerability disclosure policy with response time commitments
+- S.9: `docs/04-implementation-plan.md` updated — S.9 marked complete (2026-03-19); Security Hardening progress updated to 10%
+
 ### Added (2026-03-19 — P5.7 Playground Replay)
 - P5.7: Playground Replay — re-execute any session's tool calls against live MCP servers using stored `input_args`; replay stored as new session and auto-compared with original in the compare drawer
 - P5.7: `POST /api/agents/sessions/{id}/replay` endpoint — configurable `timeout_per_call` (default 10s) and `total_timeout` (default 60s) parameters; returns `ReplayResponse` with `replay_session_id`

@@ -28,7 +28,7 @@ Phase 2 (SDK + Framework Integ) ████████████████
 Phase 3 (OTEL + Costs)          ████████████████ 100% — COMPLETE ✅
 Release 0.1.0                   ████████████████ 100% — SHIPPED ✅ (PyPI + GitHub)
 Phase 4 (Dashboard + Website)   █████████████░░░  85% — website + dashboard built; Vercel deploy pending
-Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░   0% — NOT STARTED
+Security Hardening (S.1-S.10)   █░░░░░░░░░░░░░░░  10% — S.9 COMPLETE ✅
 Phase 5 (Deep Observability)    ████████████████ 100% — COMPLETE ✅ P5.1 (2026-03-18), P5.2-P5.7 (2026-03-19)
 ```
 
@@ -434,7 +434,7 @@ The MVP is "done" when all of the following are true:
 | No default secrets in docker-compose | S.6 | Remove hardcoded Postgres password, ClickHouse default user, and dashboard secret from `docker-compose.yml`. Require explicit env var injection. Add `.env.example` with placeholder values only. | P1 |
 | Close public DB ports in compose | S.7 | ClickHouse and Postgres ports must not be bound to host by default. Move to internal Docker network; only the API and OTEL Collector should be reachable from outside. | P1 |
 | Schema migration strategy | S.8 | Implement Alembic for Postgres schema migrations. Document ClickHouse migration approach (versioned SQL scripts). Neither database schema should be managed by application startup DDL in production. | P1 |
-| Threat model document | S.9 | Write `docs/06-threat-model.md` covering: trust boundaries, attack surface, deployment topology, data classification, and vulnerability disclosure policy. | P1 |
+| ✅ Threat model document | S.9 | Write `docs/06-threat-model.md` covering: trust boundaries, attack surface, deployment topology, data classification, and vulnerability disclosure policy. **COMPLETE 2026-03-19** — 10 threat scenarios, 8 known gaps, full deployment topology, vulnerability disclosure policy. | P1 |
 | Readiness/liveness probe split | S.10 | Split `GET /api/status` into `/readiness` (can serve traffic) and `/liveness` (process is alive). Required for correct Kubernetes and Docker health check behavior. | P1 |
 
 **Acceptance criteria for this phase**:
