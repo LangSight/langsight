@@ -291,30 +291,18 @@ function UserMenu() {
               </div>
             </div>
 
-            {[
-              {
-                icon: Settings,
-                label: "Settings",
-                action: () => { setOpen(false); window.location.href = "/settings"; },
-              },
-              {
-                icon: theme === "dark" ? Sun : Moon,
-                label: theme === "dark" ? "Light mode" : "Dark mode",
-                action: () => setTheme(theme === "dark" ? "light" : "dark"),
-              },
-            ].map((item) => (
-              <button
-                key={item.label}
-                onClick={item.action}
-                className="flex items-center gap-2.5 w-full px-3 py-2 text-[12.5px] transition-colors"
-                style={{ color: "hsl(var(--sidebar-fg))" }}
-                onMouseEnter={e => (e.currentTarget.style.background = "hsl(var(--sidebar-accent))")}
-                onMouseLeave={e => (e.currentTarget.style.background = "")}
-              >
-                <item.icon size={13} style={{ color: "hsl(var(--sidebar-muted))" }} />
-                {item.label}
-              </button>
-            ))}
+            <button
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="flex items-center gap-2.5 w-full px-3 py-2 text-[12.5px] transition-colors"
+              style={{ color: "hsl(var(--sidebar-fg))" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "hsl(var(--sidebar-accent))")}
+              onMouseLeave={e => (e.currentTarget.style.background = "")}
+            >
+              {theme === "dark"
+                ? <Sun size={13} style={{ color: "hsl(var(--sidebar-muted))" }} />
+                : <Moon size={13} style={{ color: "hsl(var(--sidebar-muted))" }} />}
+              {theme === "dark" ? "Light mode" : "Dark mode"}
+            </button>
 
             <div className="my-1" style={{ borderTop: "1px solid hsl(var(--sidebar-border))" }} />
 

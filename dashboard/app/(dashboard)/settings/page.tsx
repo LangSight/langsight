@@ -1634,10 +1634,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div
-      className="flex page-in"
-      style={{ minHeight: "calc(100vh - 54px)", margin: "-20px" }}
-    >
+    <div className="flex page-in" style={{ minHeight: "calc(100vh - 300px)" }}>
       {/* Left nav */}
       <nav
         className="w-48 shrink-0 py-4 px-2 space-y-0.5"
