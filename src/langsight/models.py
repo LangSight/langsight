@@ -57,6 +57,46 @@ class HealthCheckResult(BaseModel):
     error: str | None = None
 
 
+class UserRole(StrEnum):
+    ADMIN = "admin"    # full access — can invite users, trigger scans, manage API keys
+    VIEWER = "viewer"  # read-only — dashboards and traces, no write operations
+
+
+class User(BaseModel):
+    """A dashboard user account."""
+
+    id: str  # uuid4 hex
+    email: str
+    password_hash: str  # bcrypt hash — never expose raw
+    role: UserRole = UserRole.VIEWER
+    active: bool = True
+    invited_by: str | None = None   # user id of the admin who invited them
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    last_login_at: datetime | None = None
+
+    model_config = {"frozen": True}
+
+
+class InviteToken(BaseModel):
+    """A one-time invite token for a new user."""
+
+    token: str          # random 32-byte hex token
+    email: str          # email the invite is for
+    role: UserRole = UserRole.VIEWER
+    invited_by: str     # user id of admin
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    expires_at: datetime   # 72h after creation
+    used_at: datetime | None = None
+
+    @property
+    def is_expired(self) -> bool:
+        return datetime.now(UTC) > self.expires_at
+
+    @property
+    def is_used(self) -> bool:
+        return self.used_at is not None
+
+
 class SLOMetric(StrEnum):
     SUCCESS_RATE = "success_rate"    # % of sessions with zero failed calls
     LATENCY_P99 = "latency_p99"      # p99 session duration in ms (approximated from avg)

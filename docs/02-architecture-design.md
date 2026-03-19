@@ -412,7 +412,7 @@ agentguard investigate "customer got wrong refund amount"
 |---|---|---|
 | `mcp_health_checks` | Every health check result (timestamp, server, status, latency, schema_hash) | 90 days |
 | `otel_traces` | Standard OTEL trace/span data from agent frameworks | 30 days |
-| `mcp_tool_calls` | Every SDK/OTLP tool call span. Columns include `input_json Nullable(String)` and `output_json Nullable(String)` for payload capture (P5.1, added 2026-03-18); `llm_input Nullable(String)` and `llm_output Nullable(String)` for LLM reasoning capture (P5.3, added 2026-03-19). MergeTree, TTL 90 days. | 90 days |
+| `mcp_tool_calls` | Every SDK/OTLP tool call span. Columns include `input_json Nullable(String)` and `output_json Nullable(String)` for payload capture (P5.1, added 2026-03-18); `llm_input Nullable(String)` and `llm_output Nullable(String)` for LLM reasoning capture (P5.3, added 2026-03-19); `replay_of String DEFAULT ''` to link replay spans back to their originals (P5.7, added 2026-03-19). MergeTree, TTL 90 days. | 90 days |
 | `tool_calls_mv` | Materialized view: extracted tool call spans with metrics | 30 days |
 | `tool_reliability_hourly` | Aggregated: per-tool success rate, latency percentiles, error counts per hour | 1 year |
 | `cost_daily` | Aggregated: per-tool, per-agent cost per day | 1 year |

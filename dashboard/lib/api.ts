@@ -5,7 +5,9 @@ import type {
   ApiKeyResponse,
   ApiStatus,
   CostsBreakdownResponse,
+  DashboardUser,
   HealthResult,
+  InviteResponse,
   ReplayResponse,
   SecurityScanResult,
   SessionComparison,
@@ -100,6 +102,15 @@ export const replaySession = (sessionId: string, timeoutPerCall = 10, totalTimeo
 // ─── Reliability / Anomalies (P5.4) ───────────────────────────────────────────
 export const getAnomalies = (currentHours = 1, zThreshold = 2.0) =>
   get<AnomalyResult[]>(`/reliability/anomalies?current_hours=${currentHours}&z_threshold=${zThreshold}`);
+
+// ─── User management ──────────────────────────────────────────────────────────
+export const listUsers = () => get<DashboardUser[]>("/users");
+export const inviteUser = (email: string, role: "admin" | "viewer") =>
+  post<InviteResponse>("/users/invite", { email, role });
+export const updateUserRole = (userId: string, role: "admin" | "viewer") =>
+  post<DashboardUser>(`/users/${encodeURIComponent(userId)}/role`, { role });
+export const deactivateUser = (userId: string) =>
+  del(`/users/${encodeURIComponent(userId)}`);
 
 // ─── SLOs (P5.5) ──────────────────────────────────────────────────────────────
 export const getSLOStatus = () => get<SLOStatus[]>("/slos/status");

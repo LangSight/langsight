@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import asyncpg  # type: ignore[import-untyped]
 import structlog
 
-from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, ServerStatus, SLOMetric
+from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, InviteToken, ServerStatus, SLOMetric, User, UserRole
 
 logger = structlog.get_logger()
 
@@ -56,6 +56,32 @@ _DDL_STATEMENTS = [
     """
     CREATE INDEX IF NOT EXISTS idx_schema_server_time
         ON schema_snapshots (server_name, recorded_at DESC)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS users (
+        id            TEXT        PRIMARY KEY,
+        email         TEXT        UNIQUE NOT NULL,
+        password_hash TEXT        NOT NULL,
+        role          TEXT        NOT NULL DEFAULT 'viewer',
+        active        BOOLEAN     NOT NULL DEFAULT TRUE,
+        invited_by    TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_login_at TIMESTAMPTZ
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS invite_tokens (
+        token       TEXT        PRIMARY KEY,
+        email       TEXT        NOT NULL,
+        role        TEXT        NOT NULL DEFAULT 'viewer',
+        invited_by  TEXT        NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at  TIMESTAMPTZ NOT NULL,
+        used_at     TIMESTAMPTZ
+    )
     """,
     """
     CREATE TABLE IF NOT EXISTS agent_slos (
@@ -234,6 +260,76 @@ class PostgresBackend:
             key_id,
         )
 
+    # ── User management ───────────────────────────────────────────────────────
+
+    async def create_user(self, user: User) -> None:
+        await self._pool.execute(
+            """
+            INSERT INTO users (id, email, password_hash, role, active, invited_by, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """,
+            user.id, user.email, user.password_hash, user.role.value,
+            user.active, user.invited_by, user.created_at,
+        )
+
+    async def get_user_by_email(self, email: str) -> User | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM users WHERE email = $1 AND active = TRUE", email
+        )
+        return _row_to_user(row) if row else None
+
+    async def get_user_by_id(self, user_id: str) -> User | None:
+        row = await self._pool.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
+        return _row_to_user(row) if row else None
+
+    async def list_users(self) -> list[User]:
+        rows = await self._pool.fetch("SELECT * FROM users ORDER BY created_at DESC")
+        return [_row_to_user(r) for r in rows]
+
+    async def update_user_role(self, user_id: str, role: str) -> bool:
+        result = await self._pool.execute(
+            "UPDATE users SET role = $1 WHERE id = $2", role, user_id
+        )
+        return result != "UPDATE 0"
+
+    async def deactivate_user(self, user_id: str) -> bool:
+        result = await self._pool.execute(
+            "UPDATE users SET active = FALSE WHERE id = $1", user_id
+        )
+        return result != "UPDATE 0"
+
+    async def touch_user_login(self, user_id: str) -> None:
+        await self._pool.execute(
+            "UPDATE users SET last_login_at = NOW() WHERE id = $1", user_id
+        )
+
+    async def count_users(self) -> int:
+        row = await self._pool.fetchrow("SELECT COUNT(*) AS n FROM users WHERE active = TRUE")
+        return int(row["n"]) if row else 0
+
+    # ── Invite management ─────────────────────────────────────────────────────
+
+    async def create_invite(self, invite: InviteToken) -> None:
+        await self._pool.execute(
+            """
+            INSERT INTO invite_tokens (token, email, role, invited_by, created_at, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            invite.token, invite.email, invite.role.value,
+            invite.invited_by, invite.created_at, invite.expires_at,
+        )
+
+    async def get_invite(self, token: str) -> InviteToken | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM invite_tokens WHERE token = $1", token
+        )
+        return _row_to_invite(row) if row else None
+
+    async def mark_invite_used(self, token: str) -> None:
+        await self._pool.execute(
+            "UPDATE invite_tokens SET used_at = NOW() WHERE token = $1", token
+        )
+
     # ── SLO management ────────────────────────────────────────────────────────
 
     async def create_slo(self, slo: AgentSLO) -> None:
@@ -283,6 +379,31 @@ class PostgresBackend:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _row_to_user(row: asyncpg.Record) -> User:
+    return User(
+        id=row["id"],
+        email=row["email"],
+        password_hash=row["password_hash"],
+        role=UserRole(row["role"]),
+        active=bool(row["active"]),
+        invited_by=row["invited_by"],
+        created_at=row["created_at"],
+        last_login_at=row["last_login_at"],
+    )
+
+
+def _row_to_invite(row: asyncpg.Record) -> InviteToken:
+    return InviteToken(
+        token=row["token"],
+        email=row["email"],
+        role=UserRole(row["role"]),
+        invited_by=row["invited_by"],
+        created_at=row["created_at"],
+        expires_at=row["expires_at"],
+        used_at=row["used_at"],
+    )
 
 
 def _row_to_slo(row: asyncpg.Record) -> AgentSLO:

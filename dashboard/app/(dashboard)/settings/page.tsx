@@ -6,12 +6,12 @@ import { useState, useRef } from "react";
 import useSWR from "swr";
 import {
   Key, Plus, Trash2, Copy, Check, ExternalLink, Shield, Database,
-  Info, AlertTriangle, Eye, EyeOff,
+  Info, AlertTriangle, Eye, EyeOff, Users, UserPlus, UserX, ShieldCheck,
 } from "lucide-react";
-import { fetcher, getApiKeys, createApiKey, revokeApiKey } from "@/lib/api";
+import { fetcher, getApiKeys, createApiKey, revokeApiKey, listUsers, inviteUser, deactivateUser, updateUserRole } from "@/lib/api";
 import { cn, timeAgo } from "@/lib/utils";
 import { toast } from "sonner";
-import type { ApiKeyResponse, ApiKeyCreatedResponse, ApiStatus } from "@/lib/types";
+import type { ApiKeyResponse, ApiKeyCreatedResponse, ApiStatus, DashboardUser, InviteResponse } from "@/lib/types";
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn("skeleton", className)} />;
@@ -407,6 +407,229 @@ function ApiKeysSection() {
   );
 }
 
+// ─── Users Section ─────────────────────────────────────────────────────────────
+
+function InviteDialog({ onClose, onInvited }: { onClose: () => void; onInvited: () => void }) {
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"admin" | "viewer">("viewer");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<InviteResponse | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function handleInvite() {
+    if (!email.trim()) return;
+    setLoading(true);
+    try {
+      const inv = await inviteUser(email.trim(), role);
+      setResult(inv);
+      onInvited();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to create invite");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function copyLink() {
+    if (!result) return;
+    navigator.clipboard.writeText(result.invite_url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="rounded-xl border w-full max-w-md p-6 space-y-4" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+        <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "hsl(var(--foreground))" }}>
+          <UserPlus size={14} className="text-primary" /> Invite User
+        </h3>
+
+        {!result ? (
+          <>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleInvite()}
+                  placeholder="teammate@example.com"
+                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-1 focus:ring-primary/30"
+                  style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>Role</label>
+                <select
+                  value={role}
+                  onChange={e => setRole(e.target.value as "admin" | "viewer")}
+                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                  style={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+                >
+                  <option value="viewer">Viewer — read-only access</option>
+                  <option value="admin">Admin — full access</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                onClick={handleInvite}
+                disabled={loading || !email.trim()}
+                className="flex-1 py-2 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                style={{ background: "hsl(var(--primary))" }}>
+                {loading ? "Creating…" : "Create Invite Link"}
+              </button>
+              <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm transition-colors hover:bg-accent" style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="rounded-lg border p-3 space-y-1" style={{ background: "hsl(var(--muted))", borderColor: "hsl(var(--border))" }}>
+              <p className="text-xs font-medium" style={{ color: "hsl(var(--foreground))" }}>Invite link created</p>
+              <p className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>
+                Send this to <strong>{result.email}</strong> — expires in 72 hours
+              </p>
+              <code className="text-[10px] font-mono block truncate mt-2" style={{ color: "hsl(var(--primary))" }}>
+                {result.invite_url}
+              </code>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={copyLink}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
+                style={{ background: "hsl(var(--primary))" }}>
+                {copied ? <><Check size={12}/>Copied!</> : <><Copy size={12}/>Copy Link</>}
+              </button>
+              <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm transition-colors hover:bg-accent" style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
+                Done
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UsersSection() {
+  const { data: users, isLoading, mutate } = useSWR<DashboardUser[]>("/api/users", fetcher);
+  const [showInvite, setShowInvite] = useState(false);
+
+  async function handleDeactivate(user: DashboardUser) {
+    if (!confirm(`Deactivate ${user.email}? They will no longer be able to log in.`)) return;
+    try {
+      await deactivateUser(user.id);
+      toast.success("User deactivated");
+      mutate();
+    } catch { toast.error("Failed to deactivate user"); }
+  }
+
+  async function handleRoleToggle(user: DashboardUser) {
+    const newRole = user.role === "admin" ? "viewer" : "admin";
+    try {
+      await updateUserRole(user.id, newRole);
+      toast.success(`Role changed to ${newRole}`);
+      mutate();
+    } catch { toast.error("Failed to update role"); }
+  }
+
+  return (
+    <Section title="Users" description="Manage dashboard access — invite teammates, set roles, deactivate accounts" icon={Users}>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+          {isLoading ? "Loading…" : `${users?.filter(u => u.active).length ?? 0} active user${(users?.filter(u => u.active).length ?? 0) !== 1 ? "s" : ""}`}
+        </p>
+        <button
+          onClick={() => setShowInvite(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-opacity hover:opacity-90"
+          style={{ background: "hsl(var(--primary))" }}>
+          <UserPlus size={12} /> Invite User
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
+        </div>
+      ) : !users || users.length === 0 ? (
+        <div className="py-8 text-center">
+          <Users size={32} className="mx-auto mb-3 opacity-20" />
+          <p className="text-sm font-medium" style={{ color: "hsl(var(--foreground))" }}>No users yet</p>
+          <p className="text-xs mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>Invite teammates to give them dashboard access</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto -mx-6">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b" style={{ borderColor: "hsl(var(--border))" }}>
+                {["Email", "Role", "Last Login", "Status", ""].map(h => (
+                  <th key={h} className="px-6 py-2.5 text-left font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(u => (
+                <tr key={u.id} className="border-b transition-colors hover:bg-accent/30"
+                  style={{ borderColor: "hsl(var(--border))", opacity: u.active ? 1 : 0.5 }}>
+                  <td className="px-6 py-3 font-medium" style={{ color: "hsl(var(--foreground))" }}>{u.email}</td>
+                  <td className="px-6 py-3">
+                    <button
+                      onClick={() => handleRoleToggle(u)}
+                      disabled={!u.active}
+                      className={cn(
+                        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border transition-colors",
+                        u.role === "admin"
+                          ? "border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
+                          : "border-border text-muted-foreground hover:bg-accent"
+                      )}
+                      title="Click to toggle role">
+                      {u.role === "admin" ? <><ShieldCheck size={10}/>Admin</> : <><Eye size={10}/>Viewer</>}
+                    </button>
+                  </td>
+                  <td className="px-6 py-3" style={{ color: "hsl(var(--muted-foreground))" }}>
+                    {u.last_login_at ? timeAgo(u.last_login_at) : <span className="italic">Never</span>}
+                  </td>
+                  <td className="px-6 py-3">
+                    {u.active ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border border-emerald-500/30 bg-emerald-500/10 text-emerald-500">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Active
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border border-border text-muted-foreground">
+                        Deactivated
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-3">
+                    {u.active && (
+                      <button
+                        onClick={() => handleDeactivate(u)}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-red-500 hover:bg-red-500/10 transition-colors">
+                        <UserX size={11} /> Deactivate
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showInvite && (
+        <InviteDialog
+          onClose={() => setShowInvite(false)}
+          onInvited={() => mutate()}
+        />
+      )}
+    </Section>
+  );
+}
+
 // ─── Instance Section ──────────────────────────────────────────────────────────
 
 function InstanceSection() {
@@ -556,6 +779,7 @@ export default function SettingsPage() {
         </p>
       </div>
 
+      <UsersSection />
       <ApiKeysSection />
       <InstanceSection />
       <AboutSection />

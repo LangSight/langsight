@@ -6,7 +6,7 @@ from pathlib import Path
 import aiosqlite
 import structlog
 
-from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, ServerStatus, SLOMetric
+from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, InviteToken, ServerStatus, SLOMetric, User, UserRole
 
 logger = structlog.get_logger()
 
@@ -51,6 +51,29 @@ CREATE INDEX IF NOT EXISTS idx_health_server_time
 
 CREATE INDEX IF NOT EXISTS idx_schema_server_time
     ON schema_snapshots (server_name, recorded_at DESC);
+
+CREATE TABLE IF NOT EXISTS users (
+    id            TEXT    PRIMARY KEY,
+    email         TEXT    UNIQUE NOT NULL,
+    password_hash TEXT    NOT NULL,
+    role          TEXT    NOT NULL DEFAULT 'viewer',
+    active        INTEGER NOT NULL DEFAULT 1,
+    invited_by    TEXT,
+    created_at    TEXT    NOT NULL,
+    last_login_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
+
+CREATE TABLE IF NOT EXISTS invite_tokens (
+    token       TEXT    PRIMARY KEY,
+    email       TEXT    NOT NULL,
+    role        TEXT    NOT NULL DEFAULT 'viewer',
+    invited_by  TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL,
+    expires_at  TEXT    NOT NULL,
+    used_at     TEXT
+);
 
 CREATE TABLE IF NOT EXISTS agent_slos (
     id           TEXT    PRIMARY KEY,
@@ -234,6 +257,93 @@ class SQLiteBackend:
         )
         await self._conn.commit()
 
+    # ── User management ───────────────────────────────────────────────────────
+
+    async def create_user(self, user: User) -> None:
+        await self._conn.execute(
+            """
+            INSERT INTO users (id, email, password_hash, role, active, invited_by, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (user.id, user.email, user.password_hash, user.role.value,
+             1 if user.active else 0, user.invited_by, user.created_at.isoformat()),
+        )
+        await self._conn.commit()
+
+    async def get_user_by_email(self, email: str) -> User | None:
+        async with self._conn.execute(
+            "SELECT * FROM users WHERE email = ? AND active = 1", (email,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return _row_to_user(row) if row else None
+
+    async def get_user_by_id(self, user_id: str) -> User | None:
+        async with self._conn.execute(
+            "SELECT * FROM users WHERE id = ?", (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return _row_to_user(row) if row else None
+
+    async def list_users(self) -> list[User]:
+        async with self._conn.execute(
+            "SELECT * FROM users ORDER BY created_at DESC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [_row_to_user(r) for r in rows]
+
+    async def update_user_role(self, user_id: str, role: str) -> bool:
+        cursor = await self._conn.execute(
+            "UPDATE users SET role = ? WHERE id = ?", (role, user_id)
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0
+
+    async def deactivate_user(self, user_id: str) -> bool:
+        cursor = await self._conn.execute(
+            "UPDATE users SET active = 0 WHERE id = ?", (user_id,)
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0
+
+    async def touch_user_login(self, user_id: str) -> None:
+        await self._conn.execute(
+            "UPDATE users SET last_login_at = ? WHERE id = ?",
+            (datetime.now(UTC).isoformat(), user_id),
+        )
+        await self._conn.commit()
+
+    async def count_users(self) -> int:
+        async with self._conn.execute("SELECT COUNT(*) FROM users WHERE active = 1") as cursor:
+            row = await cursor.fetchone()
+        return row[0] if row else 0
+
+    # ── Invite management ─────────────────────────────────────────────────────
+
+    async def create_invite(self, invite: InviteToken) -> None:
+        await self._conn.execute(
+            """
+            INSERT INTO invite_tokens (token, email, role, invited_by, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (invite.token, invite.email, invite.role.value, invite.invited_by,
+             invite.created_at.isoformat(), invite.expires_at.isoformat()),
+        )
+        await self._conn.commit()
+
+    async def get_invite(self, token: str) -> InviteToken | None:
+        async with self._conn.execute(
+            "SELECT * FROM invite_tokens WHERE token = ?", (token,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return _row_to_invite(row) if row else None
+
+    async def mark_invite_used(self, token: str) -> None:
+        await self._conn.execute(
+            "UPDATE invite_tokens SET used_at = ? WHERE token = ?",
+            (datetime.now(UTC).isoformat(), token),
+        )
+        await self._conn.commit()
+
     # ── SLO management ────────────────────────────────────────────────────────
 
     async def create_slo(self, slo: AgentSLO) -> None:
@@ -303,6 +413,31 @@ def _row_to_api_key(row: aiosqlite.Row) -> ApiKeyRecord:
         created_at=datetime.fromisoformat(row["created_at"]),
         last_used_at=datetime.fromisoformat(row["last_used_at"]) if row["last_used_at"] else None,
         revoked_at=datetime.fromisoformat(row["revoked_at"]) if row["revoked_at"] else None,
+    )
+
+
+def _row_to_user(row: aiosqlite.Row) -> User:
+    return User(
+        id=row["id"],
+        email=row["email"],
+        password_hash=row["password_hash"],
+        role=UserRole(row["role"]),
+        active=bool(row["active"]),
+        invited_by=row["invited_by"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        last_login_at=datetime.fromisoformat(row["last_login_at"]) if row["last_login_at"] else None,
+    )
+
+
+def _row_to_invite(row: aiosqlite.Row) -> InviteToken:
+    return InviteToken(
+        token=row["token"],
+        email=row["email"],
+        role=UserRole(row["role"]),
+        invited_by=row["invited_by"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        expires_at=datetime.fromisoformat(row["expires_at"]),
+        used_at=datetime.fromisoformat(row["used_at"]) if row["used_at"] else None,
     )
 
 

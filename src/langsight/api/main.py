@@ -19,11 +19,64 @@ from fastapi import Depends
 limiter = Limiter(key_func=get_remote_address)
 
 from langsight.api.dependencies import verify_api_key
-from langsight.api.routers import agents, auth, costs, health, reliability, security, slos, traces
+from langsight.api.routers import agents, auth, costs, health, reliability, security, slos, traces, users
 from langsight.config import Settings, load_config
 from langsight.storage.factory import open_storage
 
 logger = structlog.get_logger()
+
+
+async def _bootstrap_admin(storage: object) -> None:
+    """Create the first admin user from env vars if no users exist.
+
+    Only runs when LANGSIGHT_ADMIN_EMAIL and LANGSIGHT_ADMIN_PASSWORD are set
+    AND no users exist in the database. After the first user is created,
+    this function is a no-op — all user management goes through the UI/API.
+    """
+    import os
+    import uuid
+    from datetime import UTC, datetime
+
+    import bcrypt
+
+    from langsight.models import User, UserRole
+
+    if not hasattr(storage, "count_users"):
+        return  # SQLite/ClickHouse without user support
+
+    try:
+        count = await storage.count_users()
+        if count > 0:
+            return  # users already exist — skip bootstrap
+
+        admin_email    = os.environ.get("LANGSIGHT_ADMIN_EMAIL", "").strip()
+        admin_password = os.environ.get("LANGSIGHT_ADMIN_PASSWORD", "").strip()
+
+        if not admin_email or not admin_password:
+            logger.warning(
+                "api.startup.no_admin",
+                hint="Set LANGSIGHT_ADMIN_EMAIL and LANGSIGHT_ADMIN_PASSWORD to create the first admin",
+            )
+            return
+
+        password_hash = bcrypt.hashpw(
+            admin_password.encode(), bcrypt.gensalt(12)
+        ).decode()
+
+        admin = User(
+            id=uuid.uuid4().hex,
+            email=admin_email,
+            password_hash=password_hash,
+            role=UserRole.ADMIN,
+            active=True,
+            invited_by=None,
+            created_at=datetime.now(UTC),
+        )
+        await storage.create_user(admin)
+        logger.info("api.startup.admin_bootstrapped", email=admin_email)
+
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("api.startup.bootstrap_error", error=str(exc))
 
 
 def create_app(config_path: Path | None = None) -> FastAPI:
@@ -52,6 +105,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                 "api.startup.auth_disabled",
                 hint="Set LANGSIGHT_API_KEYS=<key1,key2> to enable authentication",
             )
+
+        # First-run bootstrap — create initial admin user from env vars if no users exist
+        await _bootstrap_admin(app.state.storage)
 
         logger.info(
             "api.startup",
@@ -103,6 +159,10 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     app.include_router(security.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(slos.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(traces.router, prefix="/api", dependencies=_auth_dep)
+    # User management — admin-gated routes (list/invite/role/deactivate)
+    app.include_router(users.router, prefix="/api", dependencies=_auth_dep)
+    # Public user routes — no auth needed (login verify + accept-invite)
+    app.include_router(users.public_router, prefix="/api")
 
     @app.get("/api/status", tags=["meta"])
     async def status() -> dict[str, Any]:

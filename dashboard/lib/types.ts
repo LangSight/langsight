@@ -133,6 +133,23 @@ export interface AnomalyResult {
   sample_hours: number;
 }
 
+export interface DashboardUser {
+  id: string;
+  email: string;
+  role: "admin" | "viewer";
+  active: boolean;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+export interface InviteResponse {
+  token: string;
+  email: string;
+  role: string;
+  expires_at: string;
+  invite_url: string;
+}
+
 export interface ReplayResponse {
   original_session_id: string;
   replay_session_id: string;

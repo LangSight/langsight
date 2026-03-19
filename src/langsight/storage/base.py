@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from langsight.models import AgentSLO, ApiKeyRecord, HealthCheckResult
+from langsight.models import AgentSLO, ApiKeyRecord, HealthCheckResult, InviteToken, User
 
 
 @runtime_checkable
@@ -60,6 +60,54 @@ class StorageBackend(Protocol):
 
     async def touch_api_key(self, key_id: str) -> None:
         """Update last_used_at to now (called on each authenticated request)."""
+        ...
+
+    # ── User management ──────────────────────────────────────────────────────
+
+    async def create_user(self, user: User) -> None:
+        """Persist a new user account."""
+        ...
+
+    async def get_user_by_email(self, email: str) -> User | None:
+        """Look up a user by email. Returns None if not found or inactive."""
+        ...
+
+    async def get_user_by_id(self, user_id: str) -> User | None:
+        """Look up a user by ID."""
+        ...
+
+    async def list_users(self) -> list[User]:
+        """Return all users (active and inactive), newest first."""
+        ...
+
+    async def update_user_role(self, user_id: str, role: str) -> bool:
+        """Change a user's role. Returns True if found."""
+        ...
+
+    async def deactivate_user(self, user_id: str) -> bool:
+        """Deactivate a user account. Returns True if found."""
+        ...
+
+    async def touch_user_login(self, user_id: str) -> None:
+        """Update last_login_at to now."""
+        ...
+
+    async def count_users(self) -> int:
+        """Return total number of users (used for first-run bootstrap detection)."""
+        ...
+
+    # ── Invite management ────────────────────────────────────────────────────
+
+    async def create_invite(self, invite: InviteToken) -> None:
+        """Persist an invite token."""
+        ...
+
+    async def get_invite(self, token: str) -> InviteToken | None:
+        """Look up an invite by token. Returns None if not found."""
+        ...
+
+    async def mark_invite_used(self, token: str) -> None:
+        """Mark an invite as used."""
         ...
 
     # ── SLO management ───────────────────────────────────────────────────────
