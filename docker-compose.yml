@@ -76,6 +76,8 @@ services:
       LANGSIGHT_API_KEYS: ${LANGSIGHT_API_KEYS:?LANGSIGHT_API_KEYS env var is required}
       # Restrict CORS to the dashboard origin
       LANGSIGHT_CORS_ORIGINS: ${LANGSIGHT_CORS_ORIGINS:-http://localhost:3003}
+      # Dashboard base URL used in invite links — must point to Next.js, not FastAPI
+      LANGSIGHT_DASHBOARD_URL: ${LANGSIGHT_DASHBOARD_URL:-http://localhost:3003}
     ports:
       - "8000:8000"
     volumes:

@@ -194,6 +194,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         # Auth setup — store parsed keys on app state so the dep can read them
         api_keys = settings.parsed_api_keys()
         app.state.api_keys = api_keys
+        # Dashboard URL — used to construct invite links that point to the UI, not the API
+        app.state.dashboard_url = settings.dashboard_url
         if api_keys:
             logger.info("api.startup.auth_enabled", key_count=len(api_keys))
         else:

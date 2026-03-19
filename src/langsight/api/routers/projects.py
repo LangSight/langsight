@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 
 import inspect
 
-from langsight.api.dependencies import ProjectAccess, _get_session_user, get_project_access, get_storage, require_admin
+from langsight.api.dependencies import ProjectAccess, get_project_access, get_session_user, get_storage, require_admin
 from langsight.models import Project, ProjectMember, ProjectRole
 from langsight.storage.base import StorageBackend
 
@@ -125,7 +125,7 @@ async def list_projects(
     _require_storage(storage)
 
     # 1. Session-user path (dashboard users authenticated via Next.js proxy)
-    user_id, user_role = _get_session_user(request)
+    user_id, user_role = get_session_user(request)
     if user_id:
         if user_role == "admin":
             projects = await storage.list_projects()

@@ -58,8 +58,9 @@ class InviteResponse(BaseModel):
 
 
 class AcceptInviteRequest(BaseModel):
-    token: str
-    password: str = Field(..., min_length=8, description="Minimum 8 characters")
+    # token_hex(32) always produces exactly 64 hex characters
+    token: str = Field(..., min_length=64, max_length=64)
+    password: str = Field(..., min_length=8, max_length=128, description="8–128 characters")
 
 
 class UserResponse(BaseModel):
@@ -170,7 +171,11 @@ async def invite_user(
     )
     await storage.create_invite(invite)
 
-    base_url = str(request.base_url).rstrip("/")
+    # Use LANGSIGHT_DASHBOARD_URL when set — the invite link must point to the
+    # Next.js dashboard, not the FastAPI backend. Falls back to request.base_url
+    # for local dev where both run behind the same proxy.
+    dashboard_url = getattr(request.app.state, "dashboard_url", None)
+    base_url = dashboard_url.rstrip("/") if dashboard_url else str(request.base_url).rstrip("/")
     invite_url = f"{base_url}/accept-invite?token={token}"
 
     logger.info(
@@ -195,6 +200,7 @@ async def invite_user(
     status_code=http_status.HTTP_201_CREATED,
     summary="Accept an invite and create your account",
 )
+@_limiter.limit("5/minute")
 async def accept_invite(
     body: AcceptInviteRequest,
     request: Request,

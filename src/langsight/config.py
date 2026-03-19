@@ -90,6 +90,10 @@ class Settings(BaseSettings):
     api_keys: str = ""
     # CORS allowed origins.  Use "*" only for local dev.
     cors_origins: str = "*"
+    # Dashboard base URL used when constructing invite links.
+    # Must point to the Next.js dashboard, NOT the FastAPI backend.
+    # Example: https://langsight.example.com
+    dashboard_url: str | None = None
 
     # Storage overrides (take precedence over .langsight.yaml)
     storage_mode: str | None = None

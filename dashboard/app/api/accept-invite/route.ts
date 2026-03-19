@@ -11,8 +11,17 @@ import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND = process.env.LANGSIGHT_API_URL ?? "http://localhost:8000";
 
+const MAX_BODY_BYTES = 4096;
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  const contentLength = req.headers.get("content-length");
+  if (contentLength && parseInt(contentLength, 10) > MAX_BODY_BYTES) {
+    return NextResponse.json({ detail: "Request too large" }, { status: 413 });
+  }
   const body = await req.text();
+  if (body.length > MAX_BODY_BYTES) {
+    return NextResponse.json({ detail: "Request too large" }, { status: 413 });
+  }
   try {
     const res = await fetch(`${BACKEND}/api/users/accept-invite`, {
       method: "POST",

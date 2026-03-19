@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import inspect
 
 import structlog
@@ -30,15 +31,23 @@ def _is_proxy_request(request: Request) -> bool:
 def _get_session_user(request: Request) -> tuple[str | None, str | None]:
     """Extract (user_id, user_role) from X-User-* headers (proxy-only).
 
+    SECURITY: Headers are ONLY trusted when the request originates from
+    _TRUSTED_PROXY_IPS. Any other caller receives (None, None). This is
+    the single canonical implementation of the proxy-trust boundary —
+    do not replicate this logic elsewhere; import get_session_user instead.
+
     These headers are injected by the Next.js proxy route after verifying
-    the user's NextAuth session. They are trusted only when the request
-    comes from a known-local proxy IP.
+    the user's NextAuth session.
     """
     if not _is_proxy_request(request):
         return None, None
     user_id   = request.headers.get("X-User-Id")
     user_role = request.headers.get("X-User-Role")
     return user_id or None, user_role or None
+
+
+# Public alias — routers should import this name, not the private _get_session_user
+get_session_user = _get_session_user
 
 
 def get_storage(request: Request) -> StorageBackend:
@@ -114,8 +123,8 @@ async def verify_api_key(
                 asyncio.create_task(touch_fn(record.id))
             return
 
-    # 2. Check env var keys (plain comparison — env keys are trusted bootstrap keys)
-    if api_key in env_keys:
+    # 2. Check env var keys — timing-safe comparison to prevent oracle attacks
+    if any(hmac.compare_digest(api_key, k) for k in env_keys):
         return
 
     logger.warning(
@@ -241,27 +250,19 @@ async def get_project_access(
             detail="Missing X-API-Key header",
         )
 
-    # Env-var bootstrap keys are always global admin
-    if api_key in env_keys:
+    # Env-var bootstrap keys are always global admin — timing-safe comparison
+    if any(hmac.compare_digest(api_key, k) for k in env_keys):
         return ProjectAccess(project, ProjectRole.OWNER, is_global_admin=True)
 
-    # DB key — check global role first
+    # DB key — single lookup: check admin role then project membership
     get_fn = getattr(storage, "get_api_key_by_hash", None)
     if get_fn and inspect.iscoroutinefunction(get_fn):
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
         record = await get_fn(key_hash)
-        if record and record.role == ApiKeyRole.ADMIN:
-            return ProjectAccess(project, ProjectRole.OWNER, is_global_admin=True)
-
-    # Check project membership
-    # We use key_prefix as a proxy for user lookup until api_keys.user_id is added
-    # For now: any authenticated non-admin user gets member access if they have a DB key
-    # TODO: proper user_id linkage
-    if get_fn and inspect.iscoroutinefunction(get_fn):
-        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
-        record = await get_fn(key_hash)
         if record:
-            # Check explicit membership via user_id (when linked)
+            if record.role == ApiKeyRole.ADMIN:
+                return ProjectAccess(project, ProjectRole.OWNER, is_global_admin=True)
+            # Check project membership via key record id (until api_keys.user_id is linked)
             member = await storage.get_member(project_id, record.id)
             if member:
                 return ProjectAccess(project, member.role)
@@ -313,9 +314,9 @@ async def get_active_project_id(
     if not has_env_keys and not has_db_keys:
         return project_id
 
-    # Env-var key = global admin
+    # Env-var key = global admin — timing-safe comparison
     api_key = request.headers.get("X-API-Key", "")
-    if api_key in env_keys:
+    if any(hmac.compare_digest(api_key, k) for k in env_keys):
         return project_id
 
     # DB key — check admin role or project membership
@@ -387,8 +388,8 @@ async def require_admin(
             headers={"WWW-Authenticate": "ApiKey"},
         )
 
-    # Env var keys are always admin (bootstrap)
-    if api_key in env_keys:
+    # Env var keys are always admin (bootstrap) — timing-safe comparison
+    if any(hmac.compare_digest(api_key, k) for k in env_keys):
         return
 
     # DB key — check role

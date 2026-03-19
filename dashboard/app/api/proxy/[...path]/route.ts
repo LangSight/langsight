@@ -71,7 +71,9 @@ async function proxyRequest(
       headers: { "Content-Type": res.headers.get("Content-Type") ?? "application/json" },
     });
   } catch (err) {
-    console.error("[proxy] upstream request failed:", upstream, err);
+    // Log method + path only — never the full constructed URL which may contain IDs
+    const logPath = `/${upstreamPath}${search}`;
+    console.error("[proxy] upstream request failed:", req.method, logPath, (err as Error)?.message);
     return NextResponse.json(
       { detail: "Backend unreachable" },
       { status: 502 }
