@@ -110,21 +110,21 @@ const STATS = [
   { value: "5,800+", label: "MCP servers in ecosystem" },
   { value: "66%", label: "with critical code smells" },
   { value: "8,000+", label: "exposed without auth" },
-  { value: "10/10", label: "OWASP MCP checks automated" },
+  { value: "5/10", label: "OWASP MCP checks automated" },
 ];
 
 /* ── OWASP checks ───────────────────────────────────────────── */
 const OWASP_CHECKS = [
-  { n: "MCP-01", title: "Prompt Injection", desc: "Detects injected instructions in tool descriptions and system prompts that manipulate agent behavior.", severity: "critical" },
-  { n: "MCP-02", title: "Insecure Output Handling", desc: "Flags tools that return sensitive data (PII, credentials, internal paths) without sanitization.", severity: "high" },
-  { n: "MCP-03", title: "Training Data Poisoning", desc: "Identifies tool descriptions designed to influence model training or system-level behavior.", severity: "high" },
-  { n: "MCP-04", title: "Model Denial of Service", desc: "Detects patterns that could cause excessive token consumption or infinite loops in agent workflows.", severity: "medium" },
-  { n: "MCP-05", title: "Supply Chain Vulnerabilities", desc: "Cross-references dependencies against the CVE database for known vulnerabilities.", severity: "critical" },
-  { n: "MCP-06", title: "Sensitive Information Disclosure", desc: "Scans tool schemas and descriptions for leaked credentials, API keys, or internal endpoints.", severity: "high" },
-  { n: "MCP-07", title: "Insecure Plugin Design", desc: "Audits tool schemas for missing input validation, overly broad permissions, and unsafe defaults.", severity: "medium" },
-  { n: "MCP-08", title: "Excessive Agency", desc: "Identifies tools with overly broad scope — e.g., write access where read-only is sufficient.", severity: "medium" },
-  { n: "MCP-09", title: "Overreliance on LLM", desc: "Flags tools that pass unsanitized LLM output directly to system commands or SQL queries.", severity: "high" },
-  { n: "MCP-10", title: "Insufficient Logging & Monitoring", desc: "Checks whether tool calls produce structured, auditable logs with timing and outcome data.", severity: "medium" },
+  { n: "MCP-01", title: "Prompt Injection", desc: "Detects injected instructions in tool descriptions and system prompts that manipulate agent behavior.", severity: "critical", shipped: true },
+  { n: "MCP-02", title: "Insecure Output Handling", desc: "Flags tools that return sensitive data (PII, credentials, internal paths) without sanitization.", severity: "high", shipped: true },
+  { n: "MCP-03", title: "Training Data Poisoning", desc: "Identifies tool descriptions designed to influence model training or system-level behavior.", severity: "high", shipped: false },
+  { n: "MCP-04", title: "Model Denial of Service", desc: "Detects patterns that could cause excessive token consumption or infinite loops in agent workflows.", severity: "medium", shipped: true },
+  { n: "MCP-05", title: "Supply Chain Vulnerabilities", desc: "Cross-references dependencies against the CVE database for known vulnerabilities.", severity: "critical", shipped: true },
+  { n: "MCP-06", title: "Sensitive Information Disclosure", desc: "Scans tool schemas and descriptions for leaked credentials, API keys, or internal endpoints.", severity: "high", shipped: true },
+  { n: "MCP-07", title: "Insecure Plugin Design", desc: "Audits tool schemas for missing input validation, overly broad permissions, and unsafe defaults.", severity: "medium", shipped: false },
+  { n: "MCP-08", title: "Excessive Agency", desc: "Identifies tools with overly broad scope — e.g., write access where read-only is sufficient.", severity: "medium", shipped: false },
+  { n: "MCP-09", title: "Overreliance on LLM", desc: "Flags tools that pass unsanitized LLM output directly to system commands or SQL queries.", severity: "high", shipped: false },
+  { n: "MCP-10", title: "Insufficient Logging & Monitoring", desc: "Checks whether tool calls produce structured, auditable logs with timing and outcome data.", severity: "medium", shipped: false },
 ];
 
 const SEVERITY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -160,9 +160,9 @@ const SCAN_OUTPUT = `$ langsight security-scan
 
 Scanning 4 MCP servers...
 
-postgres-mcp     ✓  CVE clean  ·  OWASP 10/10  ·  Auth: API key
-jira-mcp         ✗  CVE-2025-4821 (HIGH)  ·  OWASP 9/10
-slack-mcp        ✓  CVE clean  ·  OWASP 10/10  ·  Auth: OAuth2
+postgres-mcp     ✓  CVE clean  ·  OWASP 5/5   ·  Auth: API key
+jira-mcp         ✗  CVE-2025-4821 (HIGH)  ·  OWASP 4/5
+slack-mcp        ✓  CVE clean  ·  OWASP 5/5   ·  Auth: OAuth2
 filesystem-mcp   ⚠  No auth configured  ·  MCP-08: Excessive agency
 
 ──────────────────────────────────────────────────
@@ -220,7 +220,7 @@ export default function SecurityPage() {
               className="fade-up delay-2 text-lg leading-relaxed max-w-2xl mx-auto mb-8"
               style={{ color: "var(--muted)" }}
             >
-              LangSight runs automated CVE detection, all 10 OWASP MCP checks, tool poisoning
+              LangSight runs automated CVE detection, 5 of 10 OWASP MCP checks, tool poisoning
               detection, and auth gap analysis across your entire MCP fleet.
               One command. Plugs into CI/CD with{" "}
               <code className="pill">--ci</code> flag.
@@ -304,11 +304,11 @@ export default function SecurityPage() {
                 className="font-bold tracking-tight"
                 style={{ fontSize: "clamp(1.5rem, 3vw, 2rem)", fontFamily: "var(--font-geist-sans)" }}
               >
-                <span className="gradient-text">All 10 checks. Automated.</span>
+                <span className="gradient-text">5 of 10 checks automated. More coming.</span>
               </h2>
               <p className="mt-4 max-w-lg mx-auto text-sm" style={{ color: "var(--muted)" }}>
                 The OWASP MCP Top 10 was published in 2025 after real CVEs and tool poisoning
-                attacks emerged in production. LangSight audits every check automatically.
+                attacks emerged in production. LangSight automates 5 checks today; the rest are in progress.
               </p>
             </div>
 
@@ -320,7 +320,7 @@ export default function SecurityPage() {
                     key={i}
                     data-reveal
                     className="card-flat p-5 flex gap-4"
-                    style={{ transitionDelay: `${i * 40}ms` }}
+                    style={{ transitionDelay: `${i * 40}ms`, opacity: check.shipped ? 1 : 0.5 }}
                   >
                     <div
                       className="shrink-0 rounded-lg px-2 py-1 text-xs font-bold h-fit"
@@ -342,6 +342,14 @@ export default function SecurityPage() {
                         >
                           {check.severity}
                         </span>
+                        {!check.shipped && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded-full"
+                            style={{ background: "var(--surface-2)", color: "var(--dimmer)", border: "1px solid var(--border)" }}
+                          >
+                            Coming soon
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
                         {check.desc}

@@ -572,7 +572,7 @@ const FEATURES = [
     icon: "🛡",
     badge: "MCP only",
     title: "MCP Security Scanning",
-    desc: "CVE detection, all 10 OWASP MCP checks, tool poisoning detection (injection phrases, hidden unicode, base64 encoded instructions), and auth gap analysis.",
+    desc: "CVE detection, 5 of 10 OWASP MCP checks (more coming), tool poisoning detection (injection phrases, hidden unicode, base64 encoded instructions), and auth gap analysis.",
   },
   {
     icon: "📊",
@@ -688,7 +688,7 @@ const PERSONAS = [
     tagline: "Responsible for AI system security and compliance",
     pain: "22 community MCP servers with no automated CVE scanning. Tool poisoning attacks moving from theoretical to practical.",
     wins: [
-      "Full OWASP MCP Top 10 audit with actionable remediation steps",
+      "OWASP MCP Top 10 audit (5 of 10 checks shipped) with actionable remediation steps",
       "Tool poisoning detection: alerts on hidden unicode, injected instructions, base64 payloads",
       "Auth audit: which servers have auth, what type, what gaps exist",
     ],

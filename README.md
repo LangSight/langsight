@@ -1,6 +1,8 @@
 # LangSight
 
-**Observability for AI agent actions — full traces of every tool call across single and multi-agent workflows, with deep MCP health monitoring and security scanning built in.**
+**Action-layer traces for AI agents. MCP health + security built in.**
+
+Trace every tool call your agents make — MCP servers, HTTP APIs, Python functions, sub-agents. For MCP servers specifically, get proactive health checks, schema drift detection, and security scanning.
 
 [![PyPI](https://img.shields.io/pypi/v/langsight)](https://pypi.org/project/langsight/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -19,12 +21,12 @@ Agents call three types of things: MCP servers (postgres-mcp, jira-mcp, slack-mc
 | What did my agent call? | No trace of which tools ran, in what order | `langsight sessions --id` shows the full call tree |
 | Multi-agent handoffs | No visibility across agent boundaries | Full tree via `parent_span_id` — same model as OTEL |
 | Tool call costs | Invisible, discovered on the invoice | Per-session cost attribution in real time |
-| Which of 15 tools failed? | 3 days of manual log replay | Root cause in the `investigate` command |
+| Which of 15 tools failed? | 3 days of manual log replay | `investigate` narrows it to a specific tool and time window |
 | Tool returning stale data | Agent hallucinates; you find out from users | Schema drift alert fires in <5 minutes |
-| CVE in a community MCP server | Unknown until exploited | Automated CVE scan on every check |
+| CVE in a community MCP server | Unknown until exploited | Automated CVE scan via OSV database |
 
 > [!NOTE]
-> Langfuse and LangSmith cover the LLM and reasoning layer: prompts, completions, traces, token costs, and evals. LangSight covers the action layer: every tool call, in order, with latency, cost, errors, and agent handoffs. For MCP servers specifically, LangSight goes deeper with proactive health checks, CVE scanning, schema drift detection, and poisoning detection. 66% of MCP servers have critical code smells and 8,000+ are exposed without authentication (Invariant Labs, 2025).
+> **LangSight complements Langfuse and LangSmith — it does not replace them.** Langfuse traces your LLM calls (prompts, completions, token costs, evals). LangSight traces what your agents actually *did* (tool calls, latencies, errors, handoffs). For MCP servers specifically, LangSight adds proactive health checks, CVE scanning, schema drift detection, and poisoning detection. Use both together for full-stack agent observability.
 
 ---
 
@@ -56,14 +58,14 @@ MCP servers receive proactive health checks and security scanning because the MC
 - Tree reconstruction from flat span storage via recursive parent-child query
 
 **MCP Health Monitoring** *(Secondary, unique vs competitors)*
-- Continuous availability checks (ping, tools list, optional sample invocation)
-- Server state tracking: `UP → DEGRADED → DOWN → STALE`
+- Continuous availability checks (connect, initialize, tools list)
+- Server state tracking: `UP → DEGRADED → DOWN`
 - Schema drift detection — alerts when a tool's output format changes
-- p50/p99 latency tracking per server and per tool
+- Latency tracking per server and per tool
 
 **Security Scanning** *(Secondary, unique vs competitors)*
-- CVE database matching (NVD + GitHub Advisory + MCP-specific advisories)
-- OWASP MCP Top 10 automated checks
+- CVE detection via OSV (Open Source Vulnerabilities) database
+- 5 of 10 OWASP MCP Top 10 checks (MCP-01, 02, 04, 05, 06 — more coming)
 - Tool poisoning detection — baseline hash comparison on every scan
 - Auth configuration audit (unauthenticated server detection, token exposure)
 
@@ -72,9 +74,9 @@ MCP servers receive proactive health checks and security scanning because the MC
 - Generic webhook for PagerDuty, Opsgenie, and custom systems
 - Alert deduplication — no alert storms during outages
 
-**Root Cause Investigation** *(Phase 2)*
-- Timeline correlation across MCP calls and agent sessions
-- `langsight investigate` — narrows failures to a specific tool and time window
+**Failure Investigation** *(Phase 2)*
+- `langsight investigate` — summarizes health history, schema drift, and recent errors for a server
+- AI-assisted analysis via Claude when `ANTHROPIC_API_KEY` is set; rule-based fallback otherwise
 
 ---
 
@@ -237,10 +239,10 @@ langsight monitor
 | `langsight sessions` | List recent agent sessions with call counts, failures, duration, and servers |
 | `langsight sessions --id <id>` | Full multi-agent trace for one session |
 | `langsight mcp-health` | Health status of all configured MCP servers |
-| `langsight security-scan` | CVE + OWASP MCP Top 10 security audit |
+| `langsight security-scan` | CVE (OSV) + OWASP MCP checks (5 of 10) + poisoning detection |
 | `langsight monitor` | Start continuous background monitoring with alerts |
 | `langsight costs` | Tool call cost attribution by server and agent session |
-| `langsight investigate` | Root cause analysis for a specific failure |
+| `langsight investigate` | AI-assisted failure investigation for a server |
 | `langsight serve` | Start the LangSight REST API server |
 
 All commands support `--help`, `--json`, and `--verbose`.
@@ -349,7 +351,7 @@ LangSight works with every major MCP client and agent framework:
 ### Phase 1 — CLI MVP
 - [x] `langsight init` with auto-discovery
 - [x] `langsight mcp-health` — health checks for stdio, SSE, StreamableHTTP transports
-- [x] `langsight security-scan` — CVE + OWASP MCP Top 10
+- [x] `langsight security-scan` — CVE (OSV) + 5 of 10 OWASP MCP checks + poisoning detection
 - [x] `langsight monitor` — continuous monitoring with Slack/webhook alerts
 - [x] `langsight costs` — tool call cost attribution from OTEL traces
 - [x] PostgreSQL + ClickHouse backends via `docker compose up -d`
