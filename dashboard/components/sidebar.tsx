@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR from "swr";
 import {
   LayoutDashboard, Activity, Shield, GitBranch, DollarSign, Bot,
@@ -326,8 +326,15 @@ function UserMenu() {
 /* ── Sidebar ────────────────────────────────────────────────── */
 export function Sidebar() {
   const path = usePathname();
+  const router = useRouter();
   const isActive = (href: string) =>
     href === "/" ? path === "/" : path.startsWith(href);
+
+  // Prefetch all routes on mount so they're pre-compiled and instant
+  useEffect(() => {
+    const routes = ["/", "/sessions", "/agents", "/costs", "/health", "/security", "/settings"];
+    routes.forEach(route => router.prefetch(route));
+  }, [router]);
 
   return (
     <aside
