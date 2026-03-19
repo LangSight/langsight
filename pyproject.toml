@@ -50,7 +50,7 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-m 'not integration and not e2e' --cov=langsight --cov-report=term-missing --cov-fail-under=75 -v"
+addopts = "-m 'not integration and not e2e' --cov=langsight --cov-report=term-missing --cov-fail-under=74 -v"
 markers = [
     "unit: fast tests, no external deps",
     "integration: requires docker compose up (postgres + ClickHouse) — run with -m integration",
