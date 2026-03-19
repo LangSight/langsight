@@ -1619,8 +1619,35 @@ function AuditLogsSection() {
 
 type SettingsSection = "general" | "api-keys" | "model-pricing" | "members" | "projects" | "notifications" | "audit-logs" | "instance";
 
+const VALID_SECTIONS: SettingsSection[] = [
+  "general", "api-keys", "model-pricing", "members",
+  "projects", "notifications", "audit-logs", "instance",
+];
+
+function isValidSection(s: string): s is SettingsSection {
+  return VALID_SECTIONS.includes(s as SettingsSection);
+}
+
 export default function SettingsPage() {
-  const [active, setActive] = useState<SettingsSection>("general");
+  // Persist active section in URL hash — survives refresh, back/forward
+  const [active, setActiveState] = useState<SettingsSection>(() => {
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash.replace("#", "");
+      if (isValidSection(hash)) return hash;
+    }
+    return "general";
+  });
+
+  function setActive(section: SettingsSection) {
+    setActiveState(section);
+    window.history.replaceState(null, "", `/settings#${section}`);
+  }
+
+  // Sync from hash on mount (handles hard refresh)
+  useEffect(() => {
+    const hash = window.location.hash.replace("#", "");
+    if (isValidSection(hash)) setActiveState(hash);
+  }, []);
 
   const NAV: { id: SettingsSection; label: string; icon: React.ElementType }[] = [
     { id: "general",       label: "General",       icon: Settings2 },
