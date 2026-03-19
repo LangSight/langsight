@@ -47,40 +47,22 @@ afterEach(() => {
 describe("fetcher", () => {
   it("calls fetch with the given URL and returns JSON", async () => {
     mockFetch({ status: "ok" });
-    const result = await fetcher("/api/status");
-    expect(fetch).toHaveBeenCalledWith("/api/status", expect.objectContaining({ cache: "no-store" }));
+    const result = await fetcher("/api/proxy/status");
+    expect(fetch).toHaveBeenCalledWith("/api/proxy/status", expect.objectContaining({ cache: "no-store" }));
     expect(result).toEqual({ status: "ok" });
   });
 
   it("throws on non-ok response", async () => {
     mockFetchError(500, "Internal Server Error");
-    await expect(fetcher("/api/status")).rejects.toThrow("500");
+    await expect(fetcher("/api/proxy/status")).rejects.toThrow("500");
   });
 
-  it("includes X-API-Key header when env var is set", async () => {
-    const originalKey = process.env.NEXT_PUBLIC_LANGSIGHT_API_KEY;
-    process.env.NEXT_PUBLIC_LANGSIGHT_API_KEY = "test-key";
-    mockFetch({});
-
-    await fetcher("/api/status");
-
-    const [, options] = (fetch as jest.Mock).mock.calls[0];
-    expect(options.headers["X-API-Key"]).toBe("test-key");
-
-    process.env.NEXT_PUBLIC_LANGSIGHT_API_KEY = originalKey;
-  });
-
-  it("omits X-API-Key when env var is not set", async () => {
-    const originalKey = process.env.NEXT_PUBLIC_LANGSIGHT_API_KEY;
-    delete process.env.NEXT_PUBLIC_LANGSIGHT_API_KEY;
-    mockFetch({});
-
-    await fetcher("/api/status");
-
-    const [, options] = (fetch as jest.Mock).mock.calls[0];
-    expect(options.headers["X-API-Key"]).toBeUndefined();
-
-    process.env.NEXT_PUBLIC_LANGSIGHT_API_KEY = originalKey;
+  it("throws 401 Unauthorized on 401 response", async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: false, status: 401, statusText: "Unauthorized",
+      json: jest.fn().mockResolvedValueOnce({ detail: "Unauthorized" }),
+    } as unknown as Response);
+    await expect(fetcher("/api/proxy/status")).rejects.toThrow("401 Unauthorized");
   });
 });
 
@@ -93,7 +75,7 @@ describe("getStatus", () => {
     const result = await getStatus();
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/status",
+      "/api/proxy/status",
       expect.objectContaining({ cache: "no-store" })
     );
     expect(result).toEqual(mockStatus);
@@ -133,7 +115,7 @@ describe("triggerHealthCheck", () => {
     mockFetch([]);
     await triggerHealthCheck();
     expect(fetch).toHaveBeenCalledWith(
-      "/api/health/check",
+      "/api/proxy/health/check",
       expect.objectContaining({ method: "POST" })
     );
   });
@@ -226,7 +208,7 @@ describe("createProject", () => {
     const result = await createProject("My Project");
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/projects",
+      "/api/proxy/projects",
       expect.objectContaining({
         method: "POST",
         body: expect.stringContaining('"name":"My Project"'),
@@ -266,7 +248,7 @@ describe("createApiKey", () => {
     const result = await createApiKey("prod-key");
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/auth/api-keys",
+      "/api/proxy/auth/api-keys",
       expect.objectContaining({ method: "POST" })
     );
     expect(result.key).toBe("ls_abc123");
@@ -280,7 +262,7 @@ describe("revokeApiKey", () => {
     global.fetch = jest.fn().mockResolvedValueOnce({ ok: true, status: 204, json: jest.fn() } as unknown as Response);
     await revokeApiKey("key-123");
     expect(fetch).toHaveBeenCalledWith(
-      "/api/auth/api-keys/key-123",
+      "/api/proxy/auth/api-keys/key-123",
       expect.objectContaining({ method: "DELETE" })
     );
   });
