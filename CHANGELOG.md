@@ -9,6 +9,27 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (2026-03-19 — Settings redesign + Notifications + Audit Logs)
+
+- Settings page: left-nav + content panel layout — 8 grouped sections replacing the previous single-scroll page (General, API Keys, Model Pricing, Members, Projects, Notifications, Audit Logs, Instance)
+- Settings → General: Debug Information section showing instance URL and current version for SDK quick setup
+- Settings → API Keys: `.env` snippet with `LANGSIGHT_API_KEY` and `LANGSIGHT_API_URL` for instant SDK instrumentation
+- Settings → Notifications: Slack webhook URL field with inline test button; per-alert-type toggle switches for `mcp_down`, `mcp_recovered`, `agent_failure`, `slo_breached`, `anomaly_critical`, `security_critical`
+- Settings → Audit Logs: table of last 50 auth/RBAC events sourced from an in-memory ring buffer; columns: timestamp, actor, action, resource, result
+- `GET /api/alerts/config` — read current Slack webhook URL and per-type alert preferences
+- `POST /api/alerts/config` — save Slack webhook URL and alert type preferences
+- `POST /api/alerts/test` — send a test Slack Block Kit message to the configured webhook
+- `GET /api/audit/logs` — list recent audit log events with `limit` and `offset` query params
+- `AlertType.AGENT_FAILURE` — fires when an agent session has `failed_calls > 0`
+- `AlertType.SLO_BREACHED` — fires when the SLO evaluator returns a breached status
+- `AlertType.ANOMALY_DETECTED` — fires when z-score crosses the critical threshold
+- `AlertType.SECURITY_FINDING` — fires on a CVE or OWASP critical finding
+
+### Changed (2026-03-19 — Settings redesign + Notifications + Audit Logs)
+
+- Settings page no longer uses a single scrolling layout — each of the 8 sections is isolated behind a left-nav click (changed from original: was single long scroll, now left-nav + content panel)
+- Danger Zone pattern applied to destructive actions in Settings (consistent with GitHub/Vercel conventions)
+
 ### Added (2026-03-19 — Phase 9: Production Auth + Phase 10: Multi-Tenancy)
 
 - `dashboard/app/api/proxy/[...path]/route.ts` — catch-all Next.js proxy route; reads NextAuth session server-side and injects `X-User-Id` + `X-User-Role` headers before forwarding to FastAPI; all dashboard API calls now go through `/api/proxy/*`; unauthenticated requests return 401 before reaching FastAPI

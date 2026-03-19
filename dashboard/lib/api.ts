@@ -135,6 +135,41 @@ export const updateUserRole = (userId: string, role: "admin" | "viewer") =>
 export const deactivateUser = (userId: string) =>
   del(`/users/${encodeURIComponent(userId)}`);
 
+// ─── Alerts config & Slack ────────────────────────────────────────────────────
+export const getAlertsConfig = () => get<{
+  slack_webhook: string | null;
+  alert_types: Record<string, boolean>;
+  webhook_configured: boolean;
+}>("/alerts/config");
+
+export const saveAlertsConfig = (body: {
+  slack_webhook?: string | null;
+  alert_types?: Record<string, boolean>;
+}) => post<{
+  slack_webhook: string | null;
+  alert_types: Record<string, boolean>;
+  webhook_configured: boolean;
+}>("/alerts/config", body);
+
+export const testSlackWebhook = () =>
+  post<{ ok: boolean; message: string }>("/alerts/test");
+
+// ─── Audit logs ───────────────────────────────────────────────────────────────
+export const getAuditLogs = (limit = 50, offset = 0) =>
+  get<{
+    total: number;
+    limit: number;
+    offset: number;
+    events: Array<{
+      id: number;
+      timestamp: string;
+      event: string;
+      user_id: string;
+      ip: string;
+      details: Record<string, unknown>;
+    }>;
+  }>(`/audit/logs?limit=${limit}&offset=${offset}`);
+
 // ─── SLOs (P5.5) ──────────────────────────────────────────────────────────────
 export const getSLOStatus = () => get<SLOStatus[]>("/slos/status");
 export const listSLOs = () => get<SLOStatus[]>("/slos");

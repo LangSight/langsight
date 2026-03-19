@@ -19,7 +19,7 @@ from fastapi import Depends
 limiter = Limiter(key_func=get_remote_address)
 
 from langsight.api.dependencies import verify_api_key
-from langsight.api.routers import agents, auth, costs, health, projects, reliability, security, slos, traces, users
+from langsight.api.routers import agents, alerts_config, auth, costs, health, projects, reliability, security, slos, traces, users
 from langsight.config import Settings, load_config
 from langsight.storage.factory import open_storage
 
@@ -267,8 +267,11 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     _auth_dep = [Depends(verify_api_key)]
 
     app.state.config_path = config_path
+    app.state.alert_types = {}  # populated lazily with defaults on first GET
+
     # Auth router — key management endpoints, also require auth (except first-run bootstrap)
     app.include_router(auth.router, prefix="/api", dependencies=_auth_dep)
+    app.include_router(alerts_config.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(agents.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(costs.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(health.router, prefix="/api", dependencies=_auth_dep)

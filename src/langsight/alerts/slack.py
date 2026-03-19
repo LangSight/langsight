@@ -23,10 +23,14 @@ _SEVERITY_EMOJI = {
 }
 
 _TYPE_EMOJI = {
-    AlertType.SERVER_DOWN: ":x:",
+    AlertType.SERVER_DOWN:      ":x:",
     AlertType.SERVER_RECOVERED: ":white_check_mark:",
-    AlertType.SCHEMA_DRIFT: ":twisted_rightwards_arrows:",
-    AlertType.HIGH_LATENCY: ":hourglass_flowing_sand:",
+    AlertType.SCHEMA_DRIFT:     ":twisted_rightwards_arrows:",
+    AlertType.HIGH_LATENCY:     ":hourglass_flowing_sand:",
+    AlertType.AGENT_FAILURE:    ":robot_face:",
+    AlertType.SLO_BREACHED:     ":chart_with_downwards_trend:",
+    AlertType.ANOMALY_DETECTED: ":mag:",
+    AlertType.SECURITY_FINDING: ":shield:",
 }
 
 SLACK_TIMEOUT = 5.0

@@ -179,6 +179,59 @@ Query params for `/api/costs/breakdown`: `project_id`, `window` (24h, 7d, 30d).
 |--------|------|-------------|
 | `GET` | `/api/reliability/anomalies` | Anomalies detected via z-score vs 7-day baseline |
 
+### Alerts
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/alerts/config` | Read current Slack webhook URL and per-type alert preferences |
+| `POST` | `/api/alerts/config` | Save Slack webhook URL and alert type preferences |
+| `POST` | `/api/alerts/test` | Send a test Slack Block Kit message to the configured webhook |
+
+**Alert config object** (request and response body for `POST /api/alerts/config`):
+
+```json
+{
+  "slack_webhook": "https://hooks.slack.com/services/T.../B.../xxx",
+  "alert_types": {
+    "mcp_down": true,
+    "mcp_recovered": true,
+    "agent_failure": true,
+    "slo_breached": true,
+    "anomaly_critical": true,
+    "security_critical": true
+  }
+}
+```
+
+`POST /api/alerts/test` returns `{"ok": true}` on success or `{"ok": false, "error": "<message>"}` if the webhook call fails.
+
+### Audit
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/audit/logs` | List recent audit log events (auth and RBAC actions) |
+
+Query params: `limit` (default 50, max 200), `offset` (default 0).
+
+**Audit event object**:
+
+```json
+{
+  "event_id": "evt-abc123",
+  "timestamp": "2026-03-19T10:42:00Z",
+  "actor": "user@example.com",
+  "action": "api_key.created",
+  "resource": "key:lsk_xxxxxxxx",
+  "result": "success"
+}
+```
+
+Captured actions: `user.login`, `user.login_failed`, `api_key.created`, `api_key.revoked`, `user.role_changed`, `user.invited`, `user.deactivated`, `project.created`, `project.deleted`, `alerts.config_saved`, `model_pricing.updated`.
+
+<Note>
+  The audit log is stored in an in-memory ring buffer (last 50 events). It resets on API restart. Persistent audit logging will be added in a future release.
+</Note>
+
 **Anomaly object**:
 
 ```json

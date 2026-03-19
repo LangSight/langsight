@@ -39,6 +39,8 @@ Phase 10 (Multi-tenancy)        ████████████████
 
 **Shipped metrics**: 434 Python tests + 136 frontend tests (98 Jest + 38 Playwright), 85%+ coverage, full dashboard redesign with Geist fonts + deep dark sidebar, marketing website with /security and /pricing pages, projects management UI, ui-designer agent, tester agent updated for full-stack. Version v0.2.0.
 
+**Settings improvements (shipped 2026-03-19)**: Settings page redesigned from single-scroll to left-nav + content panel with 8 isolated sections. New sections: Notifications (Slack webhook + 6 alert type toggles), Audit Logs (last 50 auth/RBAC events from in-memory ring buffer). New API endpoints: `GET/POST /api/alerts/config`, `POST /api/alerts/test`, `GET /api/audit/logs`. New alert types in `alerts/engine.py`: `AGENT_FAILURE`, `SLO_BREACHED`, `ANOMALY_DETECTED`, `SECURITY_FINDING`. Debug Information added to General section; `.env` SDK snippet added to API Keys section.
+
 ---
 
 ## 1. MVP Definition

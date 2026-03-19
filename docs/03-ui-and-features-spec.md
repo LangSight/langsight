@@ -445,12 +445,42 @@ The current IA is agent-first: **Overview → Agents → Workflows → Tools & M
 - **Actions**: Acknowledge, resolve, snooze
 - **Alert rules**: Configure thresholds per server or globally
 
-### 4.7 Settings Page
-- MCP server management (add/edit/remove/test connection)
-- Alert configuration
-- Slack webhook setup + test
-- API key management
-- Model pricing table
+### 4.7 Settings Page (redesigned 2026-03-19)
+
+The Settings page uses a **left-nav + content panel** layout. Clicking a nav item isolates its section — no long scroll. Eight sections are available:
+
+| Nav item | Content |
+|---|---|
+| General | Instance name, instance URL (read-only), current version; Debug Information block for SDK setup |
+| API Keys | Table of active API keys with name, prefix, created date, last used; Create / Revoke actions; `.env` snippet showing `LANGSIGHT_API_KEY` and `LANGSIGHT_API_URL` for instant SDK instrumentation |
+| Model Pricing | Provider-grouped pricing table; inline edit; "Add custom model" modal; "Custom" badge on user rows |
+| Members | User list with role badges; Invite by email; Change role; Deactivate — Danger Zone pattern for destructive actions |
+| Projects | Project list; Create project; Rename; Delete — Danger Zone |
+| Notifications | Slack webhook URL input + "Test" button (calls `POST /api/alerts/test`); alert type toggles (see table below) |
+| Audit Logs | Table of last 50 auth/RBAC events from in-memory ring buffer; columns: Timestamp, Actor, Action, Resource, Result; no pagination in UI (use `GET /api/audit/logs?limit=&offset=` for bulk export) |
+| Instance | Danger Zone for destructive instance-level actions |
+
+#### Notifications section — alert type toggles
+
+| Toggle key | Fires when |
+|---|---|
+| `mcp_down` | MCP server health check transitions to DOWN |
+| `mcp_recovered` | MCP server transitions from DOWN back to UP |
+| `agent_failure` | Agent session ends with `failed_calls > 0` |
+| `slo_breached` | SLO evaluator returns `breached` status for any defined SLO |
+| `anomaly_critical` | Z-score anomaly detector crosses the critical threshold (|z| >= 3) |
+| `security_critical` | CVE or OWASP check returns a CRITICAL severity finding |
+
+#### Audit Logs section — captured events
+
+The ring buffer retains the last 50 events. Events captured:
+
+- User login (success and failure)
+- API key created / revoked
+- User role changed
+- User invited / deactivated
+- Project created / deleted
+- Settings saved (Notifications config, Model Pricing updates)
 
 ---
 

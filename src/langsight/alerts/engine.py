@@ -29,10 +29,15 @@ class AlertSeverity(StrEnum):
 
 
 class AlertType(StrEnum):
-    SERVER_DOWN = "server_down"
+    SERVER_DOWN      = "server_down"
     SERVER_RECOVERED = "server_recovered"
-    SCHEMA_DRIFT = "schema_drift"
-    HIGH_LATENCY = "high_latency"
+    SCHEMA_DRIFT     = "schema_drift"
+    HIGH_LATENCY     = "high_latency"
+    # Agent-level alerts (fired from session data, not health checks)
+    AGENT_FAILURE    = "agent_failure"
+    SLO_BREACHED     = "slo_breached"
+    ANOMALY_DETECTED = "anomaly_detected"
+    SECURITY_FINDING = "security_finding"
 
 
 @dataclass(frozen=True)

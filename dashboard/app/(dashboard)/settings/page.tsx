@@ -2,14 +2,15 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import useSWR from "swr";
 import {
   Key, Plus, Trash2, Copy, Check, ExternalLink, Shield, Database,
   Info, AlertTriangle, Eye, EyeOff, Users, UserPlus, UserX, ShieldCheck,
   DollarSign, Pencil, X, Folder, ChevronDown, ChevronRight,
+  Bell, ClipboardList, Server, Settings2, AlertCircle,
 } from "lucide-react";
-import { fetcher, getApiKeys, createApiKey, revokeApiKey, listUsers, inviteUser, deactivateUser, updateUserRole, listModelPricing, createModelPricing, updateModelPricing, deactivateModelPricing, listProjects, createProject, deleteProject, listProjectMembers, addProjectMember, removeProjectMember } from "@/lib/api";
+import { fetcher, getApiKeys, createApiKey, revokeApiKey, listUsers, inviteUser, deactivateUser, updateUserRole, listModelPricing, createModelPricing, updateModelPricing, deactivateModelPricing, listProjects, createProject, deleteProject, listProjectMembers, addProjectMember, removeProjectMember, getAlertsConfig, saveAlertsConfig, testSlackWebhook, getAuditLogs } from "@/lib/api";
 import type { ApiKeyResponse, ApiKeyCreatedResponse, ApiStatus, DashboardUser, InviteResponse, ModelPricingEntry, ProjectResponse, ProjectMember } from "@/lib/types";
 import { cn, timeAgo } from "@/lib/utils";
 import { toast } from "sonner";
@@ -253,12 +254,11 @@ function RevokeDialog({ apiKey, onClose, onRevoked }: {
   );
 }
 
-// ─── Section wrapper ───────────────────────────────────────────────────────────
+// ─── Section wrapper (used inside content panels) ──────────────────────────────
 
-function Section({ title, description, icon: Icon, children }: {
+function Section({ title, description, children }: {
   title: string;
   description?: string;
-  icon: React.ElementType;
   children: React.ReactNode;
 }) {
   return (
@@ -267,23 +267,26 @@ function Section({ title, description, icon: Icon, children }: {
       style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
     >
       <div
-        className="flex items-start gap-3 px-5 py-4 border-b"
+        className="px-5 py-4 border-b"
         style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card-raised))" }}
       >
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
-          style={{ background: "hsl(var(--primary) / 0.1)" }}
-        >
-          <Icon size={14} style={{ color: "hsl(var(--primary))" }} />
-        </div>
-        <div>
-          <h2 className="text-[13px] font-semibold text-foreground">{title}</h2>
-          {description && (
-            <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
-          )}
-        </div>
+        <h3 className="text-[13px] font-semibold text-foreground">{title}</h3>
+        {description && (
+          <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
+        )}
       </div>
       <div className="px-5 py-5">{children}</div>
+    </div>
+  );
+}
+
+// ─── Section page header ────────────────────────────────────────────────────────
+
+function SectionHeader({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="mb-6">
+      <h2 className="text-[15px] font-semibold text-foreground">{title}</h2>
+      <p className="text-sm text-muted-foreground mt-0.5">{description}</p>
     </div>
   );
 }
@@ -540,7 +543,7 @@ function ProjectsSection() {
     <Section
       title="Projects"
       description="Isolate traces, costs, and agents by team or workload. Each project has its own member list."
-      icon={Folder}
+     
     >
       {isLoading ? (
         <div className="space-y-2">
@@ -616,7 +619,7 @@ function ApiKeysSection() {
     <Section
       title="API Keys"
       description="Manage authentication keys for the LangSight API and SDK"
-      icon={Key}
+     
     >
       {/* Create button */}
       <div className="flex items-center justify-between mb-4">
@@ -860,7 +863,7 @@ function UsersSection() {
   }
 
   return (
-    <Section title="Users" description="Manage dashboard access — invite teammates, set roles, deactivate accounts" icon={Users}>
+    <Section title="Users" description="Manage dashboard access — invite teammates, set roles, deactivate accounts">
       <div className="flex items-center justify-between mb-4">
         <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
           {isLoading ? "Loading…" : `${users?.filter(u => u.active).length ?? 0} active user${(users?.filter(u => u.active).length ?? 0) !== 1 ? "s" : ""}`}
@@ -1045,7 +1048,7 @@ function ModelPricingSection() {
   const inputStyle = { background: "hsl(var(--background))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" };
 
   return (
-    <Section title="Model Pricing" description="Token-based costs for LLM providers. Used to calculate spend per session and agent." icon={DollarSign}>
+    <Section title="Model Pricing" description="Token-based costs for LLM providers. Used to calculate spend per session and agent.">
       <div className="flex items-center justify-between mb-4">
         <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
           {isLoading ? "Loading…" : `${active.length} active models · prices per 1M tokens`}
@@ -1213,7 +1216,7 @@ function InstanceSection() {
   ];
 
   return (
-    <Section title="Instance" description="Current LangSight backend configuration" icon={Database}>
+    <Section title="Instance" description="Current LangSight backend configuration">
       <dl className="space-y-3">
         {rows.map(({ label, value }) => (
           <div key={label} className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: "hsl(var(--border))" }}>
@@ -1230,7 +1233,7 @@ function InstanceSection() {
 
 function AboutSection() {
   return (
-    <Section title="About" description="LangSight open-source AI agent observability" icon={Info}>
+    <Section title="About" description="LangSight open-source AI agent observability">
       <div className="space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0"
@@ -1285,24 +1288,395 @@ function AboutSection() {
   );
 }
 
-// ─── Page ──────────────────────────────────────────────────────────────────────
+// ─── General Section ───────────────────────────────────────────────────────────
 
-export default function SettingsPage() {
+function GeneralSection() {
+  const { data: status, isLoading } = useSWR<ApiStatus>("/api/status", fetcher, { refreshInterval: 60_000 });
+  const [copied, setCopied] = useState(false);
+
+  const apiUrl = "http://localhost:8000";
+  const debugInfo = {
+    instance_url: apiUrl,
+    dashboard_version: "v0.2.0",
+    api_version: status?.version ?? "…",
+    storage_mode: status?.storage_mode ?? "…",
+    auth_enabled: status?.auth_enabled ?? false,
+    servers_configured: status?.servers_configured ?? 0,
+  };
+
+  async function handleCopy() {
+    await navigator.clipboard.writeText(JSON.stringify(debugInfo, null, 2));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   return (
-    <div className="space-y-5 max-w-3xl page-in">
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Manage users, model pricing, API keys, and instance configuration
+    <div className="space-y-5 max-w-2xl">
+      <SectionHeader title="General" description="Instance information and debug details for SDK setup." />
+
+      <Section title="Debug Information" description="Share this when reporting issues or setting up the SDK.">
+        <div className="relative">
+          <pre
+            className="text-[12px] rounded-lg p-4 overflow-x-auto leading-relaxed"
+            style={{
+              fontFamily: "var(--font-geist-mono)",
+              background: "hsl(var(--muted))",
+              color: "hsl(var(--foreground))",
+              border: "1px solid hsl(var(--border))",
+            }}
+          >
+            {isLoading ? "Loading…" : JSON.stringify(debugInfo, null, 2)}
+          </pre>
+          <button
+            onClick={handleCopy}
+            className="absolute top-3 right-3 p-1.5 rounded-md transition-colors"
+            style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}
+            title="Copy to clipboard"
+          >
+            {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+          </button>
+        </div>
+      </Section>
+
+      <div
+        className="rounded-xl border p-5"
+        style={{ background: "hsl(var(--danger-bg))", borderColor: "hsl(var(--danger) / 0.2)" }}
+      >
+        <h3 className="text-[13px] font-semibold mb-1" style={{ color: "hsl(var(--danger))" }}>
+          Danger Zone
+        </h3>
+        <p className="text-[12px] text-muted-foreground">
+          This is a self-hosted instance. To reset data or delete the instance, use the CLI or manage the database directly.
+          There is no "delete account" button — you control the infrastructure.
         </p>
       </div>
+    </div>
+  );
+}
 
-      <ProjectsSection />
-      <UsersSection />
-      <ModelPricingSection />
-      <ApiKeysSection />
-      <InstanceSection />
-      <AboutSection />
+// ─── Notifications Section ─────────────────────────────────────────────────────
+
+const ALERT_GROUPS: { label: string; keys: string[]; descriptions: Record<string, string> }[] = [
+  {
+    label: "MCP Infrastructure",
+    keys: ["mcp_down", "mcp_recovered"],
+    descriptions: {
+      mcp_down:      "MCP server goes DOWN (after 2 consecutive failures)",
+      mcp_recovered: "MCP server recovers from DOWN or DEGRADED",
+    },
+  },
+  {
+    label: "Agent Health",
+    keys: ["agent_failure", "slo_breached", "anomaly_critical", "security_critical"],
+    descriptions: {
+      agent_failure:    "Agent session ends with one or more failed tool calls",
+      slo_breached:     "Agent SLO breached (success rate or latency target missed)",
+      anomaly_critical: "Critical anomaly detected (z-score ≥ 3 vs 7-day baseline)",
+      security_critical:"Critical CVE or OWASP MCP finding detected on scan",
+    },
+  },
+];
+
+function NotificationsSection() {
+  const { data: config, mutate } = useSWR(
+    "/api/alerts/config",
+    () => getAlertsConfig(),
+    { refreshInterval: 0 }
+  );
+  const [webhook, setWebhook] = useState("");
+  const [showWebhook, setShowWebhook] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  useEffect(() => {
+    if (config?.slack_webhook) setWebhook(config.slack_webhook);
+  }, [config?.slack_webhook]);
+
+  async function handleSaveWebhook() {
+    setSaving(true);
+    try {
+      await saveAlertsConfig({ slack_webhook: webhook || null });
+      await mutate();
+      toast.success("Webhook URL saved");
+    } catch { toast.error("Failed to save webhook URL"); }
+    finally { setSaving(false); }
+  }
+
+  async function handleTest() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await testSlackWebhook();
+      setTestResult(result);
+    } catch (err: unknown) {
+      setTestResult({ ok: false, message: err instanceof Error ? err.message : "Failed" });
+    } finally { setTesting(false); }
+  }
+
+  async function handleToggle(key: string, enabled: boolean) {
+    try {
+      await saveAlertsConfig({ alert_types: { [key]: enabled } });
+      await mutate();
+    } catch { toast.error("Failed to update alert setting"); }
+  }
+
+  const alertTypes = config?.alert_types ?? {};
+
+  return (
+    <div className="space-y-5 max-w-2xl">
+      <SectionHeader title="Notifications" description="Configure Slack alerts for agent failures, MCP health events, and security findings." />
+
+      {/* Slack webhook */}
+      <Section title="Slack Webhook" description="Receive alerts in Slack when agents fail or MCP servers go down.">
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <input
+                type={showWebhook ? "text" : "password"}
+                value={webhook}
+                onChange={e => setWebhook(e.target.value)}
+                placeholder="https://hooks.slack.com/services/..."
+                className="input-base pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowWebhook(s => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showWebhook ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+            <button onClick={handleSaveWebhook} disabled={saving} className="btn btn-primary">
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button
+              onClick={handleTest}
+              disabled={testing || !webhook}
+              className="btn btn-secondary"
+            >
+              {testing ? "Sending…" : "Test"}
+            </button>
+          </div>
+
+          {testResult && (
+            <div
+              className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
+              style={{
+                background: testResult.ok ? "hsl(var(--success-bg))" : "hsl(var(--danger-bg))",
+                color: testResult.ok ? "hsl(var(--success))" : "hsl(var(--danger))",
+                border: `1px solid ${testResult.ok ? "hsl(var(--success-border))" : "hsl(var(--danger-border))"}`,
+              }}
+            >
+              {testResult.ok ? <Check size={13} /> : <AlertCircle size={13} />}
+              {testResult.message}
+            </div>
+          )}
+
+          <p className="text-[11px] text-muted-foreground">
+            Create a Slack incoming webhook at{" "}
+            <a href="https://api.slack.com/messaging/webhooks" target="_blank" rel="noreferrer"
+              className="underline underline-offset-2" style={{ color: "hsl(var(--primary))" }}>
+              api.slack.com/messaging/webhooks
+            </a>
+            . To persist across restarts, set <code className="mono-pill">LANGSIGHT_SLACK_WEBHOOK</code> env var.
+          </p>
+        </div>
+      </Section>
+
+      {/* Alert type toggles */}
+      <Section title="Alert Types" description="Choose which events trigger a Slack notification.">
+        <div className="space-y-5">
+          {ALERT_GROUPS.map(group => (
+            <div key={group.label}>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+                {group.label}
+              </p>
+              <div className="space-y-3">
+                {group.keys.map(key => {
+                  const enabled = alertTypes[key] !== false; // default true
+                  return (
+                    <div key={key} className="flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-foreground">{group.descriptions[key]}</p>
+                        <p className="text-[11px] text-muted-foreground font-mono">{key}</p>
+                      </div>
+                      <button
+                        onClick={() => handleToggle(key, !enabled)}
+                        className="relative flex-shrink-0 w-10 h-5 rounded-full transition-colors"
+                        style={{ background: enabled ? "hsl(var(--primary))" : "hsl(var(--muted))" }}
+                        aria-label={enabled ? "Disable" : "Enable"}
+                      >
+                        <span
+                          className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                          style={{ transform: enabled ? "translateX(20px)" : "translateX(2px)" }}
+                        />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+// ─── Audit Logs Section ─────────────────────────────────────────────────────────
+
+function AuditLogsSection() {
+  const { data, isLoading } = useSWR(
+    "/api/audit/logs?limit=50",
+    () => getAuditLogs(50, 0),
+    { refreshInterval: 30_000 }
+  );
+
+  const events = data?.events ?? [];
+
+  function eventColor(event: string) {
+    if (event.includes("login_success") || event.includes("recovered")) return "hsl(var(--success))";
+    if (event.includes("failed") || event.includes("invalid") || event.includes("blocked")) return "hsl(var(--danger))";
+    if (event.includes("warning") || event.includes("viewer")) return "hsl(var(--warning))";
+    return "hsl(var(--primary))";
+  }
+
+  return (
+    <div className="space-y-5 max-w-3xl">
+      <SectionHeader title="Audit Logs" description="Recent authentication and access events. Last 500 events kept in memory." />
+
+      <div
+        className="rounded-xl border overflow-hidden"
+        style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
+      >
+        {isLoading ? (
+          <div className="p-6 space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => <div key={i} className="skeleton h-8 rounded" />)}
+          </div>
+        ) : events.length === 0 ? (
+          <div className="p-12 text-center">
+            <ClipboardList size={32} className="mx-auto mb-3 text-muted-foreground opacity-30" />
+            <p className="text-sm font-semibold text-foreground mb-1">No audit events yet</p>
+            <p className="text-xs text-muted-foreground">
+              Events are recorded when users sign in, change roles, or modify projects.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card-raised))" }}>
+                  {["Time", "Event", "User", "IP"].map(h => (
+                    <th key={h} className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
+                {events.map(e => (
+                  <tr key={e.id} className="hover:bg-accent/30 transition-colors">
+                    <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
+                      {timeAgo(e.timestamp)}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <code
+                        className="text-[11px] px-1.5 py-0.5 rounded"
+                        style={{
+                          fontFamily: "var(--font-geist-mono)",
+                          background: "hsl(var(--muted))",
+                          color: eventColor(e.event),
+                        }}
+                      >
+                        {e.event}
+                      </code>
+                    </td>
+                    <td className="px-4 py-2.5 text-muted-foreground font-mono text-[11px]">
+                      {e.user_id !== "system" ? e.user_id.slice(0, 12) + "…" : "system"}
+                    </td>
+                    <td className="px-4 py-2.5 text-muted-foreground font-mono text-[11px]">
+                      {e.ip}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {data && data.total > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          Showing {Math.min(50, data.total)} of {data.total} events · in-memory only, reset on restart
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Page ──────────────────────────────────────────────────────────────────────
+
+type SettingsSection = "general" | "api-keys" | "model-pricing" | "members" | "projects" | "notifications" | "audit-logs" | "instance";
+
+export default function SettingsPage() {
+  const [active, setActive] = useState<SettingsSection>("general");
+
+  const NAV: { id: SettingsSection; label: string; icon: React.ElementType }[] = [
+    { id: "general",       label: "General",       icon: Settings2 },
+    { id: "api-keys",      label: "API Keys",       icon: Key },
+    { id: "model-pricing", label: "Model Pricing",  icon: DollarSign },
+    { id: "members",       label: "Members",        icon: Users },
+    { id: "projects",      label: "Projects",       icon: Folder },
+    { id: "notifications", label: "Notifications",  icon: Bell },
+    { id: "audit-logs",    label: "Audit Logs",     icon: ClipboardList },
+    { id: "instance",      label: "Instance",       icon: Server },
+  ];
+
+  return (
+    <div
+      className="flex page-in"
+      style={{ minHeight: "calc(100vh - 54px)", margin: "-20px" }}
+    >
+      {/* Left nav */}
+      <nav
+        className="w-48 shrink-0 py-4 px-2 space-y-0.5"
+        style={{ borderRight: "1px solid hsl(var(--border))" }}
+      >
+        {NAV.map(item => (
+          <button
+            key={item.id}
+            onClick={() => setActive(item.id)}
+            className={cn(
+              "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors text-left",
+              active === item.id
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            )}
+          >
+            <item.icon size={15} className="flex-shrink-0" />
+            {item.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-8 py-6">
+        {active === "general"        && <GeneralSection />}
+        {active === "api-keys"       && <ApiKeysSection />}
+        {active === "model-pricing"  && <ModelPricingSection />}
+        {active === "members"        && <UsersSection />}
+        {active === "projects"       && <ProjectsSection />}
+        {active === "notifications"  && <NotificationsSection />}
+        {active === "audit-logs"     && <AuditLogsSection />}
+        {active === "instance"       && (
+          <div className="space-y-5 max-w-2xl">
+            <SectionHeader title="Instance" description="Current LangSight backend configuration and version info." />
+            <InstanceSection />
+            <AboutSection />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
