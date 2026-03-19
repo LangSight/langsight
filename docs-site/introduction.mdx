@@ -1,11 +1,13 @@
 ---
 title: "Introduction"
-description: "LangSight is the observability platform for AI agent actions — full traces of every tool call across single and multi-agent workflows, with deep MCP health monitoring and security scanning built in."
+description: "Agent-first observability — full traces of every tool call your agents make, with LLM cost tracking, session replay, and anomaly detection built in."
 ---
 
 ## What is LangSight?
 
-LangSight answers the question every on-call engineer asks first: "What did my agent call, in what order, how long did each tool take, which ones failed, and what did it cost?" Langfuse and LangSmith show what your agent *thought* — prompts, completions, evals. LangSight shows what your agent *did* — every tool action, in sequence, with latency, errors, and cost attribution.
+LangSight answers the question every AI engineer asks first: "What did my agent call, in what order, how long did each tool take, which ones failed, and what did it cost?"
+
+Langfuse and LangSmith show what your agent *thought* — prompts, completions, evals. LangSight shows what your agent *did* — every tool action, in sequence, with latency, errors, and full cost attribution down to the token.
 
 Agents call three types of things:
 
@@ -13,20 +15,9 @@ Agents call three types of things:
 2. **Non-MCP tools** (Stripe API, Sendgrid, Python functions, code execution) — direct calls
 3. **Sub-agents** (agent-to-agent handoffs in multi-agent workflows)
 
-**LangSight observes all three.** Instrument once at the agent level and you automatically capture everything the agent touched — MCP or not. The `server_name` field in a `ToolCallSpan` can be "stripe-api", "sendgrid", "openai-api", or "postgres-mcp". It is not locked to MCP servers.
+**LangSight observes all three.** Instrument once at the agent level and you automatically capture everything the agent touched. The `server_name` field in a `ToolCallSpan` can be `"stripe-api"`, `"sendgrid"`, `"openai-api"`, or `"postgres-mcp"` — it is not locked to MCP servers.
 
-**MCP servers get extra depth** because the MCP protocol is standard and inspectable — proactive health checks, security scanning, schema drift detection, and alerting on DOWN/DEGRADED state. Non-MCP tools appear in every trace but cannot be proactively health-checked (no standard protocol to ping).
-
-### What you can do per tool type
-
-| Tool type | Observe calls | Health check | Security scan | Cost tracking |
-|-----------|:------------:|:------------:|:-------------:|:-------------:|
-| MCP servers | Yes | Yes | Yes | Yes |
-| HTTP APIs (Stripe, Sendgrid, etc.) | Yes | No | No | Yes |
-| Python functions | Yes | No | No | Yes |
-| Sub-agents | Yes | No | No | Yes |
-
-### Example: mixed agent session
+### Example: a mixed agent session
 
 ```
 Agent Session: sess-abc123  (support-agent)
@@ -41,25 +32,47 @@ Agent Session: sess-abc123  (support-agent)
     └── [HTTP] sendgrid / send_email          89ms  ✓  $0.002
 
 Total: 680ms | 7 calls | 1 failure | $0.011
-MCP servers: 4 of 7 calls (health-checked and security-scanned independently)
 ```
 
-**LangSight gives you:**
+## Core features
 
 <CardGroup cols={2}>
   <Card title="Agent Session Traces" icon="list-tree">
     Full ordered trace for every agent session — MCP calls, HTTP API calls, function calls, sub-agent handoffs — all in one view. The primary answer to "what did my agent do?"
   </Card>
   <Card title="Multi-Agent Call Trees" icon="diagram-project">
-    When Agent A hands off to Agent B which calls Agent C, trace the full tree. Parent-child span relationships (same model as OpenTelemetry distributed tracing).
+    When Agent A hands off to Agent B which calls Agent C, trace the full tree. Parent-child span relationships follow the OpenTelemetry distributed tracing model.
   </Card>
-  <Card title="MCP Health Monitoring" icon="heart-pulse">
-    For MCP servers specifically: proactive availability checks, latency tracking, and schema drift detection. Synthetic probes, not just passive recording.
+  <Card title="LLM Cost Tracking" icon="dollar-sign">
+    Token-based cost attribution per session, agent, and tool call. 21 models pre-seeded with current pricing. Costs roll up from individual spans to full sessions and projects.
   </Card>
-  <Card title="MCP Security Scanning" icon="shield-check">
-    For MCP servers specifically: CVE detection, OWASP MCP Top 10 audit, tool poisoning detection, and auth gap analysis.
+  <Card title="Session Replay" icon="play">
+    Replay any past session in the playground with full payload visibility — see the exact arguments passed to each tool and the values returned. Toggle `redact_payloads` to control what is stored.
+  </Card>
+  <Card title="Anomaly Detection" icon="chart-line">
+    Automatic detection of latency spikes, error rate increases, and unusual tool call patterns. Alerts fire to Slack or webhooks before your users notice.
+  </Card>
+  <Card title="SLO Tracking" icon="gauge">
+    Define success rate and p99 latency targets per agent or tool. LangSight tracks burn rate and fires alerts when error budgets are at risk.
+  </Card>
+  <Card title="Side-by-Side Comparison" icon="columns">
+    Compare two sessions directly — same agent, different runs. Spot where one succeeded and the other failed, or measure the impact of a prompt change on tool call patterns.
+  </Card>
+  <Card title="Projects" icon="folder">
+    Group observability data by product, environment, or team. Multi-user with an invite system and admin/viewer roles per project.
   </Card>
 </CardGroup>
+
+## What you can observe per tool type
+
+| Tool type | Trace calls | Health check | Security scan | Cost tracking |
+|-----------|:-----------:|:------------:|:-------------:|:-------------:|
+| MCP servers | Yes | Yes | Yes | Yes |
+| HTTP APIs (Stripe, Sendgrid, etc.) | Yes | No | No | Yes |
+| Python functions | Yes | No | No | Yes |
+| Sub-agents | Yes | No | No | Yes |
+
+MCP servers get extra depth — proactive health checks, CVE scanning, OWASP MCP Top 10 audit, tool poisoning detection, and schema drift alerts — because the MCP protocol is standard and inspectable. Non-MCP tools appear in every trace but cannot be proactively health-checked.
 
 ## LangSight and Langfuse
 
@@ -67,8 +80,10 @@ LangSight is **not** a Langfuse replacement. They answer different questions:
 
 | | Langfuse | LangSight |
 |--|----------|-----------|
-| What it traces | LLM calls — prompts, completions, token costs | Tool calls — MCP spans, latency, errors, cost |
-| What it monitors | Nothing (passive only) | MCP server health — synthetic probes, schema drift |
+| Primary question | What did my LLM decide? | What did my agent do? |
+| What it traces | LLM calls — prompts, completions, evals | Tool calls — MCP spans, HTTP APIs, sub-agents |
+| Cost tracking | LLM token costs | Tool call costs + LLM costs attributed per session |
+| Monitoring | Passive only | Proactive MCP health checks, SLO tracking, anomaly detection |
 | Security | None | CVE, OWASP MCP Top 10, tool poisoning, auth audit |
 | Multi-agent | Agent reasoning chains | Agent-to-agent handoffs via `parent_span_id` |
 
@@ -81,7 +96,7 @@ Your agents                LangSight
 ──────────                 ──────────────────────────────────────
 CrewAI          ──SDK──►   POST /api/traces/spans
 Pydantic AI     ──SDK──►   POST /api/agents/sessions
-LibreChat       ──plugin►
+LibreChat       ──plugin►  Dashboard → Projects → Sessions
 Claude Desktop  ◄──health─ langsight mcp-health
                 ◄──scan──  langsight security-scan
                 ◄──trace─  langsight sessions
@@ -99,7 +114,7 @@ pip install langsight
 ```
 
 ```bash
-langsight init          # auto-discovers your MCP servers
+langsight init          # auto-discovers your MCP servers and creates .langsight.yaml
 langsight sessions      # view recent agent sessions with costs
 langsight mcp-health    # check MCP server health
 ```

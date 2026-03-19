@@ -19,7 +19,11 @@ curl -X POST http://localhost:8000/api/traces/spans \
     "status": "success",
     "trace_id": "trace-abc123",
     "agent_name": "support-agent",
-    "session_id": "sess-xyz"
+    "session_id": "sess-xyz",
+    "span_type": "tool_call",
+    "input_args": {"query": "SELECT * FROM orders WHERE id = $1", "params": [42]},
+    "output_result": "[{\"id\": 42, \"status\": \"shipped\"}]",
+    "project_id": "proj-abc"
   }]'
 ```
 
@@ -29,17 +33,60 @@ curl -X POST http://localhost:8000/api/traces/spans \
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `server_name` | string | ✅ | MCP server name |
-| `tool_name` | string | ✅ | Tool that was called |
-| `started_at` | ISO datetime | ✅ | When call began |
-| `ended_at` | ISO datetime | ✅ | When call completed |
-| `latency_ms` | float | ✅ | Duration in milliseconds |
-| `status` | `success`\|`error`\|`timeout` | ✅ | Outcome |
-| `error` | string | — | Error message if status ≠ success |
+| `server_name` | string | Yes | Tool server name, agent name, or `"handoff"` |
+| `tool_name` | string | Yes | Tool called, agent task description, or target agent name |
+| `started_at` | ISO datetime | Yes | When the span began (UTC) |
+| `ended_at` | ISO datetime | Yes | When the span completed (UTC) |
+| `latency_ms` | float | Yes | Duration in milliseconds |
+| `status` | `success` \| `error` \| `timeout` | Yes | Outcome of the span |
 | `span_id` | string | — | UUID (auto-generated if omitted) |
-| `trace_id` | string | — | Groups spans into a trace/conversation |
-| `agent_name` | string | — | Agent that made the call |
-| `session_id` | string | — | Application-level session ID |
+| `parent_span_id` | string | — | `span_id` of the parent span — enables multi-agent tree reconstruction |
+| `span_type` | `tool_call` \| `agent` \| `handoff` | — | Span kind (defaults to `tool_call`) |
+| `trace_id` | string | — | Groups all spans for one task or conversation |
+| `session_id` | string | — | Application-level session identifier |
+| `agent_name` | string | — | Which agent emitted this span |
+| `project_id` | string | — | Project this span belongs to |
+| `error` | string | — | Error message when `status` is `error` or `timeout` |
+| `input_args` | object | — | Arguments passed to the tool call. `null` when `redact_payloads=true` |
+| `output_result` | string | — | Tool return value serialised to JSON string. `null` when redacted or on error |
+| `llm_input` | string | — | LLM prompt or messages (agent spans only, from OTLP `gen_ai.prompt`) |
+| `llm_output` | string | — | LLM completion text (agent spans only) |
+| `input_tokens` | integer | — | LLM input token count (from OTLP `gen_ai.usage.input_tokens`) |
+| `output_tokens` | integer | — | LLM output token count (from OTLP `gen_ai.usage.output_tokens`) |
+| `model_id` | string | — | Model used for this span (from OTLP `gen_ai.request.model`) |
+| `replay_of` | string | — | `span_id` of the original span when this is a playground replay |
+
+### Field population by span type
+
+Not all fields are meaningful for every span type. This table shows which fields are populated in practice:
+
+| Field | `tool_call` | `agent` | `handoff` |
+|-------|:-----------:|:-------:|:---------:|
+| `server_name` | MCP server / API name | agent name | from-agent name |
+| `tool_name` | tool called | task description | `"→ <target-agent>"` |
+| `agent_name` | agent that made the call | same as `server_name` | from-agent name |
+| `parent_span_id` | parent agent or handoff span | parent span if nested | parent agent span |
+| `input_args` | tool arguments (if not redacted) | — | — |
+| `output_result` | tool return value (if not redacted) | — | — |
+| `llm_input` | — | LLM prompt text | — |
+| `llm_output` | — | LLM completion text | — |
+| `input_tokens` | — | token count for this agent turn | — |
+| `output_tokens` | — | token count for this agent turn | — |
+| `model_id` | — | model used by this agent | — |
+| `replay_of` | original span_id if replayed | — | — |
+
+### Multi-agent span tree example
+
+```
+trace_id: "trace-123"
+├── span: agent    / server_name=support-agent  / parent_span_id=null
+│   ├── span: tool_call / server_name=jira-mcp / tool_name=get_issue   / parent=agent-span
+│   ├── span: handoff   / server_name=support-agent / tool_name="→ billing-agent" / parent=agent-span
+│   │   ├── span: tool_call / server_name=crm-mcp  / tool_name=update_customer / parent=handoff-span
+│   │   └── span: tool_call / server_name=slack-mcp / tool_name=post_message   / parent=handoff-span
+```
+
+`trace_id` groups the entire task. `parent_span_id` reconstructs the tree. Both fields are set by the SDK automatically when using the `LangSightTracer` context manager.
 
 ## POST /api/traces/otlp
 
@@ -49,9 +96,19 @@ Accepts standard [OTLP/JSON](https://opentelemetry.io/docs/specs/otlp/) trace da
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8000/api/traces/otlp
 ```
 
-LangSight extracts MCP tool call spans by matching:
+LangSight extracts spans by matching:
 - Span names matching `mcp.*`
 - Attribute `gen_ai.tool.name` (GenAI semantic conventions)
 - Attribute `mcp.server.name` + `mcp.tool.name`
 
-Non-MCP spans are ignored.
+The following OTLP attributes are mapped to `ToolCallSpan` fields:
+
+| OTLP attribute | ToolCallSpan field |
+|---|---|
+| `gen_ai.prompt` | `llm_input` |
+| `gen_ai.completion` | `llm_output` |
+| `gen_ai.usage.input_tokens` | `input_tokens` |
+| `gen_ai.usage.output_tokens` | `output_tokens` |
+| `gen_ai.request.model` | `model_id` |
+
+Non-matching spans are ignored.
