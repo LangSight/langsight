@@ -141,17 +141,14 @@ jobs:
         run: uv sync --dev
 
       - name: Start ClickHouse
-        env:
-          # docker-compose.yml requires these vars even when only starting clickhouse
-          CLICKHOUSE_USER: default
-          CLICKHOUSE_PASSWORD: ""
-          POSTGRES_PASSWORD: ci-not-used
-          LANGSIGHT_API_KEYS: ci-test-key
-          AUTH_SECRET: ci-test-secret
-          LANGSIGHT_ADMIN_EMAIL: admin@test.com
-          LANGSIGHT_ADMIN_PASSWORD: testpassword
         run: |
-          docker compose up -d clickhouse
+          # Start ClickHouse directly — avoids docker-compose required-var issues.
+          # No auth (default user, empty password) matches how the integration tests connect.
+          docker run -d \
+            --name langsight-ci-clickhouse \
+            -p 8123:8123 -p 9000:9000 \
+            -e CLICKHOUSE_DB=langsight_test \
+            clickhouse/clickhouse-server:24
           for i in {1..30}; do
             curl -s http://localhost:8123/ping | grep -q Ok && echo "ClickHouse ready after ${i}s" && break
             echo "Waiting for ClickHouse... ($i)"
@@ -166,12 +163,4 @@ jobs:
 
       - name: Stop ClickHouse
         if: always()
-        env:
-          CLICKHOUSE_USER: default
-          CLICKHOUSE_PASSWORD: ""
-          POSTGRES_PASSWORD: ci-not-used
-          LANGSIGHT_API_KEYS: ci-test-key
-          AUTH_SECRET: ci-test-secret
-          LANGSIGHT_ADMIN_EMAIL: admin@test.com
-          LANGSIGHT_ADMIN_PASSWORD: testpassword
-        run: docker compose stop clickhouse && docker compose rm -f clickhouse
+        run: docker stop langsight-ci-clickhouse && docker rm langsight-ci-clickhouse
