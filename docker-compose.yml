@@ -65,7 +65,7 @@ services:
       - ./test-mcps/s3-mcp/.env
     container_name: langsight-api
     environment:
-      LANGSIGHT_STORAGE_MODE: clickhouse
+      LANGSIGHT_STORAGE_MODE: dual
       LANGSIGHT_CLICKHOUSE_URL: http://clickhouse:8123
       LANGSIGHT_CLICKHOUSE_DATABASE: langsight
       LANGSIGHT_CLICKHOUSE_USERNAME: ${CLICKHOUSE_USER:?CLICKHOUSE_USER env var is required}

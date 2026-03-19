@@ -62,6 +62,31 @@ async def open_storage(config: StorageConfig) -> StorageBackend:
             password=config.clickhouse_password,
         )
 
+    if mode == "dual":
+        if not config.postgres_url:
+            raise ConfigError(
+                "storage.mode is 'dual' but storage.postgres_url is not set. "
+                "Set LANGSIGHT_POSTGRES_URL or add postgres_url to .langsight.yaml."
+            )
+        from urllib.parse import urlparse
+
+        from langsight.storage.clickhouse import ClickHouseBackend
+        from langsight.storage.dual import DualStorage
+        from langsight.storage.postgres import PostgresBackend
+
+        parsed = urlparse(config.clickhouse_url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 8123
+        metadata = await PostgresBackend.open(config.postgres_url)
+        analytics = await ClickHouseBackend.open(
+            host=host,
+            port=port,
+            database=config.clickhouse_database,
+            username=config.clickhouse_username,
+            password=config.clickhouse_password,
+        )
+        return DualStorage(metadata, analytics)
+
     raise ConfigError(
-        f"Unknown storage mode '{config.mode}'. Valid values: 'sqlite', 'postgres', 'clickhouse'."
+        f"Unknown storage mode '{config.mode}'. Valid values: 'sqlite', 'postgres', 'clickhouse', 'dual'."
     )
