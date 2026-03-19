@@ -130,7 +130,7 @@ class LangSightClient:
         """Internal: POST a batch of spans. Never raises."""
         headers = {"Content-Type": "application/json"}
         if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
+            headers["X-API-Key"] = self._api_key
 
         payload = [s.model_dump(mode="json") for s in spans]
         try:

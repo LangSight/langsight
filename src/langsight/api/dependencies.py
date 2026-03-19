@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import inspect
+import ipaddress
 
 import structlog
 from fastapi import Depends, HTTPException, Request, Security, status
@@ -16,16 +17,87 @@ from langsight.storage.base import StorageBackend
 logger = structlog.get_logger()
 
 # Header scheme — clients send:  X-API-Key: <key>
+# SDK clients may send:          Authorization: Bearer <key>
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
-# Session headers injected by the Next.js proxy (never set by external clients)
-_TRUSTED_PROXY_IPS = {"127.0.0.1", "::1", "localhost"}
+
+def _read_api_key(request: Request, declared: str | None = None) -> str | None:
+    """Resolve the API key for this request.
+
+    Priority:
+    1. `declared` — value already extracted by FastAPI from the X-API-Key header
+    2. X-API-Key header (direct read, for code paths not using Security())
+    3. Authorization: Bearer <key>  — SDK clients use this standard form
+
+    Returns None when no key is present in any supported location.
+    """
+    if declared:
+        return declared
+    key = request.headers.get("X-API-Key")
+    if key:
+        return key
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth[7:].strip()
+        return token or None
+    return None
+
+# Default trusted proxy addresses — loopback only.
+# Overridden at startup via LANGSIGHT_TRUSTED_PROXY_CIDRS env var to support
+# Docker/K8s deployments where the dashboard runs in a separate container.
+_DEFAULT_TRUSTED_PROXY_CIDRS = "127.0.0.1/32,::1/128"
+
+_IPv4Network = ipaddress.IPv4Network
+_IPv6Network = ipaddress.IPv6Network
+_IPNetwork = _IPv4Network | _IPv6Network
+
+
+def parse_trusted_proxy_networks(cidrs_str: str) -> list[_IPNetwork]:
+    """Parse a comma-separated string of CIDRs/IPs into network objects.
+
+    Invalid entries are logged and skipped rather than raising — a misconfigured
+    CIDR should not prevent the API from starting.
+    """
+    networks: list[_IPNetwork] = []
+    for raw in cidrs_str.split(","):
+        cidr = raw.strip()
+        if not cidr:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(cidr, strict=False))
+        except ValueError:
+            logger.warning("config.invalid_trusted_proxy_cidr", cidr=cidr)
+    return networks
 
 
 def _is_proxy_request(request: Request) -> bool:
-    """Return True if the request originated from the Next.js proxy on localhost."""
-    client_ip = request.client.host if request.client else ""
-    return client_ip in _TRUSTED_PROXY_IPS
+    """Return True if the request originated from a trusted Next.js proxy.
+
+    Trusted networks are loaded from app.state.trusted_proxy_networks (set at
+    startup from LANGSIGHT_TRUSTED_PROXY_CIDRS). Falls back to loopback-only
+    when app.state is not available (e.g. in unit tests).
+    """
+    client_host = request.client.host if request.client else ""
+    if not client_host:
+        return False
+
+    # Resolve trusted networks from app state (configured at startup)
+    trusted: list[_IPNetwork] | None = getattr(
+        getattr(request, "app", None),
+        "state",
+        None,
+    )
+    trusted_nets: list[_IPNetwork] = (
+        getattr(trusted, "trusted_proxy_networks", None)
+        or parse_trusted_proxy_networks(_DEFAULT_TRUSTED_PROXY_CIDRS)
+    )
+
+    try:
+        addr = ipaddress.ip_address(client_host)
+        return any(addr in net for net in trusted_nets)
+    except ValueError:
+        # client_host is a hostname (e.g. "localhost" in some test environments)
+        return client_host == "localhost"
 
 
 def _get_session_user(request: Request) -> tuple[str | None, str | None]:
@@ -69,6 +141,7 @@ async def verify_api_key(
     Accepts (in priority order):
     1. X-User-Id + X-User-Role headers from the Next.js proxy (session auth)
     2. X-API-Key header — DB-stored hashed key or env-var bootstrap key
+    3. Authorization: Bearer <key> — SDK / standard HTTP clients
 
     Auth is disabled entirely when no keys exist in DB or env vars.
 
@@ -76,6 +149,8 @@ async def verify_api_key(
     """
     # 1. Next.js proxy session headers (dashboard users)
     user_id, user_role = _get_session_user(request)
+    # Resolve API key from X-API-Key or Authorization: Bearer (SDK compat)
+    api_key = _read_api_key(request, api_key)
     if user_id and user_role:
         logger.debug("audit.auth.session", user_id=user_id, role=user_role, path=str(request.url.path))
         return
@@ -161,6 +236,7 @@ async def get_current_user_id(
     if user_id:
         return user_id
 
+    api_key = _read_api_key(request, api_key)
     if not api_key:
         return None
 
@@ -244,6 +320,7 @@ async def get_project_access(
             return ProjectAccess(project, member.role)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
+    api_key = _read_api_key(request, api_key)
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -314,8 +391,8 @@ async def get_active_project_id(
     if not has_env_keys and not has_db_keys:
         return project_id
 
-    # Env-var key = global admin — timing-safe comparison
-    api_key = request.headers.get("X-API-Key", "")
+    # Env-var key = global admin — timing-safe comparison (also accepts Bearer token)
+    api_key = _read_api_key(request) or ""
     if any(hmac.compare_digest(api_key, k) for k in env_keys):
         return project_id
 
@@ -381,6 +458,7 @@ async def require_admin(
     if not has_env_keys and not has_db_keys:
         return  # auth disabled
 
+    api_key = _read_api_key(request, api_key)
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

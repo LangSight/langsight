@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     # Must point to the Next.js dashboard, NOT the FastAPI backend.
     # Example: https://langsight.example.com
     dashboard_url: str | None = None
+    # Comma-separated CIDRs or IPs trusted as the Next.js proxy.
+    # Requests from these addresses may carry X-User-Id / X-User-Role headers.
+    # In Docker/K8s, add the container network range (e.g. 172.16.0.0/12).
+    trusted_proxy_cidrs: str = "127.0.0.1/32,::1/128"
 
     # Storage overrides (take precedence over .langsight.yaml)
     storage_mode: str | None = None

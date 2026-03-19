@@ -196,6 +196,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         app.state.api_keys = api_keys
         # Dashboard URL — used to construct invite links that point to the UI, not the API
         app.state.dashboard_url = settings.dashboard_url
+        # Trusted proxy networks — CIDRs whose X-User-* headers are trusted for session auth
+        from langsight.api.dependencies import parse_trusted_proxy_networks
+        app.state.trusted_proxy_networks = parse_trusted_proxy_networks(settings.trusted_proxy_cidrs)
         if api_keys:
             logger.info("api.startup.auth_enabled", key_count=len(api_keys))
         else:

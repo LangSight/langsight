@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 
 import inspect
 
-from langsight.api.dependencies import ProjectAccess, get_project_access, get_session_user, get_storage, require_admin
+from langsight.api.dependencies import ProjectAccess, _read_api_key, get_project_access, get_session_user, get_storage, require_admin
 from langsight.models import Project, ProjectMember, ProjectRole
 from langsight.storage.base import StorageBackend
 
@@ -138,7 +138,7 @@ async def list_projects(
         return result
 
     env_keys: list[str] = getattr(request.app.state, "api_keys", [])
-    api_key = request.headers.get("X-API-Key", "")
+    api_key = _read_api_key(request) or ""
 
     # 2. Auth disabled — only when NO keys exist anywhere (env or DB)
     has_env_keys = bool(env_keys)

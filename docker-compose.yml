@@ -78,6 +78,10 @@ services:
       LANGSIGHT_CORS_ORIGINS: ${LANGSIGHT_CORS_ORIGINS:-http://localhost:3003}
       # Dashboard base URL used in invite links — must point to Next.js, not FastAPI
       LANGSIGHT_DASHBOARD_URL: ${LANGSIGHT_DASHBOARD_URL:-http://localhost:3003}
+      # Trust the Next.js container's source IP for X-User-* session headers.
+      # 172.16.0.0/12 covers Docker's default bridge range; 10.0.0.0/8 covers
+      # custom Docker networks. Tighten this to the actual subnet if preferred.
+      LANGSIGHT_TRUSTED_PROXY_CIDRS: ${LANGSIGHT_TRUSTED_PROXY_CIDRS:-127.0.0.1/32,::1/128,172.16.0.0/12,10.0.0.0/8}
     ports:
       - "8000:8000"
     volumes:
