@@ -444,7 +444,7 @@ export function Sidebar() {
           </span>
         </div>
         <p className="text-[10px]" style={{ color: "hsl(var(--sidebar-muted))" }}>
-          localhost:8000 · SQLite
+          localhost:8000 · PostgreSQL
         </p>
       </div>
 

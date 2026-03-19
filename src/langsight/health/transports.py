@@ -11,6 +11,7 @@ import anyio
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool
 
 from langsight.exceptions import MCPConnectionError, MCPTimeoutError
@@ -47,10 +48,19 @@ async def _open_session(server: MCPServer) -> AsyncGenerator[ClientSession, None
             async with ClientSession(read, write) as session:
                 yield session
 
+    elif server.transport == TransportType.STREAMABLE_HTTP:
+        if not server.url:
+            raise MCPConnectionError(
+                f"Server '{server.name}': streamable_http transport requires 'url' to be set."
+            )
+        async with streamablehttp_client(server.url) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                yield session
+
     else:
         raise MCPConnectionError(
-            f"Server '{server.name}': transport '{server.transport}' is not yet supported. "
-            "Supported: stdio, sse."
+            f"Server '{server.name}': transport '{server.transport}' is not supported. "
+            "Supported: stdio, sse, streamable_http."
         )
 
 

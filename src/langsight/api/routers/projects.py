@@ -182,7 +182,7 @@ async def list_projects(
             key_hash = hashlib.sha256(api_key.encode()).hexdigest()
             record = await storage.get_api_key_by_hash(key_hash)
             if record:
-                projects = await storage.list_projects_for_user(record.id)
+                projects = await storage.list_projects_for_user(record.user_id or record.id)
 
     result = []
     for p in projects:
@@ -227,7 +227,7 @@ async def create_project(
             key_hash = hashlib.sha256(api_key.encode()).hexdigest()
             record = await storage.get_api_key_by_hash(key_hash)
             if record:
-                creator_id = record.id
+                creator_id = record.user_id or record.id
         elif not api_key and hasattr(storage, "list_users"):
             # 3. Auth disabled — use the first admin user as creator
             try:
@@ -388,7 +388,7 @@ async def add_member(
 
         record = await storage.get_api_key_by_hash(hashlib.sha256(api_key.encode()).hexdigest())
         if record:
-            adder_id = record.id
+            adder_id = record.user_id or record.id
 
     member = ProjectMember(
         project_id=project_id,

@@ -429,7 +429,8 @@ async def get_active_project_id(
         if record:
             if record.role == ApiKeyRole.ADMIN:
                 return project_id
-            member = await storage.get_member(project_id, record.id)
+            principal_id = record.user_id or record.id
+            member = await storage.get_member(project_id, principal_id)
             if member:
                 return project_id
 

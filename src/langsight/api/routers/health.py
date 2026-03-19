@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 
-from langsight.api.dependencies import get_config, get_storage
+from langsight.api.dependencies import get_config, get_storage, require_admin
 from langsight.config import LangSightConfig
 from langsight.health.checker import HealthChecker
 from langsight.models import HealthCheckResult
@@ -76,6 +76,7 @@ async def get_server_history(
 async def trigger_health_check(
     storage: StorageBackend = Depends(get_storage),
     config: LangSightConfig = Depends(get_config),
+    _: None = Depends(require_admin),
 ) -> list[HealthCheckResult]:
     """Run a health check against all configured servers immediately.
 

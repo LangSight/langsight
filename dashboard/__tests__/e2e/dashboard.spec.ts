@@ -152,8 +152,8 @@ test.describe("Costs page", () => {
     await expect(page.getByRole("button", { name: "30d" })).toBeVisible();
   });
 
-  test("shows requires ClickHouse state for SQLite backend", async ({ page }) => {
-    // With SQLite backend, costs are not supported
+  test("shows requires ClickHouse state for non-ClickHouse backend", async ({ page }) => {
+    // Without ClickHouse backend, costs are not supported
     await expect(
       page.getByText(/cost attribution requires clickhouse/i)
     ).toBeVisible({ timeout: 8_000 });
