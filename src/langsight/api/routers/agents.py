@@ -258,6 +258,7 @@ async def replay_session(
 async def compare_sessions(
     a: str = Query(..., description="First session ID"),
     b: str = Query(..., description="Second session ID"),
+    project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
 ) -> SessionComparison:
     """Return a side-by-side diff of two sessions.
@@ -279,6 +280,15 @@ async def compare_sessions(
         )
 
     result = await storage.compare_sessions(a, b)
+
+    # Project isolation: if a project filter is active, both sessions must belong to it
+    if project_id:
+        spans_a_in_project = [s for s in result["spans_a"] if s.get("project_id") == project_id]
+        spans_b_in_project = [s for s in result["spans_b"] if s.get("project_id") == project_id]
+        if result["spans_a"] and not spans_a_in_project:
+            raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Session not found.")
+        if result["spans_b"] and not spans_b_in_project:
+            raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Session not found.")
 
     if not result["spans_a"] and not result["spans_b"]:
         raise HTTPException(
