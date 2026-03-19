@@ -18,55 +18,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import status as http_status
 from pydantic import BaseModel
 
+from langsight.api.audit import append_audit  # noqa: F401 — re-export for backwards compat
 from langsight.api.dependencies import require_admin
 from langsight.storage.base import StorageBackend
 
 logger = structlog.get_logger()
 router = APIRouter(tags=["alerts"])
-
-# ---------------------------------------------------------------------------
-# Audit log helpers
-# ---------------------------------------------------------------------------
-
-
-def append_audit(
-    event: str,
-    user_id: str | None,
-    ip: str | None,
-    details: dict[str, Any] | None = None,
-    *,
-    storage: Any = None,
-) -> None:
-    """Append an event to the audit log.
-
-    When `storage` is provided (a StorageBackend instance), the event is
-    written to the persistent `audit_logs` table. This is a fire-and-forget
-    helper — it schedules an async task rather than blocking.
-
-    Called from auth/security code paths that may not have an async context;
-    the actual DB write happens asynchronously.
-    """
-    import asyncio
-
-    entry = {
-        "event": event,
-        "user_id": user_id or "system",
-        "ip": ip or "unknown",
-        "details": details or {},
-    }
-    if storage is not None and hasattr(storage, "append_audit_log"):
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(
-                storage.append_audit_log(
-                    entry["event"],
-                    entry["user_id"],
-                    entry["ip"],
-                    entry["details"],
-                )
-            )
-        except RuntimeError:
-            pass  # No running loop (e.g. called during shutdown) — skip
 
 
 # ---------------------------------------------------------------------------

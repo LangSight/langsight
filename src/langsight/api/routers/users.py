@@ -25,6 +25,7 @@ from pydantic import BaseModel, EmailStr, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from langsight.api.audit import append_audit
 from langsight.api.dependencies import get_storage, require_admin
 from langsight.models import InviteToken, User, UserRole
 from langsight.storage.base import StorageBackend
@@ -183,11 +184,14 @@ async def invite_user(
     base_url = dashboard_url.rstrip("/") if dashboard_url else str(request.base_url).rstrip("/")
     invite_url = f"{base_url}/accept-invite?token={token}"
 
-    logger.info(
-        "audit.user.invite_created",
-        email=body.email,
-        role=body.role.value,
-        client_ip=request.client.host if request.client else "unknown",
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info("audit.user.invite_created", email=body.email, role=body.role.value, client_ip=client_ip)
+    append_audit(
+        "user.invite_created",
+        None,
+        client_ip,
+        {"email": body.email, "role": body.role.value},
+        storage=storage,
     )
 
     return InviteResponse(
@@ -256,11 +260,14 @@ async def accept_invite(
     await storage.create_user(user)
     await storage.mark_invite_used(body.token)
 
-    logger.info(
-        "audit.user.account_created",
-        email=user.email,
-        role=user.role.value,
-        client_ip=request.client.host if request.client else "unknown",
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info("audit.user.account_created", email=user.email, role=user.role.value, client_ip=client_ip)
+    append_audit(
+        "user.account_created",
+        user.id,
+        client_ip,
+        {"email": user.email, "role": user.role.value},
+        storage=storage,
     )
 
     return _user_to_response(user)
@@ -307,11 +314,14 @@ async def update_role(
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    logger.info(
-        "audit.user.role_changed",
-        user_id=user_id,
-        new_role=body.role.value,
-        client_ip=request.client.host if request.client else "unknown",
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info("audit.user.role_changed", user_id=user_id, new_role=body.role.value, client_ip=client_ip)
+    append_audit(
+        "user.role_changed",
+        user_id,
+        client_ip,
+        {"new_role": body.role.value},
+        storage=storage,
     )
     return _user_to_response(user)
 
@@ -337,11 +347,9 @@ async def deactivate_user(
             detail="User not found.",
         )
 
-    logger.info(
-        "audit.user.deactivated",
-        user_id=user_id,
-        client_ip=request.client.host if request.client else "unknown",
-    )
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info("audit.user.deactivated", user_id=user_id, client_ip=client_ip)
+    append_audit("user.deactivated", user_id, client_ip, storage=storage)
 
 
 @public_router.post(

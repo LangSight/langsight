@@ -33,6 +33,7 @@ async def client(config_file: Path):
     storage.update_user_role = AsyncMock(return_value=True)
     storage.deactivate_user = AsyncMock(return_value=True)
     storage.get_user_by_id = AsyncMock(return_value=None)
+    storage.append_audit_log = AsyncMock()
     app.state.storage = storage
     app.state.config = load_config(config_file)
     app.state.dashboard_url = "http://localhost:3002"

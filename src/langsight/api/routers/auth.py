@@ -9,6 +9,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
+from langsight.api.audit import append_audit
 from langsight.api.dependencies import get_session_user, get_storage, require_admin
 from langsight.models import ApiKeyRecord, ApiKeyRole
 from langsight.storage.base import StorageBackend
@@ -107,11 +108,14 @@ async def create_api_key(
             detail="Current storage backend does not support API key management",
         )
 
-    logger.info(
-        "audit.api_key.created",
-        id=key_id,
-        name=record.name,
-        client_ip=request.client.host if request.client else "unknown",
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info("audit.api_key.created", id=key_id, name=record.name, client_ip=client_ip)
+    append_audit(
+        "api_key.created",
+        creator_user_id,
+        client_ip,
+        {"key_id": key_id, "name": record.name, "role": body.role.value},
+        storage=storage,
     )
     return ApiKeyCreatedResponse(
         id=key_id,
@@ -158,8 +162,6 @@ async def revoke_api_key(
     found = await storage.revoke_api_key(key_id)
     if not found:
         raise HTTPException(status_code=404, detail="API key not found or already revoked")
-    logger.info(
-        "audit.api_key.revoked",
-        id=key_id,
-        client_ip=request.client.host if request.client else "unknown",
-    )
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info("audit.api_key.revoked", id=key_id, client_ip=client_ip)
+    append_audit("api_key.revoked", None, client_ip, {"key_id": key_id}, storage=storage)

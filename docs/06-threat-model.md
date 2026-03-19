@@ -54,9 +54,9 @@ LangSight is a self-hosted AI agent observability platform. It ingests OTEL span
 |       | asyncpg           | asyncpg| ClickHouse HTTP               |           |
 |       v                   v        v                               |           |
 |  +----+----+        +-----+---+  +-+------------+                 |           |
-|  | SQLite  |        |Postgres |  | ClickHouse   |                 |           |
-|  | (local) |        |(Docker  |  | (Docker      |                 |           |
-|  |         |        | network)|  |  network)    |                 |           |
+|  |Postgres |        |Postgres |  | ClickHouse   |                 |           |
+|  |(metadata|        |(Docker  |  | (Docker      |                 |           |
+|  |  + RBAC)|        | network)|  |  network)    |                 |           |
 |  +---------+        +---------+  +--------------+                 |           |
 |                                                                               |
 |   +-------------------------------------------------------------------+       |
@@ -122,7 +122,7 @@ The CLI reads `.langsight.yaml` from the working directory or `~/.langsight.yaml
 | `/api/agents/sessions/{id}/replay` | POST | API key | **admin** | none | Executes tool calls against live MCP servers |
 | `/api/agents/sessions/compare` | GET | API key | viewer+ | none | Reads two session traces |
 | `/api/security/scan` | POST | API key | **admin** | none | Opens MCP server connections |
-| `/api/slos` | POST/DELETE | API key | **admin** | none | Writes SLO definitions to Postgres/SQLite |
+| `/api/slos` | POST/DELETE | API key | **admin** | none | Writes SLO definitions to Postgres |
 | `/api/reliability/anomalies` | GET | API key | viewer+ | none | Reads ClickHouse aggregates |
 | `/api/costs` | GET | API key | viewer+ | none | Reads ClickHouse cost aggregates |
 | `/api/status` | GET | none | public | none | Returns `{"status": "ok"}` |
@@ -160,11 +160,11 @@ The CLI runs on the operator's local machine and connects directly to MCP server
 | LLM prompts/completions (opt-in) | `llm_input`, `llm_output` | ClickHouse `mcp_tool_calls` | 90 days TTL | **High** — may contain PII or proprietary content |
 | MCP server configs | server names, commands, env var references | `.langsight.yaml` only, not stored in DB | Config file lifetime | Medium |
 | API keys (raw) | `ls_live_...` prefixed keys | Never stored — shown once at creation | N/A | Critical |
-| API keys (hashed) | SHA-256 hashes | SQLite `api_keys` / Postgres `api_keys` | Until revoked | Medium |
+| API keys (hashed) | SHA-256 hashes | Postgres `api_keys` | Until revoked | Medium |
 | Health check results | latency, status, schema hashes | ClickHouse `mcp_health_checks` | 90 days TTL | Low |
-| Audit log entries | actor key prefix, action, timestamp, source IP | SQLite/Postgres `audit_log` | 1 year | Medium |
+| Audit log entries | actor key prefix, action, timestamp, source IP | Postgres `audit_log` | 1 year | Medium |
 | Session metadata | agent name, session ID, duration, error count | ClickHouse `mcp_tool_calls` aggregated | 90 days TTL | Low |
-| SLO definitions | metric type, target value, agent name | SQLite/Postgres `agent_slos` | Until deleted | Low |
+| SLO definitions | metric type, target value, agent name | Postgres `agent_slos` | Until deleted | Low |
 
 ### PII risk note
 
@@ -375,7 +375,7 @@ attacker modifies MCP server (supply chain or runtime tampering)
 **Impact**: Indirect prompt injection into agent workflows; potential data exfiltration or unauthorized actions.
 
 **Mitigations**:
-- `poisoning_detector.py` compares current tool descriptions against baseline schema snapshots stored in SQLite/Postgres.
+- `poisoning_detector.py` compares current tool descriptions against baseline schema snapshots stored in PostgreSQL.
 - Schema hash mismatch triggers a `SCHEMA_DRIFT` alert.
 - Security scanner (`owasp_checker.py`) inspects tool descriptions for known injection patterns.
 
@@ -424,7 +424,7 @@ attacker (valid admin key) → POST /api/agents/sessions/{arbitrary_id}/replay
               |                            |
               |          [Internal Docker network: langsight_net]
               |             |              |              |
-        [PostgreSQL]  [ClickHouse]  [OTEL Collector]  [SQLite volume]
+        [PostgreSQL]  [ClickHouse]  [OTEL Collector]
            5432/5433   8123/9000    4317/4318 (internal only)
 ```
 

@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import status as http_status
 from pydantic import BaseModel, Field
 
+from langsight.api.audit import append_audit
 from langsight.api.dependencies import (
     ProjectAccess,
     _read_api_key,
@@ -261,6 +262,13 @@ async def create_project(
     logger.info(
         "audit.project.created", project_id=project.id, name=project.name, creator=creator_id
     )
+    append_audit(
+        "project.created",
+        creator_id,
+        request.client.host if request.client else "unknown",
+        {"project_id": project.id, "name": project.name},
+        storage=storage,
+    )
     return _project_to_response(project, role="owner", member_count=1)
 
 
@@ -307,6 +315,13 @@ async def update_project(
     updated = await storage.get_project(project_id)
     members = await storage.list_members(project_id)
     logger.info("audit.project.updated", project_id=project_id, name=body.name)
+    append_audit(
+        "project.updated",
+        None,
+        request.client.host if request.client else "unknown",
+        {"project_id": project_id, "name": body.name.strip(), "slug": slug},
+        storage=storage,
+    )
     return _project_to_response(updated, role=access.role.value, member_count=len(members))  # type: ignore[arg-type]
 
 
@@ -328,11 +343,9 @@ async def delete_project(
             detail="Only project owners can delete a project.",
         )
     await storage.delete_project(project_id)
-    logger.info(
-        "audit.project.deleted",
-        project_id=project_id,
-        client_ip=request.client.host if request.client else "unknown",
-    )
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info("audit.project.deleted", project_id=project_id, client_ip=client_ip)
+    append_audit("project.deleted", None, client_ip, {"project_id": project_id}, storage=storage)
 
 
 # ---------------------------------------------------------------------------
@@ -403,6 +416,13 @@ async def add_member(
         project_id=project_id,
         user_id=body.user_id,
         role=body.role.value,
+    )
+    append_audit(
+        "project.member_added",
+        adder_id,
+        request.client.host if request.client else "unknown",
+        {"project_id": project_id, "user_id": body.user_id, "role": body.role.value},
+        storage=storage,
     )
     return MemberResponse(
         user_id=member.user_id,

@@ -30,6 +30,7 @@ async def client(config_file: Path):
     storage.revoke_api_key = AsyncMock(return_value=True)
     storage.get_api_key_by_hash = AsyncMock(return_value=None)
     storage.touch_api_key = AsyncMock()
+    storage.append_audit_log = AsyncMock()
     app.state.storage = storage
     app.state.config = load_config(config_file)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:

@@ -59,20 +59,20 @@ Phase 10 (Multi-tenancy)        ████████████████
 
 ### 1.1 What is IN the MVP
 
-The MVP is a **CLI-first tool** that any engineer can install and run in under 60 seconds against their local MCP configuration. No server infrastructure required. SQLite for local storage.
+The MVP is a **CLI-first tool** that any engineer can install and run against their local MCP configuration. Docker Compose is required (`docker compose up -d` for PostgreSQL + ClickHouse).
 
 | # | Feature | Description |
 |---|---------|-------------|
 | 1 | **MCP Discovery** | Auto-detect MCP servers from `claude_desktop_config.json`, `mcp.json`, `.cursor/mcp.json` |
 | 2 | **Server Inventory** | List all MCP servers with transport type, status, tool count, version |
 | 3 | **Health Checks** | Connect to each MCP server, call `tools/list`, validate response, measure latency |
-| 4 | **Schema Snapshots** | Record tool input/output schemas in SQLite, detect drift on subsequent runs |
+| 4 | **Schema Snapshots** | Record tool input/output schemas in PostgreSQL, detect drift on subsequent runs |
 | 5 | **Schema Diff** | Show breaking vs. non-breaking schema changes between snapshots |
 | 6 | **Security Scanner (Basic)** | CVE scanning via OSV API, tool description injection detection, auth audit |
 | 7 | **OWASP MCP Top 10 Checks** | Automated audit for the top 10 MCP security risks |
 | 8 | **Health Scoring** | Composite 0-100 score per server based on availability, latency, schema stability |
 | 9 | **CLI Interface** | `agentguard inventory`, `agentguard health check`, `agentguard security scan`, `agentguard schema diff` |
-| 10 | **Local Storage** | SQLite backend for schema history, scan results, health snapshots |
+| 10 | **Local Storage** | PostgreSQL backend for schema history, scan results, health snapshots |
 | 11 | **Webhook Alerting** | Basic webhook (Slack-compatible) for critical findings |
 | 12 | **JSON/YAML Output** | Machine-readable output for CI/CD integration |
 
@@ -107,7 +107,7 @@ The MVP is "done" when all of the following are true:
 | 7 | `agentguard security scan` flags MCP servers with no authentication | Test with an unauthenticated server |
 | 8 | JSON output works for all commands (`--format json`) | Pipe output to `jq` and validate structure |
 | 9 | Webhook alerting fires on critical security findings | Configure a Slack webhook, verify message arrives |
-| 10 | All data persists in SQLite across runs | Run health check twice, verify schema history exists |
+| 10 | All data persists in PostgreSQL across runs | Run health check twice, verify schema history exists |
 | 11 | Total setup time under 60 seconds | Time the install-to-first-scan experience |
 | 12 | Works on macOS and Linux (x86_64 and arm64) | Test on both platforms |
 
@@ -130,7 +130,7 @@ The MVP is "done" when all of the following are true:
 | W1.1 | Initialize repository: `pyproject.toml` (Poetry), `ruff.toml`, `mypy.ini`, `.pre-commit-config.yaml`, GitHub Actions CI | 4h |
 | W1.2 | Create directory structure per repo layout (Section 4) | 2h |
 | W1.3 | Docker Compose for development: ClickHouse + PostgreSQL + OTEL Collector (for future phases) | 4h |
-| W1.4 | SQLite schema design and migration system (Alembic-lite or manual versioned SQL) | 4h |
+| W1.4 | PostgreSQL schema design and migration system (Alembic) | 4h |
 | W1.5 | PostgreSQL schema design (for server mode in future phases) | 3h |
 | W1.6 | ClickHouse schema design for traces and metrics (for Phase 3) | 3h |
 | W1.7 | CLI skeleton with Click: `agentguard` entrypoint, `--help`, `--version`, `--format`, `--config` | 4h |
@@ -142,7 +142,7 @@ The MVP is "done" when all of the following are true:
 - Repository with CI running on every push (lint, type-check, test)
 - `agentguard --help` outputs command tree
 - `docker compose up` starts ClickHouse + PostgreSQL (empty but schema-ready)
-- SQLite schema created on first CLI run
+- PostgreSQL schema created on first `docker compose up -d`
 - Config loading from `~/.agentguard/config.yaml` with env var overrides
 
 **Acceptance Criteria**:
@@ -156,7 +156,7 @@ The MVP is "done" when all of the following are true:
 
 #### Week 2: MCP Health Checker Service
 
-**Objective**: Connect to MCP servers, enumerate tools, run health checks, store results in SQLite.
+**Objective**: Connect to MCP servers, enumerate tools, run health checks, store results in PostgreSQL.
 
 | Task | Description | Est. Hours |
 |------|-------------|-----------|
@@ -165,23 +165,23 @@ The MVP is "done" when all of the following are true:
 | W2.3 | MCP transport layer: SSE client (HTTP + Server-Sent Events) | 6h |
 | W2.4 | MCP protocol implementation: `initialize`, `tools/list`, `tools/call` JSON-RPC messages | 6h |
 | W2.5 | Health check engine: connect, enumerate tools, measure latency, validate responses | 6h |
-| W2.6 | Schema snapshot service: hash tool schemas, store in SQLite with timestamps | 4h |
+| W2.6 | Schema snapshot service: hash tool schemas, store in PostgreSQL with timestamps | 4h |
 | W2.7 | Schema diff engine: compare two snapshots, classify changes as breaking/non-breaking | 4h |
 | W2.8 | Health scoring algorithm: composite score from availability, latency, schema stability | 3h |
-| W2.9 | SQLite repository layer: CRUD for servers, tools, health results, schema snapshots | 4h |
+| W2.9 | PostgreSQL repository layer: CRUD for servers, tools, health results, schema snapshots | 4h |
 | W2.10 | Integration tests with a mock MCP server (stdio) | 4h |
 
 **Deliverables**:
 - MCP client that connects to stdio and SSE servers
 - Health check engine that probes all discovered servers
-- Schema snapshots stored in SQLite
+- Schema snapshots stored in PostgreSQL
 - Schema diff algorithm with breaking/non-breaking classification
 
 **Acceptance Criteria**:
 - [ ] MCP client connects to a stdio MCP server and retrieves tool list
 - [ ] MCP client connects to an SSE MCP server and retrieves tool list
 - [ ] Health check measures latency within 10% accuracy (compared to manual measurement)
-- [ ] Schema snapshot is stored and retrievable from SQLite
+- [ ] Schema snapshot is stored and retrievable from PostgreSQL
 - [ ] Schema diff correctly identifies: added field, removed field (breaking), renamed field (breaking), type change (breaking)
 - [ ] Integration test with mock MCP server passes
 
@@ -256,7 +256,7 @@ The MVP is "done" when all of the following are true:
 - CVE scanner using OSV API
 - 10 OWASP MCP Top 10 rules implemented
 - Auth auditor detecting auth types and gaps
-- Security findings stored in SQLite
+- Security findings stored in PostgreSQL
 
 **Acceptance Criteria**:
 - [ ] CVE scanner finds known CVE in a test `package.json` with a vulnerable dependency
@@ -264,7 +264,7 @@ The MVP is "done" when all of the following are true:
 - [ ] Each OWASP rule has at least one positive and one negative test case
 - [ ] Auth auditor correctly identifies: no auth, API key, OAuth, mTLS
 - [ ] Auth auditor flags servers with no authentication as HIGH severity
-- [ ] All findings stored in SQLite with full metadata
+- [ ] All findings stored in PostgreSQL with full metadata
 
 ---
 
@@ -714,7 +714,7 @@ The MVP is "done" when all of the following are true:
 | Task | Description | Status |
 |------|-------------|--------|
 | P5.5.1 | New models: `SLOMetric` StrEnum (`success_rate`, `latency_p99`), `AgentSLO` Pydantic model (`id`, `agent_name`, `metric`, `target`, `window_hours`, `created_at`), `SLOEvaluation` Pydantic model (`slo_id`, `agent_name`, `metric`, `target`, `current_value`, `window_hours`, `status`, `evaluated_at`) | ✅ Done |
-| P5.5.2 | `agent_slos` table in SQLite and PostgreSQL; `create_slo`, `list_slos`, `get_slo`, `delete_slo` added to `StorageBackend` protocol and both backends | ✅ Done |
+| P5.5.2 | `agent_slos` table in PostgreSQL; `create_slo`, `list_slos`, `get_slo`, `delete_slo` added to `StorageBackend` protocol | ✅ Done |
 | P5.5.3 | `SLOEvaluator` in `src/langsight/reliability/engine.py` — evaluates SLOs against `get_agent_sessions()` data; `success_rate` = `(clean_sessions / total_sessions) * 100`; `latency_p99` uses `max(duration_ms)` as conservative proxy | ✅ Done |
 | P5.5.4 | CLI: `langsight slo list` and `langsight slo status` not yet added (API and dashboard shipped; CLI deferred) | Deferred |
 | P5.5.5 | `GET /api/slos/status`, `GET /api/slos`, `POST /api/slos`, `DELETE /api/slos/{slo_id}` in `src/langsight/api/routers/slos.py`; router registered at `/api` with auth dependency in `api/main.py` | ✅ Done |
@@ -811,16 +811,16 @@ Project-level roles (new — on ProjectMember):
 | P6.1.1 | Add `ProjectRole` StrEnum (`owner`, `member`, `viewer`) to `src/langsight/models.py` | `src/langsight/models.py` | [ ] |
 | P6.1.2 | Add `Project` Pydantic model (`id: str` uuid4 hex, `name: str`, `slug: str` url-safe unique, `created_by: str`, `created_at: datetime`) | `src/langsight/models.py` | [ ] |
 | P6.1.3 | Add `ProjectMember` Pydantic model (`project_id`, `user_id`, `role: ProjectRole`, `added_by`, `added_at`) | `src/langsight/models.py` | [ ] |
-| P6.1.4 | `projects` table — SQLite DDL (`src/langsight/storage/sqlite.py`) and Postgres DDL (`src/langsight/storage/postgres.py`) | `storage/sqlite.py`, `storage/postgres.py` | [ ] |
-| P6.1.5 | `project_members` table — SQLite and Postgres DDL, unique constraint on `(project_id, user_id)` | `storage/sqlite.py`, `storage/postgres.py` | [ ] |
+| P6.1.4 | `projects` table — Postgres DDL (`src/langsight/storage/postgres.py`) | `storage/postgres.py` | [ ] |
+| P6.1.5 | `project_members` table — Postgres DDL, unique constraint on `(project_id, user_id)` | `storage/postgres.py` | [ ] |
 | P6.1.6 | Add `project_id String DEFAULT ''` column to ClickHouse `mcp_tool_calls` (ALTER TABLE + migration script) | `storage/clickhouse.py`, `migrations/` | [ ] |
-| P6.1.7 | Add `project_id TEXT` column to `agent_slos` table — SQLite and Postgres | `storage/sqlite.py`, `storage/postgres.py` | [ ] |
-| P6.1.8 | Add `project_id TEXT` column to `api_keys` table (nullable — NULL = all-project key) | `storage/sqlite.py`, `storage/postgres.py` | [ ] |
+| P6.1.7 | Add `project_id TEXT` column to `agent_slos` table — Postgres | `storage/postgres.py` | [ ] |
+| P6.1.8 | Add `project_id TEXT` column to `api_keys` table (nullable — NULL = all-project key) — Postgres | `storage/postgres.py` | [ ] |
 | P6.1.9 | Alembic migration covering `projects`, `project_members`, `agent_slos.project_id`, `api_keys.project_id` | `alembic/versions/` | [ ] |
 
 **Acceptance Criteria**:
 - [ ] `Project` and `ProjectMember` models importable from `langsight.models`
-- [ ] `projects` and `project_members` tables exist in SQLite after first open
+- [ ] `projects` and `project_members` tables exist in PostgreSQL after first migration
 - [ ] Alembic migration runs cleanly on a fresh Postgres database
 - [ ] `mcp_tool_calls` in ClickHouse has `project_id` column (migration script idempotent)
 - [ ] `agent_slos` and `api_keys` have `project_id` column
@@ -834,9 +834,9 @@ Project-level roles (new — on ProjectMember):
 | P6.2.1 | Add project CRUD protocol methods to `StorageBackend`: `create_project`, `get_project`, `get_project_by_slug`, `list_projects`, `update_project`, `delete_project` | `src/langsight/storage/base.py` | [ ] |
 | P6.2.2 | Add membership protocol methods: `add_member`, `get_member`, `list_members`, `update_member_role`, `remove_member` | `src/langsight/storage/base.py` | [ ] |
 | P6.2.3 | Add `list_projects_for_user(user_id)` — returns projects where user has any membership | `src/langsight/storage/base.py` | [ ] |
-| P6.2.4 | Implement all project + member methods on `SQLiteBackend` | `src/langsight/storage/sqlite.py` | [ ] |
+| P6.2.4 | Implement all project + member methods on `PostgresBackend` | `src/langsight/storage/postgres.py` | [ ] |
 | P6.2.5 | Implement all project + member methods on `PostgresBackend` | `src/langsight/storage/postgres.py` | [ ] |
-| P6.2.6 | Unit tests for SQLite project/member CRUD | `tests/unit/storage/test_projects_sqlite.py` | [ ] |
+| P6.2.6 | Unit tests for Postgres project/member CRUD | `tests/unit/storage/test_projects_postgres.py` | [ ] |
 | P6.2.7 | Integration tests for Postgres project/member CRUD | `tests/integration/storage/test_projects_postgres.py` | [ ] |
 
 **Acceptance Criteria**:
@@ -844,7 +844,7 @@ Project-level roles (new — on ProjectMember):
 - [ ] `get_project_by_slug` returns `None` for unknown slugs (not an exception)
 - [ ] `list_projects_for_user` returns only projects the user is a member of
 - [ ] `delete_project` cascades to `project_members` (foreign key or explicit delete)
-- [ ] All methods covered by unit tests with in-memory SQLite
+- [ ] All methods covered by unit tests against PostgreSQL
 
 ---
 
@@ -975,7 +975,7 @@ client = LangSightClient(
 | Sub-phase | Description | Key files | Status |
 |-----------|-------------|-----------|--------|
 | P6.1 | Data model — `Project`, `ProjectMember`, schema migrations | `models.py`, `storage/*.py`, `alembic/` | NOT STARTED |
-| P6.2 | Storage layer — project + member CRUD on all backends | `storage/base.py`, `storage/sqlite.py`, `storage/postgres.py` | NOT STARTED |
+| P6.2 | Storage layer — project + member CRUD on all backends | `storage/base.py`, `storage/postgres.py` | NOT STARTED |
 | P6.3 | API middleware + `/api/projects` router | `api/dependencies.py`, `api/routers/projects.py` | NOT STARTED |
 | P6.4 | Scope existing endpoints by `project_id` | `api/routers/agents.py`, `traces.py`, `costs.py`, `slos.py`, `reliability.py` | NOT STARTED |
 | P6.5 | SDK: `project_id` param on `LangSightClient` | `sdk/client.py`, `sdk/models.py` | NOT STARTED |
@@ -1018,7 +1018,7 @@ For each span:
 
 **Goal**: Persistent, version-tracked model pricing table with seed data for 18 models across 5 providers.
 
-**Schema** (`model_pricing` — added to SQLite and PostgreSQL):
+**Schema** (`model_pricing` — added to PostgreSQL):
 ```sql
 model_pricing (
     id                    TEXT PRIMARY KEY,          -- uuid4 hex
@@ -1039,14 +1039,14 @@ model_pricing (
 | Task | Description | Files Affected | Status |
 |------|-------------|----------------|--------|
 | P7.1.1 | Add `ModelPricingEntry` Pydantic model to `src/langsight/models.py` with all columns above | `src/langsight/models.py` | [ ] |
-| P7.1.2 | SQLite DDL for `model_pricing` table (CREATE TABLE IF NOT EXISTS) in `storage/sqlite.py` `_DDL` constant | `src/langsight/storage/sqlite.py` | [ ] |
+| P7.1.2 | Postgres DDL for `model_pricing` table (CREATE TABLE IF NOT EXISTS) in `storage/postgres.py` `_DDL` constant | `src/langsight/storage/postgres.py` | [ ] |
 | P7.1.3 | Postgres DDL for `model_pricing` table in `storage/postgres.py` `_DDL` constant | `src/langsight/storage/postgres.py` | [ ] |
 | P7.1.4 | Alembic migration `add_model_pricing` — creates table + inserts all 18 seed rows | `alembic/versions/` | [ ] |
-| P7.1.5 | SQLite seed data — insert all 18 rows on first `_DDL` open (idempotent via `INSERT OR IGNORE`) | `src/langsight/storage/sqlite.py` | [ ] |
+| P7.1.5 | Postgres seed data — insert all 18 rows on first migration (idempotent via `ON CONFLICT DO NOTHING`) | `src/langsight/storage/postgres.py` | [ ] |
 | P7.1.6 | Add `StorageBackend` protocol methods: `create_model_pricing`, `list_model_pricing`, `get_model_pricing_by_model_id`, `update_model_pricing`, `deactivate_model_pricing` | `src/langsight/storage/base.py` | [ ] |
-| P7.1.7 | Implement all five protocol methods on `SQLiteBackend` | `src/langsight/storage/sqlite.py` | [ ] |
+| P7.1.7 | Implement all five protocol methods on `PostgresBackend` | `src/langsight/storage/postgres.py` | [ ] |
 | P7.1.8 | Implement all five protocol methods on `PostgresBackend` | `src/langsight/storage/postgres.py` | [ ] |
-| P7.1.9 | Unit tests for `get_model_pricing_by_model_id` (hit + miss), `deactivate_model_pricing` (sets `effective_to`), and all seed rows present after init | `tests/unit/storage/test_model_pricing_sqlite.py` | [ ] |
+| P7.1.9 | Unit tests for `get_model_pricing_by_model_id` (hit + miss), `deactivate_model_pricing` (sets `effective_to`), and all seed rows present after init | `tests/unit/storage/test_model_pricing_postgres.py` | [ ] |
 
 **Seed data** (18 models, inserted at migration time):
 
@@ -1070,7 +1070,7 @@ model_pricing (
 | aws | amazon.nova-lite-v1 | $0.06 | $0.24 | Public pricing 2026-03 |
 
 **Acceptance Criteria**:
-- [ ] `model_pricing` table created in SQLite and Postgres via respective DDL paths
+- [ ] `model_pricing` table created in Postgres via DDL / Alembic migration
 - [ ] Alembic migration `add_model_pricing` runs cleanly on fresh Postgres
 - [ ] All 16 seed models present after first open (`SELECT COUNT(*) FROM model_pricing` = 16)
 - [ ] `get_model_pricing_by_model_id("claude-sonnet-4-6")` returns `input_per_1m_usd=3.0`, `output_per_1m_usd=15.0`
@@ -1252,7 +1252,7 @@ class CreateModelPricingRequest(BaseModel):
 
 | Sub-phase | Description | Key files | Status |
 |-----------|-------------|-----------|--------|
-| P7.1 | `model_pricing` table + 16 seed rows + StorageBackend protocol | `models.py`, `storage/sqlite.py`, `storage/postgres.py`, `storage/base.py`, `alembic/` | NOT STARTED |
+| P7.1 | `model_pricing` table + 16 seed rows + StorageBackend protocol | `models.py`, `storage/postgres.py`, `storage/base.py`, `alembic/` | NOT STARTED |
 | P7.2 | Token fields on `ToolCallSpan`, ClickHouse DDL, OTLP parser | `sdk/models.py`, `storage/clickhouse.py`, `api/routers/traces.py` | NOT STARTED |
 | P7.3 | Token-based cost engine + project scoping on all cost endpoints | `costs/engine.py`, `api/routers/costs.py` | NOT STARTED |
 | P7.4 | CRUD API for model pricing management | `api/routers/costs.py` | NOT STARTED |
@@ -1491,7 +1491,7 @@ useSWR(`/api/costs/breakdown?hours=${hours}${projectParam}`, getCostsBreakdown);
 
 Check every `useSWR` call in every dashboard page — add `projectParam` to the key and the fetch URL.
 
-#### Task P10.5 — SQLite + Postgres backends
+#### Task P10.5 — Postgres backends
 
 Both backends have `agent_slos` with `project_id`. Apply same filter pattern for consistency.
 
@@ -1519,7 +1519,6 @@ async def test_get_sessions_filters_by_project():
 
 ```
 src/langsight/storage/clickhouse.py       UPDATE — add project_id param to all queries
-src/langsight/storage/sqlite.py           UPDATE — agent_slos query filter
 src/langsight/storage/postgres.py         UPDATE — agent_slos query filter
 src/langsight/api/dependencies.py         UPDATE — get_active_project_id dependency
 src/langsight/api/routers/agents.py       UPDATE — pass project_id to storage
@@ -1682,7 +1681,7 @@ After studying Langfuse's adoption model, we identified a critical gap: engineer
 | CLI: `langsight security-scan` | ✅ Done |
 | CLI: `langsight monitor` | ✅ Done |
 | CLI: `langsight serve` (FastAPI) | ✅ Done |
-| Storage: SQLiteBackend | ✅ Done |
+| Storage: PostgresBackend | ✅ Done |
 | Storage: PostgresBackend | ✅ Done |
 | Storage: `open_storage()` factory | ✅ Done |
 | FastAPI REST API: `/api/health/*` | ✅ Done |
@@ -1837,13 +1836,13 @@ cp integrations/librechat/langsight-plugin.js /path/to/librechat/plugins/
 | Task | Description | Est. Hours |
 |------|-------------|-----------|
 | API.1 | `src/langsight/api/routers/traces.py`: `POST /api/traces/spans` — accept `ToolCallSpan` batch | 4h |
-| API.2 | Write spans to storage backend (SQLite in dev, PostgreSQL in production) | 3h |
+| API.2 | Write spans to storage backend (PostgreSQL for metadata, ClickHouse for traces) | 3h |
 | API.3 | `GET /api/traces/spans`: query spans by server, tool, time range, success status | 3h |
 | API.4 | Tests: verify ingestion, verify query filtering | 3h |
 
 **Acceptance Criteria**:
 - [ ] `POST /api/traces/spans` accepts a batch of up to 1000 spans
-- [ ] Spans are queryable within 1 second of ingestion (SQLite) and 5 seconds (PostgreSQL)
+- [ ] Spans are queryable within 5 seconds of ingestion (PostgreSQL/ClickHouse)
 - [ ] `GET /api/traces/spans?tool=my_tool&since=2026-03-17T00:00:00Z` returns correct results
 
 ---
@@ -1857,7 +1856,7 @@ cp integrations/librechat/langsight-plugin.js /path/to/librechat/plugins/
 | Task | Description | Est. Hours |
 |------|-------------|-----------|
 | AG.1 | Add `parent_span_id: str \| None` and `agent_name: str \| None` and `span_type: Literal["tool_call", "agent", "handoff"]` to `ToolCallSpan` model in `src/langsight/sdk/models.py` | 2h |
-| AG.2 | Add `span_type` values to storage schemas (SQLite DDL + PostgreSQL migration) | 2h |
+| AG.2 | Add `span_type` values to storage schemas (PostgreSQL migration + ClickHouse DDL) | 2h |
 | AG.3 | `GET /api/agents/sessions` — list all agent sessions with aggregated cost, call count, failure count, start/end time | 4h |
 | AG.4 | `GET /api/agents/sessions/{session_id}` — full ordered span tree for one session; reconstruct hierarchy from `parent_span_id` | 4h |
 | AG.5 | `langsight sessions` CLI command — Rich table of recent sessions with cost and health | 4h |
@@ -2356,8 +2355,6 @@ agentguard/
 |   |-- Dockerfile
 |
 |-- migrations/
-|   |-- sqlite/
-|   |   |-- 001_initial.sql              # Local storage schema
 |   |-- postgresql/
 |   |   |-- 001_initial.sql              # Server-mode schema
 |   |   |-- 002_alerting.sql             # Alert rules and history
@@ -2494,8 +2491,7 @@ agentguard/
 |   |   |
 |   |   |-- storage/
 |   |   |   |-- __init__.py
-|   |   |   |-- sqlite.py               # SQLite backend (local mode)
-|   |   |   |-- postgresql.py           # PostgreSQL backend (server mode)
+|   |   |   |-- postgresql.py           # PostgreSQL backend (metadata)
 |   |   |   |-- clickhouse.py           # ClickHouse client wrapper
 |   |   |   |-- models.py              # Storage data models
 |   |   |
@@ -2617,12 +2613,12 @@ agentguard/
 | `src/agentguard/alerting/` | Alert rule engine, deduplication, notification channels. |
 | `src/agentguard/rca/` | Root cause analysis: Claude Agent SDK, evidence collection, fallback. |
 | `src/agentguard/server/` | FastAPI application serving REST API and WebSocket for dashboard. |
-| `src/agentguard/storage/` | Database backends: SQLite (local), PostgreSQL (server), ClickHouse (traces). |
+| `src/agentguard/storage/` | Database backends: PostgreSQL (metadata), ClickHouse (traces). |
 | `src/agentguard/monitor/` | Long-running monitoring daemon with scheduling and process management. |
 | `src/agentguard/config/` | Configuration loading, validation, and defaults. |
 | `src/agentguard/common/` | Shared utilities: logging, exceptions, constants, PII redaction. |
 | `dashboard/` | Next.js web dashboard (Phase 6). Separate build artifact. |
-| `migrations/` | Database schema migrations for SQLite, PostgreSQL, and ClickHouse. |
+| `migrations/` | Database schema migrations for PostgreSQL and ClickHouse. |
 | `config/` | Example configuration files and OTEL Collector config. |
 | `docker/` | Docker images and Compose files for all deployment modes. |
 | `helm/` | Helm chart for Kubernetes deployment. |
@@ -2985,7 +2981,7 @@ STEPS:
 
   2. [T+30s] AgentGuard health check detects latency regression
      VERIFY: Health score for mcp-snowflake drops
-     VERIFY: Latency anomaly recorded in SQLite/PostgreSQL
+     VERIFY: Latency anomaly recorded in PostgreSQL
 
   3. [T+60s] Agent traces show increased error rates (some calls timeout)
      VERIFY: ClickHouse contains spans with status=DEADLINE_EXCEEDED

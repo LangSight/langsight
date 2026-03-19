@@ -767,7 +767,7 @@ Run 'langsight mcp-health' for detailed health analysis
 
 | Feature | Description | Priority |
 |---------|-------------|----------|
-| SQLite backend | Store health snapshots, schema history, scan results locally | P0 |
+| PostgreSQL backend | Store health snapshots, schema history, scan results in PostgreSQL | P0 |
 | Schema history | Versioned record of every tool's schema over time | P0 |
 | Scan history | Historical security scan results for trend analysis | P0 |
 | Data retention | Configurable retention period (default: 90 days) | P1 |
@@ -1143,7 +1143,7 @@ LangSight does NOT (in Phase 2):
 - Replace ClickHouse or Prometheus as a long-term metrics store (Phase 3)
 - Provide a full distributed tracing solution
 
-LangSight DOES: provide a 2-line SDK integration today that produces the same MCP tool call visibility, stored in SQLite/PostgreSQL until ClickHouse is stood up in Phase 3.
+LangSight DOES: provide a 2-line SDK integration today that produces the same MCP tool call visibility, stored in PostgreSQL until ClickHouse is stood up in Phase 3.
 
 ### 6.6 Not a General-Purpose APM
 
@@ -1300,9 +1300,9 @@ Commercial features are available under a separate commercial license (BSL or pr
 
 1. **CLI-first**: Every feature must work from the CLI before it gets a dashboard. This ensures the core is useful without infrastructure and encourages scriptability.
 
-2. **Zero mandatory dependencies**: The CLI should work with just a single binary and SQLite. PostgreSQL, Prometheus, Langfuse, etc. are optional integrations, not requirements.
+2. **Docker Compose required**: The CLI requires `docker compose up -d` (PostgreSQL + ClickHouse) before first use. Prometheus, Langfuse, etc. are optional integrations.
 
-3. **Batteries included, but swappable**: Ship with sensible defaults (SQLite storage, built-in alerting, embedded dashboard) but allow every component to be swapped for an external equivalent (PostgreSQL, Alertmanager, Grafana).
+3. **Batteries included, but swappable**: Ship with sensible defaults (PostgreSQL + ClickHouse via Docker Compose, built-in alerting, embedded dashboard) but allow every component to be swapped for an external equivalent (managed Postgres, ClickHouse Cloud, Alertmanager, Grafana).
 
 4. **MCP-native**: Use MCP protocol primitives wherever possible. LangSight itself could expose an MCP server that agents can call to check tool health before invoking tools.
 
@@ -1317,7 +1317,7 @@ Commercial features are available under a separate commercial license (BSL or pr
 | CLI | Go | Single binary distribution, fast execution, cross-platform |
 | Server | Go | Performance, concurrency, Kubernetes ecosystem alignment |
 | Dashboard | React + TypeScript | Large contributor pool, fast iteration |
-| Storage (local) | SQLite | Zero-dependency, embedded, portable |
+| Storage (metadata) | PostgreSQL | Battle-tested, relational integrity, Docker Compose |
 | Storage (server) | PostgreSQL | Battle-tested, open-source, extensible |
 | Metrics format | OpenTelemetry + Prometheus | Industry standards, maximum interoperability |
 | Security DB | OSV (Google Open Source Vulnerabilities) | Open, comprehensive, API-accessible |

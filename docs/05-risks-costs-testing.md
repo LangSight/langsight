@@ -50,7 +50,7 @@
 | **Description** | ClickHouse is chosen for trace storage because of its columnar storage efficiency and fast analytical queries over high-volume time-series data. However, ClickHouse has a steep operational learning curve: MergeTree table engine tuning, partition management, materialized view maintenance, memory management, and backup/restore procedures. A solo developer must operate ClickHouse in addition to PostgreSQL and the application itself. |
 | **Likelihood** | **Medium** -- ClickHouse is well-documented and Docker makes it easy to run locally. But production tuning (memory limits, merge settings, TTL policies) requires specialized knowledge. |
 | **Impact** | **High** -- ClickHouse issues (OOM kills, slow merges, disk space exhaustion) would take down trace ingestion and reliability analytics entirely, affecting Phases 3-6. |
-| **Mitigation** | 1. Use conservative ClickHouse defaults: small buffer sizes, aggressive TTL (30-day default retention), simple MergeTree (not ReplicatedMergeTree). 2. Document a "ClickHouse runbook" with common troubleshooting steps. 3. Add ClickHouse health checks to AgentGuard's own monitoring (dogfooding). 4. For SaaS: use ClickHouse Cloud (managed) to eliminate operational burden. 5. Design the system so ClickHouse is optional: CLI features (discovery, health checks, security scanning) work without ClickHouse. Only reliability analytics and cost attribution require it. 6. Provide a SQLite-backed "lite mode" for users who want reliability metrics without ClickHouse (limited to lower volume). |
+| **Mitigation** | 1. Use conservative ClickHouse defaults: small buffer sizes, aggressive TTL (30-day default retention), simple MergeTree (not ReplicatedMergeTree). 2. Document a "ClickHouse runbook" with common troubleshooting steps. 3. Add ClickHouse health checks to AgentGuard's own monitoring (dogfooding). 4. For SaaS: use ClickHouse Cloud (managed) to eliminate operational burden. 5. Design the system so ClickHouse is optional: CLI features (discovery, health checks, security scanning) work without ClickHouse via `mode: postgres`. Only reliability analytics and cost attribution require it. |
 
 ---
 
@@ -510,7 +510,7 @@ class TestHealthChecker:
         assert result.status == "DEGRADED"
         assert result.score < 70
 
-    def test_schema_change_detected(self, mock_transport, sqlite_db):
+    def test_schema_change_detected(self, mock_transport, postgres_db):
         """When a tool's schema changes between checks, the diff should be recorded."""
         # First check: establishes baseline
         mock_transport.send.return_value = {"tools": [
@@ -531,7 +531,7 @@ class TestHealthChecker:
         assert result.schema_changes[0].change_type == "FIELD_ADDED"
         assert result.schema_changes[0].breaking == False
 
-    def test_breaking_schema_change_flagged(self, mock_transport, sqlite_db):
+    def test_breaking_schema_change_flagged(self, mock_transport, postgres_db):
         """Removing a field is a breaking change and should be flagged."""
         # First check with field present
         mock_transport.send.return_value = {"tools": [
@@ -602,7 +602,7 @@ class TestPoisoningDetector:
         critical_findings = [f for f in findings if f.severity in ("CRITICAL", "HIGH")]
         assert len(critical_findings) == 0
 
-    def test_description_change_increases_suspicion(self, sqlite_db):
+    def test_description_change_increases_suspicion(self, postgres_db):
         """A description that changes to include suspicious content should
         score higher than the same content in a first-time scan."""
         original = "Search Jira issues using JQL."
@@ -775,9 +775,9 @@ services:
 
 @pytest.mark.integration
 class TestFullHealthCheckFlow:
-    def test_discover_and_check_stdio_server(self, mock_mcp_config, sqlite_db):
+    def test_discover_and_check_stdio_server(self, mock_mcp_config, postgres_db):
         """Full flow: discover MCP servers from config, run health checks,
-        store results in SQLite, verify CLI output."""
+        store results in PostgreSQL, verify CLI output."""
         # 1. Write a test MCP config file
         config_path = write_test_config({
             "mcpServers": {
@@ -802,8 +802,8 @@ class TestFullHealthCheckFlow:
         assert results[0].score >= 80
         assert len(results[0].tools) >= 1
 
-        # 4. Verify stored in SQLite
-        stored = sqlite_db.get_health_results(server_name="test-server")
+        # 4. Verify stored in PostgreSQL
+        stored = postgres_db.get_health_results(server_name="test-server")
         assert len(stored) == 1
 
         # 5. Run again to verify schema snapshot
@@ -989,7 +989,7 @@ STEPS:
 VALIDATION:
   - agentguard schema diff --server mcp-snowflake --format json | jq .
     -> Valid JSON with diff details
-  - Schema history in SQLite shows both versions with timestamps
+  - Schema history in PostgreSQL shows both versions with timestamps
 ```
 
 ---
@@ -1041,7 +1041,7 @@ STEPS:
 VALIDATION:
   - agentguard security scan --all --format sarif > results.sarif
     -> SARIF contains the CRITICAL finding with CWE and OWASP mapping
-  - Security history in SQLite shows clean -> CRITICAL transition
+  - Security history in PostgreSQL shows clean -> CRITICAL transition
 ```
 
 ---
