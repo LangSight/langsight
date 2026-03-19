@@ -267,7 +267,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     _auth_dep = [Depends(verify_api_key)]
 
     app.state.config_path = config_path
-    app.state.alert_types = {}  # populated lazily with defaults on first GET
+    # Seed alert_types with defaults so GET /api/alerts/config returns them immediately
+    from langsight.api.routers.alerts_config import _DEFAULT_ALERT_TYPES
+    app.state.alert_types = dict(_DEFAULT_ALERT_TYPES)
 
     # Auth router — key management endpoints, also require auth (except first-run bootstrap)
     app.include_router(auth.router, prefix="/api", dependencies=_auth_dep)

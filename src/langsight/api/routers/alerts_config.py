@@ -64,14 +64,25 @@ _DEFAULT_ALERT_TYPES = {
 
 
 def _get_alert_config(request: Request) -> dict[str, Any]:
-    """Read alert config from app state (merged with env/yaml)."""
-    config = getattr(request.app.state, "config", None)
-    webhook = None
-    if config is not None:
-        webhook = getattr(config, "slack_webhook", None)
-    # Allow env var override
+    """Read alert config from app state (merged with env/yaml).
+
+    Lookup order for webhook URL:
+    1. app.state.slack_webhook_override  (set by POST /alerts/config)
+    2. config.slack_webhook              (from .langsight.yaml)
+    3. LANGSIGHT_SLACK_WEBHOOK env var   (deployment override)
+    """
+    # 1. In-memory override set via POST /alerts/config
+    webhook: str | None = getattr(request.app.state, "slack_webhook_override", None)
+
+    # 2. YAML config
     if not webhook:
-        webhook = os.environ.get("LANGSIGHT_SLACK_WEBHOOK")
+        config = getattr(request.app.state, "config", None)
+        if config is not None:
+            webhook = getattr(config, "slack_webhook", None) or None
+
+    # 3. Env var
+    if not webhook:
+        webhook = os.environ.get("LANGSIGHT_SLACK_WEBHOOK") or None
 
     alert_types: dict[str, bool] = getattr(
         request.app.state, "alert_types", dict(_DEFAULT_ALERT_TYPES)
