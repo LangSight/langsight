@@ -56,6 +56,7 @@ markers = [
     "integration: requires docker compose up (postgres + ClickHouse) — run with -m integration",
     "e2e: full CLI flow tests, requires full stack",
     "regression: cross-layer tests that verify features work end-to-end without real MCP",
+    "security: adversarial tests for auth failure modes, isolation, and RBAC — always run offline",
 ]
 
 [tool.coverage.run]
