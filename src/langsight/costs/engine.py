@@ -247,9 +247,9 @@ def aggregate_cost_rows(
             )
         tool_totals[tool_key].total_calls += total_calls
         tool_totals[tool_key].total_cost_usd += total_cost_usd
-        if input_tokens:
+        if input_tokens is not None:
             tool_totals[tool_key].total_input_tokens += input_tokens * total_calls
-        if output_tokens:
+        if output_tokens is not None:
             tool_totals[tool_key].total_output_tokens += output_tokens * total_calls
 
         if agent_name not in agent_totals:
