@@ -17,6 +17,29 @@ logger = structlog.get_logger()
 # Header scheme — clients send:  X-API-Key: <key>
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
+# Session headers injected by the Next.js proxy (never set by external clients)
+_TRUSTED_PROXY_IPS = {"127.0.0.1", "::1", "localhost"}
+
+
+def _is_proxy_request(request: Request) -> bool:
+    """Return True if the request originated from the Next.js proxy on localhost."""
+    client_ip = request.client.host if request.client else ""
+    return client_ip in _TRUSTED_PROXY_IPS
+
+
+def _get_session_user(request: Request) -> tuple[str | None, str | None]:
+    """Extract (user_id, user_role) from X-User-* headers (proxy-only).
+
+    These headers are injected by the Next.js proxy route after verifying
+    the user's NextAuth session. They are trusted only when the request
+    comes from a known-local proxy IP.
+    """
+    if not _is_proxy_request(request):
+        return None, None
+    user_id   = request.headers.get("X-User-Id")
+    user_role = request.headers.get("X-User-Role")
+    return user_id or None, user_role or None
+
 
 def get_storage(request: Request) -> StorageBackend:
     """Inject the storage backend from app state."""
@@ -32,20 +55,26 @@ async def verify_api_key(
     request: Request,
     api_key: str | None = Security(_api_key_header),
 ) -> None:
-    """Validate the X-API-Key header.
+    """Validate the request is authenticated.
 
-    Lookup order:
-    1. DB-stored keys (hashed, managed via UI) — preferred
-    2. Env var keys LANGSIGHT_API_KEYS — fallback / bootstrap
+    Accepts (in priority order):
+    1. X-User-Id + X-User-Role headers from the Next.js proxy (session auth)
+    2. X-API-Key header — DB-stored hashed key or env-var bootstrap key
 
-    Auth is disabled entirely when no keys exist in either source.
+    Auth is disabled entirely when no keys exist in DB or env vars.
 
     Raises HTTP 401 on missing key, HTTP 403 on invalid key.
     """
+    # 1. Next.js proxy session headers (dashboard users)
+    user_id, user_role = _get_session_user(request)
+    if user_id and user_role:
+        logger.debug("audit.auth.session", user_id=user_id, role=user_role, path=str(request.url.path))
+        return
+
     env_keys: list[str] = getattr(request.app.state, "api_keys", [])
     storage: StorageBackend = request.app.state.storage
 
-    # Check if any keys are configured at all
+    # Check if any API keys are configured at all
     has_env_keys = bool(env_keys)
     has_db_keys = False
     list_fn = getattr(storage, "list_api_keys", None)
@@ -57,7 +86,7 @@ async def verify_api_key(
             pass
 
     if not has_env_keys and not has_db_keys:
-        # Auth fully disabled — local dev mode
+        # Auth fully disabled — local dev mode (no keys configured at all)
         return
 
     if not api_key:
@@ -110,15 +139,19 @@ async def get_current_user_id(
     request: Request,
     api_key: str | None = Security(_api_key_header),
 ) -> str | None:
-    """Return the user_id associated with the current request's API key.
+    """Return the user_id for the current request.
 
-    Returns None when:
-    - Auth is disabled (local dev)
-    - The key is an env-var bootstrap key (no user association)
-    - The key is not found
+    Sources (in priority order):
+    1. X-User-Id header from Next.js proxy (dashboard session)
+    2. API key lookup from DB
 
-    Used to check project membership — env-var keys get global admin access.
+    Returns None when auth is disabled or the key has no user association.
     """
+    # Session header from proxy (most reliable — user verified by NextAuth)
+    user_id, _ = _get_session_user(request)
+    if user_id:
+        return user_id
+
     if not api_key:
         return None
 
@@ -191,6 +224,17 @@ async def get_project_access(
     if not has_any_keys:
         return ProjectAccess(project, ProjectRole.OWNER, is_global_admin=True)
 
+    # Session headers from Next.js proxy
+    user_id, user_role = _get_session_user(request)
+    if user_id:
+        if user_role == "admin":
+            return ProjectAccess(project, ProjectRole.OWNER, is_global_admin=True)
+        # Check project membership by user_id
+        member = await storage.get_member(project_id, user_id)
+        if member:
+            return ProjectAccess(project, member.role)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -226,6 +270,60 @@ async def get_project_access(
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
 
+async def get_active_project_id(
+    request: Request,
+    project_id: str | None = None,
+) -> str | None:
+    """Resolve the project_id to filter by for this request.
+
+    - If project_id query param is provided, verify the caller is a member
+      (or a global admin) and return it.
+    - If not provided, return None → caller sees all data they have access to.
+    - Global admins (session role=admin or env-var key) always pass through.
+    """
+    if not project_id:
+        return None
+
+    storage: StorageBackend = request.app.state.storage
+    if not hasattr(storage, "list_members"):
+        return project_id  # storage doesn't support projects — allow through
+
+    env_keys: list[str] = getattr(request.app.state, "api_keys", [])
+
+    # Session user from proxy
+    user_id, user_role = _get_session_user(request)
+    if user_id:
+        if user_role == "admin":
+            return project_id
+        member = await storage.get_member(project_id, user_id)
+        if member:
+            return project_id
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    # Auth disabled — allow through
+    if not env_keys:
+        return project_id
+
+    # Env-var key = global admin
+    api_key = request.headers.get("X-API-Key", "")
+    if api_key in env_keys:
+        return project_id
+
+    # DB key — check admin role or project membership
+    get_fn = getattr(storage, "get_api_key_by_hash", None)
+    if get_fn and inspect.iscoroutinefunction(get_fn):
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        record = await get_fn(key_hash)
+        if record:
+            if record.role == ApiKeyRole.ADMIN:
+                return project_id
+            member = await storage.get_member(project_id, record.id)
+            if member:
+                return project_id
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+
 async def require_admin(
     request: Request,
     api_key: str | None = Security(_api_key_header),
@@ -234,11 +332,28 @@ async def require_admin(
 
     Allows access when:
     - Auth is disabled (no keys configured) — local dev mode
+    - Session header from proxy shows role=admin
     - Key is an env var key (bootstrap keys are always admin)
     - Key is a DB key with role="admin"
 
-    Raises HTTP 403 when a viewer key attempts a write operation.
+    Raises HTTP 403 when a viewer/member attempts a write operation.
     """
+    # Check session header from proxy first
+    user_id, user_role = _get_session_user(request)
+    if user_id:
+        if user_role != "admin":
+            logger.warning(
+                "audit.rbac.session_write_blocked",
+                user_id=user_id,
+                role=user_role,
+                path=str(request.url.path),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Write operations require admin role",
+            )
+        return
+
     env_keys: list[str] = getattr(request.app.state, "api_keys", [])
     storage: StorageBackend = request.app.state.storage
 

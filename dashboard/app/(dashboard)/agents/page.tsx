@@ -9,6 +9,7 @@ import {
   Search, AlertTriangle, CheckCircle, Clock, TrendingUp,
 } from "lucide-react";
 import { fetcher, getCostsBreakdown } from "@/lib/api";
+import { useProject } from "@/lib/project-context";
 import { cn, formatDuration, timeAgo } from "@/lib/utils";
 import type { AgentSession, CostsBreakdownResponse } from "@/lib/types";
 
@@ -192,14 +193,17 @@ export default function AgentsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "healthy" | "failing">("all");
 
+  const { activeProject } = useProject();
+  const p = activeProject ? `&project_id=${activeProject.id}` : "";
+
   const { data: sessions, isLoading, error } = useSWR<AgentSession[]>(
-    `/api/agents/sessions?hours=${hours}&limit=500`,
+    `/api/agents/sessions?hours=${hours}&limit=500${p}`,
     fetcher,
     { refreshInterval: 30_000 }
   );
   const { data: costs } = useSWR<CostsBreakdownResponse>(
-    `/api/costs/breakdown?hours=${hours}`,
-    () => getCostsBreakdown(hours),
+    `/api/costs/breakdown?hours=${hours}${p}`,
+    () => getCostsBreakdown(hours, activeProject?.id),
     { refreshInterval: 30_000 }
   );
 

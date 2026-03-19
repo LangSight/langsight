@@ -502,14 +502,24 @@ class ClickHouseBackend:
         ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
-    async def get_session_trace(self, session_id: str) -> list[dict[str, Any]]:
+    async def get_session_trace(
+        self,
+        session_id: str,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Return all spans for a session, ordered by start time.
 
         Returns the full flat list — callers reconstruct the tree
         using parent_span_id.
         """
+        where = "session_id = {session_id:String}"
+        params: dict[str, Any] = {"session_id": session_id}
+        if project_id:
+            where += " AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+
         result = await self._client.query(
-            """
+            f"""
             SELECT
                 span_id, parent_span_id, span_type,
                 server_name, tool_name, agent_name,
@@ -520,10 +530,10 @@ class ClickHouseBackend:
                 replay_of, project_id,
                 input_tokens, output_tokens, model_id
             FROM mcp_tool_calls
-            WHERE session_id = {session_id:String}
+            WHERE {where}
             ORDER BY started_at ASC
             """,
-            parameters={"session_id": session_id},
+            parameters=params,
         )
 
         cols = [
@@ -629,15 +639,25 @@ class ClickHouseBackend:
         ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
-    async def get_cost_call_counts(self, hours: int = 24) -> list[dict[str, Any]]:
+    async def get_cost_call_counts(
+        self,
+        hours: int = 24,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Return aggregated tool-call counts for cost attribution.
 
         Groups by server, tool, agent, and session so higher-level cost reports
         can derive per-tool, per-agent, and per-session totals in Python while
         applying pricing rules consistently in one place.
         """
+        where = "started_at >= now() - INTERVAL {hours:UInt32} HOUR"
+        params: dict[str, Any] = {"hours": hours}
+        if project_id:
+            where += " AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+
         result = await self._client.query(
-            """
+            f"""
             SELECT
                 server_name,
                 tool_name,
@@ -648,12 +668,11 @@ class ClickHouseBackend:
                 sum(input_tokens)      AS input_tokens,
                 sum(output_tokens)     AS output_tokens
             FROM mcp_tool_calls
-            WHERE
-                started_at >= now() - INTERVAL {hours:UInt32} HOUR
+            WHERE {where}
             GROUP BY server_name, tool_name, agent_name, session_id, model_id
             ORDER BY total_calls DESC, server_name, tool_name
             """,
-            parameters={"hours": hours},
+            parameters=params,
         )
 
         cols = [

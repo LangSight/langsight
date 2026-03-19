@@ -10,6 +10,7 @@ import {
   Play, X,
 } from "lucide-react";
 import { fetcher, getSessionTrace, compareSessions, replaySession } from "@/lib/api";
+import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatDuration, CALL_STATUS_COLOR, SPAN_TYPE_ICON } from "@/lib/utils";
 import type { AgentSession, SessionTrace, SpanNode, SessionComparison, DiffEntry, ReplayResponse } from "@/lib/types";
 
@@ -420,8 +421,11 @@ export default function SessionsPage() {
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [page, setPage] = useState(0);
 
+  const { activeProject } = useProject();
+  const p = activeProject ? `&project_id=${activeProject.id}` : "";
+
   const { data: sessions, isLoading, error } = useSWR<AgentSession[]>(
-    `/api/agents/sessions?hours=${hours}&limit=500`,
+    `/api/agents/sessions?hours=${hours}&limit=500${p}`,
     fetcher,
     { refreshInterval: 30_000 }
   );

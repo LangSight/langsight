@@ -234,13 +234,31 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
+    # Security headers — applied to every response
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.responses import Response as StarletteResponse
+
+    class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next: Any) -> StarletteResponse:
+            response = await call_next(request)
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["X-XSS-Protection"] = "1; mode=block"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            # Only add HSTS in production (behind HTTPS)
+            if request.headers.get("X-Forwarded-Proto") == "https":
+                response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            return response
+
+    app.add_middleware(SecurityHeadersMiddleware)
+
     # CORS — configurable via LANGSIGHT_CORS_ORIGINS env var
     _settings = Settings()
     cors_origins = _settings.parsed_cors_origins()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
-        allow_methods=["GET", "POST", "DELETE"],
+        allow_methods=["GET", "POST", "DELETE", "PATCH", "PUT"],
         allow_headers=["*"],
         allow_credentials=True,
     )

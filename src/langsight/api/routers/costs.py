@@ -8,7 +8,7 @@ from pydantic import BaseModel
 import uuid
 from datetime import UTC, datetime
 
-from langsight.api.dependencies import get_config, get_storage, require_admin
+from langsight.api.dependencies import get_active_project_id, get_config, get_storage, require_admin
 from langsight.models import ModelPricing
 from langsight.config import LangSightConfig
 from langsight.costs.engine import (
@@ -260,7 +260,7 @@ async def deactivate_model_pricing(
 async def get_costs_breakdown(
     request: Request,
     hours: int = Query(default=24, ge=1, le=720, description="Look-back window in hours"),
-    project_id: str | None = Query(default=None, description="Filter by project ID"),
+    project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
     config: LangSightConfig = Depends(get_config),
 ) -> CostsBreakdownResponse:
@@ -282,11 +282,7 @@ async def get_costs_breakdown(
             by_session=[],
         )
 
-    rows = await storage.get_cost_call_counts(hours=hours)
-
-    # Filter by project if specified
-    if project_id:
-        rows = [r for r in rows if str(r.get("project_id") or "") == project_id]
+    rows = await storage.get_cost_call_counts(hours=hours, project_id=project_id)
 
     config_path = getattr(request.app.state, "config_path", None)
     rules = load_cost_rules(config_path if isinstance(config_path, Path) else None)

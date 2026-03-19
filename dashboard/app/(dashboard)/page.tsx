@@ -10,6 +10,7 @@ import {
   CheckCircle, ArrowUpRight, Activity,
 } from "lucide-react";
 import { fetcher, triggerHealthCheck } from "@/lib/api";
+import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatLatency } from "@/lib/utils";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -166,14 +167,17 @@ function SessionRow({ session }: { session: AgentSession }) {
 
 /* ── Page ───────────────────────────────────────────────────── */
 export default function OverviewPage() {
+  const { activeProject } = useProject();
+  const p = activeProject ? `&project_id=${activeProject.id}` : "";
+
   const { data: servers, isLoading: serversLoading, mutate } =
     useSWR<HealthResult[]>("/api/health/servers", fetcher, { refreshInterval: 30_000 });
   const { data: sessions, isLoading: sessionsLoading } =
-    useSWR<AgentSession[]>("/api/agents/sessions?hours=24&limit=8", fetcher, { refreshInterval: 30_000 });
+    useSWR<AgentSession[]>(`/api/agents/sessions?hours=24&limit=8${p}`, fetcher, { refreshInterval: 30_000 });
   const { data: anomalies } =
-    useSWR<AnomalyResult[]>("/api/reliability/anomalies?current_hours=1&z_threshold=2", fetcher, { refreshInterval: 60_000 });
+    useSWR<AnomalyResult[]>(`/api/reliability/anomalies?current_hours=1&z_threshold=2${p}`, fetcher, { refreshInterval: 60_000 });
   const { data: sloStatuses } =
-    useSWR<SLOStatus[]>("/api/slos/status", fetcher, { refreshInterval: 60_000 });
+    useSWR<SLOStatus[]>(`/api/slos/status${p ? `?${p.slice(1)}` : ""}`, fetcher, { refreshInterval: 60_000 });
   const [checking, setChecking] = useState(false);
 
   const up       = servers?.filter((s) => s.status === "up").length ?? 0;

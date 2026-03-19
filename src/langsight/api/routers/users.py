@@ -21,6 +21,10 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import status as http_status
 from pydantic import BaseModel, EmailStr, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+_limiter = Limiter(key_func=get_remote_address)
 
 from langsight.api.dependencies import get_storage, require_admin
 from langsight.models import InviteToken, User, UserRole
@@ -334,6 +338,7 @@ async def deactivate_user(
     response_model=VerifyResponse,
     summary="Verify dashboard login credentials",
 )
+@_limiter.limit("10/minute")
 async def verify_credentials(
     body: VerifyRequest,
     request: Request,

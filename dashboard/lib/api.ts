@@ -18,51 +18,48 @@ import type {
   SLOStatus,
 } from "./types";
 
-const BASE = "/api";
-
-/** Build headers including the optional API key for authentication. */
-function apiHeaders(extra?: Record<string, string>): Record<string, string> {
-  const headers: Record<string, string> = { ...extra };
-  const key = process.env.NEXT_PUBLIC_LANGSIGHT_API_KEY;
-  if (key) headers["X-API-Key"] = key;
-  return headers;
-}
+/**
+ * All API calls go through /api/proxy/* which server-side injects
+ * the authenticated user's session headers before forwarding to FastAPI.
+ *
+ * This means:
+ *   - No API keys exposed to the browser
+ *   - Every request is authenticated via NextAuth session
+ *   - Unauthenticated requests get 401 before reaching FastAPI
+ */
+const BASE = "/api/proxy";
 
 async function get<T>(path: string): Promise<T> {
-  const r = await fetch(`${BASE}${path}`, {
-    cache: "no-store",
-    headers: apiHeaders(),
-  });
+  const r = await fetch(`${BASE}${path}`, { cache: "no-store" });
+  if (r.status === 401) throw new Error("401 Unauthorized");
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
   return r.json() as Promise<T>;
 }
 
 async function del(path: string): Promise<void> {
-  const r = await fetch(`${BASE}${path}`, {
-    method: "DELETE",
-    headers: apiHeaders(),
-    cache: "no-store",
-  });
+  const r = await fetch(`${BASE}${path}`, { method: "DELETE", cache: "no-store" });
+  if (r.status === 401) throw new Error("401 Unauthorized");
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
 }
 
 async function post<T>(path: string, body?: object): Promise<T> {
   const r = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: apiHeaders({ "Content-Type": "application/json" }),
+    headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
   });
+  if (r.status === 401) throw new Error("401 Unauthorized");
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
   return r.json() as Promise<T>;
 }
 
-// SWR fetcher — passes API key header
+// SWR fetcher — uses authenticated proxy route
 export const fetcher = (url: string) => {
-  const key = process.env.NEXT_PUBLIC_LANGSIGHT_API_KEY;
-  const headers: Record<string, string> = {};
-  if (key) headers["X-API-Key"] = key;
-  return fetch(url, { cache: "no-store", headers }).then((r) => {
+  // Rewrite /api/* → /api/proxy/* for SWR keys that use the old BASE
+  const proxyUrl = url.startsWith("/api/proxy") ? url : url.replace(/^\/api\//, "/api/proxy/");
+  return fetch(proxyUrl, { cache: "no-store" }).then((r) => {
+    if (r.status === 401) throw new Error("401 Unauthorized");
     if (!r.ok) throw new Error(`${r.status}`);
     return r.json();
   });

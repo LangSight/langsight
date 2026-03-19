@@ -5,6 +5,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { Database, DollarSign, Layers3, Wallet, Cpu, Wrench } from "lucide-react";
 import { getCostsBreakdown } from "@/lib/api";
+import { useProject } from "@/lib/project-context";
 import type { CostsBreakdownResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -112,9 +113,11 @@ function EmptyState({ title, description, body }: {
 /* ── Page ───────────────────────────────────────────────────── */
 export default function CostsPage() {
   const [hours, setHours] = useState<number>(24);
+  const { activeProject } = useProject();
+
   const { data, error, isLoading } = useSWR<CostsBreakdownResponse>(
-    `/api/costs/breakdown?hours=${hours}`,
-    () => getCostsBreakdown(hours),
+    `/api/costs/breakdown?hours=${hours}${activeProject ? `&project_id=${activeProject.id}` : ""}`,
+    () => getCostsBreakdown(hours, activeProject?.id),
     { refreshInterval: 30_000 }
   );
 

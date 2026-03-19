@@ -128,4 +128,4 @@ class TestCostsBreakdown:
 
         await c.get("/api/costs/breakdown?hours=72")
 
-        mock_storage.get_cost_call_counts.assert_called_once_with(hours=72)
+        mock_storage.get_cost_call_counts.assert_called_once_with(hours=72, project_id=None)

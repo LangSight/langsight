@@ -84,6 +84,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         (session.user as typeof session.user & { role: string; id: string }).id =
           token.id as string;
       }
+      // Expose id + role on the session so the proxy route can forward them
+      (session as typeof session & { userId: string; userRole: string }).userId =
+        token.id as string;
+      (session as typeof session & { userId: string; userRole: string }).userRole =
+        token.role as string;
       return session;
     },
   },

@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 from pydantic import BaseModel
 
-from langsight.api.dependencies import get_config, get_storage
+from langsight.api.dependencies import get_active_project_id, get_config, get_storage
 from langsight.config import LangSightConfig
 from langsight.storage.base import StorageBackend
 
@@ -109,6 +109,7 @@ async def list_sessions(
     hours: int = Query(default=24, ge=1, le=720, description="Look-back window in hours"),
     agent_name: str | None = Query(default=None, description="Filter by agent name"),
     limit: int = Query(default=50, ge=1, le=200),
+    project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
 ) -> list[AgentSession]:
     """Return recent agent sessions with call counts, failure rates, and duration.
@@ -118,7 +119,7 @@ async def list_sessions(
     if not hasattr(storage, "get_agent_sessions"):
         return []
 
-    rows = await storage.get_agent_sessions(hours=hours, agent_name=agent_name, limit=limit)
+    rows = await storage.get_agent_sessions(hours=hours, agent_name=agent_name, limit=limit, project_id=project_id)
     return [
         AgentSession(
             session_id=r["session_id"] or "unknown",
@@ -142,6 +143,7 @@ async def list_sessions(
 )
 async def get_session(
     session_id: str,
+    project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
 ) -> SessionTrace:
     """Return all spans for a session as a flat list and reconstructed tree.
@@ -155,7 +157,7 @@ async def get_session(
             detail="Session traces require ClickHouse backend (storage.mode: clickhouse).",
         )
 
-    spans = await storage.get_session_trace(session_id)
+    spans = await storage.get_session_trace(session_id, project_id=project_id)
     if not spans:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,
