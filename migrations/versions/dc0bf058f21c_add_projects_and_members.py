@@ -29,8 +29,12 @@ def upgrade() -> None:
         sa.Column("name", sa.Text(), nullable=False),
         sa.Column("slug", sa.Text(), nullable=False),
         sa.Column("created_by", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW()")),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            nullable=False,
+            server_default=sa.text("NOW()"),
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("slug"),
     )
@@ -42,8 +46,9 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Text(), nullable=False),
         sa.Column("role", sa.Text(), nullable=False, server_default="viewer"),
         sa.Column("added_by", sa.Text(), nullable=False),
-        sa.Column("added_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW()")),
+        sa.Column(
+            "added_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("NOW()")
+        ),
         sa.PrimaryKeyConstraint("project_id", "user_id"),
     )
     op.create_index("idx_project_members_user", "project_members", ["user_id"])

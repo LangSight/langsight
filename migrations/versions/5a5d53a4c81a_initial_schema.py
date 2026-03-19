@@ -32,8 +32,12 @@ def upgrade() -> None:
         sa.Column("key_prefix", sa.Text(), nullable=False),
         sa.Column("key_hash", sa.Text(), nullable=False),
         sa.Column("role", sa.Text(), nullable=False, server_default="admin"),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW()")),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            nullable=False,
+            server_default=sa.text("NOW()"),
+        ),
         sa.Column("last_used_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("revoked_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("id"),
@@ -53,8 +57,7 @@ def upgrade() -> None:
         sa.Column("checked_at", sa.TIMESTAMP(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("idx_health_server_time", "health_results",
-                    ["server_name", "checked_at"])
+    op.create_index("idx_health_server_time", "health_results", ["server_name", "checked_at"])
 
     op.create_table(
         "schema_snapshots",
@@ -65,8 +68,7 @@ def upgrade() -> None:
         sa.Column("recorded_at", sa.TIMESTAMP(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("idx_schema_server_time", "schema_snapshots",
-                    ["server_name", "recorded_at"])
+    op.create_index("idx_schema_server_time", "schema_snapshots", ["server_name", "recorded_at"])
 
     op.create_table(
         "agent_slos",
@@ -75,8 +77,12 @@ def upgrade() -> None:
         sa.Column("metric", sa.Text(), nullable=False),
         sa.Column("target", sa.Double(), nullable=False),
         sa.Column("window_hours", sa.Integer(), nullable=False, server_default="24"),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW()")),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            nullable=False,
+            server_default=sa.text("NOW()"),
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
 
