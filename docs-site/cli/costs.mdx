@@ -19,7 +19,7 @@ langsight costs [OPTIONS]
 | `--json` | false | Output as JSON |
 
 <Warning>
-  `langsight costs` requires the ClickHouse backend (`storage.mode: clickhouse`) and the LangSight SDK or OTLP integration to be sending spans. It shows "No span data found" on SQLite.
+  `langsight costs` requires the ClickHouse backend and the LangSight SDK or OTLP integration to be sending spans. The default `mode: dual` includes ClickHouse — start it with `docker compose up -d`. On `mode: postgres` only it shows "No span data found".
 </Warning>
 
 ## Example

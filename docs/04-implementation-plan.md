@@ -37,9 +37,19 @@ Phase 9 (Production Auth)       ████████████████
 Phase 10 (Multi-tenancy)        ████████████████ 100% — COMPLETE ✅ 2026-03-19
 ```
 
-**Shipped metrics**: 434 Python tests + 136 frontend tests (98 Jest + 38 Playwright), 85%+ coverage, full dashboard redesign with Geist fonts + deep dark sidebar, marketing website with /security and /pricing pages, projects management UI, ui-designer agent, tester agent updated for full-stack. Version v0.2.0.
+**Shipped metrics (v0.2.0)**: 694 unit tests, 77% coverage (threshold 75%), ruff `All checks passed`, mypy `Success: no issues found in 68 source files`. Full dashboard redesign with Geist fonts + deep dark sidebar, marketing website with /security and /pricing pages, projects management UI.
 
-**Settings improvements (shipped 2026-03-19)**: Settings page redesigned from single-scroll to left-nav + content panel with 8 isolated sections. New sections: Notifications (Slack webhook + 6 alert type toggles), Audit Logs (last 50 auth/RBAC events from in-memory ring buffer). New API endpoints: `GET/POST /api/alerts/config`, `POST /api/alerts/test`, `GET /api/audit/logs`. New alert types in `alerts/engine.py`: `AGENT_FAILURE`, `SLO_BREACHED`, `ANOMALY_DETECTED`, `SECURITY_FINDING`. Debug Information added to General section; `.env` SDK snippet added to API Keys section.
+**Infrastructure changes (2026-03-19)**:
+- SQLite removed — `DualStorage` (Postgres + ClickHouse) is the only production topology; `factory.py` raises `ConfigError` on unknown/sqlite mode
+- Integration test fixtures: `require_postgres`, `require_clickhouse`, `require_all_services` in `tests/conftest.py` — auto-skip when Docker is not running
+- SDK auth header: SDK now sends `X-API-Key`; API accepts both `X-API-Key` and `Authorization: Bearer` via `_read_api_key()` helper
+- Proxy trust: CIDR-based via `LANGSIGHT_TRUSTED_PROXY_CIDRS`; Docker default includes `172.16.0.0/12,10.0.0.0/8`
+- Alert config + audit logs: persisted to Postgres (`alert_config` singleton + `audit_logs` append table); removed in-memory ring buffer
+- RBAC: API key endpoints and SLO write endpoints now require admin role
+
+**Settings improvements (shipped 2026-03-19)**: Settings page redesigned from single-scroll to left-nav + content panel with 8 isolated sections. New sections: Notifications (Slack webhook + 6 alert type toggles), Audit Logs (sourced from `audit_logs` Postgres table — no longer in-memory). New API endpoints: `GET/POST /api/alerts/config`, `POST /api/alerts/test`, `GET /api/audit/logs`. New alert types in `alerts/engine.py`: `AGENT_FAILURE`, `SLO_BREACHED`, `ANOMALY_DETECTED`, `SECURITY_FINDING`. Debug Information added to General section; `.env` SDK snippet added to API Keys section.
+
+**Dashboard UX improvements (shipped 2026-03-19)**: Accept-invite page (`/accept-invite`) with public API route handler; NavProgress bar (thin indigo, fires on sidebar link click); `loading.tsx` App Router skeleton; sidebar route prefetch on mount; `health/page.tsx` `useState` → `useEffect` fix for HistoryPanel.
 
 ---
 

@@ -28,19 +28,18 @@ alerts:
   consecutive_failures: 2                       # before DOWN alert
 
 # Storage backend
+# Valid modes: postgres | clickhouse | dual (default: dual)
+# SQLite has been removed in v0.2.0 — use docker compose up -d
 storage:
-  mode: sqlite                         # sqlite | postgres | clickhouse
+  mode: dual   # Postgres (metadata) + ClickHouse (analytics)
 
-  # SQLite (default — local mode, no Docker)
-  sqlite_path: ~/.langsight/data.db
+  # PostgreSQL — required for mode: postgres or dual
+  # postgres_url: postgresql://user:pass@localhost:5432/langsight
 
-  # PostgreSQL (team/server mode)
-  postgres_url: postgresql://user:pass@localhost:5432/langsight
-
-  # ClickHouse (production — required for costs + reliability)
+  # ClickHouse — required for mode: clickhouse or dual
   clickhouse_url: http://localhost:8123
   clickhouse_database: langsight
-  clickhouse_username: default
+  clickhouse_username: langsight
   clickhouse_password: ""
 
 # LLM provider for langsight investigate

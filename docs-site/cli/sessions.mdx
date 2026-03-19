@@ -20,8 +20,7 @@ langsight sessions [OPTIONS]
 | `--json` | false | Output as JSON |
 
 <Warning>
-`langsight sessions` requires the ClickHouse backend (`storage.mode: clickhouse`) to show live data.
-On SQLite the command prints: `No session data found. Sessions require the ClickHouse backend. See docs for setup.`
+`langsight sessions` requires the ClickHouse backend. The default storage mode `dual` includes ClickHouse — start it with `docker compose up -d`. If using `mode: postgres` only, the command prints: `No session data found. Sessions require the ClickHouse backend. See docs for setup.`
 </Warning>
 
 ## Session list
@@ -125,11 +124,11 @@ See the [SDK quickstart](/quickstart) and [multi-agent tracing](/sdk/multi-agent
 
 | Backend | Sessions support | Notes |
 |---------|-----------------|-------|
-| SQLite | No | Default; zero-config but no session aggregation |
-| PostgreSQL | Partial | Raw spans only; no pre-aggregated view |
-| ClickHouse | Yes | Full support — `mv_agent_sessions` materialized view pre-aggregates session metrics |
+| `dual` (default) | Yes | Full support — Postgres metadata + ClickHouse `mv_agent_sessions` |
+| `clickhouse` only | Yes | Full support — `mv_agent_sessions` materialized view pre-aggregates session metrics |
+| `postgres` only | No | No session aggregation without ClickHouse |
 
-To enable ClickHouse, set `storage.mode: clickhouse` in `.langsight.yaml` and run `docker compose up -d`.
+Start the full stack with `docker compose up -d` (default `mode: dual`).
 
 ## Dashboard features
 

@@ -330,8 +330,8 @@ function Hero() {
               style={{ color: "var(--dimmer)" }}
             >
               <span>✓ LangChain · CrewAI · Pydantic AI · LibreChat</span>
-              <span>✓ SQLite locally · ClickHouse in prod</span>
-              <span>✓ 434 tests · 0 mypy errors</span>
+              <span>✓ Postgres + ClickHouse · dual-backend architecture</span>
+              <span>✓ 694 tests · 0 mypy errors</span>
             </div>
           </div>
 
@@ -886,7 +886,7 @@ const OSS_PILLARS = [
   {
     icon: "🔒",
     title: "Your data stays yours",
-    body: "Self-host on your own infrastructure. No data ever leaves your network. SQLite locally or ClickHouse in production — both fully under your control.",
+    body: "Self-host on your own infrastructure. No data ever leaves your network. PostgreSQL + ClickHouse via docker compose up -d — both fully under your control.",
   },
   {
     icon: "🚫",
@@ -1082,8 +1082,8 @@ function CTA() {
             <div className="flex flex-wrap justify-center gap-6 text-sm" style={{ color: "var(--dimmer)" }}>
               <span>✓ Apache 2.0 — free forever</span>
               <span>✓ No account needed</span>
-              <span>✓ SQLite — zero infra to start</span>
-              <span>✓ 434 tests passing</span>
+              <span>✓ docker compose up -d — full stack in &lt;5 min</span>
+              <span>✓ 694 tests passing</span>
             </div>
           </div>
         </div>

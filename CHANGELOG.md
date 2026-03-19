@@ -9,13 +9,64 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Breaking (2026-03-19 — SQLite removed)
+
+- `mode: sqlite` in `.langsight.yaml` now raises `ConfigError` with migration guidance. Valid modes: `postgres` | `clickhouse` | `dual`. Migrate by switching to `mode: dual` and running `docker compose up -d`.
+- `storage/sqlite.py` deleted. `SQLiteBackend` class no longer exists. Remove any direct imports.
+- `open_storage()` factory no longer returns `SQLiteBackend`. Code that checked `isinstance(storage, SQLiteBackend)` will break.
+
+### Added (2026-03-19 — Dual-storage architecture)
+
+- `src/langsight/storage/dual.py` — `DualStorage` class: routes metadata ops to `PostgresBackend` and analytics ops to `ClickHouseBackend`. Satisfies the full `StorageBackend` protocol transparently; callers need no changes.
+- `src/langsight/storage/factory.py` — `open_storage()` now dispatches `mode="dual"` to `DualStorage(metadata=PostgresBackend, analytics=ClickHouseBackend)`. Default `StorageConfig.mode` changed from `"sqlite"` to `"dual"`.
+- `docker-compose.yml`: Postgres port `5432` and ClickHouse ports `8123`/`9000` now exposed to host (required for integration tests). `LANGSIGHT_STORAGE_MODE: dual` set as API container default. Required env vars enforced via `${VAR:?error}` syntax — compose refuses to start with missing secrets.
+- `.env.example` — new file: documents all required and optional env vars with instructions.
+
+### Added (2026-03-19 — Integration test infrastructure)
+
+- `tests/conftest.py`: `require_postgres`, `require_clickhouse`, `require_all_services` session-scoped fixtures; auto-skip tests when Docker service is not reachable.
+- `tests/integration/storage/test_postgres_storage.py` — full Postgres storage integration tests against real DB with uuid-based server names.
+- Regression tests migrated from `SQLiteBackend` to `PostgresBackend`.
+
+### Fixed (2026-03-19 — SDK auth header, CRITICAL)
+
+- SDK was sending `Authorization: Bearer <key>`; API only read `X-API-Key`. Traces were silently dropped in any authenticated deployment (no error, just missing data).
+- Fixed: `_read_api_key()` helper in `src/langsight/api/dependencies.py` reads `X-API-Key` first, then `Authorization: Bearer` as fallback. SDK now sends `X-API-Key`. Both forms accepted permanently for backward compatibility.
+
+### Fixed (2026-03-19 — Docker proxy trust model, CRITICAL)
+
+- `_TRUSTED_PROXY_IPS` was hardcoded to `{127.0.0.1, ::1}` — broken in Docker where the Next.js dashboard container has a `172.x.x.x` source IP, not loopback.
+- Fixed: `parse_trusted_proxy_networks(cidrs_str)` in `dependencies.py` parses `LANGSIGHT_TRUSTED_PROXY_CIDRS` env var into `ipaddress.ip_network` objects stored on `app.state.trusted_proxy_networks` at startup. `_is_proxy_request()` checks the client IP against this CIDR list.
+- Docker Compose default: `LANGSIGHT_TRUSTED_PROXY_CIDRS=127.0.0.1/32,::1/128,172.16.0.0/12,10.0.0.0/8`.
+
+### Added (2026-03-19 — Alert config + audit log persistence)
+
+- `alert_config` table in Postgres — singleton upsert row storing Slack webhook URL and per-alert-type enable flags. Previously stored in `app.state` (lost on API restart).
+- `audit_logs` table in Postgres — append-only auth/RBAC event log. Previously an in-memory ring buffer (last 50 events, lost on restart). `append_audit()` now schedules an async DB write via `asyncio.create_task` — never blocks the request path.
+
+### Changed (2026-03-19 — RBAC hardened)
+
+- `POST /api/auth/api-keys`, `GET /api/auth/api-keys`, `DELETE /api/auth/api-keys/{id}` — now require admin role via `require_admin()` dependency.
+- `POST /api/slos`, `DELETE /api/slos/{slo_id}` — now require admin role.
+- `list_projects` — handles session-user path (X-User-Id headers) correctly; previously fell through to env-var key check.
+- `get_active_project_id` and `get_project_access` — both check DB keys (not just env keys) for auth-disabled logic to prevent false "auth disabled" state when only DB keys exist.
+
+### Added (2026-03-19 — Dashboard: accept-invite, NavProgress, loading skeleton)
+
+- `/accept-invite` page — password + confirm password fields; calls `POST /api/accept-invite` (public Next.js API route, no session required); on success redirects to `/login`. Middleware updated to allow `/accept-invite` through unauthenticated.
+- `NavProgress` component — thin indigo bar at top of dashboard; animates on sidebar link click, completes on route change.
+- `dashboard/app/(dashboard)/loading.tsx` — Next.js App Router loading skeleton shown instantly during navigation; eliminates blank flash.
+- Sidebar route prefetch — all sidebar routes prefetched on component mount for instant navigation.
+- `health/page.tsx` — fixed `useState` → `useEffect` for HistoryPanel data fetch (was causing SSR hydration mismatch).
+- Settings page — URL hash persistence on load; no flicker on refresh; section state driven by `window.location.hash`.
+
 ### Added (2026-03-19 — Settings redesign + Notifications + Audit Logs)
 
 - Settings page: left-nav + content panel layout — 8 grouped sections replacing the previous single-scroll page (General, API Keys, Model Pricing, Members, Projects, Notifications, Audit Logs, Instance)
 - Settings → General: Debug Information section showing instance URL and current version for SDK quick setup
 - Settings → API Keys: `.env` snippet with `LANGSIGHT_API_KEY` and `LANGSIGHT_API_URL` for instant SDK instrumentation
 - Settings → Notifications: Slack webhook URL field with inline test button; per-alert-type toggle switches for `mcp_down`, `mcp_recovered`, `agent_failure`, `slo_breached`, `anomaly_critical`, `security_critical`
-- Settings → Audit Logs: table of last 50 auth/RBAC events sourced from an in-memory ring buffer; columns: timestamp, actor, action, resource, result
+- Settings → Audit Logs: table of last 50 auth/RBAC events; columns: timestamp, actor, action, resource, result. Initially backed by in-memory ring buffer; subsequently migrated to `audit_logs` Postgres table (see persistence fix above).
 - `GET /api/alerts/config` — read current Slack webhook URL and per-type alert preferences
 - `POST /api/alerts/config` — save Slack webhook URL and alert type preferences
 - `POST /api/alerts/test` — send a test Slack Block Kit message to the configured webhook

@@ -113,10 +113,11 @@ MCP servers receive proactive health checks and security scanning because the MC
                                       └──────────────────────────────────┘
 ```
 
-**Storage strategy**:
-- **SQLite** — local CLI mode, no Docker required
-- **ClickHouse** — time-series health data, OTEL traces, cost attribution
-- **PostgreSQL** — app state, MCP configs, alert rules, API keys
+**Storage strategy** (dual-backend architecture):
+- **PostgreSQL** — metadata: users, projects, API keys, model pricing, SLOs, alert config, audit logs
+- **ClickHouse** — analytics: spans, traces, health results, reliability, costs, sessions
+
+Default mode is `dual` — both backends run together. `postgres` and `clickhouse` single-backend modes are available for constrained deployments. SQLite has been removed; `docker compose up -d` is required to run LangSight.
 
 ---
 
@@ -126,18 +127,29 @@ MCP servers receive proactive health checks and security scanning because the MC
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) package manager
-- Docker (for full stack with ClickHouse + PostgreSQL)
+- Docker and Docker Compose (required — no SQLite/zero-dependency mode)
 
 ### Install
 
 ```bash
-# Install from PyPI (once released)
+# Install from PyPI
 uv tool install langsight
 
 # Or install from source
 git clone https://github.com/sumankalyan123/langsight.git
 cd langsight
 uv sync
+```
+
+### Start the infrastructure
+
+LangSight requires Postgres (metadata) and ClickHouse (analytics). Copy the example env file, fill in the required values, then start the stack:
+
+```bash
+cp .env.example .env
+# Edit .env — set POSTGRES_PASSWORD, CLICKHOUSE_PASSWORD, LANGSIGHT_API_KEYS, AUTH_SECRET,
+#             LANGSIGHT_ADMIN_EMAIL, LANGSIGHT_ADMIN_PASSWORD
+docker compose up -d
 ```
 
 ### Initialize
@@ -258,12 +270,26 @@ alerts:
   consecutive_failures: 3
 
 storage:
-  mode: sqlite                    # sqlite | postgres+clickhouse
-  sqlite_path: ~/.langsight/data.db
+  mode: dual                      # postgres | clickhouse | dual (default: dual)
+  postgres_url: ${LANGSIGHT_POSTGRES_URL}
 ```
 
+### Key environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `LANGSIGHT_API_KEYS` | Yes (production) | Comma-separated API keys for SDK/CLI auth |
+| `LANGSIGHT_POSTGRES_URL` | Yes | PostgreSQL DSN |
+| `LANGSIGHT_CLICKHOUSE_URL` | No (default: `http://localhost:8123`) | ClickHouse HTTP URL |
+| `LANGSIGHT_TRUSTED_PROXY_CIDRS` | No | CIDRs trusted as the Next.js proxy (default: `127.0.0.1/32,::1/128`). Set to include `172.16.0.0/12,10.0.0.0/8` in Docker deployments. |
+| `LANGSIGHT_DASHBOARD_URL` | No | Dashboard base URL used in invite links |
+| `LANGSIGHT_CORS_ORIGINS` | No (default: `*`) | Restrict CORS in production |
+| `AUTH_SECRET` | Yes (dashboard) | NextAuth session signing secret (`openssl rand -base64 32`) |
+| `LANGSIGHT_ADMIN_EMAIL` | Yes (dashboard) | Initial admin login email |
+| `LANGSIGHT_ADMIN_PASSWORD` | Yes (dashboard) | Initial admin login password |
+
 > [!IMPORTANT]
-> Never commit secrets to `.langsight.yaml`. Use environment variables with the `LANGSIGHT_` prefix or your existing secret management tooling.
+> Never commit secrets to `.langsight.yaml` or `.env`. Use environment variables with the `LANGSIGHT_` prefix or your existing secret management tooling.
 
 ---
 
@@ -326,7 +352,7 @@ LangSight works with every major MCP client and agent framework:
 - [x] `langsight security-scan` — CVE + OWASP MCP Top 10
 - [x] `langsight monitor` — continuous monitoring with Slack/webhook alerts
 - [x] `langsight costs` — tool call cost attribution from OTEL traces
-- [x] SQLite backend (no Docker required for local use)
+- [x] PostgreSQL + ClickHouse backends via `docker compose up -d`
 
 ### Phase 2 — SDK + Agent Tracing + Investigation
 - [x] `LangSightClient` Python SDK — 2-line instrumentation for any MCP client
@@ -340,7 +366,7 @@ LangSight works with every major MCP client and agent framework:
 - [x] OTLP/JSON endpoint for trace ingestion from agent frameworks (`POST /api/traces/otlp`)
 - [ ] OTEL Collector infrastructure (separate service — collector config + Docker Compose wiring)
 
-### Phase 3 — Dashboard
+### Phase 3 — Dashboard + Auth + Multi-Tenancy
 - [x] Next.js 15 web dashboard (`dashboard/`)
 - [x] Real-time health overview across all MCP servers
 - [x] Security posture timeline
@@ -349,9 +375,12 @@ LangSight works with every major MCP client and agent framework:
 - [x] Marketing website (`website/`)
 - [x] Docs site (28 Mintlify pages, `docs-site/`)
 - [x] FastAPI REST API with `langsight serve`
+- [x] Production auth — API key auth (SDK/CLI) + NextAuth session proxy (dashboard)
+- [x] RBAC — admin/viewer roles on all write endpoints
+- [x] Dual-storage architecture — Postgres metadata + ClickHouse analytics
+- [x] Project-level data isolation (`project_id` scoping at DB layer)
+- [x] Accept-invite flow, settings page, audit logs, alert config persistence
 - [ ] Dashboard: Vercel deploy (manual step pending)
-- [ ] API key auth
-- [ ] RBAC
 
 ---
 
@@ -363,12 +392,12 @@ LangSight works with every major MCP client and agent framework:
 | CLI | Click + Rich |
 | API | FastAPI (async) |
 | MCP client | `mcp` Python SDK |
-| OLAP storage | ClickHouse |
-| Metadata DB | PostgreSQL (asyncpg direct) |
-| Local mode | SQLite |
+| OLAP storage | ClickHouse (analytics: spans, health, costs) |
+| Metadata DB | PostgreSQL via asyncpg (users, projects, API keys, SLOs) |
 | Trace ingestion | OTEL Collector (contrib) |
 | RCA agent | Claude Agent SDK (Phase 2) |
 | Dashboard | Next.js 15 + shadcn/ui (Phase 3) |
+| Auth | NextAuth.js (dashboard) + API key (SDK/CLI) |
 | Package manager | uv |
 
 ---
@@ -379,21 +408,35 @@ LangSight works with every major MCP client and agent framework:
 # Install with dev dependencies
 uv sync --dev
 
-# Run tests
-uv run pytest
+# Start the full stack (required for integration tests)
+docker compose up -d
+
+# Run unit tests only (no Docker required)
+uv run pytest -m unit
+
+# Run integration tests (requires docker compose up -d)
+uv run pytest tests/integration/ tests/regression/ -m integration -v
+
+# Run all tests with coverage
+uv run pytest --cov=langsight --cov-report=term-missing
 
 # Type check
 uv run mypy src/
 
 # Lint and format
 uv run ruff check src/ && uv run ruff format src/
+```
 
-# Start test infrastructure
-cd test-mcps && docker compose up -d
+### Test environment variables for integration tests
+
+```bash
+TEST_POSTGRES_URL=postgresql://langsight:testpassword@localhost:5432/langsight
+TEST_CLICKHOUSE_HOST=localhost
+TEST_CLICKHOUSE_PORT=8123
 ```
 
 > [!NOTE]
-> Integration tests require `docker compose up -d` and are marked `@pytest.mark.integration`. Unit tests run without any external dependencies.
+> Unit tests run without any external dependencies — they mock all I/O. Integration tests require `docker compose up -d` and are marked `@pytest.mark.integration`. The `tests/conftest.py` `require_postgres` and `require_clickhouse` fixtures auto-skip tests when Docker is not running.
 
 ---
 

@@ -1,8 +1,8 @@
-# AgentGuard: Risks, Costs, and Testing Strategy
+# LangSight: Risks, Costs, and Testing Strategy
 
-> **Version**: 1.0.0-draft
-> **Date**: 2026-03-15
-> **Status**: Draft for Review
+> **Version**: 1.1.0
+> **Date**: 2026-03-19
+> **Status**: Active — updated with dual-storage test infrastructure, coverage metrics, and new risks (2026-03-19)
 > **Author**: Engineering
 
 ---
@@ -152,6 +152,18 @@
 | **Likelihood** | **Medium** -- Langfuse has acknowledged MCP support in their roadmap but has not signaled deep MCP monitoring as a priority. Their focus remains on LLM traces, prompts, and evals. However, if MCP monitoring becomes a common user request, they could pivot. |
 | **Impact** | **High** -- Langfuse adding MCP features would eliminate AgentGuard's primary differentiation. Users would prefer one tool (Langfuse) over two (Langfuse + AgentGuard). |
 | **Mitigation** | 1. Move fast: ship core features before Langfuse can. First-mover advantage in the MCP monitoring niche. 2. Go deeper than Langfuse will: security scanning (CVEs, OWASP, poisoning) is not Langfuse's DNA. They are an observability company, not a security company. Security is our moat. 3. Build the Langfuse integration: make AgentGuard the "MCP plugin for Langfuse." If users love AgentGuard-enriched Langfuse traces, Langfuse has incentive to partner rather than compete. 4. Establish community leadership: publish the "MCP Security Bulletin", the "MCP Server Health Leaderboard", the "State of MCP Reliability" report. Own the narrative. 5. If Langfuse does add MCP features, pivot to being the MCP security platform (narrower focus, deeper expertise). |
+
+---
+
+### TR-07: SQLite Removal Breaks Zero-Dependency CLI Promise (accepted risk, 2026-03-19)
+
+| Attribute | Value |
+|-----------|-------|
+| **Description** | SQLite was removed in v0.2.0. The CLI now requires `docker compose up -d` before first use. This breaks the original "install and run in 60 seconds, no Docker required" MVP promise. |
+| **Likelihood** | **Certain** — this is a deliberate architectural decision, not a future risk. |
+| **Impact** | **Medium** — some potential users (solo devs on laptops without Docker, CI environments without Docker socket) cannot use LangSight. |
+| **Rationale for accepting** | (1) Multi-tenancy, RBAC, and audit logs require relational foreign keys and proper transactions — SQLite at scale is fragile. (2) All Phase 5+ features (replay, comparison, SLOs) depend on ClickHouse queries. (3) Maintaining a third backend path (SQLite) alongside Postgres and ClickHouse costs significant test coverage and correctness effort for a mode no production user would choose. |
+| **Mitigation** | Document Docker as a hard prerequisite. Provide `.env.example` with clear instructions. Consider a Docker-optional single-process mode (Postgres + embedded ClickHouse) as a future Phase 11 deliverable if demand proves it. |
 
 ---
 
@@ -671,9 +683,56 @@ class TestAlertRules:
 
 ---
 
+### 6.1.5 Current Coverage Metrics (as of v0.2.0)
+
+| Metric | Value | Target |
+|--------|-------|--------|
+| Unit test count | 694 | — |
+| Overall coverage | 77% | 75% (threshold) |
+| `health/` coverage | 90%+ | 90% |
+| `security/` coverage | 90%+ | 90% |
+| `alerts/` coverage | 90%+ | 90% |
+| ruff | All checks passed | — |
+| mypy | Success: no issues (68 source files) | — |
+
+### 6.1.6 Test Infrastructure (dual-storage, added 2026-03-19)
+
+Integration tests previously used SQLite in-memory for speed. With SQLite removed, all integration tests run against real Postgres and ClickHouse via Docker Compose. The `tests/conftest.py` file provides three skip fixtures:
+
+```python
+# Auto-skip when Docker is not running
+require_postgres    # skips if localhost:5432 not reachable
+require_clickhouse  # skips if localhost:8123 not reachable
+require_all_services  # skips if either backend is unreachable
+```
+
+All tests under `tests/integration/` and `tests/regression/` declare one of these as a fixture dependency. Running without Docker produces `SKIP` results rather than failures — CI gates only block if Docker is running and a test fails.
+
+**Run commands**:
+```bash
+# Unit tests — no Docker required
+uv run pytest -m unit
+
+# Integration tests — requires docker compose up -d
+docker compose up -d
+uv run pytest tests/integration/ tests/regression/ -m integration -v
+
+# Full suite with coverage
+uv run pytest --cov=langsight --cov-report=term-missing
+```
+
+**Test env vars** (override DSNs when using a non-default stack):
+```
+TEST_POSTGRES_URL=postgresql://langsight:testpassword@localhost:5432/langsight
+TEST_CLICKHOUSE_HOST=localhost
+TEST_CLICKHOUSE_PORT=8123
+```
+
+Regression tests for Postgres storage (`tests/integration/storage/test_postgres_storage.py`) use uuid-based server names to prevent cross-test pollution and clean up after themselves.
+
 ### 6.2 Integration Tests
 
-All integration tests require Docker Compose to provide ClickHouse, PostgreSQL, and mock MCP servers.
+All integration tests require Docker Compose to provide ClickHouse and PostgreSQL. SQLite is no longer supported — see 6.1.6 above. (changed from original: was described as an option alongside SQLite; now Postgres + ClickHouse only)
 
 #### Docker Compose Test Environment
 

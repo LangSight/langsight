@@ -70,4 +70,4 @@ langsight mcp-health --json | jq '.[].status'
 
 ## Data persistence
 
-Results are stored in `~/.langsight/data.db` (SQLite, default) or ClickHouse (production). Use `--config` to point at a different `.langsight.yaml` with a different storage backend.
+Health check results are stored in PostgreSQL (via the `dual` or `postgres` backend). Use `--config` to point at a different `.langsight.yaml` with a different storage backend.

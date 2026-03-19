@@ -1,26 +1,33 @@
 ---
 title: "Storage Backends"
-description: "Choose between SQLite, PostgreSQL, and ClickHouse"
+description: "Choose between PostgreSQL, ClickHouse, and the dual-backend production topology"
 ---
 
-LangSight supports three storage backends. Switch with one line in `.langsight.yaml`.
+LangSight uses a **dual-storage architecture** by default: PostgreSQL for metadata and ClickHouse for analytics. Both run via `docker compose up -d`.
 
-## SQLite (default)
+> **Note (v0.2.0)**: SQLite has been removed. `docker compose up -d` is now required. Attempting `mode: sqlite` raises a `ConfigError` with migration guidance.
 
-Zero setup. Data stored in `~/.langsight/data.db`.
+## Dual (default — production topology)
+
+Routes each operation to the right backend automatically:
+
+- **PostgreSQL** (metadata): users, projects, API keys, model pricing, SLOs, invite tokens, alert config, audit logs
+- **ClickHouse** (analytics): spans, traces, health results, reliability stats, costs, sessions
 
 ```yaml
 storage:
-  mode: sqlite
-  sqlite_path: ~/.langsight/data.db
+  mode: dual   # default — no further config needed when using docker compose
 ```
 
-**Best for:** local development, single-user CLI use, getting started.
-**Limitations:** no `langsight costs` command (no span tables), no concurrent API access.
+Start both backends:
+```bash
+cp .env.example .env   # fill in POSTGRES_PASSWORD, CLICKHOUSE_PASSWORD, etc.
+docker compose up -d
+```
 
-## PostgreSQL
+## PostgreSQL only
 
-For team deployments and the REST API.
+Metadata operations only — no span analytics, no `langsight costs`, no session tracing.
 
 ```yaml
 storage:
@@ -28,38 +35,30 @@ storage:
   postgres_url: postgresql://user:password@localhost:5432/langsight
 ```
 
-**Best for:** multi-user API deployments, persistent health history shared across team.
-**Limitations:** no `langsight costs` (tool call spans need ClickHouse).
+**Best for:** deployments that only need health check history and user management, without the analytics workload.
 
-## ClickHouse
+## ClickHouse only
 
-For production scale — required for tool reliability metrics and cost attribution.
+Analytics operations only — no user management, no RBAC, no API keys in DB.
 
 ```yaml
 storage:
   mode: clickhouse
   clickhouse_url: http://localhost:8123
   clickhouse_database: langsight
-  clickhouse_username: default
+  clickhouse_username: langsight
   clickhouse_password: ""
 ```
 
-**Best for:** production deployments, `langsight costs`, reliability analytics, OTLP ingestion at scale.
-
-Start ClickHouse with:
-```bash
-docker compose up -d clickhouse
-```
+**Best for:** read-only analytics deployments where auth is handled externally.
 
 ## Migration path
 
 ```
-Development     → SQLite   (zero setup)
-Team staging    → Postgres  (shared state)
-Production SaaS → ClickHouse (scale + analytics)
+Any v0.1.x SQLite deployment  → docker compose up -d  → mode: dual
+Postgres-only deployment       → add ClickHouse        → mode: dual
+ClickHouse-only deployment     → add Postgres          → mode: dual
 ```
-
-Switching is a one-line config change. The `StorageBackend` protocol ensures all three behave identically from the CLI and API's perspective.
 
 ## Database migrations (PostgreSQL)
 
@@ -78,6 +77,4 @@ The migration chain (as of v0.2.0):
 | `dc0bf058f21c` | Projects and `project_members` |
 | `0eaccc40f932` | `model_pricing` with seed data |
 
-SQLite runs DDL automatically on startup — no migration step needed.
-
-ClickHouse schema is also managed automatically on startup.
+ClickHouse schema is managed automatically on startup.

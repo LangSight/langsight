@@ -109,7 +109,7 @@ const ALL_FEATURES = [
   { category: "MCP Health Monitoring", items: ["Continuous proactive health checks", "Schema drift detection", "Latency tracking and p99 trends", "Slack + webhook alerts on DOWN/recovery", "Multi-transport: stdio, SSE, StreamableHTTP"] },
   { category: "MCP Security Scanning", items: ["CVE detection against public database", "All 10 OWASP MCP checks", "Tool poisoning detection (injection, unicode, base64)", "Auth gap analysis", "CI/CD integration with --ci flag", "JSON output for SIEM integration"] },
   { category: "Cost Attribution", items: ["Token-based pricing for LLM calls", "Per-tool call-based pricing rules", "Cost per session / per agent / per tool", "Model pricing table (admin-managed)", "Historical cost trends"] },
-  { category: "Infrastructure", items: ["SQLite — zero infra for local use", "PostgreSQL for metadata", "ClickHouse for high-volume traces", "Docker Compose for self-hosted deployment", "Alembic migrations for schema management"] },
+  { category: "Infrastructure", items: ["PostgreSQL for metadata (users, projects, API keys, SLOs)", "ClickHouse for analytics (spans, traces, costs, health)", "Dual-storage architecture — routes each operation to the right backend", "Docker Compose for self-hosted deployment", "Alembic migrations for schema management"] },
   { category: "Teams & Access", items: ["Multi-user with invite-based signup", "Project-level RBAC (owner / member / viewer)", "API key auth with role scopes", "Global admin + per-project roles", "Audit trail for auth events"] },
 ];
 
@@ -125,7 +125,7 @@ const FAQ = [
   },
   {
     q: "What infrastructure do I need to self-host?",
-    a: "SQLite mode requires nothing — just pip install langsight and langsight init. Full production mode uses PostgreSQL + ClickHouse, deployable via the included docker-compose.yml in under 5 minutes.",
+    a: "LangSight requires Docker. Copy .env.example to .env, fill in the required passwords, then run docker compose up -d. PostgreSQL (metadata) and ClickHouse (analytics) both start automatically. The full stack is up in under 5 minutes.",
   },
   {
     q: "Does my data leave my network?",
@@ -308,7 +308,7 @@ export default function PricingPage() {
                       "Unlimited projects with RBAC",
                       "All CLI commands",
                       "Full REST API + dashboard",
-                      "SQLite + PostgreSQL + ClickHouse",
+                      "PostgreSQL + ClickHouse (dual-backend)",
                       "MCP health monitoring",
                       "Security scanning (OWASP + CVE)",
                       "Cost attribution + model pricing",

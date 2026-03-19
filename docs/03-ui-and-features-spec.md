@@ -1,18 +1,18 @@
-# AgentGuard: UI & Features Specification
+# LangSight: UI & Features Specification
 
-> **Version**: 1.0.0-draft
-> **Date**: 2026-03-15
-> **Status**: Draft — CLI mockups and feature overview, detailed wireframes added during build
+> **Version**: 1.1.0
+> **Date**: 2026-03-19
+> **Status**: Active — updated with dual-storage config schema, accept-invite page, NavProgress, loading skeleton, audit log persistence (2026-03-19)
 
 ---
 
 ## 1. Interface Strategy
 
-AgentGuard has two interfaces, shipped in phases:
+LangSight has two interfaces, shipped in phases:
 
 | Interface | Phase | Purpose |
 |---|---|---|
-| **CLI** (`agentguard`) | Phase 1 | Primary interface — health checks, security scans, monitoring, investigation |
+| **CLI** (`langsight`) | Phase 1 | Primary interface — health checks, security scans, monitoring, investigation |
 | **Web Dashboard** | Phase 3 | Visual interface for teams — dashboards, charts, alert management |
 
 CLI is the priority. Dashboard is built on the same FastAPI backend, so CLI users get everything first.
@@ -211,7 +211,7 @@ Press Ctrl+C to stop
 3. Deduplicates alerts (same alert within cooldown = no re-send)
 4. Periodically re-scans security (default 1h)
 5. Tracks schema changes (hash comparison)
-6. Writes all results to ClickHouse (if running) or SQLite (CLI-only mode)
+6. Writes all results to PostgreSQL (health results, schema snapshots) and ClickHouse (spans, health metrics) via the dual backend
 
 ---
 
@@ -320,10 +320,10 @@ $ agentguard config test          # Test connections to all servers
 
 ## 3. Configuration File
 
-### `.agentguard.yaml` Schema
+### `.langsight.yaml` Schema
 
 ```yaml
-# AgentGuard Configuration
+# LangSight Configuration
 version: "1"
 
 # MCP servers to monitor
@@ -351,9 +351,9 @@ servers:
 
 # Alerting
 alerts:
-  slack_webhook: https://hooks.slack.com/services/T.../B.../xxx
+  slack_webhook: ${LANGSIGHT_SLACK_WEBHOOK}
   # Generic webhook (optional)
-  webhook_url: https://my-service.com/agentguard-alerts
+  webhook_url: https://my-service.com/langsight-alerts
 
   thresholds:
     server_down_after: 3          # consecutive failures before DOWN alert
@@ -370,16 +370,20 @@ costs:
     snowflake-mcp: 0.008          # $ per call
     github-mcp: 0.012
 
-  # LLM model pricing (auto-loaded, can override)
+  # LLM model pricing (auto-loaded from model_pricing DB table, can override)
   model_pricing_override:
     claude-sonnet-4-6: { input: 0.003, output: 0.015 }
 
-# Storage (for CLI-only mode, uses SQLite; full stack uses ClickHouse/PostgreSQL)
+# Storage backend
+# (changed from original: sqlite removed 2026-03-19; docker compose up -d required)
+# Valid modes: postgres | clickhouse | dual (default: dual)
 storage:
-  mode: sqlite                    # sqlite | full
-  sqlite_path: ~/.agentguard/data.db
+  mode: dual                      # Postgres (metadata) + ClickHouse (analytics)
+  postgres_url: ${LANGSIGHT_POSTGRES_URL}
+  # clickhouse_url, clickhouse_database, clickhouse_username, clickhouse_password
+  # are read from env vars (LANGSIGHT_CLICKHOUSE_*) or use defaults
 
-# OTEL ingestion (full stack mode only)
+# OTEL ingestion
 otel:
   collector_endpoint: http://localhost:4318
 
@@ -391,9 +395,17 @@ otel:
 redact_payloads: false
 ```
 
-**Environment variable overrides**: Any config value can be overridden via env var with `AGENTGUARD_` prefix:
-- `AGENTGUARD_SLACK_WEBHOOK` → `alerts.slack_webhook`
-- `AGENTGUARD_STORAGE_MODE` → `storage.mode`
+**Environment variable overrides** (all use `LANGSIGHT_` prefix):
+| Env var | Config field |
+|---|---|
+| `LANGSIGHT_SLACK_WEBHOOK` | `alerts.slack_webhook` |
+| `LANGSIGHT_STORAGE_MODE` | `storage.mode` |
+| `LANGSIGHT_POSTGRES_URL` | `storage.postgres_url` |
+| `LANGSIGHT_CLICKHOUSE_URL` | `storage.clickhouse_url` |
+| `LANGSIGHT_API_KEYS` | API key list (comma-separated) |
+| `LANGSIGHT_TRUSTED_PROXY_CIDRS` | Trusted proxy network CIDRs (default: `127.0.0.1/32,::1/128`) |
+| `LANGSIGHT_DASHBOARD_URL` | Base URL used in invite email links |
+| `LANGSIGHT_CORS_ORIGINS` | Comma-separated allowed CORS origins |
 
 ---
 
@@ -445,6 +457,31 @@ The current IA is agent-first: **Overview → Agents → Workflows → Tools & M
 - **Actions**: Acknowledge, resolve, snooze
 - **Alert rules**: Configure thresholds per server or globally
 
+### 4.6.1 Accept Invite Page (added 2026-03-19)
+
+Path: `/accept-invite?token=<invite_token>`
+
+- Password + confirm password fields
+- On submit: calls `POST /api/accept-invite` (public route — no session required; handled by a dedicated Next.js API route handler, not the authenticated proxy)
+- On success: redirects to `/login` with a success toast
+- Design matches the login page (same card layout, same indigo CTA button)
+- Middleware updated to allow `/accept-invite` through unauthenticated — it is excluded from the session-required redirect
+
+### 4.6.2 NavProgress Bar (added 2026-03-19)
+
+A thin indigo bar (`2px` height) at the top of every dashboard page:
+- Starts animating when a sidebar navigation link is clicked
+- Completes and fades out when the new route finishes loading
+- Implemented via a `NavProgress` component that listens to Next.js App Router navigation events
+- Color: `--indigo: #6366F1`
+
+### 4.6.3 Route Loading Skeleton (added 2026-03-19)
+
+`dashboard/app/(dashboard)/loading.tsx` — Next.js App Router `loading.tsx` convention:
+- Shown instantly by the framework when a page segment is loading (concurrent rendering)
+- Skeleton matches the expected page layout (card placeholders, table rows)
+- Eliminates blank flash between navigation clicks and data load
+
 ### 4.7 Settings Page (redesigned 2026-03-19)
 
 The Settings page uses a **left-nav + content panel** layout. Clicking a nav item isolates its section — no long scroll. Eight sections are available:
@@ -457,7 +494,7 @@ The Settings page uses a **left-nav + content panel** layout. Clicking a nav ite
 | Members | User list with role badges; Invite by email; Change role; Deactivate — Danger Zone pattern for destructive actions |
 | Projects | Project list; Create project; Rename; Delete — Danger Zone |
 | Notifications | Slack webhook URL input + "Test" button (calls `POST /api/alerts/test`); alert type toggles (see table below) |
-| Audit Logs | Table of last 50 auth/RBAC events from in-memory ring buffer; columns: Timestamp, Actor, Action, Resource, Result; no pagination in UI (use `GET /api/audit/logs?limit=&offset=` for bulk export) |
+| Audit Logs | Table of last 50 auth/RBAC events sourced from the `audit_logs` Postgres table; columns: Timestamp, Actor, Action, Resource, Result; no pagination in UI (use `GET /api/audit/logs?limit=&offset=` for bulk export). Changed from original: was an in-memory ring buffer (lost on restart); now persisted to DB via async write (2026-03-19). |
 | Instance | Danger Zone for destructive instance-level actions |
 
 #### Notifications section — alert type toggles
@@ -473,7 +510,7 @@ The Settings page uses a **left-nav + content panel** layout. Clicking a nav ite
 
 #### Audit Logs section — captured events
 
-The ring buffer retains the last 50 events. Events captured:
+The `audit_logs` table is append-only. The UI shows the last 50 events; full history is available via `GET /api/audit/logs?limit=&offset=`. Events captured:
 
 - User login (success and failure)
 - API key created / revoked
@@ -494,7 +531,7 @@ The ring buffer retains the last 50 events. Events captured:
 | Security scanning | CLI (`security-scan`) | CVE matching, OWASP Top 10, tool poisoning detection |
 | Continuous monitoring | CLI (`monitor`) | Daemon mode with periodic health + security checks |
 | Alerting | Slack + webhook | Threshold-based alerts with deduplication |
-| Local storage | SQLite | CLI-only mode, no Docker required |
+| Storage | Postgres + ClickHouse via Docker Compose | Dual-backend production topology |
 | Config management | CLI (`config`) + YAML | Server management, alert thresholds |
 
 ### Phase 2 — Differentiate (Weeks 6-10)

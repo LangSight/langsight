@@ -66,7 +66,7 @@ The Overview page shows an "Anomalies Detected" card that polls every 60 seconds
 
 ## Requires ClickHouse
 
-Anomaly detection uses the `mv_tool_reliability` materialized view. It requires `storage.mode: clickhouse`. Returns an empty list on SQLite.
+Anomaly detection uses the `mv_tool_reliability` materialized view in ClickHouse. It requires `storage.mode: clickhouse` or `storage.mode: dual` (the default). Returns an empty list when running `mode: postgres` only.
 
 ## Minimum baseline
 

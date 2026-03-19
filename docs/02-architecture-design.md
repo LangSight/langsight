@@ -1,8 +1,8 @@
 # LangSight: Architecture Design
 
-> **Version**: 1.1.0
-> **Date**: 2026-03-17
-> **Status**: Active — updated with SDK, LibreChat integration, and integration paths (decided 2026-03-17)
+> **Version**: 1.2.0
+> **Date**: 2026-03-19
+> **Status**: Active — updated with dual-storage, CIDR proxy trust, auth header fix, RBAC hardening, alert/audit persistence (2026-03-19)
 
 ---
 
@@ -26,11 +26,11 @@
   LibreChat                          │  └───────────────────┬─────────────────┘  │
          │                           │                      │                    │
          │  LANGSIGHT_URL env var     │          ┌──────────▼──────────┐          │
-         │  (~50-line JS plugin)      │          │  Storage Layer      │          │
-         ▼                           │          │  SQLite (local)     │          │
-  ┌──────────────────┐               │          │  PostgreSQL (prod)  │          │
-  │  LangSight       │──── spans ───►│          │  ClickHouse (Ph.3)  │          │
-  │  LibreChat Plugin│               │          └─────────────────────┘          │
+         │  (~50-line JS plugin)      │          │  Storage Layer (dual)│         │
+         ▼                           │          │  Postgres (metadata) │         │
+  ┌──────────────────┐               │          │  ClickHouse (analytics)        │
+  │  LangSight       │──── spans ───►│          └─────────────────────┘          │
+  │  LibreChat Plugin│               │                                           │
   └──────────────────┘               │                                           │
                                      │  ┌───────────────┐  ┌──────────────────┐  │
   Agent Frameworks (Phase 3)         │  │  CLI (Click)  │  │  Slack/Webhook   │  │
@@ -195,6 +195,44 @@
 - All commands support `--json` for programmatic use
 - `--ci` flag on security-scan returns exit codes for CI/CD pipelines
 - Config resolution: CLI flags > env vars > .agentguard.yaml > defaults
+
+### 2.7.5 DualStorage (added 2026-03-19)
+
+**Purpose**: Production storage topology — routes each operation to the backend that is architecturally correct for it, transparently from the caller's perspective.
+
+**How it works**:
+- `DualStorage.__init__(metadata: PostgresBackend, analytics: ClickHouseBackend)`
+- Implements the full `StorageBackend` protocol; callers never reference either inner backend directly
+- **Postgres (metadata)**: users, projects, project members, API keys, model pricing, SLOs, invite tokens, alert config, audit logs — relational, low-volume, strong consistency required
+- **ClickHouse (analytics)**: spans, traces, health results, reliability stats, costs, sessions — time-series, high-volume, append-only
+- ClickHouse-specific extension methods (`get_session_trace`, `compare_sessions`, `get_cost_call_counts`, `get_tool_reliability`, `get_baseline_stats`) forwarded via `__getattr__`
+
+**Routing table**:
+```
+save_health_result()        → ClickHouse
+get_session_trace()         → ClickHouse
+compare_sessions()          → ClickHouse
+get_cost_call_counts()      → ClickHouse
+get_tool_reliability()      → ClickHouse
+get_baseline_stats()        → ClickHouse
+
+save_schema_snapshot()      → Postgres
+list_api_keys()             → Postgres
+create_api_key()            → Postgres
+get_api_key_by_hash()       → Postgres
+list_users() / get_user()   → Postgres
+create_slo() / list_slos()  → Postgres
+list_projects()             → Postgres
+append_audit()              → Postgres
+save_alert_config()         → Postgres
+```
+
+**Source**: `src/langsight/storage/dual.py`
+
+**Key design decisions** (decided 2026-03-19):
+- **Transparent routing, not federation**: DualStorage satisfies the single `StorageBackend` protocol. No router or dependency knows it exists — adding it was a config change, not a code change across call sites.
+- **SQLite removed**: SQLite was the zero-dependency CLI mode from Phase 1. Removed because: (a) Phase 2+ features (multi-tenancy, RBAC, audit logs) require relational joins and foreign keys that SQLite supports poorly at scale; (b) the dual-backend model requires two processes regardless, making the zero-dependency argument void; (c) maintenance burden of a third backend path that no production user would choose. `docker compose up -d` is now the minimum requirement. Attempting `mode: sqlite` raises `ConfigError` with a migration message.
+- **Factory dispatch**: `storage/factory.py` `open_storage()` dispatches on `config.mode`: `"postgres"` | `"clickhouse"` | `"dual"` (default). Unknown modes raise `ConfigError` with an explicit migration message for former SQLite users.
 
 ### 2.8 FastAPI REST API
 
@@ -430,16 +468,25 @@ agentguard investigate "customer got wrong refund amount"
 | `llm_output` | `Nullable(String)` | LLM completion text extracted from OTLP `gen_ai.completion` / `llm.completions` attributes. Populated only on `span_type="agent"` spans originating from LLM generation spans. (P5.3) |
 | `replay_of` | `String DEFAULT ''` | When this span is a replay, contains the `span_id` of the original span being replayed. Empty string for non-replay spans. Links replay sessions back to their originals without a separate table. (P5.7, added 2026-03-19) |
 
-### PostgreSQL (application state)
+### PostgreSQL (metadata — all data that requires relational integrity)
+
+(changed from original: SQLite removed; all metadata now lives in Postgres; decided 2026-03-19)
+
 | Table | What it stores |
 |---|---|
 | `mcp_servers` | Registered MCP server configs (name, transport, URL, auth, tags) |
 | `security_scans` | Scan results (findings, scores, timestamps) |
 | `alert_rules` | User-defined alert thresholds |
 | `alerts` | Fired alerts with lifecycle (firing/ack/resolved) |
-| `api_keys` | API authentication keys |
-| `model_pricing` | LLM model → price per 1K input/output tokens |
-| `agent_slos` | User-defined SLO definitions (`agent_name`, `metric`, `target`, `window_hours`, `created_at`). Present in both SQLite and PostgreSQL backends. (P5.5, added 2026-03-19) |
+| `alert_config` | Singleton row: Slack webhook URL + per-alert-type enable flags. Previously in-memory in `app.state`; persisted to Postgres so settings survive API restarts. (added 2026-03-19) |
+| `audit_logs` | Append-only auth/RBAC events: login, API key create/revoke, role change, settings saved. Previously an in-memory ring buffer (last 50 events); now a proper DB table with async writes via `asyncio.create_task`. (added 2026-03-19) |
+| `api_keys` | API authentication keys (sha256-hashed, never plaintext) |
+| `users` | User accounts created at invite acceptance |
+| `invite_tokens` | One-time invite tokens for user onboarding |
+| `projects` | Project definitions (name, created_at) |
+| `project_members` | Project membership: user_id, project_id, role (owner/member/viewer) |
+| `model_pricing` | LLM model → price per 1K input/output tokens (16 seed rows: Anthropic, OpenAI, Google, Meta, AWS) |
+| `agent_slos` | User-defined SLO definitions (`agent_name`, `metric`, `target`, `window_hours`, `created_at`). (P5.5, added 2026-03-19) |
 
 ---
 
@@ -450,8 +497,8 @@ agentguard investigate "customer got wrong refund amount"
 | **Core language** | Python 3.11+ | Best MCP SDK support, OTEL libraries, AI ecosystem |
 | **CLI** | Click + Rich | Clean CLI framework + beautiful terminal output |
 | **API** | FastAPI | Async, fast, auto-docs, Python-native |
-| **OLAP** | ClickHouse | Proven for observability at scale (Langfuse, Helicone) |
-| **Metadata DB** | PostgreSQL | Reliable, well-understood for app state |
+| **OLAP** | ClickHouse | Proven for observability at scale (Langfuse, Helicone); analytics path in DualStorage |
+| **Metadata DB** | PostgreSQL (asyncpg direct) | Reliable, well-understood for app state; metadata path in DualStorage |
 | **Trace ingestion** | OTEL Collector (contrib) | Standard, ClickHouse exporter built-in |
 | **Dashboard** | Next.js 15 + shadcn/ui + recharts | Fast to build, good component ecosystem |
 | **MCP client** | `mcp` Python SDK | Official SDK for connecting to MCP servers |
@@ -525,12 +572,15 @@ crew = Crew(callbacks=[LangSightCrewAICallback()])
 ### Docker Compose Services
 | Service | Image | Exposed Ports | Purpose |
 |---|---|---|---|
-| `clickhouse` | clickhouse/clickhouse-server | 8123, 9000 | OLAP storage |
-| `postgres` | postgres:16 | 5432 | Metadata storage |
-| `otel-collector` | otel/opentelemetry-collector-contrib | 4317, 4318 | Trace ingestion |
-| `agentguard-api` | agentguard/api | 8080 | REST API |
-| `agentguard-worker` | agentguard/worker | — | Health checks, scans, alerts |
-| `agentguard-dashboard` | agentguard/dashboard | 3000 | Web UI (Phase 3) |
+| `clickhouse` | clickhouse/clickhouse-server:24 | 8123, 9000 | OLAP analytics storage |
+| `postgres` | postgres:16-alpine | 5432 | Metadata storage |
+| `otel-collector` | otel/opentelemetry-collector-contrib:0.120.0 | 4317, 4318 | Trace ingestion |
+| `api` | langsight/api:latest | 8000 | REST API (`LANGSIGHT_STORAGE_MODE: dual`) |
+| `dashboard` | langsight/dashboard:latest | 3003 (→ 3002) | Next.js dashboard |
+
+All required credentials are injected via env vars. The `${VAR:?error}` pattern in `docker-compose.yml` ensures compose refuses to start with missing secrets. Copy `.env.example` → `.env` and fill in all required values before `docker compose up -d`.
+
+**Required env vars before compose up**: `POSTGRES_PASSWORD`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`, `LANGSIGHT_API_KEYS`, `AUTH_SECRET`, `LANGSIGHT_ADMIN_EMAIL`, `LANGSIGHT_ADMIN_PASSWORD`.
 
 ### Resource Estimates (Development)
 | Service | CPU | Memory | Disk |
@@ -541,16 +591,22 @@ crew = Crew(callbacks=[LangSightCrewAICallback()])
 | API + Worker | 1 core | 1 GB | — |
 | **Total** | **3 cores** | **~4 GB** | **~11 GB** |
 
-### CLI-Only Mode (No Docker)
-For users who just want the CLI without the full stack:
+### Storage Modes
+
+(changed from original: SQLite mode removed 2026-03-19; `docker compose up -d` is now the minimum requirement)
+
+| Mode | Backends | Use case |
+|------|----------|----------|
+| `dual` (default) | Postgres + ClickHouse | Production — full feature set |
+| `postgres` | Postgres only | Metadata only — no analytics/tracing |
+| `clickhouse` | ClickHouse only | Analytics only — no user/project management |
+
+All modes require Docker. There is no zero-dependency CLI mode. Attempting `mode: sqlite` raises `ConfigError`:
 ```
-pip install agentguard
-agentguard init
-agentguard mcp-health
-agentguard security-scan
+Unknown storage mode 'sqlite'. Valid values: 'postgres', 'clickhouse', 'dual'.
+SQLite has been removed — use 'dual' (Postgres + ClickHouse) for production
+or 'postgres' for metadata-only deployments.
 ```
-CLI-only mode uses SQLite for local storage. No ClickHouse/PostgreSQL required.
-Full stack (Docker Compose) needed for: OTEL ingestion, dashboard, continuous monitoring, alerting.
 
 ---
 
@@ -569,26 +625,47 @@ Dashboard users:
     ▼
   Next.js proxy route
   dashboard/app/api/proxy/[...path]/route.ts
-    │ Forwards to FastAPI (localhost only)
+    │ Forwards to FastAPI (Docker bridge / localhost)
     ▼
   FastAPI
-    └── _is_proxy_request(): trusts headers only from 127.0.0.1 / ::1
+    └── _is_proxy_request(): trusts headers from LANGSIGHT_TRUSTED_PROXY_CIDRS
     └── _get_session_user(): extracts user_id + role from headers
 
 SDK / CLI users:
   langsight CLI / Python SDK
-    │ X-API-Key header
+    │ X-API-Key: <key>          (primary)
+    │ Authorization: Bearer <key>   (also accepted — backward compat)
     ▼
   FastAPI
-    └── verify_api_key(): validates against api_keys table
+    └── _read_api_key(): reads X-API-Key first, then Authorization: Bearer
+    └── verify_api_key(): validates against DB key table or env var keys
 ```
 
-### Trusted proxy pattern (decided 2026-03-19)
+### SDK auth header fix (fixed 2026-03-19 — CRITICAL)
 
-FastAPI trusts `X-User-Id` and `X-User-Role` only when the request originates from `127.0.0.1` or `::1`. External clients that set these headers directly are ignored — the headers are treated as regular headers, not auth. This means:
-- No JWT verification in FastAPI — simpler, no shared secret dependency
-- Security boundary is the network: the proxy and API must be co-located (Docker Compose / same host)
-- Not suitable for deployments where FastAPI is exposed publicly without a reverse proxy
+The SDK was sending `Authorization: Bearer <key>` but the API only read `X-API-Key`. This caused traces to be silently dropped in any authenticated deployment — the SDK appeared to work (no errors) but spans never reached the database.
+
+Fix: `_read_api_key()` helper in `dependencies.py` now reads both headers in priority order:
+1. `X-API-Key` (direct header — preferred)
+2. `Authorization: Bearer <key>` (SDK backward compat)
+
+The SDK now sends `X-API-Key`. Both forms are accepted permanently so existing integrations are not broken.
+
+### Trusted proxy pattern (decided 2026-03-19; updated to CIDR model 2026-03-19)
+
+FastAPI trusts `X-User-Id` and `X-User-Role` only when the request originates from a trusted CIDR. Trust list is configured via `LANGSIGHT_TRUSTED_PROXY_CIDRS` (comma-separated CIDRs/IPs), stored on `app.state.trusted_proxy_networks` at startup, and evaluated by `parse_trusted_proxy_networks()` + `_is_proxy_request()` in `dependencies.py`.
+
+**Why CIDR instead of hardcoded localhost** (changed from original: was `{127.0.0.1, ::1}` hardcoded, now CIDR-configurable; decided 2026-03-19): The original hardcoded loopback list broke Docker deployments where the Next.js dashboard runs in a separate container. In Docker Compose, the dashboard's source IP is `172.x.x.x`, not `127.0.0.1`. CIDR-based trust allows the compose default (`172.16.0.0/12,10.0.0.0/8`) while remaining safe on bare-metal installs.
+
+**Docker Compose default** (`LANGSIGHT_TRUSTED_PROXY_CIDRS`):
+```
+127.0.0.1/32,::1/128,172.16.0.0/12,10.0.0.0/8
+```
+
+**Security properties remain unchanged**:
+- No JWT verification in FastAPI — no shared secret dependency
+- Security boundary is the network: the proxy and API must not be internet-exposed directly
+- External clients that set `X-User-*` headers from untrusted IPs are ignored
 
 ### Why not Bearer token forwarding (rejected approach, decided 2026-03-19)
 
@@ -623,12 +700,16 @@ All ClickHouse queries in `storage/clickhouse.py` that read from `mcp_tool_calls
 
 ## 9. Security Considerations
 
-- **Two auth paths**: session headers (dashboard via Next.js proxy) and X-API-Key (SDK/CLI)
-- **Trusted proxy**: X-User-Id/X-User-Role headers trusted only from localhost — FastAPI must not be internet-exposed without the Next.js proxy
+- **Two auth paths**: session headers (dashboard via Next.js proxy) and X-API-Key / Authorization: Bearer (SDK/CLI)
+- **SDK auth header**: API accepts both `X-API-Key` and `Authorization: Bearer` — SDK sends `X-API-Key` (fixed 2026-03-19; was sending Bearer which was silently ignored)
+- **Trusted proxy CIDRs**: `X-User-Id`/`X-User-Role` headers trusted only from `LANGSIGHT_TRUSTED_PROXY_CIDRS` (default: loopback; Docker default adds `172.16.0.0/12,10.0.0.0/8`). Changed from hardcoded loopback-only (2026-03-19) to support Docker network topology.
 - **MCP credentials** stored in .langsight.yaml (gitignored) or env vars
 - **No external exposure by default** — Docker network is internal, only dashboard port exposed
 - **PII in traces**: `redact_payloads: true` config suppresses payload capture before transmission
 - **Principle of least privilege**: Health checker uses read-only MCP operations only
 - **Rate limiting**: `/api/users/verify` limited to 10 requests/minute per IP (via slowapi); health check frequency capped to avoid overloading MCP servers
+- **RBAC hardened** (2026-03-19): `POST/GET/DELETE /api/auth/api-keys` require admin role; `POST/DELETE /api/slos` require admin role; `list_projects` handles session-user path correctly; `get_active_project_id` and `get_project_access` both check DB keys (not just env keys) for auth-disabled logic
 - **Project isolation**: all ClickHouse queries filtered by `project_id` at DB level when a project context is active
 - **Security headers**: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, HSTS on all API responses
+- **Alert config and audit logs persisted** (2026-03-19): previously stored in `app.state` (lost on restart); now in Postgres via `alert_config` (singleton upsert) and `audit_logs` (append-only) tables. `append_audit()` schedules async DB write via `asyncio.create_task` — never blocks the request path.
+- **No default secrets**: `docker-compose.yml` uses `${VAR:?error}` syntax — compose refuses to start if required vars are missing. No hardcoded passwords anywhere.

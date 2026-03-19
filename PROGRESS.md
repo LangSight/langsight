@@ -1,9 +1,59 @@
 # LangSight — Build Progress
 
-> Last updated: 2026-03-19 (P5.7 Playground Replay — Phase 5 COMPLETE)
+> Last updated: 2026-03-19 (SQLite removed, DualStorage, CIDR proxy trust, SDK auth fix, RBAC hardening, audit/alert persistence, dashboard UX)
 > Maintained by: docs-keeper agent — update after every feature, architectural decision, or milestone
 
 **Project framing**: LangSight is complete observability for everything an AI agent calls — MCP servers, HTTP APIs, Python functions, and sub-agents. Agent-level instrumentation captures all tool types in one trace. MCP servers additionally receive proactive health checks, security scanning, schema drift detection, and alerting because the MCP protocol is standard and inspectable. Non-MCP tools (HTTP APIs, functions) are passively observed in traces only.
+
+---
+
+## v0.2.0 Infrastructure Changes (2026-03-19)
+
+### SQLite removed — DualStorage is the production topology
+
+| Change | Details |
+|--------|---------|
+| `storage/sqlite.py` | DELETED — `SQLiteBackend` no longer exists |
+| `storage/dual.py` | NEW — `DualStorage` routes metadata → Postgres, analytics → ClickHouse |
+| `storage/factory.py` | Updated — `open_storage()` dispatches `mode="dual"` (default); raises `ConfigError` on `mode="sqlite"` with migration message |
+| `config.py` `StorageConfig.mode` | Default changed from `"sqlite"` → `"dual"` |
+| `docker-compose.yml` | Postgres port 5432 + ClickHouse 8123/9000 exposed to host; `${VAR:?error}` required-var enforcement; `.env.example` added |
+
+### SDK auth header fix (CRITICAL)
+
+SDK was sending `Authorization: Bearer <key>`, API only read `X-API-Key`. Traces were silently dropped in authenticated deployments. Fixed in `dependencies.py` via `_read_api_key()` which now reads both headers. SDK now sends `X-API-Key`. Both forms permanently accepted.
+
+### Proxy trust — CIDR-based (was hardcoded loopback)
+
+`LANGSIGHT_TRUSTED_PROXY_CIDRS` env var (default: `127.0.0.1/32,::1/128`; Docker default: adds `172.16.0.0/12,10.0.0.0/8`). `parse_trusted_proxy_networks()` + `_is_proxy_request()` in `dependencies.py`. Previously hardcoded `{127.0.0.1, ::1}` — broken for Docker deployments where Next.js runs in a separate container.
+
+### Alert config + audit logs persisted to DB
+
+- `alert_config` — Postgres singleton upsert; previously in `app.state` (lost on restart)
+- `audit_logs` — Postgres append-only table; previously in-memory ring buffer (lost on restart)
+- `append_audit()` uses `asyncio.create_task` — never blocks request path
+
+### RBAC hardened
+
+- API key CRUD endpoints now require admin role
+- SLO write endpoints now require admin role
+- `list_projects` session-user path fixed
+- `get_active_project_id` and `get_project_access` check DB keys for auth-disabled logic
+
+### Integration test infrastructure
+
+- `tests/conftest.py`: `require_postgres`, `require_clickhouse`, `require_all_services` fixtures with auto-skip
+- `tests/integration/storage/test_postgres_storage.py`: full Postgres tests against real DB
+- Regression tests migrated from SQLiteBackend to PostgresBackend
+
+### Test metrics (v0.2.0)
+
+| Metric | Value |
+|--------|-------|
+| Unit tests | 694 |
+| Coverage | 77% (threshold: 75%) |
+| ruff | All checks passed |
+| mypy | Success: no issues (68 source files) |
 
 ---
 
@@ -160,21 +210,20 @@ Phase 7 (Model-Based Costs)     ░░░░░░░░░░░░░░░░
 
 | Metric | Value |
 |--------|-------|
-| Test count | 385 tests |
-| Coverage | 85.39% |
+| Test count | 694 unit tests |
+| Coverage | 77% (threshold 75%) |
+| ruff | All checks passed |
+| mypy | Success: no issues (68 source files) |
 | CLI commands live | 8 (`init`, `mcp-health`, `security-scan`, `monitor`, `investigate`, `costs`, `sessions`, `serve`) |
-| API endpoints | 12 (`/api/agents/sessions`, `/api/agents/sessions/{id}`, `/api/health/*`, `/api/security/scan`, `/api/traces/spans`, `/api/traces/otlp`, `/api/status`, `/api/costs/breakdown`, `/api/costs/by-agent`, `/api/costs/by-session`) |
-| Storage backends | 3 (SQLite, PostgreSQL, ClickHouse) |
+| Storage backends | 2 active (PostgreSQL metadata, ClickHouse analytics) — SQLite removed v0.2.0 |
+| Storage modes | `postgres` \| `clickhouse` \| `dual` (default: `dual`) |
 | Framework integrations | 5 (LangChain/Langflow/LangGraph/LangServe, CrewAI, Pydantic AI, LibreChat, OTEL) |
 | LLM providers for investigate | 4 (Claude, OpenAI, Gemini, Ollama) |
-| Mintlify docs pages | 28 (including `sessions.mdx`) |
+| Mintlify docs pages | 28 |
 | PyPI release | `langsight==0.1.0` published |
 | GitHub release | `v0.1.0` tagged |
-| dist/ artifacts | `langsight-0.1.0-py3-none-any.whl` + `langsight-0.1.0.tar.gz` |
 | Marketing website | Built (`website/app/page.tsx`) — Vercel deploy pending |
-| Product dashboard | Built (`dashboard/`) — demo auth only (P0.2 gap) |
-| Source files | ~50 |
-| Lines of source code | ~4,000 |
+| Product dashboard | Built (`dashboard/`) — production auth (NextAuth + API keys), full RBAC |
 
 ---
 
@@ -210,9 +259,10 @@ Phase 7 (Model-Based Costs)     ░░░░░░░░░░░░░░░░
 | `health/checker.py` | ✅ Done | 2026-03-16 | concurrent check_many(), storage-aware, drift detection |
 | `health/schema_tracker.py` | ✅ Done | 2026-03-16 | drift detection — baseline + compare across runs |
 | `storage/base.py` | ✅ Done | 2026-03-16 | StorageBackend Protocol — SaaS-safe abstraction |
-| `storage/sqlite.py` | ✅ Done | 2026-03-16 | SQLite backend, async, DDL on first open, persists across runs |
+| `storage/sqlite.py` | DELETED | 2026-03-19 | SQLite backend removed — use `mode: dual` or `mode: postgres` instead |
+| `storage/dual.py` | ✅ Done | 2026-03-19 | DualStorage — routes metadata → Postgres, analytics → ClickHouse |
 | `storage/postgres.py` | ✅ Done | 2026-03-17 | PostgreSQL backend, asyncpg direct (no SQLAlchemy) |
-| `storage/__init__.py` | ✅ Done | 2026-03-17 | `open_storage()` factory — selects SQLite or PostgreSQL |
+| `storage/factory.py` | ✅ Done | 2026-03-19 | `open_storage()` factory — dispatches `postgres`/`clickhouse`/`dual`; raises ConfigError on unknown mode |
 | `security/models.py` | ✅ Done | 2026-03-16 | Severity, SecurityFinding, ScanResult |
 | `security/owasp_checker.py` | ✅ Done | 2026-03-16 | 5 OWASP MCP checks |
 | `security/poisoning_detector.py` | ✅ Done | 2026-03-16 | injection phrases, exfiltration, URLs, hidden unicode, base64 |
