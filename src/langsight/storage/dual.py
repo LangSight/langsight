@@ -68,6 +68,36 @@ class DualStorage:
             if isinstance(r, BaseException):
                 raise r
 
+    async def ping(self) -> dict[str, str]:
+        """Probe both backends and return per-backend status.
+
+        Used by the /api/readiness endpoint to verify both Postgres and
+        ClickHouse are reachable before declaring the instance ready.
+
+        Returns a dict like::
+
+            {"postgres": "ok", "clickhouse": "ok"}
+
+        Any unreachable backend has its value set to "error: <reason>".
+        """
+
+        async def _ping_meta() -> str:
+            try:
+                await self._meta.count_users()
+                return "ok"
+            except Exception as exc:  # noqa: BLE001
+                return f"error: {exc}"
+
+        async def _ping_analytics() -> str:
+            try:
+                await self._analytics.get_health_history("__probe__", limit=1)
+                return "ok"
+            except Exception as exc:  # noqa: BLE001
+                return f"error: {exc}"
+
+        postgres_status, clickhouse_status = await asyncio.gather(_ping_meta(), _ping_analytics())
+        return {"postgres": postgres_status, "clickhouse": clickhouse_status}
+
     async def __aenter__(self) -> DualStorage:
         return self
 

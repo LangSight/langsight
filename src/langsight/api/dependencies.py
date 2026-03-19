@@ -356,31 +356,28 @@ async def get_active_project_id(
 ) -> str | None:
     """Resolve the project_id to filter by for this request.
 
-    - If project_id query param is provided, verify the caller is a member
-      (or a global admin) and return it.
-    - If not provided, return None → caller sees all data they have access to.
-    - Global admins (session role=admin or env-var key) always pass through.
+    - If project_id is provided, verify the caller is a member (or admin) and return it.
+    - If not provided:
+        - Global admins (session role=admin or env-var key) return None → see all data.
+        - Auth disabled (no keys configured) returns None → open install.
+        - Authenticated non-admins receive HTTP 400 — they must specify a project.
     """
-    if not project_id:
-        return None
-
     storage: StorageBackend = request.app.state.storage
     if not hasattr(storage, "list_members"):
         return project_id  # storage doesn't support projects — allow through
 
     env_keys: list[str] = getattr(request.app.state, "api_keys", [])
 
-    # Session user from proxy
+    # ── Resolve caller identity ───────────────────────────────────────────────
     user_id, user_role = _get_session_user(request)
-    if user_id:
-        if user_role == "admin":
-            return project_id
-        member = await storage.get_member(project_id, user_id)
-        if member:
-            return project_id
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+    is_session_admin = bool(user_id and user_role == "admin")
 
-    # Auth disabled — allow through only when NO keys exist anywhere (env or DB)
+    api_key = _read_api_key(request) or ""
+    is_env_key_admin = any(hmac.compare_digest(api_key, k) for k in env_keys)
+
+    is_admin = is_session_admin or is_env_key_admin
+
+    # ── Determine whether auth is enabled ────────────────────────────────────
     has_env_keys = bool(env_keys)
     has_db_keys = False
     list_fn = getattr(storage, "list_api_keys", None)
@@ -390,17 +387,35 @@ async def get_active_project_id(
             has_db_keys = any(not k.is_revoked for k in db_keys)
         except Exception:  # noqa: BLE001
             pass
-    if not has_env_keys and not has_db_keys:
+    auth_enabled = has_env_keys or has_db_keys
+
+    # ── Handle missing project_id ─────────────────────────────────────────────
+    if not project_id:
+        if is_admin or not auth_enabled:
+            return None
+        # Authenticated non-admin must specify which project to query
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "project_id query parameter is required. "
+                "Select a project or contact an admin to gain project access."
+            ),
+        )
+
+    # ── project_id provided — validate membership ─────────────────────────────
+    if is_admin or not auth_enabled:
         return project_id
 
-    # Env-var key = global admin — timing-safe comparison (also accepts Bearer token)
-    api_key = _read_api_key(request) or ""
-    if any(hmac.compare_digest(api_key, k) for k in env_keys):
-        return project_id
+    if user_id:
+        # Non-admin session user — verify project membership
+        member = await storage.get_member(project_id, user_id)
+        if member:
+            return project_id
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
-    # DB key — check admin role or project membership
+    # DB API key — check admin role or project membership
     get_fn = getattr(storage, "get_api_key_by_hash", None)
-    if get_fn and inspect.iscoroutinefunction(get_fn):
+    if get_fn and inspect.iscoroutinefunction(get_fn) and api_key:
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
         record = await get_fn(key_hash)
         if record:

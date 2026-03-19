@@ -211,25 +211,32 @@ async def create_project(
     if existing:
         slug = f"{slug}-{uuid.uuid4().hex[:6]}"
 
-    # Determine creator id from api key or fall back to first admin user
+    # Determine creator id — priority: session user > API key > first admin > system
     creator_id = "system"
-    api_key = request.headers.get("X-API-Key", "")
-    if api_key and hasattr(storage, "get_api_key_by_hash"):
+
+    # 1. Session user forwarded by the dashboard proxy (most common path)
+    session_user_id, _ = get_session_user(request)
+    if session_user_id:
+        creator_id = session_user_id
+    else:
+        # 2. Direct API key call (SDK / programmatic access)
         import hashlib
 
-        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
-        record = await storage.get_api_key_by_hash(key_hash)
-        if record:
-            creator_id = record.id
-    elif not api_key and hasattr(storage, "list_users"):
-        # Auth disabled — use the first admin user as creator
-        try:
-            users = await storage.list_users()
-            admins = [u for u in users if getattr(u, "role", None) and u.role.value == "admin"]
-            if admins:
-                creator_id = admins[0].id
-        except Exception:  # noqa: BLE001
-            pass
+        api_key = _read_api_key(request) or ""
+        if api_key and hasattr(storage, "get_api_key_by_hash"):
+            key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+            record = await storage.get_api_key_by_hash(key_hash)
+            if record:
+                creator_id = record.id
+        elif not api_key and hasattr(storage, "list_users"):
+            # 3. Auth disabled — use the first admin user as creator
+            try:
+                users = await storage.list_users()
+                admins = [u for u in users if getattr(u, "role", None) and u.role.value == "admin"]
+                if admins:
+                    creator_id = admins[0].id
+            except Exception:  # noqa: BLE001
+                pass
 
     project = Project(
         id=uuid.uuid4().hex,

@@ -209,10 +209,15 @@ async def replay_session(
     session_id: str,
     timeout_per_call: float = Query(default=10.0, ge=1.0, le=60.0),
     total_timeout: float = Query(default=60.0, ge=5.0, le=300.0),
+    project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
     config: LangSightConfig = Depends(get_config),
 ) -> ReplayResponse:
     """Re-execute all tool calls from a session against live MCP servers.
+
+    Callers must be a member of the project that owns the session (or a global
+    admin). Non-admin authenticated users must supply ?project_id= — the same
+    project scoping enforced on all other analytics endpoints.
 
     Each tool call is replayed with the exact input_args stored from the original
     run (requires P5.1 payload capture to be enabled — redact_payloads must be false).

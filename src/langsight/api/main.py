@@ -360,23 +360,29 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
         storage = getattr(app.state, "storage", None)
         storage_ok = False
-        storage_error: str | None = None
+        storage_detail: dict[str, str] = {}
 
         if storage is not None:
-            try:
-                # Cheap check — just test the connection is alive
-                if hasattr(storage, "get_health_history"):
-                    await storage.get_health_history("__probe__", limit=1)
-                storage_ok = True
-            except Exception as exc:  # noqa: BLE001
-                storage_error = str(exc)
+            if hasattr(storage, "ping"):
+                # DualStorage: ping both Postgres and ClickHouse independently
+                storage_detail = await storage.ping()
+                storage_ok = all(v == "ok" for v in storage_detail.values())
+            else:
+                # Single-backend fallback
+                try:
+                    if hasattr(storage, "get_health_history"):
+                        await storage.get_health_history("__probe__", limit=1)
+                    storage_ok = True
+                    storage_detail = {"storage": "ok"}
+                except Exception as exc:  # noqa: BLE001
+                    storage_detail = {"storage": f"error: {exc}"}
         else:
-            storage_error = "storage not initialised"
+            storage_detail = {"storage": "error: storage not initialised"}
 
         body: dict[str, Any] = {
             "status": "ready" if storage_ok else "not_ready",
             "version": "0.1.0",
-            "storage": "ok" if storage_ok else f"error: {storage_error}",
+            "storage": storage_detail,
             "auth_enabled": bool(getattr(app.state, "api_keys", [])),
         }
         if storage_ok:
