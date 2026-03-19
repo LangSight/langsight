@@ -9,7 +9,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
-from langsight.api.dependencies import get_storage, require_admin
+from langsight.api.dependencies import get_session_user, get_storage, require_admin
 from langsight.models import ApiKeyRecord, ApiKeyRole
 from langsight.storage.base import StorageBackend
 
@@ -84,12 +84,17 @@ async def create_api_key(
     key_id = uuid.uuid4().hex
     now = datetime.now(UTC)
 
+    # Capture the owning user from the session (dashboard proxy) or API key caller.
+    # This links the key to its creator for project membership checks.
+    creator_user_id, _creator_role = get_session_user(request)
+
     record = ApiKeyRecord(
         id=key_id,
         name=body.name.strip(),
         key_prefix=key_prefix,
         key_hash=key_hash,
         role=body.role,
+        user_id=creator_user_id,
         created_at=now,
     )
 

@@ -252,9 +252,11 @@ async def get_current_user_id(
     key_hash = hashlib.sha256(api_key.encode()).hexdigest()
     try:
         record = await get_fn(key_hash)
-        # API keys don't have user_id yet — return key id as proxy
-        # TODO: link api_keys.user_id in a future migration
-        return record.id if record else None
+        if record is None:
+            return None
+        # Prefer user_id (set since migration b3c9e1f2a047); fall back to key
+        # record id for keys created before the migration.
+        return str(record.user_id) if record.user_id else str(record.id)
     except Exception:  # noqa: BLE001
         return None
 
@@ -343,8 +345,10 @@ async def get_project_access(
         if record:
             if record.role == ApiKeyRole.ADMIN:
                 return ProjectAccess(project, ProjectRole.OWNER, is_global_admin=True)
-            # Check project membership via key record id (until api_keys.user_id is linked)
-            member = await storage.get_member(project_id, record.id)
+            # Use user_id if populated (migration b3c9e1f2a047+); fall back to
+            # key record id for keys created before the migration.
+            principal_id = record.user_id or record.id
+            member = await storage.get_member(project_id, principal_id)
             if member:
                 return ProjectAccess(project, member.role)
 

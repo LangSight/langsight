@@ -215,6 +215,7 @@ class ApiKeyRecord(BaseModel):
     key_prefix: str  # first 8 chars of raw key — shown in UI for identification
     key_hash: str  # sha256(raw_key) — used for lookup
     role: ApiKeyRole = ApiKeyRole.ADMIN  # default admin for backwards compatibility
+    user_id: str | None = None  # owning user — used for project membership checks
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_used_at: datetime | None = None
     revoked_at: datetime | None = None

@@ -297,14 +297,15 @@ class PostgresBackend:
     async def create_api_key(self, record: ApiKeyRecord) -> None:
         await self._pool.execute(
             """
-            INSERT INTO api_keys (id, name, key_prefix, key_hash, role, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO api_keys (id, name, key_prefix, key_hash, role, user_id, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
             record.id,
             record.name,
             record.key_prefix,
             record.key_hash,
             record.role.value,
+            record.user_id,
             record.created_at,
         )
         logger.info("storage.postgres.api_key_created", id=record.id, name=record.name)
@@ -758,15 +759,17 @@ def _row_to_slo(row: asyncpg.Record) -> AgentSLO:
 
 
 def _row_to_api_key(row: asyncpg.Record) -> ApiKeyRecord:
+    row_dict = dict(row)
     return ApiKeyRecord(
-        id=row["id"],
-        name=row["name"],
-        key_prefix=row["key_prefix"],
-        key_hash=row["key_hash"],
-        role=ApiKeyRole(row["role"]) if row["role"] else ApiKeyRole.ADMIN,
-        created_at=row["created_at"],
-        last_used_at=row["last_used_at"],
-        revoked_at=row["revoked_at"],
+        id=row_dict["id"],
+        name=row_dict["name"],
+        key_prefix=row_dict["key_prefix"],
+        key_hash=row_dict["key_hash"],
+        role=ApiKeyRole(row_dict["role"]) if row_dict["role"] else ApiKeyRole.ADMIN,
+        user_id=row_dict.get("user_id"),
+        created_at=row_dict["created_at"],
+        last_used_at=row_dict["last_used_at"],
+        revoked_at=row_dict["revoked_at"],
     )
 
 

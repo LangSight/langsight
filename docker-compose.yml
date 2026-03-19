@@ -1,3 +1,15 @@
+networks:
+  # Dedicated internal network with a fixed /24 subnet.
+  # LANGSIGHT_TRUSTED_PROXY_CIDRS defaults to this subnet so only containers
+  # on langsight-net can send trusted X-User-* session headers to the API.
+  # Operators running in a different network topology should override
+  # LANGSIGHT_TRUSTED_PROXY_CIDRS to match their actual proxy container subnet.
+  langsight-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
 services:
 
   clickhouse:
@@ -20,6 +32,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    networks: [langsight-net]
     restart: unless-stopped
 
   postgres:
@@ -40,6 +53,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks: [langsight-net]
     restart: unless-stopped
 
   otel-collector:
@@ -54,6 +68,7 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    networks: [langsight-net]
     restart: unless-stopped
 
   api:
@@ -78,10 +93,11 @@ services:
       LANGSIGHT_CORS_ORIGINS: ${LANGSIGHT_CORS_ORIGINS:-http://localhost:3003}
       # Dashboard base URL used in invite links — must point to Next.js, not FastAPI
       LANGSIGHT_DASHBOARD_URL: ${LANGSIGHT_DASHBOARD_URL:-http://localhost:3003}
-      # Trust the Next.js container's source IP for X-User-* session headers.
-      # 172.16.0.0/12 covers Docker's default bridge range; 10.0.0.0/8 covers
-      # custom Docker networks. Tighten this to the actual subnet if preferred.
-      LANGSIGHT_TRUSTED_PROXY_CIDRS: ${LANGSIGHT_TRUSTED_PROXY_CIDRS:-127.0.0.1/32,::1/128,172.16.0.0/12,10.0.0.0/8}
+      # Trust X-User-* session headers only from containers on langsight-net
+      # (172.20.0.0/24). This replaces the previous broad 172.16.0.0/12 default
+      # which covered all Docker bridge subnets and any private 10.x network.
+      # Override via LANGSIGHT_TRUSTED_PROXY_CIDRS if deploying outside Compose.
+      LANGSIGHT_TRUSTED_PROXY_CIDRS: ${LANGSIGHT_TRUSTED_PROXY_CIDRS:-127.0.0.1/32,::1/128,172.20.0.0/24}
     ports:
       - "8000:8000"
     volumes:
@@ -104,6 +120,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    networks: [langsight-net]
     restart: unless-stopped
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -139,6 +156,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    networks: [langsight-net]
     restart: unless-stopped
 
 volumes:
