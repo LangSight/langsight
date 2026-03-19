@@ -113,7 +113,7 @@ services:
     container_name: langsight-dashboard
     environment:
       LANGSIGHT_API_URL: http://api:8000
-      NEXT_PUBLIC_LANGSIGHT_API_KEY: ${LANGSIGHT_API_KEYS:?LANGSIGHT_API_KEYS env var is required}
+      LANGSIGHT_API_KEY: ${LANGSIGHT_API_KEYS:?LANGSIGHT_API_KEYS env var is required}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3003}
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET env var is required — generate with: openssl rand -base64 32}
       NEXTAUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET env var is required}

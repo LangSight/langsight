@@ -31,7 +31,7 @@ jest.mock("@/lib/api", () => ({
 const mockUsePathname = jest.fn(() => "/");
 jest.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: jest.fn(), prefetch: jest.fn() }),
 }));
 
 function renderSidebar() {

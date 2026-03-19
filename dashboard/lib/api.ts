@@ -54,6 +54,18 @@ async function post<T>(path: string, body?: object): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+async function patch<T>(path: string, body?: object): Promise<T> {
+  const r = await fetch(`${BASE}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+  if (r.status === 401) throw new Error("401 Unauthorized");
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json() as Promise<T>;
+}
+
 // SWR fetcher — uses authenticated proxy route
 export const fetcher = (url: string) => {
   // Rewrite /api/* → /api/proxy/* for SWR keys that use the old BASE
@@ -83,7 +95,7 @@ export const listModelPricing = () => get<ModelPricingEntry[]>("/costs/models");
 export const createModelPricing = (body: Omit<ModelPricingEntry, "id" | "effective_from" | "effective_to" | "is_active" | "is_custom">) =>
   post<ModelPricingEntry>("/costs/models", body);
 export const updateModelPricing = (id: string, body: Omit<ModelPricingEntry, "id" | "effective_from" | "effective_to" | "is_active" | "is_custom">) =>
-  post<ModelPricingEntry>(`/costs/models/${encodeURIComponent(id)}`, body);
+  patch<ModelPricingEntry>(`/costs/models/${encodeURIComponent(id)}`, body);
 export const deactivateModelPricing = (id: string) =>
   del(`/costs/models/${encodeURIComponent(id)}`);
 
@@ -118,7 +130,7 @@ export const createProject = (name: string, slug?: string) =>
   post<ProjectResponse>("/projects", { name, slug });
 export const getProject = (id: string) => get<ProjectResponse>(`/projects/${encodeURIComponent(id)}`);
 export const updateProject = (id: string, name: string, slug?: string) =>
-  post<ProjectResponse>(`/projects/${encodeURIComponent(id)}`, { name, slug });
+  patch<ProjectResponse>(`/projects/${encodeURIComponent(id)}`, { name, slug });
 export const deleteProject = (id: string) => del(`/projects/${encodeURIComponent(id)}`);
 export const listProjectMembers = (id: string) => get<ProjectMember[]>(`/projects/${encodeURIComponent(id)}/members`);
 export const addProjectMember = (projectId: string, userId: string, role: string) =>
@@ -131,7 +143,7 @@ export const listUsers = () => get<DashboardUser[]>("/users");
 export const inviteUser = (email: string, role: "admin" | "viewer") =>
   post<InviteResponse>("/users/invite", { email, role });
 export const updateUserRole = (userId: string, role: "admin" | "viewer") =>
-  post<DashboardUser>(`/users/${encodeURIComponent(userId)}/role`, { role });
+  patch<DashboardUser>(`/users/${encodeURIComponent(userId)}/role`, { role });
 export const deactivateUser = (userId: string) =>
   del(`/users/${encodeURIComponent(userId)}`);
 

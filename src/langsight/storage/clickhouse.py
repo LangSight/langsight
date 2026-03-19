@@ -459,15 +459,58 @@ class ClickHouseBackend:
 
         Uses mv_agent_sessions materialized view for fast aggregation.
         """
+        cols = [
+            "session_id",
+            "agent_name",
+            "first_call_at",
+            "last_call_at",
+            "tool_calls",
+            "failed_calls",
+            "total_latency_ms",
+            "servers_used",
+            "duration_ms",
+        ]
+
+        # mv_agent_sessions does not include project_id — query base table when filtering by project
+        if project_id:
+            where = (
+                "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR"
+                " AND session_id != ''"
+                " AND project_id = {project_id:String}"
+            )
+            params: dict[str, Any] = {"hours": hours, "limit": limit, "project_id": project_id}
+            if agent_name:
+                where += " AND agent_name = {agent_name:String}"
+                params["agent_name"] = agent_name
+            result = await self._client.query(
+                f"""
+                SELECT
+                    session_id,
+                    any(agent_name)                                             AS agent_name,
+                    min(started_at)                                             AS first_call_at,
+                    max(ended_at)                                               AS last_call_at,
+                    countIf(span_type = 'tool_call')                            AS tool_calls,
+                    countIf(status != 'success' AND span_type = 'tool_call')   AS failed_calls,
+                    sum(latency_ms)                                             AS total_latency_ms,
+                    groupUniqArray(server_name)                                 AS servers_used,
+                    dateDiff('millisecond', min(started_at), max(ended_at))    AS duration_ms
+                FROM mcp_tool_calls
+                {where}
+                GROUP BY session_id
+                ORDER BY first_call_at DESC
+                LIMIT {{limit:UInt32}}
+                """,
+                parameters=params,
+            )
+            return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+        # No project_id filter — use the fast MV
         where = "WHERE first_call_at >= now() - INTERVAL {hours:UInt32} HOUR"
-        params: dict[str, Any] = {"hours": hours, "limit": limit}
+        params = {"hours": hours, "limit": limit}
 
         if agent_name:
             where += " AND agent_name = {agent_name:String}"
             params["agent_name"] = agent_name
-        if project_id:
-            where += " AND project_id = {project_id:String}"
-            params["project_id"] = project_id
 
         result = await self._client.query(
             f"""
@@ -489,17 +532,6 @@ class ClickHouseBackend:
             parameters=params,
         )
 
-        cols = [
-            "session_id",
-            "agent_name",
-            "first_call_at",
-            "last_call_at",
-            "tool_calls",
-            "failed_calls",
-            "total_latency_ms",
-            "servers_used",
-            "duration_ms",
-        ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
     async def get_session_trace(

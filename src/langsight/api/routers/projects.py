@@ -23,7 +23,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import status as http_status
 from pydantic import BaseModel, Field
 
-from langsight.api.dependencies import ProjectAccess, get_project_access, get_storage, require_admin
+import inspect
+
+from langsight.api.dependencies import ProjectAccess, _get_session_user, get_project_access, get_storage, require_admin
 from langsight.models import Project, ProjectMember, ProjectRole
 from langsight.storage.base import StorageBackend
 
@@ -122,9 +124,33 @@ async def list_projects(
     """
     _require_storage(storage)
 
+    # 1. Session-user path (dashboard users authenticated via Next.js proxy)
+    user_id, user_role = _get_session_user(request)
+    if user_id:
+        if user_role == "admin":
+            projects = await storage.list_projects()
+        else:
+            projects = await storage.list_projects_for_user(user_id)
+        result = []
+        for p in projects:
+            members = await storage.list_members(p.id)
+            result.append(_project_to_response(p, member_count=len(members)))
+        return result
+
     env_keys: list[str] = getattr(request.app.state, "api_keys", [])
     api_key = request.headers.get("X-API-Key", "")
-    auth_disabled = not env_keys
+
+    # 2. Auth disabled — only when NO keys exist anywhere (env or DB)
+    has_env_keys = bool(env_keys)
+    has_db_keys = False
+    list_fn = getattr(storage, "list_api_keys", None)
+    if list_fn is not None and inspect.iscoroutinefunction(list_fn):
+        try:
+            db_keys = await list_fn()
+            has_db_keys = any(not k.is_revoked for k in db_keys)
+        except Exception:  # noqa: BLE001
+            pass
+    auth_disabled = not has_env_keys and not has_db_keys
 
     # Global admin check
     is_admin = auth_disabled or api_key in env_keys

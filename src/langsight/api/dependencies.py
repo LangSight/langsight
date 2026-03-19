@@ -300,8 +300,17 @@ async def get_active_project_id(
             return project_id
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
-    # Auth disabled — allow through
-    if not env_keys:
+    # Auth disabled — allow through only when NO keys exist anywhere (env or DB)
+    has_env_keys = bool(env_keys)
+    has_db_keys = False
+    list_fn = getattr(storage, "list_api_keys", None)
+    if list_fn is not None and inspect.iscoroutinefunction(list_fn):
+        try:
+            db_keys = await list_fn()
+            has_db_keys = any(not k.is_revoked for k in db_keys)
+        except Exception:  # noqa: BLE001
+            pass
+    if not has_env_keys and not has_db_keys:
         return project_id
 
     # Env-var key = global admin
