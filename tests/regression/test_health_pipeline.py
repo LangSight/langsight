@@ -39,7 +39,7 @@ TOOLS_V2 = [
 ]
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 async def pg(require_postgres, postgres_dsn):
     """Real PostgresBackend — shared across tests in this module."""
     from langsight.storage.postgres import PostgresBackend

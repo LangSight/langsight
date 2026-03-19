@@ -29,7 +29,7 @@ pytestmark = [pytest.mark.regression, pytest.mark.integration]
 TOOLS = [ToolInfo(name="query", description="Execute SQL")]
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 async def pg(require_postgres, postgres_dsn):
     from langsight.storage.postgres import PostgresBackend
     backend = await PostgresBackend.open(postgres_dsn)

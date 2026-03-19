@@ -34,7 +34,7 @@ from langsight.models import (
 pytestmark = pytest.mark.integration
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 async def pg(postgres_dsn: str, require_postgres: None):
     """Open a real PostgresBackend against the test Postgres instance."""
     from langsight.storage.postgres import PostgresBackend

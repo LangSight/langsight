@@ -112,7 +112,12 @@ jobs:
         env:
           # test-mcps/docker-compose.yml uses postgres/postgres/langsight_test
           TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/langsight_test
-        run: uv run pytest -m integration --no-cov -v
+        run: |
+          # Exclude ClickHouse tests — those run in the dedicated ClickHouse job
+          uv run pytest -m integration \
+            --ignore=tests/integration/storage/test_clickhouse_integration.py \
+            --ignore=tests/integration/storage/test_costs_integration.py \
+            --no-cov -v
 
       - name: Stop Docker Compose
         if: always()
