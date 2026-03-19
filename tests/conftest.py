@@ -83,9 +83,12 @@ def clickhouse_available() -> bool:
         return False
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def require_postgres(postgres_available: bool) -> None:
-    """Skip the test if Postgres is not available.
+    """Skip the entire session if Postgres is not available.
+
+    Session-scoped so it can be used by module-scoped fixtures (e.g. the
+    `pg` backend fixture in regression/integration tests).
 
     Usage:
         def test_something(require_postgres):
@@ -98,9 +101,9 @@ def require_postgres(postgres_available: bool) -> None:
         )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def require_clickhouse(clickhouse_available: bool) -> None:
-    """Skip the test if ClickHouse is not available."""
+    """Skip if ClickHouse is not available. Session-scoped."""
     if not clickhouse_available:
         pytest.skip(
             "ClickHouse not available. Run: docker compose up -d\n"
@@ -108,12 +111,9 @@ def require_clickhouse(clickhouse_available: bool) -> None:
         )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def require_all_services(require_postgres: None, require_clickhouse: None) -> None:
-    """Skip unless both Postgres and ClickHouse are reachable.
-
-    Use this for tests that exercise the full 'dual' storage topology.
-    """
+    """Skip unless both Postgres and ClickHouse are reachable."""
 
 
 # ---------------------------------------------------------------------------
