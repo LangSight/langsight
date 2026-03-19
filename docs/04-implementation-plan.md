@@ -20,21 +20,24 @@
 
 ---
 
-## Current Progress Summary (as of 2026-03-17)
+## Current Progress Summary (as of 2026-03-19)
 
 ```
 Phase 1 (CLI MVP)               ████████████████ 100% — COMPLETE ✅
 Phase 2 (SDK + Framework Integ) ████████████████ 100% — COMPLETE ✅
 Phase 3 (OTEL + Costs)          ████████████████ 100% — COMPLETE ✅
 Release 0.1.0                   ████████████████ 100% — SHIPPED ✅ (PyPI + GitHub)
-Phase 4 (Dashboard + Website)   █████████████░░░  85% — website + dashboard built; Vercel deploy pending
+Phase 4 (Dashboard + Website)   ████████████████ 100% — COMPLETE ✅ full redesign shipped 2026-03-19
 Security Hardening (S.1-S.10)   █░░░░░░░░░░░░░░░  10% — S.9 COMPLETE ✅
-Phase 5 (Deep Observability)    ████████████████ 100% — COMPLETE ✅ P5.1 (2026-03-18), P5.2-P5.7 (2026-03-19)
-Phase 6 (Project-Level RBAC)    ░░░░░░░░░░░░░░░░   0% — NOT STARTED
-Phase 7 (Model-Based Costs)     ░░░░░░░░░░░░░░░░   0% — NOT STARTED
+Phase 5 (Deep Observability)    ████████████████ 100% — COMPLETE ✅
+Phase 6 (Project-Level RBAC)    ████████████████ 100% — COMPLETE ✅
+Phase 7 (Model-Based Costs)     ████████████████ 100% — COMPLETE ✅
+Phase 8 (Dashboard Redesign)    ████████████████ 100% — COMPLETE ✅ 2026-03-19
+Phase 9 (Production Auth)       ░░░░░░░░░░░░░░░░   0% — IN PROGRESS → see below
+Phase 10 (Multi-tenancy)        ░░░░░░░░░░░░░░░░   0% — PLANNED → see below
 ```
 
-**Shipped metrics**: 378 tests passing, 83.69% coverage, 8 CLI commands, 9 API endpoints, SQLite + PostgreSQL + ClickHouse storage backends, FastAPI REST API, GitHub Actions CI, 28 Mintlify docs pages (including sessions.mdx), marketing website built, dashboard v2 built with demo-mode auth (P0.2 gap — auth is not production-grade), PyPI 0.1.0 published, GitHub release v0.1.0 tagged.
+**Shipped metrics**: 434 Python tests + 136 frontend tests (98 Jest + 38 Playwright), 85%+ coverage, full dashboard redesign with Geist fonts + deep dark sidebar, marketing website with /security and /pricing pages, projects management UI, ui-designer agent, tester agent updated for full-stack. Version v0.2.0.
 
 ---
 
@@ -1254,6 +1257,359 @@ class CreateModelPricingRequest(BaseModel):
 - [ ] Settings page model pricing table renders, grouped by provider, edit flow works
 - [ ] Costs page "By Model" table shows token counts and per-model cost
 - [ ] All new code covered by tests; overall coverage does not drop below 80%
+
+---
+
+---
+
+## Phase 9: Production Auth — JWT Sessions (CURRENT)
+
+**Status**: IN PROGRESS — 2026-03-19
+**Priority**: P0 — blocks SaaS launch. Anyone who knows the API URL can read all data.
+
+### Problem
+
+NextAuth handles login against `/api/users/verify` and creates a client-side session, but the dashboard **never sends that session to the FastAPI backend**. Every API call from the dashboard is unauthenticated. The "login" is cosmetic — it doesn't protect the API.
+
+### Root cause chain
+
+```
+User logs in via NextAuth (dashboard)
+  → NextAuth session stored in browser cookie (JWT, signed with AUTH_SECRET)
+  → Dashboard makes API calls to FastAPI via Next.js proxy routes (/api/*)
+  → Proxy routes do NOT forward the session token to FastAPI
+  → FastAPI sees no auth header → auth_disabled=True → returns all data
+```
+
+### Solution: Session token forwarded to FastAPI
+
+**Chosen approach: NextAuth session JWT → forwarded as `Authorization: Bearer` to FastAPI**
+
+```
+Browser → Next.js API route → FastAPI
+           (extracts session token, adds Bearer header)
+```
+
+#### Task P9.1 — Next.js API proxy routes that forward auth
+
+Replace direct frontend `fetch("/api/...")` calls with Next.js route handlers that:
+1. Read the NextAuth session server-side (`await auth()`)
+2. Extract the user's ID and role from the session
+3. Forward requests to FastAPI with `Authorization: Bearer <session-token>`
+
+File: `dashboard/app/api/[...proxy]/route.ts`
+
+```typescript
+import { auth } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+
+const BACKEND = process.env.LANGSIGHT_API_URL ?? "http://localhost:8000";
+
+export async function GET(req: NextRequest, { params }: { params: { proxy: string[] } }) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ detail: "Unauthorized" }, { status: 401 });
+
+  const path = params.proxy.join("/");
+  const url = `${BACKEND}/api/${path}${req.nextUrl.search}`;
+  const res = await fetch(url, {
+    headers: {
+      "Authorization": `Bearer ${session.accessToken}`,
+      "X-User-Id": session.user.id,
+      "X-User-Role": session.user.role,
+    },
+    cache: "no-store",
+  });
+  const data = await res.json();
+  return NextResponse.json(data, { status: res.status });
+}
+// POST, DELETE, PATCH handlers follow same pattern
+```
+
+#### Task P9.2 — FastAPI verifies the forwarded session
+
+Add a `verify_session_token` dependency that validates the `Authorization: Bearer` token:
+
+```python
+# src/langsight/api/dependencies.py
+
+async def verify_session(
+    request: Request,
+    storage: StorageBackend = Depends(get_storage),
+) -> CurrentUser:
+    """
+    Accepts either:
+      - Authorization: Bearer <nextauth-session-token>  (dashboard)
+      - X-API-Key: <key>                               (SDK/CLI)
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        user = await _verify_session_token(token, storage)
+        if user:
+            return CurrentUser(id=user.id, role=user.role, source="session")
+
+    # Fall back to API key
+    api_key = request.headers.get("X-API-Key", "")
+    if api_key:
+        return await _verify_api_key(api_key, storage)
+
+    # Auth disabled mode (local dev only)
+    if not getattr(request.app.state, "api_keys", []):
+        return CurrentUser(id="system", role="admin", source="unauthenticated")
+
+    raise HTTPException(status_code=401, detail="Authentication required")
+```
+
+#### Task P9.3 — Shared secret for session token signing
+
+NextAuth signs session JWTs with `AUTH_SECRET`. FastAPI verifies them with the same secret:
+
+```python
+# Uses python-jose to verify NextAuth JWT
+import jose.jwt
+
+def _verify_session_token(token: str, secret: str) -> dict | None:
+    try:
+        payload = jose.jwt.decode(token, secret, algorithms=["HS256"])
+        return payload
+    except Exception:
+        return None
+```
+
+Env var: both services share `AUTH_SECRET` / `LANGSIGHT_AUTH_SECRET`.
+
+#### Task P9.4 — Update `dashboard/lib/auth.ts`
+
+Expose `accessToken` on the NextAuth session so the proxy route can forward it:
+
+```typescript
+// dashboard/lib/auth.ts
+callbacks: {
+  async jwt({ token, user }) {
+    if (user) {
+      token.id = user.id;
+      token.role = user.role;
+    }
+    return token;
+  },
+  async session({ session, token }) {
+    session.user.id = token.id as string;
+    session.user.role = token.role as string;
+    session.accessToken = token as string; // forward to proxy
+    return session;
+  },
+}
+```
+
+#### Task P9.5 — Update all dashboard API calls to go through proxy
+
+Change `const BASE = "/api"` in `dashboard/lib/api.ts` to route through the Next.js proxy:
+
+```typescript
+// All calls already use BASE + path — proxy intercepts and adds auth
+const BASE = "/api";  // unchanged — Next.js proxy handles auth injection
+```
+
+The proxy route at `app/api/[...proxy]/route.ts` intercepts every `/api/*` call, adds the Bearer token, and forwards to FastAPI.
+
+#### Task P9.6 — Rate limit the login endpoint
+
+```python
+# src/langsight/api/routers/users.py
+from slowapi import Limiter
+
+@public_router.post("/users/verify")
+@limiter.limit("10/minute")
+async def verify_user(...):
+    ...
+```
+
+#### Task P9.7 — Security headers middleware
+
+```python
+# src/langsight/api/main.py
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+        return response
+```
+
+### Acceptance criteria
+
+- [ ] Logged-out browser cannot access `/api/health/servers` — gets 401
+- [ ] Logged-in admin sees all data
+- [ ] Logged-in viewer cannot call DELETE or POST endpoints
+- [ ] API key still works for SDK/CLI (backward compatible)
+- [ ] Auth disabled mode still works for local dev (no env vars set)
+- [ ] Login endpoint returns 429 after 10 failed attempts per minute
+
+### Files affected
+
+```
+dashboard/app/api/[...proxy]/route.ts     NEW — catch-all proxy route
+dashboard/lib/auth.ts                     UPDATE — expose accessToken in session
+dashboard/lib/api.ts                      UPDATE — ensure BASE routes through proxy
+src/langsight/api/dependencies.py         UPDATE — add Bearer token verification
+src/langsight/api/main.py                 UPDATE — security headers middleware
+src/langsight/api/routers/users.py        UPDATE — rate limit /users/verify
+```
+
+---
+
+## Phase 10: Multi-Tenancy Isolation (PLANNED)
+
+**Status**: PLANNED — 2026-03-19
+**Priority**: P0 — without this, all users see all data regardless of project.
+
+### Problem
+
+`project_id` is stored on `ToolCallSpan` objects and on `AgentSLO` but the ClickHouse queries that power the dashboard **do not filter by `project_id`**. Every user sees every trace from every project, regardless of which project they're in.
+
+### Root cause
+
+```python
+# storage/clickhouse.py — current (no project filter)
+async def get_agent_sessions(self, hours: int = 24) -> list[dict]:
+    query = """
+        SELECT session_id, agent_name, ...
+        FROM mcp_tool_calls
+        WHERE started_at >= now() - INTERVAL {hours} HOUR
+        GROUP BY session_id, agent_name
+    """
+
+# Should be:
+async def get_agent_sessions(self, hours: int = 24, project_id: str | None = None) -> list[dict]:
+    where = "started_at >= now() - INTERVAL {hours} HOUR"
+    if project_id:
+        where += " AND project_id = {project_id}"
+    ...
+```
+
+### Solution: `project_id` filter propagated from request → storage
+
+#### Task P10.1 — Add `project_id` param to all ClickHouse queries
+
+Every query in `storage/clickhouse.py` that reads from `mcp_tool_calls` must accept an optional `project_id` filter:
+
+| Method | Add filter |
+|---|---|
+| `get_agent_sessions()` | `AND project_id = {project_id}` |
+| `get_session_trace()` | `AND project_id = {project_id}` |
+| `get_cost_call_counts()` | `AND project_id = {project_id}` |
+| `get_baseline_stats()` | `AND project_id = {project_id}` |
+| `get_tool_reliability()` | `AND project_id = {project_id}` |
+| `compare_sessions()` | verify both sessions belong to same project |
+
+#### Task P10.2 — Extract `project_id` from request in API routers
+
+Every router that reads ClickHouse data must resolve the active project for the caller:
+
+```python
+# src/langsight/api/dependencies.py
+
+async def get_active_project_id(
+    request: Request,
+    project_id: str | None = Query(default=None),
+    storage: StorageBackend = Depends(get_storage),
+    current_user: CurrentUser = Depends(verify_session),
+) -> str | None:
+    """
+    Returns the project_id to filter by, or None (all projects for global admin).
+    Verifies the caller is a member of the requested project.
+    """
+    if not project_id:
+        return None  # admin sees all, or no filter
+
+    # Verify membership
+    members = await storage.list_members(project_id)
+    is_member = any(m.user_id == current_user.id for m in members)
+    is_global_admin = current_user.role == "admin"
+
+    if not is_member and not is_global_admin:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return project_id
+```
+
+#### Task P10.3 — Pass `project_id` through to storage in every affected router
+
+```python
+# Example: agents.py router
+@router.get("/agents/sessions")
+async def get_sessions(
+    hours: int = 24,
+    project_id: str | None = Depends(get_active_project_id),
+    storage: StorageBackend = Depends(get_storage),
+):
+    return await storage.get_agent_sessions(hours=hours, project_id=project_id)
+```
+
+Affected routers: `agents.py`, `costs.py`, `reliability.py`, `slos.py`, `traces.py`
+
+#### Task P10.4 — Dashboard sends `project_id` on every request
+
+The `useProject()` context already holds `activeProject`. Ensure every SWR key includes it:
+
+```typescript
+// dashboard/lib/project-context.tsx — already exists
+// Every SWR key must include projectParam:
+
+const { activeProject } = useProject();
+const projectParam = activeProject ? `&project_id=${activeProject.id}` : "";
+
+useSWR(`/api/agents/sessions?hours=${hours}${projectParam}`, fetcher);
+useSWR(`/api/costs/breakdown?hours=${hours}${projectParam}`, getCostsBreakdown);
+```
+
+Check every `useSWR` call in every dashboard page — add `projectParam` to the key and the fetch URL.
+
+#### Task P10.5 — SQLite + Postgres backends
+
+Both backends have `agent_slos` with `project_id`. Apply same filter pattern for consistency.
+
+#### Task P10.6 — Tests
+
+```python
+# tests/unit/storage/test_clickhouse_project_filter.py
+async def test_get_sessions_filters_by_project():
+    # Insert spans for project A and project B
+    # Query with project_id=A → only A's spans returned
+    # Query with project_id=B → only B's spans returned
+    # Query with project_id=None → all spans returned (admin view)
+```
+
+### Acceptance criteria
+
+- [ ] User in project A cannot see sessions from project B
+- [ ] Global admin with no `project_id` filter sees all data
+- [ ] Global admin with `project_id=A` filter sees only project A
+- [ ] Switching project in sidebar switches all dashboard data
+- [ ] `compare_sessions` returns 404 if sessions are from different projects
+- [ ] All affected ClickHouse queries tested with and without project filter
+
+### Files affected
+
+```
+src/langsight/storage/clickhouse.py       UPDATE — add project_id param to all queries
+src/langsight/storage/sqlite.py           UPDATE — agent_slos query filter
+src/langsight/storage/postgres.py         UPDATE — agent_slos query filter
+src/langsight/api/dependencies.py         UPDATE — get_active_project_id dependency
+src/langsight/api/routers/agents.py       UPDATE — pass project_id to storage
+src/langsight/api/routers/costs.py        UPDATE — pass project_id to storage
+src/langsight/api/routers/reliability.py  UPDATE — pass project_id to storage
+src/langsight/api/routers/slos.py         UPDATE — pass project_id to storage
+src/langsight/api/routers/traces.py       UPDATE — pass project_id to storage
+dashboard/app/(dashboard)/page.tsx        UPDATE — add projectParam to SWR keys
+dashboard/app/(dashboard)/sessions/page.tsx  UPDATE — add projectParam
+dashboard/app/(dashboard)/agents/page.tsx    UPDATE — add projectParam
+dashboard/app/(dashboard)/costs/page.tsx     UPDATE — add projectParam (already partial)
+tests/unit/storage/test_project_filter.py    NEW — isolation tests
+```
 
 ---
 
