@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import asyncpg  # type: ignore[import-untyped]
 import structlog
 
-from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, InviteToken, Project, ProjectMember, ProjectRole, ServerStatus, SLOMetric, User, UserRole
+from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, InviteToken, ModelPricing, Project, ProjectMember, ProjectRole, ServerStatus, SLOMetric, User, UserRole
 
 logger = structlog.get_logger()
 
@@ -56,6 +56,24 @@ _DDL_STATEMENTS = [
     """
     CREATE INDEX IF NOT EXISTS idx_schema_server_time
         ON schema_snapshots (server_name, recorded_at DESC)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS model_pricing (
+        id                    TEXT        PRIMARY KEY,
+        provider              TEXT        NOT NULL,
+        model_id              TEXT        NOT NULL,
+        display_name          TEXT        NOT NULL,
+        input_per_1m_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
+        output_per_1m_usd     DOUBLE PRECISION NOT NULL DEFAULT 0,
+        cache_read_per_1m_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+        effective_from        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        effective_to          TIMESTAMPTZ,
+        notes                 TEXT,
+        is_custom             BOOLEAN     NOT NULL DEFAULT FALSE
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_model_pricing_model_id ON model_pricing (model_id, effective_from DESC)
     """,
     """
     CREATE TABLE IF NOT EXISTS projects (
@@ -285,6 +303,42 @@ class PostgresBackend:
             key_id,
         )
 
+    # ── Model pricing ─────────────────────────────────────────────────────────
+
+    async def list_model_pricing(self) -> list[ModelPricing]:
+        rows = await self._pool.fetch(
+            "SELECT * FROM model_pricing ORDER BY provider, model_id, effective_from DESC"
+        )
+        return [_row_to_model_pricing(r) for r in rows]
+
+    async def get_active_model_pricing(self, model_id: str) -> ModelPricing | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM model_pricing WHERE model_id = $1 AND effective_to IS NULL ORDER BY effective_from DESC LIMIT 1",
+            model_id,
+        )
+        return _row_to_model_pricing(row) if row else None
+
+    async def create_model_pricing(self, entry: ModelPricing) -> None:
+        await self._pool.execute(
+            """
+            INSERT INTO model_pricing
+                (id, provider, model_id, display_name, input_per_1m_usd, output_per_1m_usd,
+                 cache_read_per_1m_usd, effective_from, effective_to, notes, is_custom)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            """,
+            entry.id, entry.provider, entry.model_id, entry.display_name,
+            entry.input_per_1m_usd, entry.output_per_1m_usd, entry.cache_read_per_1m_usd,
+            entry.effective_from, entry.effective_to, entry.notes, entry.is_custom,
+        )
+
+    async def deactivate_model_pricing(self, entry_id: str) -> bool:
+        from datetime import UTC, datetime
+        result = await self._pool.execute(
+            "UPDATE model_pricing SET effective_to = $1 WHERE id = $2 AND effective_to IS NULL",
+            datetime.now(UTC), entry_id,
+        )
+        return result != "UPDATE 0"
+
     # ── Project management ────────────────────────────────────────────────────
 
     async def create_project(self, project: Project) -> None:
@@ -484,6 +538,22 @@ class PostgresBackend:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _row_to_model_pricing(row: asyncpg.Record) -> ModelPricing:
+    return ModelPricing(
+        id=row["id"],
+        provider=row["provider"],
+        model_id=row["model_id"],
+        display_name=row["display_name"],
+        input_per_1m_usd=float(row["input_per_1m_usd"]),
+        output_per_1m_usd=float(row["output_per_1m_usd"]),
+        cache_read_per_1m_usd=float(row["cache_read_per_1m_usd"]),
+        effective_from=row["effective_from"],
+        effective_to=row["effective_to"],
+        notes=row["notes"],
+        is_custom=bool(row["is_custom"]),
+    )
 
 
 def _row_to_project(row: asyncpg.Record) -> Project:

@@ -123,6 +123,23 @@ A project is the top-level isolation boundary. Every piece of observability data
 
 ---
 
+## Phase 7 — Model-Based Cost Tracking: Planned (2026-03-19)
+
+Token-aware cost engine. LLM spans carry `input_tokens`/`output_tokens`/`model_id` from OTLP attributes and are priced against a managed `model_pricing` table seeded with 16 models across Anthropic, OpenAI, Google, Meta, and AWS. Non-LLM tool spans continue to use the existing call-based `CostRule` pricing from `.langsight.yaml`. The costs breakdown response splits `llm_cost_usd` from `tool_cost_usd`. Settings page adds a model pricing management table. Costs page adds a "By Model" token breakdown.
+
+### Sub-phases
+
+| ID | Description | Status |
+|----|-------------|--------|
+| P7.1 | `model_pricing` table + 16 seed rows + `StorageBackend` protocol methods; Alembic migration | NOT STARTED |
+| P7.2 | `input_tokens`, `output_tokens`, `model_id` fields on `ToolCallSpan`; ClickHouse DDL; OTLP parser extraction | NOT STARTED |
+| P7.3 | `ModelPricingLookup` helper; token-based vs call-based cost routing; `project_id` scoping on all cost endpoints; `llm_cost_usd`/`tool_cost_usd` split in response | NOT STARTED |
+| P7.4 | `GET /api/costs/models`, `POST /api/costs/models`, `PATCH /api/costs/models/{id}`, `DELETE /api/costs/models/{id}` — admin-gated CRUD with audit trail | NOT STARTED |
+| P7.5 | Dashboard Settings: `ModelPricingSection` component — table grouped by provider, inline edit, "Add custom model" modal | NOT STARTED |
+| P7.6 | Dashboard Costs: "LLM Tokens Cost" + "Tool Calls Cost" summary cards; "By Model" token breakdown table | NOT STARTED |
+
+---
+
 ## Current Status: Release 0.1.0 — Shipped ✅
 
 ```
@@ -134,6 +151,7 @@ Phase 4 (Dashboard + Website)   ██████████████░░
 Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░   0% — NOT STARTED
 Phase 5 (Deep Observability)    ████████████████ 100% — COMPLETE ✅ P5.1 (2026-03-18), P5.2-P5.7 (2026-03-19)
 Phase 6 (Project-Level RBAC)    ░░░░░░░░░░░░░░░░   0% — NOT STARTED
+Phase 7 (Model-Based Costs)     ░░░░░░░░░░░░░░░░   0% — NOT STARTED
 ```
 
 ---

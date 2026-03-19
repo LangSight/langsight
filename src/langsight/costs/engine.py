@@ -1,28 +1,29 @@
 """
-Cost attribution engine — assigns dollar costs to MCP tool calls.
+Cost attribution engine — assigns dollar costs to agent tool calls and LLM usage.
 
-Pricing rules are defined in .langsight.yaml:
+Two cost types:
+  1. Token-based (LLM spans): (input_tokens/1M × input_price) + (output_tokens/1M × output_price)
+     Requires model_id + token counts on the span + model_pricing DB table.
+  2. Call-based (MCP tool spans): cost_per_call from .langsight.yaml rules.
 
+Pricing rules in .langsight.yaml (for call-based):
     costs:
       rules:
         - server: postgres-mcp
           tool: "*"
           cost_per_call: 0.0            # free self-hosted
-        - server: openai-mcp
-          tool: "chat_completion"
-          cost_per_call: 0.005          # $0.005 per call
         - server: "*"
           tool: "*"
           cost_per_call: 0.001          # $0.001 default
 
-The engine multiplies call counts (from ReliabilityEngine) by pricing rules
-and groups by server, tool, agent, and session.
+Model pricing is managed via the DB (Settings → Model Pricing) and seeded
+with current public prices for major providers on first startup.
 """
 
 from __future__ import annotations
 
 import fnmatch
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,10 @@ class CostEntry:
     total_calls: int
     cost_per_call: float
     total_cost_usd: float
+    cost_type: str = "call_based"    # "call_based" | "token_based"
+    model_id: str | None = None      # set for token_based entries
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -60,6 +65,10 @@ class CostEntry:
             "total_calls": self.total_calls,
             "cost_per_call_usd": self.cost_per_call,
             "total_cost_usd": round(self.total_cost_usd, 6),
+            "cost_type": self.cost_type,
+            "model_id": self.model_id,
+            "total_input_tokens": self.total_input_tokens,
+            "total_output_tokens": self.total_output_tokens,
         }
 
 
@@ -138,6 +147,34 @@ class CostEngine:
         return find_cost_per_call(self._rules, server_name, tool_name)
 
 
+class ModelPricingLookup:
+    """Fast in-memory lookup for model token pricing.
+
+    Initialise once per request from the DB list.
+    Falls back to $0 for unknown models (logs a warning).
+    """
+
+    def __init__(self, pricing_rows: list[Any]) -> None:
+        # Index by model_id for O(1) lookup
+        self._index: dict[str, Any] = {}
+        for row in pricing_rows:
+            model_id = row.model_id if hasattr(row, "model_id") else row.get("model_id", "")
+            if model_id and (model_id not in self._index):  # keep first (most recent active)
+                self._index[model_id] = row
+
+    def cost_for(self, model_id: str, input_tokens: int, output_tokens: int) -> float:
+        """Return total cost in USD for given token counts."""
+        entry = self._index.get(model_id)
+        if entry is None:
+            return 0.0
+        inp = entry.input_per_1m_usd if hasattr(entry, "input_per_1m_usd") else entry.get("input_per_1m_usd", 0.0)
+        out = entry.output_per_1m_usd if hasattr(entry, "output_per_1m_usd") else entry.get("output_per_1m_usd", 0.0)
+        return (input_tokens / 1_000_000 * inp) + (output_tokens / 1_000_000 * out)
+
+    def has_model(self, model_id: str) -> bool:
+        return model_id in self._index
+
+
 def find_cost_per_call(
     rules: list[CostRule],
     server_name: str,
@@ -153,6 +190,7 @@ def find_cost_per_call(
 def aggregate_cost_rows(
     rows: list[dict[str, Any]],
     rules: list[CostRule],
+    model_pricing: ModelPricingLookup | None = None,
 ) -> tuple[list[CostEntry], list[AgentCostEntry], list[SessionCostEntry]]:
     """Aggregate traced tool-call rows into tool, agent, and session cost views."""
     tool_totals: dict[tuple[str, str], CostEntry] = {}
@@ -166,8 +204,33 @@ def aggregate_cost_rows(
         raw_session_id = row.get("session_id")
         session_id = str(raw_session_id) if raw_session_id else None
         total_calls = int(row.get("total_calls") or 0)
-        cost_per_call = find_cost_per_call(rules, server_name, tool_name)
-        total_cost_usd = total_calls * cost_per_call
+
+        # Token-based costing: use model pricing when model_id + tokens available
+        row_model_id = str(row.get("model_id") or "").strip()
+        raw_input = row.get("input_tokens")
+        raw_output = row.get("output_tokens")
+        input_tokens = int(raw_input) if raw_input is not None else None
+        output_tokens = int(raw_output) if raw_output is not None else None
+
+        use_token_pricing = (
+            model_pricing is not None
+            and row_model_id
+            and model_pricing.has_model(row_model_id)
+            and input_tokens is not None
+            and output_tokens is not None
+        )
+
+        if use_token_pricing and model_pricing:
+            total_cost_usd = model_pricing.cost_for(row_model_id, input_tokens or 0, output_tokens or 0) * total_calls
+            cost_per_call = total_cost_usd / max(total_calls, 1)
+            cost_type = "token_based"
+        else:
+            cost_per_call = find_cost_per_call(rules, server_name, tool_name)
+            total_cost_usd = total_calls * cost_per_call
+            cost_type = "call_based"
+            row_model_id = ""
+            input_tokens = None
+            output_tokens = None
 
         tool_key = (server_name, tool_name)
         if tool_key not in tool_totals:
@@ -177,9 +240,17 @@ def aggregate_cost_rows(
                 total_calls=0,
                 cost_per_call=cost_per_call,
                 total_cost_usd=0.0,
+                cost_type=cost_type,
+                model_id=row_model_id or None,
+                total_input_tokens=0,
+                total_output_tokens=0,
             )
         tool_totals[tool_key].total_calls += total_calls
         tool_totals[tool_key].total_cost_usd += total_cost_usd
+        if input_tokens:
+            tool_totals[tool_key].total_input_tokens += input_tokens * total_calls
+        if output_tokens:
+            tool_totals[tool_key].total_output_tokens += output_tokens * total_calls
 
         if agent_name not in agent_totals:
             agent_totals[agent_name] = AgentCostEntry(

@@ -26,6 +26,57 @@ from langsight.storage.factory import open_storage
 logger = structlog.get_logger()
 
 
+_MODEL_PRICING_SEED: list[tuple[str, str, str, float, float, float, str]] = [
+    ("anthropic", "claude-opus-4-6",           "Claude Opus 4.6",       15.00, 75.00, 1.50,  "Public pricing 2026-03"),
+    ("anthropic", "claude-sonnet-4-6",         "Claude Sonnet 4.6",      3.00, 15.00, 0.30,  "Public pricing 2026-03"),
+    ("anthropic", "claude-haiku-4-5-20251001", "Claude Haiku 4.5",       0.80,  4.00, 0.08,  "Public pricing 2026-03"),
+    ("openai",    "gpt-4o",                    "GPT-4o",                  2.50, 10.00, 0.00,  "Public pricing 2026-03"),
+    ("openai",    "gpt-4o-mini",               "GPT-4o Mini",             0.15,  0.60, 0.00,  "Public pricing 2026-03"),
+    ("openai",    "o3",                        "o3",                     10.00, 40.00, 0.00,  "Public pricing 2026-03"),
+    ("openai",    "o3-mini",                   "o3-mini",                 1.10,  4.40, 0.00,  "Public pricing 2026-03"),
+    ("google",    "gemini-1.5-pro",            "Gemini 1.5 Pro",          1.25,  5.00, 0.00,  "Public pricing 2026-03"),
+    ("google",    "gemini-1.5-flash",          "Gemini 1.5 Flash",        0.075, 0.30, 0.00,  "Public pricing 2026-03"),
+    ("google",    "gemini-2.0-flash",          "Gemini 2.0 Flash",        0.10,  0.40, 0.00,  "Public pricing 2026-03"),
+    ("meta",      "llama-3.1-70b",             "Llama 3.1 70B",           0.00,  0.00, 0.00,  "Self-hosted — no API cost"),
+    ("meta",      "llama-3.3-70b",             "Llama 3.3 70B",           0.00,  0.00, 0.00,  "Self-hosted — no API cost"),
+    ("aws",       "amazon.nova-pro-v1",        "Amazon Nova Pro",         0.80,  3.20, 0.00,  "Public pricing 2026-03"),
+    ("aws",       "amazon.nova-lite-v1",       "Amazon Nova Lite",        0.06,  0.24, 0.00,  "Public pricing 2026-03"),
+]
+
+
+async def _seed_model_pricing(storage: object) -> None:
+    """Seed model_pricing table with builtin models if empty."""
+    import uuid
+    from datetime import UTC, datetime
+
+    from langsight.models import ModelPricing
+
+    if not hasattr(storage, "list_model_pricing"):
+        return
+    try:
+        existing = await storage.list_model_pricing()
+        if existing:
+            return  # already seeded
+        now = datetime.now(UTC)
+        for provider, model_id, display_name, inp, out, cache, notes in _MODEL_PRICING_SEED:
+            entry = ModelPricing(
+                id=uuid.uuid4().hex,
+                provider=provider,
+                model_id=model_id,
+                display_name=display_name,
+                input_per_1m_usd=inp,
+                output_per_1m_usd=out,
+                cache_read_per_1m_usd=cache,
+                effective_from=now,
+                notes=notes,
+                is_custom=False,
+            )
+            await storage.create_model_pricing(entry)
+        logger.info("api.startup.model_pricing_seeded", count=len(_MODEL_PRICING_SEED))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("api.startup.model_pricing_seed_error", error=str(exc))
+
+
 async def _bootstrap_admin(storage: object) -> str | None:
     """Create the first admin user from env vars if no users exist.
 
@@ -152,6 +203,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             )
 
         # First-run bootstrap — create initial admin user and default project
+        await _seed_model_pricing(app.state.storage)
         admin_id = await _bootstrap_admin(app.state.storage)
         if admin_id:
             await _bootstrap_default_project(app.state.storage, admin_id)

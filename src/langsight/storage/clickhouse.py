@@ -84,7 +84,10 @@ _DDL = [
         llm_input      Nullable(String),
         llm_output     Nullable(String),
         replay_of      String DEFAULT '',
-        project_id     String DEFAULT ''
+        project_id     String DEFAULT '',
+        input_tokens   Nullable(UInt32),
+        output_tokens  Nullable(UInt32),
+        model_id       String DEFAULT ''
     )
     ENGINE = MergeTree()
     PARTITION BY toYYYYMM(started_at)
@@ -323,6 +326,9 @@ class ClickHouseBackend:
         "llm_output",
         "replay_of",
         "project_id",
+        "input_tokens",
+        "output_tokens",
+        "model_id",
     ]
 
     def _span_row(self, s: ToolCallSpan) -> list[Any]:
@@ -354,8 +360,11 @@ class ClickHouseBackend:
             s.output_result,  # Nullable(String) — None when redacted
             s.llm_input,      # Nullable(String) — LLM prompt (agent spans only)
             s.llm_output,     # Nullable(String) — LLM completion (agent spans only)
-            s.replay_of or "",  # String DEFAULT '' — original span_id (empty = not a replay)
-            s.project_id or "",  # String DEFAULT '' — project scope (empty = global/legacy)
+            s.replay_of or "",
+            s.project_id or "",
+            s.input_tokens,    # Nullable(UInt32)
+            s.output_tokens,   # Nullable(UInt32)
+            s.model_id or "",
         ]
 
     async def save_tool_call_span(self, span: ToolCallSpan) -> None:
@@ -508,7 +517,8 @@ class ClickHouseBackend:
                 status, error, trace_id,
                 input_json, output_json,
                 llm_input, llm_output,
-                replay_of, project_id
+                replay_of, project_id,
+                input_tokens, output_tokens, model_id
             FROM mcp_tool_calls
             WHERE session_id = {session_id:String}
             ORDER BY started_at ASC
@@ -535,6 +545,9 @@ class ClickHouseBackend:
             "llm_output",
             "replay_of",
             "project_id",
+            "input_tokens",
+            "output_tokens",
+            "model_id",
         ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
@@ -630,12 +643,14 @@ class ClickHouseBackend:
                 tool_name,
                 nullIf(agent_name, '') AS agent_name,
                 nullIf(session_id, '') AS session_id,
-                count() AS total_calls
+                nullIf(model_id, '')   AS model_id,
+                count()                AS total_calls,
+                sum(input_tokens)      AS input_tokens,
+                sum(output_tokens)     AS output_tokens
             FROM mcp_tool_calls
             WHERE
-                span_type = 'tool_call'
-                AND started_at >= now() - INTERVAL {hours:UInt32} HOUR
-            GROUP BY server_name, tool_name, agent_name, session_id
+                started_at >= now() - INTERVAL {hours:UInt32} HOUR
+            GROUP BY server_name, tool_name, agent_name, session_id, model_id
             ORDER BY total_calls DESC, server_name, tool_name
             """,
             parameters={"hours": hours},
@@ -646,7 +661,10 @@ class ClickHouseBackend:
             "tool_name",
             "agent_name",
             "session_id",
+            "model_id",
             "total_calls",
+            "input_tokens",
+            "output_tokens",
         ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 

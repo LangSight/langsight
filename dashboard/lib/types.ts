@@ -106,6 +106,10 @@ export interface CostBreakdownEntry {
   total_calls: number;
   cost_per_call_usd: number;
   total_cost_usd: number;
+  cost_type: "call_based" | "token_based";
+  model_id: string | null;
+  total_input_tokens: number;
+  total_output_tokens: number;
 }
 
 export interface AgentCostBreakdownEntry {
@@ -206,12 +210,31 @@ export interface SLOStatus {
   evaluated_at: string;
 }
 
+export interface ModelPricingEntry {
+  id: string;
+  provider: string;
+  model_id: string;
+  display_name: string;
+  input_per_1m_usd: number;
+  output_per_1m_usd: number;
+  cache_read_per_1m_usd: number;
+  effective_from: string;
+  effective_to: string | null;
+  notes: string | null;
+  is_custom: boolean;
+  is_active: boolean;
+}
+
 export interface CostsBreakdownResponse {
   storage_mode: string;
   supports_costs: boolean;
   hours: number;
   total_calls: number;
   total_cost_usd: number;
+  llm_cost_usd: number;
+  tool_cost_usd: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
   by_tool: CostBreakdownEntry[];
   by_agent: AgentCostBreakdownEntry[];
   by_session: SessionCostBreakdownEntry[];

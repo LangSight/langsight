@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import useSWR from "swr";
-import { Database, DollarSign, Layers3, Wallet } from "lucide-react";
+import { Database, DollarSign, Layers3, Wallet, Cpu, Wrench } from "lucide-react";
 
 import { getCostsBreakdown } from "@/lib/api";
 import type { CostsBreakdownResponse } from "@/lib/types";
@@ -221,34 +221,82 @@ export default function CostsPage() {
         />
       ) : (
         <>
-          <div className="grid md:grid-cols-3 gap-4">
-            <SummaryCard
-              title="Total Cost"
-              value={formatUsd(data.total_cost_usd)}
-              icon={<Wallet size={18} />}
-            />
-            <SummaryCard
-              title="Tool Calls"
-              value={data.total_calls.toLocaleString("en-US")}
-              icon={<Layers3 size={18} />}
-            />
-            <SummaryCard
-              title="Tracked Window"
-              value={`${data.hours}h`}
-              icon={<DollarSign size={18} />}
-            />
+          {/* Summary cards */}
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <SummaryCard title="Total Cost" value={formatUsd(data.total_cost_usd)} icon={<Wallet size={18} />} />
+            <SummaryCard title="LLM Cost" value={formatUsd(data.llm_cost_usd ?? 0)} icon={<Cpu size={18} />} />
+            <SummaryCard title="Tool Call Cost" value={formatUsd(data.tool_cost_usd ?? 0)} icon={<Wrench size={18} />} />
+            <SummaryCard title="Total Calls" value={data.total_calls.toLocaleString("en-US")} icon={<Layers3 size={18} />} />
           </div>
+
+          {/* Token summary if any LLM spans */}
+          {(data.total_input_tokens ?? 0) > 0 && (
+            <div className="rounded-xl border p-4 flex items-center gap-6" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+              <div>
+                <p className="text-xs font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>Input Tokens</p>
+                <p className="text-lg font-bold font-mono" style={{ color: "hsl(var(--foreground))" }}>{(data.total_input_tokens ?? 0).toLocaleString()}</p>
+              </div>
+              <div className="w-px h-8" style={{ background: "hsl(var(--border))" }} />
+              <div>
+                <p className="text-xs font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>Output Tokens</p>
+                <p className="text-lg font-bold font-mono" style={{ color: "hsl(var(--foreground))" }}>{(data.total_output_tokens ?? 0).toLocaleString()}</p>
+              </div>
+              <div className="w-px h-8" style={{ background: "hsl(var(--border))" }} />
+              <div>
+                <p className="text-xs font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>Total Tokens</p>
+                <p className="text-lg font-bold font-mono" style={{ color: "hsl(var(--foreground))" }}>{((data.total_input_tokens ?? 0) + (data.total_output_tokens ?? 0)).toLocaleString()}</p>
+              </div>
+            </div>
+          )}
+
+          {/* By Model (only shown when token-based entries exist) */}
+          {data.by_tool.some(e => e.cost_type === "token_based") && (
+            <SectionTable
+              title="By Model"
+              headers={["Model", "Calls", "Input Tokens", "Output Tokens", "LLM Cost"]}
+              rows={
+                <>
+                  {Object.values(
+                    data.by_tool
+                      .filter(e => e.cost_type === "token_based" && e.model_id)
+                      .reduce((acc: Record<string, { model_id: string; calls: number; inp: number; out: number; cost: number }>, e) => {
+                        const k = e.model_id!;
+                        if (!acc[k]) acc[k] = { model_id: k, calls: 0, inp: 0, out: 0, cost: 0 };
+                        acc[k].calls += e.total_calls;
+                        acc[k].inp += e.total_input_tokens;
+                        acc[k].out += e.total_output_tokens;
+                        acc[k].cost += e.total_cost_usd;
+                        return acc;
+                      }, {})
+                  ).sort((a, b) => b.cost - a.cost).map(m => (
+                    <tr key={m.model_id}>
+                      <td className="py-2 pr-4 font-mono text-xs" style={{ color: "hsl(var(--foreground))" }}>{m.model_id}</td>
+                      <td className="py-2 pr-4" style={{ color: "hsl(var(--muted-foreground))" }}>{m.calls.toLocaleString()}</td>
+                      <td className="py-2 pr-4 font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>{m.inp.toLocaleString()}</td>
+                      <td className="py-2 pr-4 font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>{m.out.toLocaleString()}</td>
+                      <td className="py-2 font-mono" style={{ color: "hsl(var(--foreground))" }}>{formatUsd(m.cost)}</td>
+                    </tr>
+                  ))}
+                </>
+              }
+            />
+          )}
 
           <SectionTable
             title="By Tool"
-            headers={["Server", "Tool", "Calls", "$/Call", "Total"]}
+            headers={["Server", "Tool", "Type", "Calls", "$/Call", "Total"]}
             rows={data.by_tool.map((entry) => (
               <tr key={`${entry.server_name}-${entry.tool_name}`}>
-                <td className="py-2 pr-4 font-mono" style={{ color: "hsl(var(--foreground))" }}>
+                <td className="py-2 pr-4 font-mono text-xs" style={{ color: "hsl(var(--foreground))" }}>
                   {entry.server_name}
                 </td>
                 <td className="py-2 pr-4" style={{ color: "hsl(var(--foreground))" }}>
                   {entry.tool_name}
+                </td>
+                <td className="py-2 pr-4">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${entry.cost_type === "token_based" ? "border-primary/30 bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
+                    {entry.cost_type === "token_based" ? "LLM" : "tool"}
+                  </span>
                 </td>
                 <td className="py-2 pr-4" style={{ color: "hsl(var(--muted-foreground))" }}>
                   {entry.total_calls.toLocaleString("en-US")}
@@ -266,7 +314,7 @@ export default function CostsPage() {
           <div className="grid lg:grid-cols-2 gap-5">
             <SectionTable
               title="By Agent"
-              headers={["Agent", "Calls", "Total"]}
+              headers={["Agent", "Calls", "Total Cost"]}
               rows={data.by_agent.map((entry) => (
                 <tr key={entry.agent_name}>
                   <td className="py-2 pr-4" style={{ color: "hsl(var(--foreground))" }}>

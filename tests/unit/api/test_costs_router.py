@@ -54,16 +54,15 @@ class TestCostsBreakdown:
         response = await c.get("/api/costs/breakdown")
 
         assert response.status_code == 200
-        assert response.json() == {
-            "storage_mode": "clickhouse",
-            "supports_costs": False,
-            "hours": 24,
-            "total_calls": 0,
-            "total_cost_usd": 0.0,
-            "by_tool": [],
-            "by_agent": [],
-            "by_session": [],
-        }
+        data = response.json()
+        assert data["storage_mode"] == "clickhouse"
+        assert data["supports_costs"] is False
+        assert data["hours"] == 24
+        assert data["total_calls"] == 0
+        assert data["total_cost_usd"] == 0.0
+        assert data["by_tool"] == []
+        assert data["by_agent"] == []
+        assert data["by_session"] == []
 
     async def test_returns_cost_breakdown_from_storage_rows(self, client) -> None:
         c, mock_storage = client
@@ -103,28 +102,26 @@ class TestCostsBreakdown:
         assert data["total_cost_usd"] == 0.088
 
         assert len(data["by_tool"]) == 2
-        assert data["by_tool"][0] == {
-            "server_name": "pg-main",
-            "tool_name": "query",
-            "total_calls": 16,
-            "cost_per_call_usd": 0.005,
-            "total_cost_usd": 0.08,
-        }
+        # Check core fields (new fields like cost_type, model_id etc. use subset check)
+        tool0 = data["by_tool"][0]
+        assert tool0["server_name"] == "pg-main"
+        assert tool0["tool_name"] == "query"
+        assert tool0["total_calls"] == 16
+        assert tool0["cost_per_call_usd"] == 0.005
+        assert tool0["total_cost_usd"] == 0.08
 
         assert len(data["by_agent"]) == 2
-        assert data["by_agent"][0] == {
-            "agent_name": "support-agent",
-            "total_calls": 14,
-            "total_cost_usd": 0.058,
-        }
+        agent0 = data["by_agent"][0]
+        assert agent0["agent_name"] == "support-agent"
+        assert agent0["total_calls"] == 14
+        assert agent0["total_cost_usd"] == 0.058
 
         assert len(data["by_session"]) == 2
-        assert data["by_session"][0] == {
-            "session_id": "sess-1",
-            "agent_name": "support-agent",
-            "total_calls": 14,
-            "total_cost_usd": 0.058,
-        }
+        sess0 = data["by_session"][0]
+        assert sess0["session_id"] == "sess-1"
+        assert sess0["agent_name"] == "support-agent"
+        assert sess0["total_calls"] == 14
+        assert sess0["total_cost_usd"] == 0.058
 
     async def test_passes_hours_param_to_storage(self, client) -> None:
         c, mock_storage = client

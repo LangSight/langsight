@@ -6,7 +6,7 @@ from pathlib import Path
 import aiosqlite
 import structlog
 
-from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, InviteToken, Project, ProjectMember, ProjectRole, ServerStatus, SLOMetric, User, UserRole
+from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, InviteToken, ModelPricing, Project, ProjectMember, ProjectRole, ServerStatus, SLOMetric, User, UserRole
 
 logger = structlog.get_logger()
 
@@ -51,6 +51,22 @@ CREATE INDEX IF NOT EXISTS idx_health_server_time
 
 CREATE INDEX IF NOT EXISTS idx_schema_server_time
     ON schema_snapshots (server_name, recorded_at DESC);
+
+CREATE TABLE IF NOT EXISTS model_pricing (
+    id                    TEXT    PRIMARY KEY,
+    provider              TEXT    NOT NULL,
+    model_id              TEXT    NOT NULL,
+    display_name          TEXT    NOT NULL,
+    input_per_1m_usd      REAL    NOT NULL DEFAULT 0,
+    output_per_1m_usd     REAL    NOT NULL DEFAULT 0,
+    cache_read_per_1m_usd REAL    NOT NULL DEFAULT 0,
+    effective_from        TEXT    NOT NULL,
+    effective_to          TEXT,
+    notes                 TEXT,
+    is_custom             INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_pricing_model_id ON model_pricing (model_id, effective_from DESC);
 
 CREATE TABLE IF NOT EXISTS projects (
     id          TEXT    PRIMARY KEY,
@@ -277,6 +293,49 @@ class SQLiteBackend:
             (datetime.now(UTC).isoformat(), key_id),
         )
         await self._conn.commit()
+
+    # ── Model pricing ─────────────────────────────────────────────────────────
+
+    async def list_model_pricing(self) -> list[ModelPricing]:
+        async with self._conn.execute(
+            "SELECT * FROM model_pricing ORDER BY provider, model_id, effective_from DESC"
+        ) as cur:
+            rows = await cur.fetchall()
+        return [_row_to_model_pricing(r) for r in rows]
+
+    async def get_active_model_pricing(self, model_id: str) -> ModelPricing | None:
+        async with self._conn.execute(
+            "SELECT * FROM model_pricing WHERE model_id = ? AND effective_to IS NULL ORDER BY effective_from DESC LIMIT 1",
+            (model_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        return _row_to_model_pricing(row) if row else None
+
+    async def create_model_pricing(self, entry: ModelPricing) -> None:
+        await self._conn.execute(
+            """
+            INSERT INTO model_pricing
+                (id, provider, model_id, display_name, input_per_1m_usd, output_per_1m_usd,
+                 cache_read_per_1m_usd, effective_from, effective_to, notes, is_custom)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                entry.id, entry.provider, entry.model_id, entry.display_name,
+                entry.input_per_1m_usd, entry.output_per_1m_usd, entry.cache_read_per_1m_usd,
+                entry.effective_from.isoformat(),
+                entry.effective_to.isoformat() if entry.effective_to else None,
+                entry.notes, 1 if entry.is_custom else 0,
+            ),
+        )
+        await self._conn.commit()
+
+    async def deactivate_model_pricing(self, entry_id: str) -> bool:
+        cursor = await self._conn.execute(
+            "UPDATE model_pricing SET effective_to = ? WHERE id = ? AND effective_to IS NULL",
+            (datetime.now(UTC).isoformat(), entry_id),
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0
 
     # ── Project management ────────────────────────────────────────────────────
 
@@ -522,6 +581,22 @@ def _row_to_api_key(row: aiosqlite.Row) -> ApiKeyRecord:
         created_at=datetime.fromisoformat(row["created_at"]),
         last_used_at=datetime.fromisoformat(row["last_used_at"]) if row["last_used_at"] else None,
         revoked_at=datetime.fromisoformat(row["revoked_at"]) if row["revoked_at"] else None,
+    )
+
+
+def _row_to_model_pricing(row: aiosqlite.Row) -> ModelPricing:
+    return ModelPricing(
+        id=row["id"],
+        provider=row["provider"],
+        model_id=row["model_id"],
+        display_name=row["display_name"],
+        input_per_1m_usd=float(row["input_per_1m_usd"]),
+        output_per_1m_usd=float(row["output_per_1m_usd"]),
+        cache_read_per_1m_usd=float(row["cache_read_per_1m_usd"]),
+        effective_from=datetime.fromisoformat(row["effective_from"]),
+        effective_to=datetime.fromisoformat(row["effective_to"]) if row["effective_to"] else None,
+        notes=row["notes"],
+        is_custom=bool(row["is_custom"]),
     )
 
 

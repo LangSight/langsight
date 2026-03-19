@@ -109,6 +109,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 Pre-production security hardening required before 0.2.0 can be positioned as production-grade.
 
+### Planned (Phase 7: Model-Based Cost Tracking — planned 2026-03-19)
+
+- P7.1: `model_pricing` table (SQLite + Postgres) with `(provider, model_id, effective_from)` unique constraint; 16 seed rows for Anthropic (4 models), OpenAI (5 models), Google (3 models), Meta (2 models), AWS (2 models); `StorageBackend` protocol methods: `create_model_pricing`, `list_model_pricing`, `get_model_pricing_by_model_id`, `update_model_pricing`, `deactivate_model_pricing`; Alembic migration `add_model_pricing`
+- P7.2: `input_tokens: int | None`, `output_tokens: int | None`, `model_id: str | None` fields on `ToolCallSpan`; `mcp_tool_calls` ClickHouse DDL extended with `input_tokens Nullable(UInt32)`, `output_tokens Nullable(UInt32)`, `model_id String DEFAULT ''`; OTLP parser extracts `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.request.model` from span attributes
+- P7.3: `ModelPricingLookup` helper class in `costs/engine.py` — indexes active pricing rows by `model_id`, `cost_for()` returns 0.0 for unknown models (fail-open); cost engine routes per span: token-based for spans with `model_id` + token counts, call-based CostRule fallback otherwise; `CostEntry` gains `cost_type: "token_based" | "call_based"`; all three cost endpoints (`/breakdown`, `/by-agent`, `/by-session`) gain optional `project_id` query param; `/breakdown` response gains `llm_cost_usd` and `tool_cost_usd` top-level fields
+- P7.4: `GET /api/costs/models` — list all pricing entries; `POST /api/costs/models` — add custom model (admin only); `PATCH /api/costs/models/{id}` — price update with audit trail (deactivates old row, inserts new); `DELETE /api/costs/models/{id}` — deactivate (soft delete, admin only)
+- P7.5: `ModelPricingSection` component in Settings page — table grouped by provider, inline edit form, "Add custom model" modal; "Custom" badge on user-added rows; inactive rows hidden by default behind "Show history" toggle
+- P7.6: Costs page gains "LLM Tokens Cost" and "Tool Calls Cost" summary cards; "Top Model" card; "By Model" table with columns: Model | Provider | Input Tokens | Output Tokens | Total Cost | % of Spend
+
 ### Planned (Phase 6: Project-Level RBAC — planned 2026-03-19)
 
 - P6.1: Data model — `Project` and `ProjectMember` Pydantic models; `projects` + `project_members` tables (SQLite + Postgres); `project_id` column on ClickHouse `mcp_tool_calls`, `agent_slos`, `api_keys`; Alembic migration

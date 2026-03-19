@@ -64,6 +64,9 @@ class ToolCallSpan(BaseModel):
     llm_output: str | None = None              # P5.3 — LLM completion text (agent spans only)
     replay_of: str | None = None               # P5.7 — original span_id this is a replay of
     project_id: str | None = None             # P6 — project this span belongs to
+    input_tokens: int | None = None           # P7 — LLM input token count
+    output_tokens: int | None = None          # P7 — LLM output token count
+    model_id: str | None = None               # P7 — model used (gen_ai.request.model)
 
     @classmethod
     def record(
@@ -84,6 +87,9 @@ class ToolCallSpan(BaseModel):
         llm_output: str | None = None,
         replay_of: str | None = None,
         project_id: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        model_id: str | None = None,
     ) -> ToolCallSpan:
         """Convenience constructor — computes ended_at and latency_ms automatically."""
         ended_at = datetime.now(UTC)
@@ -107,6 +113,9 @@ class ToolCallSpan(BaseModel):
             llm_output=llm_output,
             replay_of=replay_of,
             project_id=project_id,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model_id=model_id,
         )
 
     @classmethod

@@ -57,6 +57,41 @@ class HealthCheckResult(BaseModel):
     error: str | None = None
 
 
+class ModelPricing(BaseModel):
+    """Per-model LLM token pricing entry.
+
+    Prices are per 1M tokens (standard industry convention).
+    effective_to=None means currently active.
+    When a provider updates prices, deactivate the old row (set effective_to)
+    and insert a new row — preserving full audit history.
+    """
+
+    id: str
+    provider: str                       # "anthropic" | "openai" | "google" | "meta" | "custom"
+    model_id: str                       # matches gen_ai.request.model attribute
+    display_name: str
+    input_per_1m_usd: float = 0.0      # $ per 1M input tokens
+    output_per_1m_usd: float = 0.0     # $ per 1M output tokens
+    cache_read_per_1m_usd: float = 0.0 # $ per 1M cached input tokens (Anthropic prompt caching)
+    effective_from: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    effective_to: datetime | None = None
+    notes: str | None = None
+    is_custom: bool = False             # True = user-added, False = seeded builtin
+
+    model_config = {"frozen": True}
+
+    @property
+    def is_active(self) -> bool:
+        return self.effective_to is None
+
+    def cost_for(self, input_tokens: int, output_tokens: int) -> float:
+        """Calculate cost for a single LLM call given token counts."""
+        return (
+            input_tokens / 1_000_000 * self.input_per_1m_usd
+            + output_tokens / 1_000_000 * self.output_per_1m_usd
+        )
+
+
 class ProjectRole(StrEnum):
     OWNER = "owner"    # full control — rename, invite, delete project
     MEMBER = "member"  # operational — view traces, create SLOs, trigger scans

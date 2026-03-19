@@ -7,11 +7,12 @@ import useSWR from "swr";
 import {
   Key, Plus, Trash2, Copy, Check, ExternalLink, Shield, Database,
   Info, AlertTriangle, Eye, EyeOff, Users, UserPlus, UserX, ShieldCheck,
+  DollarSign, Pencil, X,
 } from "lucide-react";
-import { fetcher, getApiKeys, createApiKey, revokeApiKey, listUsers, inviteUser, deactivateUser, updateUserRole } from "@/lib/api";
+import { fetcher, getApiKeys, createApiKey, revokeApiKey, listUsers, inviteUser, deactivateUser, updateUserRole, listModelPricing, createModelPricing, updateModelPricing, deactivateModelPricing } from "@/lib/api";
 import { cn, timeAgo } from "@/lib/utils";
 import { toast } from "sonner";
-import type { ApiKeyResponse, ApiKeyCreatedResponse, ApiStatus, DashboardUser, InviteResponse } from "@/lib/types";
+import type { ApiKeyResponse, ApiKeyCreatedResponse, ApiStatus, DashboardUser, InviteResponse, ModelPricingEntry } from "@/lib/types";
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn("skeleton", className)} />;
@@ -630,6 +631,203 @@ function UsersSection() {
   );
 }
 
+// ─── Model Pricing Section ─────────────────────────────────────────────────────
+
+const PROVIDER_ORDER = ["anthropic", "openai", "google", "aws", "meta", "custom"];
+const PROVIDER_LABEL: Record<string, string> = {
+  anthropic: "Anthropic", openai: "OpenAI", google: "Google",
+  aws: "AWS Bedrock", meta: "Meta (self-hosted)", custom: "Custom",
+};
+
+function EditPricingRow({ entry, onSave, onCancel }: {
+  entry: ModelPricingEntry;
+  onSave: (inp: number, out: number, cache: number, notes: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [inp, setInp] = useState(String(entry.input_per_1m_usd));
+  const [out, setOut] = useState(String(entry.output_per_1m_usd));
+  const [cache, setCache] = useState(String(entry.cache_read_per_1m_usd));
+  const [notes, setNotes] = useState(entry.notes ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onSave(parseFloat(inp) || 0, parseFloat(out) || 0, parseFloat(cache) || 0, notes);
+    } finally { setSaving(false); }
+  }
+
+  const inputCls = "w-20 px-1.5 py-0.5 rounded border text-[11px] font-mono outline-none focus:ring-1 focus:ring-primary/30";
+  const style = { background: "hsl(var(--background))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" };
+
+  return (
+    <tr className="bg-primary/5 border-b" style={{ borderColor: "hsl(var(--border))" }}>
+      <td className="px-4 py-2 text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>{entry.display_name}</td>
+      <td className="px-4 py-2 text-[11px] font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>{entry.model_id}</td>
+      <td className="px-4 py-2"><input value={inp} onChange={e => setInp(e.target.value)} className={inputCls} style={style} /></td>
+      <td className="px-4 py-2"><input value={out} onChange={e => setOut(e.target.value)} className={inputCls} style={style} /></td>
+      <td className="px-4 py-2"><input value={cache} onChange={e => setCache(e.target.value)} className={inputCls} style={style} /></td>
+      <td className="px-4 py-2 flex items-center gap-1.5 pt-3">
+        <button onClick={handleSave} disabled={saving}
+          className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-white bg-primary hover:opacity-90 disabled:opacity-50">
+          <Check size={10}/>{saving ? "…" : "Save"}
+        </button>
+        <button onClick={onCancel} className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border hover:bg-accent"
+          style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
+          <X size={10}/>Cancel
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+function ModelPricingSection() {
+  const { data: entries, isLoading, mutate } = useSWR<ModelPricingEntry[]>("/api/costs/models", fetcher);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addForm, setAddForm] = useState({ provider: "custom", model_id: "", display_name: "", input_per_1m_usd: "0", output_per_1m_usd: "0", cache_read_per_1m_usd: "0", notes: "" });
+  const [adding, setAdding] = useState(false);
+
+  const active = entries?.filter(e => e.is_active) ?? [];
+
+  // Group by provider
+  const grouped = PROVIDER_ORDER.reduce((acc, p) => {
+    acc[p] = active.filter(e => e.provider === p);
+    return acc;
+  }, {} as Record<string, ModelPricingEntry[]>);
+  const otherProviders = [...new Set(active.filter(e => !PROVIDER_ORDER.includes(e.provider)).map(e => e.provider))];
+  otherProviders.forEach(p => { grouped[p] = active.filter(e => e.provider === p); });
+
+  async function handleUpdate(entry: ModelPricingEntry, inp: number, out: number, cache: number, notes: string) {
+    try {
+      await updateModelPricing(entry.id, { ...entry, input_per_1m_usd: inp, output_per_1m_usd: out, cache_read_per_1m_usd: cache, notes });
+      toast.success("Pricing updated");
+      setEditing(null);
+      mutate();
+    } catch { toast.error("Failed to update pricing"); }
+  }
+
+  async function handleAdd() {
+    if (!addForm.model_id.trim() || !addForm.display_name.trim()) return;
+    setAdding(true);
+    try {
+      await createModelPricing({ ...addForm, input_per_1m_usd: parseFloat(addForm.input_per_1m_usd) || 0, output_per_1m_usd: parseFloat(addForm.output_per_1m_usd) || 0, cache_read_per_1m_usd: parseFloat(addForm.cache_read_per_1m_usd) || 0 });
+      toast.success("Custom model added");
+      setShowAdd(false);
+      setAddForm({ provider: "custom", model_id: "", display_name: "", input_per_1m_usd: "0", output_per_1m_usd: "0", cache_read_per_1m_usd: "0", notes: "" });
+      mutate();
+    } catch { toast.error("Failed to add model"); }
+    finally { setAdding(false); }
+  }
+
+  const inputCls = "px-2 py-1 rounded border text-[12px] outline-none focus:ring-1 focus:ring-primary/30";
+  const inputStyle = { background: "hsl(var(--background))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" };
+
+  return (
+    <Section title="Model Pricing" description="Token-based costs for LLM providers. Used to calculate spend per session and agent." icon={DollarSign}>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+          {isLoading ? "Loading…" : `${active.length} active models · prices per 1M tokens`}
+        </p>
+        <button onClick={() => setShowAdd(s => !s)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-opacity hover:opacity-90"
+          style={{ background: "hsl(var(--primary))" }}>
+          <Plus size={12} /> Add Custom Model
+        </button>
+      </div>
+
+      {showAdd && (
+        <div className="rounded-lg border p-4 mb-4 space-y-3" style={{ background: "hsl(var(--muted))", borderColor: "hsl(var(--border))" }}>
+          <p className="text-xs font-semibold" style={{ color: "hsl(var(--foreground))" }}>Add Custom Model</p>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { key: "display_name", label: "Display name", placeholder: "My Custom LLM" },
+              { key: "model_id",     label: "Model ID",     placeholder: "my-custom-llm-v1" },
+              { key: "provider",     label: "Provider",     placeholder: "custom" },
+              { key: "notes",        label: "Notes",        placeholder: "Internal fine-tune" },
+            ].map(({ key, label, placeholder }) => (
+              <div key={key}>
+                <label className="text-[11px] font-medium block mb-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</label>
+                <input value={(addForm as Record<string, string>)[key]} onChange={e => setAddForm(f => ({ ...f, [key]: e.target.value }))}
+                  placeholder={placeholder} className={cn(inputCls, "w-full")} style={inputStyle} />
+              </div>
+            ))}
+            {[
+              { key: "input_per_1m_usd", label: "Input $/1M" },
+              { key: "output_per_1m_usd", label: "Output $/1M" },
+              { key: "cache_read_per_1m_usd", label: "Cache read $/1M" },
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <label className="text-[11px] font-medium block mb-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</label>
+                <input type="number" step="0.01" min="0" value={(addForm as Record<string, string>)[key]} onChange={e => setAddForm(f => ({ ...f, [key]: e.target.value }))}
+                  className={cn(inputCls, "w-full font-mono")} style={inputStyle} />
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleAdd} disabled={adding || !addForm.model_id.trim()}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-50"
+              style={{ background: "hsl(var(--primary))" }}>
+              {adding ? "Adding…" : "Add Model"}
+            </button>
+            <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 rounded-lg border text-xs transition-colors hover:bg-accent"
+              style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-x-auto -mx-6 space-y-4">
+        {[...PROVIDER_ORDER, ...otherProviders].map(provider => {
+          const models = grouped[provider];
+          if (!models || models.length === 0) return null;
+          return (
+            <div key={provider}>
+              <p className="text-[11px] font-semibold uppercase tracking-wider px-6 mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>
+                {PROVIDER_LABEL[provider] ?? provider}
+              </p>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b" style={{ borderColor: "hsl(var(--border))" }}>
+                    {["Model", "ID", "Input $/1M", "Output $/1M", "Cache $/1M", ""].map(h => (
+                      <th key={h} className="px-4 py-2 text-left font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {models.map(e => editing === e.id
+                    ? <EditPricingRow key={e.id} entry={e} onSave={(inp, out, cache, notes) => handleUpdate(e, inp, out, cache, notes)} onCancel={() => setEditing(null)} />
+                    : (
+                      <tr key={e.id} className="border-b transition-colors hover:bg-accent/30" style={{ borderColor: "hsl(var(--border))" }}>
+                        <td className="px-4 py-2.5 font-medium" style={{ color: "hsl(var(--foreground))" }}>
+                          {e.display_name}
+                          {e.is_custom && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full border border-primary/30 bg-primary/10 text-primary">custom</span>}
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>{e.model_id}</td>
+                        <td className="px-4 py-2.5 font-mono" style={{ color: "hsl(var(--foreground))" }}>${e.input_per_1m_usd.toFixed(3)}</td>
+                        <td className="px-4 py-2.5 font-mono" style={{ color: "hsl(var(--foreground))" }}>${e.output_per_1m_usd.toFixed(3)}</td>
+                        <td className="px-4 py-2.5 font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>${e.cache_read_per_1m_usd.toFixed(3)}</td>
+                        <td className="px-4 py-2.5">
+                          <button onClick={() => setEditing(e.id)}
+                            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors hover:bg-accent"
+                            style={{ color: "hsl(var(--muted-foreground))" }}>
+                            <Pencil size={11}/> Edit
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
 // ─── Instance Section ──────────────────────────────────────────────────────────
 
 function InstanceSection() {
@@ -780,6 +978,7 @@ export default function SettingsPage() {
       </div>
 
       <UsersSection />
+      <ModelPricingSection />
       <ApiKeysSection />
       <InstanceSection />
       <AboutSection />

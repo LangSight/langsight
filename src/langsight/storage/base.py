@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from langsight.models import AgentSLO, ApiKeyRecord, HealthCheckResult, InviteToken, Project, ProjectMember, User
+from langsight.models import AgentSLO, ApiKeyRecord, HealthCheckResult, InviteToken, ModelPricing, Project, ProjectMember, User
 
 
 @runtime_checkable
@@ -60,6 +60,24 @@ class StorageBackend(Protocol):
 
     async def touch_api_key(self, key_id: str) -> None:
         """Update last_used_at to now (called on each authenticated request)."""
+        ...
+
+    # ── Model pricing ────────────────────────────────────────────────────────
+
+    async def list_model_pricing(self) -> list[ModelPricing]:
+        """Return all model pricing entries (active and historical)."""
+        ...
+
+    async def get_active_model_pricing(self, model_id: str) -> ModelPricing | None:
+        """Return the currently active pricing for a model_id, or None."""
+        ...
+
+    async def create_model_pricing(self, entry: ModelPricing) -> None:
+        """Persist a new model pricing entry."""
+        ...
+
+    async def deactivate_model_pricing(self, entry_id: str) -> bool:
+        """Set effective_to=now on a pricing entry. Returns True if found."""
         ...
 
     # ── Project management ───────────────────────────────────────────────────

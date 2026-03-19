@@ -169,17 +169,32 @@ def _parse_otlp_span(span: dict[str, Any]) -> ToolCallSpan | None:
         else:
             attrs[key] = str(val)
 
-    # ── LLM generation span detection (P5.3) ──────────────────────────────
-    # GenAI semantic conventions: gen_ai.completion / gen_ai.prompt
-    # Also handle prompt stored as JSON array (messages format)
+    # ── LLM generation span detection (P5.3 + P7.2) ───────────────────────
+    # GenAI semantic conventions: gen_ai.completion / gen_ai.prompt / gen_ai.usage.*
     llm_input: str | None = None
     llm_output: str | None = None
     is_llm_span = False
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+    # Extract token counts (P7.2)
+    raw_input_tokens = attrs.get("gen_ai.usage.input_tokens") or attrs.get("gen_ai.usage.prompt_tokens") or attrs.get("llm.token_count.prompt")
+    raw_output_tokens = attrs.get("gen_ai.usage.output_tokens") or attrs.get("gen_ai.usage.completion_tokens") or attrs.get("llm.token_count.completion")
+    if raw_input_tokens is not None:
+        try:
+            input_tokens = int(raw_input_tokens)
+        except (ValueError, TypeError):
+            pass
+    if raw_output_tokens is not None:
+        try:
+            output_tokens = int(raw_output_tokens)
+        except (ValueError, TypeError):
+            pass
 
     raw_prompt = attrs.get("gen_ai.prompt") or attrs.get("llm.prompts")
     raw_completion = attrs.get("gen_ai.completion") or attrs.get("llm.completions")
 
-    if raw_prompt or raw_completion:
+    if raw_prompt or raw_completion or input_tokens is not None or output_tokens is not None:
         is_llm_span = True
         if raw_prompt:
             # May already be a string or a JSON-encoded messages array
@@ -226,6 +241,13 @@ def _parse_otlp_span(span: dict[str, Any]) -> ToolCallSpan | None:
     else:
         status = ToolCallStatus.SUCCESS
 
+    # Extract model_id from multiple possible attribute locations
+    extracted_model_id = (
+        attrs.get("gen_ai.request.model")
+        or attrs.get("llm.model_name")
+        or attrs.get("gen_ai.response.model")
+    )
+
     return ToolCallSpan(
         server_name=server_name,
         tool_name=tool_name,
@@ -240,4 +262,7 @@ def _parse_otlp_span(span: dict[str, Any]) -> ToolCallSpan | None:
         span_type="agent" if is_llm_span else "tool_call",
         llm_input=llm_input,
         llm_output=llm_output,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        model_id=extracted_model_id or (model if is_llm_span and not tool_name else None),
     )

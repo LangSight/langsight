@@ -8,6 +8,7 @@ import type {
   DashboardUser,
   HealthResult,
   InviteResponse,
+  ModelPricingEntry,
   ProjectMember,
   ProjectResponse,
   ReplayResponse,
@@ -77,8 +78,17 @@ export const getServerHistoty = (name: string, limit = 20) =>
 export const triggerHealthCheck = () => post<HealthResult[]>("/health/check");
 
 // ─── Costs ────────────────────────────────────────────────────────────────────
-export const getCostsBreakdown = (hours = 24) =>
-  get<CostsBreakdownResponse>(`/costs/breakdown?hours=${hours}`);
+export const getCostsBreakdown = (hours = 24, projectId?: string) =>
+  get<CostsBreakdownResponse>(`/costs/breakdown?hours=${hours}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
+
+// ─── Model pricing ────────────────────────────────────────────────────────────
+export const listModelPricing = () => get<ModelPricingEntry[]>("/costs/models");
+export const createModelPricing = (body: Omit<ModelPricingEntry, "id" | "effective_from" | "effective_to" | "is_active" | "is_custom">) =>
+  post<ModelPricingEntry>("/costs/models", body);
+export const updateModelPricing = (id: string, body: Omit<ModelPricingEntry, "id" | "effective_from" | "effective_to" | "is_active" | "is_custom">) =>
+  post<ModelPricingEntry>(`/costs/models/${encodeURIComponent(id)}`, body);
+export const deactivateModelPricing = (id: string) =>
+  del(`/costs/models/${encodeURIComponent(id)}`);
 
 // ─── Security ─────────────────────────────────────────────────────────────────
 export const triggerSecurityScan = () =>

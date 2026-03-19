@@ -1,11 +1,11 @@
 # LangSight: Implementation Plan
 
-> **Version**: 1.4.0
+> **Version**: 1.5.0
 > **Date**: 2026-03-19
-> **Status**: Active — Phase 1-3 COMPLETE (alpha). Phase 5 COMPLETE. Phase 6 (Project-Level RBAC) planned. Pre-Production Security Hardening phase added. Release 0.1.0 is an alpha release.
+> **Status**: Active — Phase 1-3 COMPLETE (alpha). Phase 5 COMPLETE. Phase 6 (Project-Level RBAC) planned. Phase 7 (Model-Based Cost Tracking) planned. Pre-Production Security Hardening phase added. Release 0.1.0 is an alpha release.
 > **Author**: Engineering
 >
-> **Change from 1.3**: Phase 6 (Project-Level RBAC) section added (2026-03-19). Progress bar updated. Phase 6 covers multi-project isolation, project-level roles, SDK `project_id` param, dashboard project switcher, and bootstrap Default project on first startup.
+> **Change from 1.4**: Phase 7 (Model-Based Cost Tracking) section added (2026-03-19). Covers `model_pricing` table with 16 seed models, token fields on `ToolCallSpan`, token-based cost engine, CRUD API for pricing management, Settings dashboard pricing table, and Costs page token breakdown. Original Phase 7 (Dashboard + Polish) renumbered to Phase 8 with a note that its core content shipped in Phase 4.
 
 ---
 
@@ -31,6 +31,7 @@ Phase 4 (Dashboard + Website)   █████████████░░░
 Security Hardening (S.1-S.10)   █░░░░░░░░░░░░░░░  10% — S.9 COMPLETE ✅
 Phase 5 (Deep Observability)    ████████████████ 100% — COMPLETE ✅ P5.1 (2026-03-18), P5.2-P5.7 (2026-03-19)
 Phase 6 (Project-Level RBAC)    ░░░░░░░░░░░░░░░░   0% — NOT STARTED
+Phase 7 (Model-Based Costs)     ░░░░░░░░░░░░░░░░   0% — NOT STARTED
 ```
 
 **Shipped metrics**: 378 tests passing, 83.69% coverage, 8 CLI commands, 9 API endpoints, SQLite + PostgreSQL + ClickHouse storage backends, FastAPI REST API, GitHub Actions CI, 28 Mintlify docs pages (including sessions.mdx), marketing website built, dashboard v2 built with demo-mode auth (P0.2 gap — auth is not production-grade), PyPI 0.1.0 published, GitHub release v0.1.0 tagged.
@@ -977,9 +978,294 @@ client = LangSightClient(
 
 ---
 
-### Phase 7: Dashboard + Polish (Weeks 13-16)
+### Phase 7: Model-Based Cost Tracking (decided 2026-03-19)
 
-**Status**: POST-0.1.0 — marketing website (`website/`) and product dashboard (`dashboard/`) are post-release work. The CLI, API, SDK, integrations, and docs ship in 0.1.0. Dashboard deferred to maintain release velocity.
+**Status**: NOT STARTED
+
+**Goal**: Replace the flat $/call cost engine with a model-aware token-based pricing layer. Engineers will see actual LLM spend (input + output tokens × model price) alongside infrastructure tool-call costs, split clearly so the LLM bill and the MCP tool overhead are never conflated. A managed `model_pricing` table carries seed data for all major providers and is user-extensible for custom or self-hosted models.
+
+**Why this matters**: The current cost engine assigns a flat cost-per-call to every tool invocation using `.langsight.yaml` rules. This works for MCP tool calls (which have no token dimension) but is wrong for LLM spans captured via OTLP — those spans carry `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` and should be priced against the model's published rate card, not a hardcoded flat fee. Without this, every LLM call is either $0 (no rule matched) or wildly over/under-counted.
+
+**Cost calculation logic after this phase**:
+```
+For each span:
+  if span.model_id is set AND (span.input_tokens > 0 OR span.output_tokens > 0):
+    cost = (input_tokens / 1_000_000 × input_price) + (output_tokens / 1_000_000 × output_price)
+    cost_type = "token_based"
+  else:
+    cost = apply CostRule glob match from .langsight.yaml (existing logic)
+    cost_type = "call_based"
+```
+
+---
+
+#### P7.1 — `model_pricing` Table + Seed Data
+
+**Goal**: Persistent, version-tracked model pricing table with seed data for 18 models across 5 providers.
+
+**Schema** (`model_pricing` — added to SQLite and PostgreSQL):
+```sql
+model_pricing (
+    id                    TEXT PRIMARY KEY,          -- uuid4 hex
+    provider              TEXT NOT NULL,             -- "anthropic" | "openai" | "google" | "meta" | "aws" | "custom"
+    model_id              TEXT NOT NULL,             -- matches gen_ai.request.model attribute
+    display_name          TEXT NOT NULL,             -- human-readable name
+    input_per_1m_usd      REAL NOT NULL DEFAULT 0,  -- $ per 1M input tokens
+    output_per_1m_usd     REAL NOT NULL DEFAULT 0,  -- $ per 1M output tokens
+    cache_read_per_1m_usd REAL NOT NULL DEFAULT 0,  -- $ per 1M cached input tokens (Anthropic prompt caching)
+    effective_from        TIMESTAMPTZ NOT NULL,      -- when this price took effect
+    effective_to          TIMESTAMPTZ,               -- NULL = currently active; set when superseded
+    notes                 TEXT,                      -- e.g. "Public pricing as of 2026-03"
+    is_custom             BOOLEAN NOT NULL DEFAULT FALSE  -- TRUE = user-added custom model
+)
+-- Unique constraint: (provider, model_id, effective_from) — supports price history
+```
+
+| Task | Description | Files Affected | Status |
+|------|-------------|----------------|--------|
+| P7.1.1 | Add `ModelPricingEntry` Pydantic model to `src/langsight/models.py` with all columns above | `src/langsight/models.py` | [ ] |
+| P7.1.2 | SQLite DDL for `model_pricing` table (CREATE TABLE IF NOT EXISTS) in `storage/sqlite.py` `_DDL` constant | `src/langsight/storage/sqlite.py` | [ ] |
+| P7.1.3 | Postgres DDL for `model_pricing` table in `storage/postgres.py` `_DDL` constant | `src/langsight/storage/postgres.py` | [ ] |
+| P7.1.4 | Alembic migration `add_model_pricing` — creates table + inserts all 18 seed rows | `alembic/versions/` | [ ] |
+| P7.1.5 | SQLite seed data — insert all 18 rows on first `_DDL` open (idempotent via `INSERT OR IGNORE`) | `src/langsight/storage/sqlite.py` | [ ] |
+| P7.1.6 | Add `StorageBackend` protocol methods: `create_model_pricing`, `list_model_pricing`, `get_model_pricing_by_model_id`, `update_model_pricing`, `deactivate_model_pricing` | `src/langsight/storage/base.py` | [ ] |
+| P7.1.7 | Implement all five protocol methods on `SQLiteBackend` | `src/langsight/storage/sqlite.py` | [ ] |
+| P7.1.8 | Implement all five protocol methods on `PostgresBackend` | `src/langsight/storage/postgres.py` | [ ] |
+| P7.1.9 | Unit tests for `get_model_pricing_by_model_id` (hit + miss), `deactivate_model_pricing` (sets `effective_to`), and all seed rows present after init | `tests/unit/storage/test_model_pricing_sqlite.py` | [ ] |
+
+**Seed data** (18 models, inserted at migration time):
+
+| Provider | model_id | input $/1M | output $/1M | Notes |
+|----------|----------|-----------|------------|-------|
+| anthropic | claude-opus-4-6 | $15.00 | $75.00 | Public pricing 2026-03 |
+| anthropic | claude-sonnet-4-6 | $3.00 | $15.00 | Public pricing 2026-03 |
+| anthropic | claude-haiku-4-5 | $0.80 | $4.00 | Public pricing 2026-03 |
+| anthropic | claude-opus-4-5 | $15.00 | $75.00 | Public pricing 2026-03 |
+| openai | gpt-4o | $2.50 | $10.00 | Public pricing 2026-03 |
+| openai | gpt-4o-mini | $0.15 | $0.60 | Public pricing 2026-03 |
+| openai | o3 | $10.00 | $40.00 | Public pricing 2026-03 |
+| openai | o3-mini | $1.10 | $4.40 | Public pricing 2026-03 |
+| openai | o1 | $15.00 | $60.00 | Public pricing 2026-03 |
+| google | gemini-1.5-pro | $1.25 | $5.00 | Public pricing 2026-03 |
+| google | gemini-1.5-flash | $0.075 | $0.30 | Public pricing 2026-03 |
+| google | gemini-2.0-flash | $0.10 | $0.40 | Public pricing 2026-03 |
+| meta | llama-3.1-70b | $0.00 | $0.00 | Self-hosted — track usage, $0 cost |
+| meta | llama-3.1-8b | $0.00 | $0.00 | Self-hosted — track usage, $0 cost |
+| aws | amazon.nova-pro-v1 | $0.80 | $3.20 | Public pricing 2026-03 |
+| aws | amazon.nova-lite-v1 | $0.06 | $0.24 | Public pricing 2026-03 |
+
+**Acceptance Criteria**:
+- [ ] `model_pricing` table created in SQLite and Postgres via respective DDL paths
+- [ ] Alembic migration `add_model_pricing` runs cleanly on fresh Postgres
+- [ ] All 16 seed models present after first open (`SELECT COUNT(*) FROM model_pricing` = 16)
+- [ ] `get_model_pricing_by_model_id("claude-sonnet-4-6")` returns `input_per_1m_usd=3.0`, `output_per_1m_usd=15.0`
+- [ ] `deactivate_model_pricing(id)` sets `effective_to = NOW()` without deleting the row (audit trail)
+- [ ] Duplicate seed insert on second open is a no-op (idempotent)
+
+---
+
+#### P7.2 — Token Fields on `ToolCallSpan` and ClickHouse
+
+**Goal**: `ToolCallSpan` carries `input_tokens`, `output_tokens`, and `model_id`; these are stored in ClickHouse and extracted from incoming OTLP spans.
+
+| Task | Description | Files Affected | Status |
+|------|-------------|----------------|--------|
+| P7.2.1 | Add `input_tokens: int \| None = None`, `output_tokens: int \| None = None`, `model_id: str \| None = None` to `ToolCallSpan` in `src/langsight/sdk/models.py` | `src/langsight/sdk/models.py` | [ ] |
+| P7.2.2 | Update `ToolCallSpan.record()` to accept and pass through `input_tokens`, `output_tokens`, `model_id` | `src/langsight/sdk/models.py` | [ ] |
+| P7.2.3 | Add `input_tokens Nullable(UInt32)`, `output_tokens Nullable(UInt32)`, `model_id String DEFAULT ''` to ClickHouse `mcp_tool_calls` DDL | `src/langsight/storage/clickhouse.py` | [ ] |
+| P7.2.4 | Update `_SPAN_COLUMNS` tuple and `_span_row()` function to include the three new columns | `src/langsight/storage/clickhouse.py` | [ ] |
+| P7.2.5 | Update `get_session_trace()` SELECT to return `input_tokens`, `output_tokens`, `model_id` | `src/langsight/storage/clickhouse.py` | [ ] |
+| P7.2.6 | OTLP parser in `api/routers/traces.py` — extract `gen_ai.usage.input_tokens` → `input_tokens`, `gen_ai.usage.output_tokens` → `output_tokens`, `gen_ai.request.model` → `model_id` from span attributes | `src/langsight/api/routers/traces.py` | [ ] |
+| P7.2.7 | Update `SpanNode` API response model in `api/routers/agents.py` with `input_tokens`, `output_tokens`, `model_id` fields | `src/langsight/api/routers/agents.py` | [ ] |
+| P7.2.8 | Unit tests: OTLP span with `gen_ai.usage.input_tokens=1000` parsed correctly; span without token attrs stores `None` | `tests/unit/api/test_traces_router.py` | [ ] |
+| P7.2.9 | Update `SpanNode` TypeScript interface in `dashboard/lib/types.ts` with `input_tokens`, `output_tokens`, `model_id` | `dashboard/lib/types.ts` | [ ] |
+
+**Acceptance Criteria**:
+- [ ] OTLP span with `gen_ai.usage.input_tokens=1000, gen_ai.usage.output_tokens=200, gen_ai.request.model=claude-sonnet-4-6` stores correctly in ClickHouse
+- [ ] `get_session_trace()` returns `input_tokens`, `output_tokens`, `model_id` on every span row
+- [ ] SDK `ToolCallSpan` can be constructed with `input_tokens=500, output_tokens=100, model_id="gpt-4o"`
+- [ ] Spans without token data store `NULL` for `input_tokens`/`output_tokens` and `''` for `model_id` — no errors
+
+---
+
+#### P7.3 — Cost Engine: Token-Based Pricing for LLM Spans
+
+**Goal**: Cost engine uses model pricing table for LLM spans; falls back to call-based CostRule for non-LLM tool spans. Response split into `llm_cost_usd` and `tool_cost_usd`.
+
+| Task | Description | Files Affected | Status |
+|------|-------------|----------------|--------|
+| P7.3.1 | Add `ModelPricingLookup` helper class to `src/langsight/costs/engine.py` — constructor accepts `list[dict]` pricing rows; `cost_for(model_id, input_tokens, output_tokens) -> float` returns 0.0 for unknown models | `src/langsight/costs/engine.py` | [ ] |
+| P7.3.2 | Extend `CostEntry` dataclass with `input_tokens: int`, `output_tokens: int`, `model_id: str \| None`, `cost_type: Literal["token_based", "call_based"]` | `src/langsight/costs/engine.py` | [ ] |
+| P7.3.3 | Update `calculate_costs()` in engine — per span: if `model_id` non-empty AND (`input_tokens > 0` OR `output_tokens > 0`), use `ModelPricingLookup.cost_for()`; else use existing CostRule glob match | `src/langsight/costs/engine.py` | [ ] |
+| P7.3.4 | Update `GET /api/costs/breakdown` to load model pricing rows from storage (`list_model_pricing()`) and pass to engine; add `project_id: str \| None` query param (scope via ClickHouse filter when provided) | `src/langsight/api/routers/costs.py` | [ ] |
+| P7.3.5 | Add `llm_cost_usd: float` and `tool_cost_usd: float` to the breakdown response — sum of token-based costs vs sum of call-based costs respectively | `src/langsight/api/routers/costs.py` | [ ] |
+| P7.3.6 | Update `GET /api/costs/by-agent` and `GET /api/costs/by-session` to also accept `project_id` query param | `src/langsight/api/routers/costs.py` | [ ] |
+| P7.3.7 | Unit test: LLM span — 1000 input + 200 output tokens, `model_id=claude-sonnet-4-6` → `cost = (1000/1_000_000 × 3.0) + (200/1_000_000 × 15.0) = 0.003 + 0.003 = 0.006` | `tests/unit/test_cost_engine.py` | [ ] |
+| P7.3.8 | Unit test: tool span (no tokens, no model_id) → falls back to CostRule; `cost_type = "call_based"` | `tests/unit/test_cost_engine.py` | [ ] |
+| P7.3.9 | Unit test: `project_id=X` passed to breakdown endpoint → ClickHouse query includes `WHERE project_id = 'X'` | `tests/unit/api/test_costs_router.py` | [ ] |
+
+**`ModelPricingLookup` contract**:
+```python
+class ModelPricingLookup:
+    def __init__(self, pricing_rows: list[dict]) -> None:
+        # index by model_id; active rows only (effective_to IS NULL)
+        ...
+
+    def cost_for(
+        self,
+        model_id: str,
+        input_tokens: int,
+        output_tokens: int,
+    ) -> float:
+        # Returns 0.0 if model_id not found (fail-open)
+        ...
+```
+
+**Acceptance Criteria**:
+- [ ] `claude-sonnet-4-6`, 1000 input + 200 output tokens → `$0.006` exact
+- [ ] Unknown `model_id` → `$0.0` (no KeyError, no exception)
+- [ ] Tool span with no token data → call-based CostRule applied; `cost_type = "call_based"`
+- [ ] `GET /api/costs/breakdown` response includes `llm_cost_usd` and `tool_cost_usd` at top level
+- [ ] `?project_id=X` scopes all three cost endpoints to that project's spans
+
+---
+
+#### P7.4 — API Endpoints for Model Pricing Management
+
+**Goal**: Full CRUD API for model pricing so operators can add custom models and update prices when providers change their rates. Price updates create a new row with `effective_from=NOW()` and deactivate the old one — preserving audit history.
+
+| Task | Description | Files Affected | Status |
+|------|-------------|----------------|--------|
+| P7.4.1 | Add `ModelPricingEntry` and `CreateModelPricingRequest` Pydantic response/request models to `api/routers/costs.py` | `src/langsight/api/routers/costs.py` | [ ] |
+| P7.4.2 | `GET /api/costs/models` — list all model pricing entries (active and inactive); optional `?active_only=true` filter | `src/langsight/api/routers/costs.py` | [ ] |
+| P7.4.3 | `POST /api/costs/models` — create a custom model pricing entry; `require_admin` dependency; sets `is_custom=True` | `src/langsight/api/routers/costs.py` | [ ] |
+| P7.4.4 | `PATCH /api/costs/models/{id}` — update price: deactivates existing row (`effective_to=NOW()`), inserts new row with updated prices and `effective_from=NOW()`; `require_admin` dependency | `src/langsight/api/routers/costs.py` | [ ] |
+| P7.4.5 | `DELETE /api/costs/models/{id}` — deactivate a pricing entry (`effective_to=NOW()`); `require_admin` dependency; HTTP 404 if id not found | `src/langsight/api/routers/costs.py` | [ ] |
+| P7.4.6 | Unit tests for all four endpoints — list, create, patch (verify old row deactivated + new row created), delete (verify `effective_to` set) | `tests/unit/api/test_costs_router.py` | [ ] |
+
+**Endpoints**:
+
+| Method | Path | Role | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/costs/models` | authenticated | List all model pricing entries |
+| `POST` | `/api/costs/models` | admin | Add a custom model pricing entry |
+| `PATCH` | `/api/costs/models/{id}` | admin | Update price (audit trail — deactivates old, inserts new) |
+| `DELETE` | `/api/costs/models/{id}` | admin | Deactivate a pricing entry |
+
+**Request/Response models**:
+```python
+class ModelPricingEntry(BaseModel):
+    id: str
+    provider: str
+    model_id: str
+    display_name: str
+    input_per_1m_usd: float
+    output_per_1m_usd: float
+    cache_read_per_1m_usd: float
+    effective_from: str       # ISO 8601
+    effective_to: str | None  # None = currently active
+    notes: str | None
+    is_custom: bool
+
+class CreateModelPricingRequest(BaseModel):
+    provider: str
+    model_id: str
+    display_name: str
+    input_per_1m_usd: float
+    output_per_1m_usd: float
+    cache_read_per_1m_usd: float = 0.0
+    notes: str | None = None
+```
+
+**Acceptance Criteria**:
+- [ ] `GET /api/costs/models` returns all 16+ pricing entries including seed data
+- [ ] `POST /api/costs/models` with valid `CreateModelPricingRequest` creates entry with `is_custom=True`
+- [ ] `PATCH /api/costs/models/{id}` creates a new row AND sets `effective_to` on the old row (two rows in DB after update)
+- [ ] `DELETE /api/costs/models/{id}` sets `effective_to`, does not hard-delete
+- [ ] Non-admin calling `POST`/`PATCH`/`DELETE` receives HTTP 403
+- [ ] `DELETE` on unknown id returns HTTP 404
+
+---
+
+#### P7.5 — Dashboard: Model Pricing Table in Settings
+
+**Goal**: Settings page shows the full model pricing table grouped by provider. Admins can edit prices and add custom models without touching the database directly.
+
+| Task | Description | Files Affected | Status |
+|------|-------------|----------------|--------|
+| P7.5.1 | Add `ModelPricingEntry` TypeScript interface to `dashboard/lib/types.ts` | `dashboard/lib/types.ts` | [ ] |
+| P7.5.2 | Add `listModelPricing()`, `createModelPricing(req)`, `updateModelPricing(id, updates)`, `deleteModelPricing(id)` to `dashboard/lib/api.ts` | `dashboard/lib/api.ts` | [ ] |
+| P7.5.3 | Add `ModelPricingSection` component to `dashboard/app/(dashboard)/settings/page.tsx` — table with columns: Provider | Model | Input $/1M | Output $/1M | Effective From | Status | Actions | `dashboard/app/(dashboard)/settings/page.tsx` | [ ] |
+| P7.5.4 | Group rows by provider (Anthropic / OpenAI / Google / Meta / AWS / Custom) with collapsible sections | `dashboard/app/(dashboard)/settings/page.tsx` | [ ] |
+| P7.5.5 | Inline edit form per row — clicking "Edit" expands input fields for `input_per_1m_usd` and `output_per_1m_usd`; Save calls `PATCH /api/costs/models/{id}` | `dashboard/app/(dashboard)/settings/page.tsx` | [ ] |
+| P7.5.6 | "Add custom model" button — opens a modal/drawer with `CreateModelPricingRequest` fields; Submit calls `POST /api/costs/models` | `dashboard/app/(dashboard)/settings/page.tsx` | [ ] |
+| P7.5.7 | "Custom" badge on rows where `is_custom=true`; seed model rows show `is_custom=false` and the model_id field is read-only | `dashboard/app/(dashboard)/settings/page.tsx` | [ ] |
+| P7.5.8 | Inactive rows (where `effective_to` is set) shown as greyed-out with "Inactive" badge; default hidden behind "Show history" toggle | `dashboard/app/(dashboard)/settings/page.tsx` | [ ] |
+
+**Acceptance Criteria**:
+- [ ] Settings page loads model pricing table via `GET /api/costs/models`
+- [ ] Rows grouped by provider with Anthropic expanded by default
+- [ ] Admin can click Edit on a row, change a price, Save — table refreshes with new price
+- [ ] "Add custom model" form submits and new row appears under "Custom" group
+- [ ] Non-admin users see the table but Edit/Add/Delete actions are hidden
+
+---
+
+#### P7.6 — Dashboard: Costs Page Token Breakdown
+
+**Goal**: Costs page gains a "By Model" table showing token counts and model-attributed costs, plus summary cards that split LLM spend from tool-call spend.
+
+| Task | Description | Files Affected | Status |
+|------|-------------|----------------|--------|
+| P7.6.1 | Add `llm_cost_usd`, `tool_cost_usd`, `by_model` fields to the costs breakdown TypeScript types in `dashboard/lib/types.ts` | `dashboard/lib/types.ts` | [ ] |
+| P7.6.2 | Update `getCostBreakdown()` in `dashboard/lib/api.ts` to pass `project_id` query param when active project is set | `dashboard/lib/api.ts` | [ ] |
+| P7.6.3 | Add "LLM Tokens Cost" and "Tool Calls Cost" summary cards to the costs page header row (alongside existing "Total Spend") | `dashboard/app/(dashboard)/costs/page.tsx` | [ ] |
+| P7.6.4 | Add "Top Model" summary card — model with highest cost in the selected window | `dashboard/app/(dashboard)/costs/page.tsx` | [ ] |
+| P7.6.5 | Add "By Model" breakdown table to costs page: columns — Model | Provider | Input Tokens | Output Tokens | Total Cost | % of Spend | `dashboard/app/(dashboard)/costs/page.tsx` | [ ] |
+| P7.6.6 | "By Model" table only renders when at least one span with `model_id` exists; otherwise shows "No LLM spans recorded yet" placeholder | `dashboard/app/(dashboard)/costs/page.tsx` | [ ] |
+
+**Acceptance Criteria**:
+- [ ] Costs page shows "LLM Tokens Cost" and "Tool Calls Cost" as separate summary cards
+- [ ] "By Model" table appears and shows correct token counts and costs when LLM spans exist
+- [ ] "Top Model" card shows the highest-cost model by name
+- [ ] "By Model" table absent (placeholder shown) when no `model_id` spans exist
+- [ ] All costs page data respects active project scope via `?project_id=`
+
+---
+
+#### Phase 7 Summary
+
+| Sub-phase | Description | Key files | Status |
+|-----------|-------------|-----------|--------|
+| P7.1 | `model_pricing` table + 16 seed rows + StorageBackend protocol | `models.py`, `storage/sqlite.py`, `storage/postgres.py`, `storage/base.py`, `alembic/` | NOT STARTED |
+| P7.2 | Token fields on `ToolCallSpan`, ClickHouse DDL, OTLP parser | `sdk/models.py`, `storage/clickhouse.py`, `api/routers/traces.py` | NOT STARTED |
+| P7.3 | Token-based cost engine + project scoping on all cost endpoints | `costs/engine.py`, `api/routers/costs.py` | NOT STARTED |
+| P7.4 | CRUD API for model pricing management | `api/routers/costs.py` | NOT STARTED |
+| P7.5 | Dashboard Settings: model pricing table | `dashboard/app/(dashboard)/settings/page.tsx`, `dashboard/lib/types.ts`, `dashboard/lib/api.ts` | NOT STARTED |
+| P7.6 | Dashboard Costs: token breakdown + LLM vs tool split | `dashboard/app/(dashboard)/costs/page.tsx`, `dashboard/lib/types.ts` | NOT STARTED |
+
+**Phase 7 overall acceptance gate**:
+- [ ] LLM span with 1000 input + 200 output tokens for `claude-sonnet-4-6` → cost = `$0.006` exact
+- [ ] Tool span (no tokens) → call-based CostRule applied; `cost_type = "call_based"`
+- [ ] `GET /api/costs/breakdown` returns `llm_cost_usd` and `tool_cost_usd` split
+- [ ] `GET /api/costs/models` returns all 16 seed entries
+- [ ] Admin can add a custom model via `POST /api/costs/models` and it immediately appears in the engine
+- [ ] Price update via `PATCH` produces two DB rows (audit trail); old row has `effective_to` set
+- [ ] Settings page model pricing table renders, grouped by provider, edit flow works
+- [ ] Costs page "By Model" table shows token counts and per-model cost
+- [ ] All new code covered by tests; overall coverage does not drop below 80%
+
+---
+
+### Phase 8: Dashboard + Polish (originally Phase 7 — superseded)
+
+**Status**: PARTIALLY COMPLETE — marketing website (`website/`) and product dashboard (`dashboard/`) were shipped post-0.1.0 as part of Phase 4 scope expansion. The items below represent the originally planned phase that has been partially absorbed into earlier phases.
+
+**Note**: This section is retained for traceability. The dashboard core pages, cost attribution UI, and agents page were all shipped in Phase 4 (2026-03-18). Remaining items from the original plan (Playwright E2E tests, Helm chart, CONTRIBUTING.md) are tracked in the release checklist.
+
+---
+
+#### Weeks 13-14: Next.js Dashboard (Core Pages)
 
 **Goal**: Next.js web dashboard for visual monitoring, final integration testing, documentation, and public release preparation.
 
