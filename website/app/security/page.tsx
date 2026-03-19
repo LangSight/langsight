@@ -115,12 +115,14 @@ const STATS = [
 
 /* ── OWASP checks ───────────────────────────────────────────── */
 const OWASP_CHECKS = [
-  { n: "MCP-01", title: "Prompt Injection", desc: "Detects injected instructions in tool descriptions and system prompts that manipulate agent behavior.", severity: "critical", shipped: true },
-  { n: "MCP-02", title: "Insecure Output Handling", desc: "Flags tools that return sensitive data (PII, credentials, internal paths) without sanitization.", severity: "high", shipped: true },
+  // Shipped checks — descriptions match owasp_checker.py implementation
+  { n: "MCP-01", title: "No Authentication", desc: "Detects MCP servers (especially SSE/HTTP) that accept connections without any authentication configured.", severity: "critical", shipped: true },
+  { n: "MCP-02", title: "Destructive Tools Without Auth", desc: "Flags servers exposing destructive operations (delete, drop, write) without authentication.", severity: "high", shipped: true },
+  { n: "MCP-04", title: "Schema Drift (Rug Pull)", desc: "Detects unexpected changes to a tool's schema between scans — potential supply chain attack or unplanned deployment.", severity: "high", shipped: true },
+  { n: "MCP-05", title: "Missing Input Validation", desc: "Identifies tools with no input schema, allowing unvalidated free-form input from agents.", severity: "medium", shipped: true },
+  { n: "MCP-06", title: "Plaintext Transport", desc: "Flags SSE/HTTP servers using plaintext HTTP instead of HTTPS — credentials and data exposed in transit.", severity: "high", shipped: true },
+  // Planned checks — not yet implemented
   { n: "MCP-03", title: "Training Data Poisoning", desc: "Identifies tool descriptions designed to influence model training or system-level behavior.", severity: "high", shipped: false },
-  { n: "MCP-04", title: "Model Denial of Service", desc: "Detects patterns that could cause excessive token consumption or infinite loops in agent workflows.", severity: "medium", shipped: true },
-  { n: "MCP-05", title: "Supply Chain Vulnerabilities", desc: "Cross-references dependencies against the CVE database for known vulnerabilities.", severity: "critical", shipped: true },
-  { n: "MCP-06", title: "Sensitive Information Disclosure", desc: "Scans tool schemas and descriptions for leaked credentials, API keys, or internal endpoints.", severity: "high", shipped: true },
   { n: "MCP-07", title: "Insecure Plugin Design", desc: "Audits tool schemas for missing input validation, overly broad permissions, and unsafe defaults.", severity: "medium", shipped: false },
   { n: "MCP-08", title: "Excessive Agency", desc: "Identifies tools with overly broad scope — e.g., write access where read-only is sufficient.", severity: "medium", shipped: false },
   { n: "MCP-09", title: "Overreliance on LLM", desc: "Flags tools that pass unsanitized LLM output directly to system commands or SQL queries.", severity: "high", shipped: false },
@@ -163,7 +165,7 @@ Scanning 4 MCP servers...
 postgres-mcp     ✓  CVE clean  ·  OWASP 5/5   ·  Auth: API key
 jira-mcp         ✗  CVE-2025-4821 (HIGH)  ·  OWASP 4/5
 slack-mcp        ✓  CVE clean  ·  OWASP 5/5   ·  Auth: OAuth2
-filesystem-mcp   ⚠  No auth configured  ·  MCP-08: Excessive agency
+filesystem-mcp   ⚠  No auth configured  ·  MCP-01: No authentication
 
 ──────────────────────────────────────────────────
 
@@ -173,8 +175,8 @@ CRITICAL  jira-mcp/CVE-2025-4821
   Fix: uv add "jira-mcp-python>=2.4.1"
 
 WARNING   filesystem-mcp/no-auth
-  MCP-09: Excessive Agency — write access to /home
-  Recommendation: restrict to read-only + add API key
+  MCP-01: No authentication configured
+  Recommendation: add API key or restrict to localhost
 
 ──────────────────────────────────────────────────
 2 issues found (1 critical, 1 warning)

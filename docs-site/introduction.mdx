@@ -72,7 +72,7 @@ Total: 680ms | 7 calls | 1 failure | $0.011
 | Python functions | Yes | No | No | Yes |
 | Sub-agents | Yes | No | No | Yes |
 
-MCP servers get extra depth — proactive health checks, CVE scanning, OWASP MCP Top 10 audit, tool poisoning detection, and schema drift alerts — because the MCP protocol is standard and inspectable. Non-MCP tools appear in every trace but cannot be proactively health-checked.
+MCP servers get extra depth — proactive health checks, CVE scanning (via OSV), 5 of 10 OWASP MCP checks, tool poisoning detection, and schema drift alerts — because the MCP protocol is standard and inspectable. Non-MCP tools appear in every trace but cannot be proactively health-checked.
 
 ## LangSight and Langfuse
 
@@ -84,7 +84,7 @@ LangSight is **not** a Langfuse replacement. They answer different questions:
 | What it traces | LLM calls — prompts, completions, evals | Tool calls — MCP spans, HTTP APIs, sub-agents |
 | Cost tracking | LLM token costs | Tool call costs + LLM costs attributed per session |
 | Monitoring | Passive only | Proactive MCP health checks, SLO tracking, anomaly detection |
-| Security | None | CVE, OWASP MCP Top 10, tool poisoning, auth audit |
+| Security | None | CVE (OSV), 5 of 10 OWASP MCP checks, tool poisoning, auth audit |
 | Multi-agent | Agent reasoning chains | Agent-to-agent handoffs via `parent_span_id` |
 
 Use them together. Langfuse shows the LLM decided to call `postgres-mcp/query`. LangSight shows that call took 4 seconds and failed because the connection pool was exhausted.

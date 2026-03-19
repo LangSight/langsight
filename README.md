@@ -197,7 +197,7 @@ langsight mcp-health
 ```
 MCP Server Health                                    6 servers monitored
 ────────────────────────────────────────────────────────────────────────
-Server              Status    p99 Latency   Schema    Tools   Last Check
+Server              Status    Latency       Schema    Tools   Last Check
 snowflake-mcp       ✅ UP     142ms         Stable    8       12s ago
 github-mcp          ✅ UP     89ms          Stable    12      8s ago
 slack-mcp           ⚠️ DEG   1,240ms       Stable    4       5s ago

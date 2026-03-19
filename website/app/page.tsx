@@ -459,13 +459,13 @@ result = await traced.call_tool("query", {...})`,
     n: "03",
     sub: "real-time",
     title: "See everything",
-    desc: "Full session traces, multi-agent trees, MCP health status, security findings, cost attribution, anomaly detection, and AI root cause analysis — in the terminal and the dashboard.",
+    desc: "Session traces, multi-agent trees, MCP health status, security findings, cost attribution, anomaly detection, and failure investigation — in the terminal and the dashboard.",
     code: `langsight sessions          # all recent sessions
 langsight sessions --id X   # full trace for session
 langsight mcp-health        # server health status
 langsight security-scan     # CVE + OWASP + poisoning
 langsight costs --hours 24  # cost breakdown
-langsight investigate       # AI root cause analysis`,
+langsight investigate       # failure investigation`,
   },
 ];
 
