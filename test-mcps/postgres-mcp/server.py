@@ -7,7 +7,7 @@ from typing import Any
 
 import asyncpg
 from dotenv import load_dotenv
-from fastmcp import Context, FastMCP
+from fastmcp import FastMCP
 
 load_dotenv()
 

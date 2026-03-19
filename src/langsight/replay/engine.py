@@ -80,8 +80,12 @@ class ReplayEngine:
         self._timeout_per_call = timeout_per_call
         self._total_timeout = total_timeout
 
-    async def replay(self, session_id: str) -> ReplayResult:
+    async def replay(self, session_id: str, project_id: str | None = None) -> ReplayResult:
         """Replay all replayable tool calls from a session.
+
+        project_id is passed through to get_session_trace so the storage layer
+        can scope the lookup to the caller's project. Passing None is only safe
+        for global admins (the router enforces this via get_active_project_id).
 
         Returns a ReplayResult. The replay session is stored under a new
         session_id so compare_sessions() can diff original vs replay.
@@ -89,7 +93,7 @@ class ReplayEngine:
         if not hasattr(self._storage, "get_session_trace"):
             raise RuntimeError("ReplayEngine requires ClickHouse backend.")
 
-        spans = await self._storage.get_session_trace(session_id)
+        spans = await self._storage.get_session_trace(session_id, project_id=project_id)
         if not spans:
             raise ValueError(f"Session '{session_id}' not found or has no spans.")
 

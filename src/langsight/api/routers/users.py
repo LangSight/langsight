@@ -12,6 +12,7 @@ POST   /api/users/verify              — dashboard auth: verify email+password,
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -92,13 +93,18 @@ class VerifyResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(_BCRYPT_ROUNDS)).decode()
+async def _hash_password(password: str) -> str:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None,
+        lambda: bcrypt.hashpw(password.encode(), bcrypt.gensalt(_BCRYPT_ROUNDS)).decode(),
+    )
 
 
-def _verify_password(password: str, hashed: str) -> bool:
+async def _verify_password(password: str, hashed: str) -> bool:
+    loop = asyncio.get_running_loop()
     try:
-        return bcrypt.checkpw(password.encode(), hashed.encode())
+        return await loop.run_in_executor(None, bcrypt.checkpw, password.encode(), hashed.encode())
     except Exception:  # noqa: BLE001
         return False
 
@@ -240,7 +246,7 @@ async def accept_invite(
     user = User(
         id=uuid.uuid4().hex,
         email=invite.email,
-        password_hash=_hash_password(body.password),
+        password_hash=await _hash_password(body.password),
         role=invite.role,
         active=True,
         invited_by=invite.invited_by,
@@ -358,7 +364,7 @@ async def verify_credentials(
     _require_user_storage(storage)
 
     user = await storage.get_user_by_email(body.email)
-    if not user or not _verify_password(body.password, user.password_hash):
+    if not user or not await _verify_password(body.password, user.password_hash):
         logger.warning(
             "audit.auth.dashboard_login_failed",
             email=body.email,

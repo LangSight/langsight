@@ -168,8 +168,10 @@ async def verify_api_key(
         try:
             db_keys = await list_fn()
             has_db_keys = any(not k.is_revoked for k in db_keys)
-        except Exception:  # noqa: BLE001 — storage errors must not block auth
-            pass
+        except Exception:  # noqa: BLE001
+            # DB error: conservatively treat as auth-enabled (fail-closed).
+            # A Postgres outage must never become an authorisation bypass.
+            has_db_keys = True
 
     if not has_env_keys and not has_db_keys:
         # Auth fully disabled — local dev mode (no keys configured at all)
@@ -386,7 +388,9 @@ async def get_active_project_id(
             db_keys = await list_fn()
             has_db_keys = any(not k.is_revoked for k in db_keys)
         except Exception:  # noqa: BLE001
-            pass
+            # DB error: conservatively treat as auth-enabled (fail-closed).
+            # A Postgres outage must never become an authorisation bypass.
+            has_db_keys = True
     auth_enabled = has_env_keys or has_db_keys
 
     # ── Handle missing project_id ─────────────────────────────────────────────
@@ -470,7 +474,9 @@ async def require_admin(
             db_keys = await list_fn()
             has_db_keys = any(not k.is_revoked for k in db_keys)
         except Exception:  # noqa: BLE001
-            pass
+            # DB error: conservatively treat as auth-enabled (fail-closed).
+            # A Postgres outage must never become an authorisation bypass.
+            has_db_keys = True
 
     if not has_env_keys and not has_db_keys:
         return  # auth disabled

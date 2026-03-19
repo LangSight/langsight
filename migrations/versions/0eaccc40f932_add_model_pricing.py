@@ -16,16 +16,16 @@ Update prices when providers change rates:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0eaccc40f932"
-down_revision: Union[str, Sequence[str], None] = "dc0bf058f21c"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "dc0bf058f21c"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # Seed data: (provider, model_id, display_name, input_per_1m, output_per_1m, cache_read_per_1m, notes)
 # Prices as of 2026-03. Update via new migration when providers change rates.

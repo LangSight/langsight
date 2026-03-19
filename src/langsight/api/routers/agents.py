@@ -243,7 +243,7 @@ async def replay_session(
     )
 
     try:
-        result = await engine.replay(session_id)
+        result = await engine.replay(session_id, project_id=project_id)
     except ValueError as exc:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,

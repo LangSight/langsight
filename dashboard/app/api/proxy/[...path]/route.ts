@@ -16,7 +16,9 @@ import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND = process.env.LANGSIGHT_API_URL ?? "http://localhost:8000";
-const BACKEND_API_KEY = process.env.LANGSIGHT_API_KEY ?? "";
+// LANGSIGHT_API_KEYS may be a comma-separated list; the proxy needs exactly one
+// key. Split and take the first to avoid forwarding "key1,key2" as a single key.
+const BACKEND_API_KEY = (process.env.LANGSIGHT_API_KEY ?? "").split(",")[0].trim();
 
 type SessionWithMeta = {
   userId?: string;
