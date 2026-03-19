@@ -35,6 +35,10 @@ build/
 *.swp
 *.swo
 
+# Next.js / TypeScript build artifacts
+.next/
+*.tsbuildinfo
+
 # macOS
 .DS_Store
 .AppleDouble
