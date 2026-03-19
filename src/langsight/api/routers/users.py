@@ -26,12 +26,28 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from langsight.api.audit import append_audit
-from langsight.api.dependencies import get_storage, require_admin
+from langsight.api.dependencies import _is_proxy_request, get_storage, require_admin
 from langsight.models import InviteToken, User, UserRole
 from langsight.storage.base import StorageBackend
 
 _limiter = Limiter(key_func=get_remote_address)
 logger = structlog.get_logger()
+
+
+def _login_rate_key(request: Request) -> str:
+    """Rate-limit key for /verify that respects X-Forwarded-For from trusted proxies.
+
+    In production the dashboard container calls /verify on behalf of users.
+    Without this, all users share one rate-limit bucket (the container IP).
+    When the request comes from a trusted proxy, we use the first IP in
+    X-Forwarded-For (the real client). Otherwise, fall back to client.host.
+    """
+    if _is_proxy_request(request):
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            # X-Forwarded-For: client, proxy1, proxy2 — first entry is the real client
+            return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 router = APIRouter(prefix="/users", tags=["users"])
 # Public endpoints — no API key required (used during login and invite acceptance)
 public_router = APIRouter(prefix="/users", tags=["users"])
@@ -367,7 +383,7 @@ async def deactivate_user(
     response_model=VerifyResponse,
     summary="Verify dashboard login credentials",
 )
-@_limiter.limit("10/minute")
+@_limiter.limit("10/minute", key_func=_login_rate_key)
 async def verify_credentials(
     body: VerifyRequest,
     request: Request,

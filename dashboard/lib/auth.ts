@@ -31,16 +31,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email:    { label: "Email",    type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const email    = credentials?.email    as string | undefined;
         const password = credentials?.password as string | undefined;
 
         if (!email || !password) return null;
 
+        // Forward the real client IP so the backend can rate-limit per user,
+        // not per dashboard container (which would share one bucket).
+        const forwarded = (request as Request | undefined)?.headers?.get?.("x-forwarded-for")
+          ?? (request as Request | undefined)?.headers?.get?.("x-real-ip")
+          ?? "";
+
         try {
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (forwarded) headers["X-Forwarded-For"] = forwarded;
+
           const res = await fetch(`${LANGSIGHT_API_URL}/api/users/verify`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify({ email, password }),
             // Short timeout — login should be fast
             signal: AbortSignal.timeout(5000),
