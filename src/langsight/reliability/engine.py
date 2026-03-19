@@ -301,7 +301,6 @@ class SLOEvaluator:
 
     async def evaluate_all(self, slos: list[Any]) -> list[Any]:
         """Evaluate all SLOs and return SLOEvaluation results."""
-        import asyncio
         from langsight.models import SLOEvaluation, SLOMetric
 
         if not slos:
@@ -314,7 +313,7 @@ class SLOEvaluator:
             if key not in windows:
                 windows[key] = await self._fetch_session_stats(
                     slo.agent_name, slo.window_hours
-                )
+                ) or {}
 
         results = []
         for slo in slos:

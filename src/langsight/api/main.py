@@ -6,22 +6,32 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from fastapi import Depends
-
-# Rate limiter — keyed by client IP
-limiter = Limiter(key_func=get_remote_address)
-
 from langsight.api.dependencies import verify_api_key
-from langsight.api.routers import agents, alerts_config, auth, costs, health, projects, reliability, security, slos, traces, users
+from langsight.api.routers import (
+    agents,
+    alerts_config,
+    auth,
+    costs,
+    health,
+    projects,
+    reliability,
+    security,
+    slos,
+    traces,
+    users,
+)
 from langsight.config import Settings, load_config
 from langsight.storage.factory import open_storage
+
+# Rate limiter — keyed by client IP (must be after imports, before app factory)
+limiter = Limiter(key_func=get_remote_address)
 
 logger = structlog.get_logger()
 
@@ -44,7 +54,7 @@ _MODEL_PRICING_SEED: list[tuple[str, str, str, float, float, float, str]] = [
 ]
 
 
-async def _seed_model_pricing(storage: object) -> None:
+async def _seed_model_pricing(storage: Any) -> None:
     """Seed model_pricing table with builtin models if empty."""
     import uuid
     from datetime import UTC, datetime
@@ -77,7 +87,7 @@ async def _seed_model_pricing(storage: object) -> None:
         logger.warning("api.startup.model_pricing_seed_error", error=str(exc))
 
 
-async def _bootstrap_admin(storage: object) -> str | None:
+async def _bootstrap_admin(storage: Any) -> str | None:
     """Create the first admin user from env vars if no users exist.
 
     Returns the new admin's user id, or None if no bootstrap occurred.
@@ -132,7 +142,7 @@ async def _bootstrap_admin(storage: object) -> str | None:
         return None
 
 
-async def _bootstrap_default_project(storage: object, admin_user_id: str) -> None:
+async def _bootstrap_default_project(storage: Any, admin_user_id: str) -> None:
     """Create a default project and make the bootstrap admin its owner.
 
     Only runs when no projects exist. After the first project is created,
@@ -245,7 +255,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next: Any) -> StarletteResponse:
-            response = await call_next(request)
+            response: StarletteResponse = await call_next(request)
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["X-Frame-Options"] = "DENY"
             response.headers["X-XSS-Protection"] = "1; mode=block"
@@ -312,15 +322,13 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         return {"status": "alive"}
 
     @app.get("/api/readiness", tags=["meta"])
-    async def readiness() -> dict[str, Any]:
+    async def readiness() -> JSONResponse:
         """Readiness probe — can the process serve traffic?
 
         Checks that storage is reachable. Returns 200 when ready,
         503 when storage is unavailable. Used by load balancers and K8s
         to decide whether to send traffic to this instance.
         """
-        from fastapi import Response
-        from fastapi.responses import JSONResponse
 
         storage = getattr(app.state, "storage", None)
         storage_ok = False

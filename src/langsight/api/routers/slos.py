@@ -11,13 +11,12 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
 from pydantic import BaseModel, Field
 
-from langsight.api.dependencies import get_storage
+from langsight.api.dependencies import get_storage, require_admin
 from langsight.models import AgentSLO, SLOMetric
 from langsight.reliability.engine import SLOEvaluator
 from langsight.storage.base import StorageBackend
@@ -117,6 +116,7 @@ async def list_slos(
 async def create_slo(
     body: CreateSLORequest,
     storage: StorageBackend = Depends(get_storage),
+    _: None = Depends(require_admin),
 ) -> SLOResponse:
     """Define a new Agent SLO.
 
@@ -149,6 +149,7 @@ async def create_slo(
 async def delete_slo(
     slo_id: str,
     storage: StorageBackend = Depends(get_storage),
+    _: None = Depends(require_admin),
 ) -> None:
     """Delete an SLO definition by ID."""
     if not hasattr(storage, "delete_slo"):

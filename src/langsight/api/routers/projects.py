@@ -14,6 +14,7 @@ DELETE /api/projects/{project_id}/members/{uid}   — remove member (owner only)
 
 from __future__ import annotations
 
+import inspect
 import re
 import uuid
 from datetime import UTC, datetime
@@ -23,9 +24,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import status as http_status
 from pydantic import BaseModel, Field
 
-import inspect
-
-from langsight.api.dependencies import ProjectAccess, _read_api_key, get_project_access, get_session_user, get_storage, require_admin
+from langsight.api.dependencies import (
+    ProjectAccess,
+    _read_api_key,
+    get_project_access,
+    get_session_user,
+    get_storage,
+)
 from langsight.models import Project, ProjectMember, ProjectRole
 from langsight.storage.base import StorageBackend
 

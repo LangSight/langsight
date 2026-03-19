@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from langsight.security.models import ScanResult, SecurityFinding, Severity
 
 

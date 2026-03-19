@@ -23,7 +23,7 @@ with current public prices for major providers on first startup.
 from __future__ import annotations
 
 import fnmatch
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -167,9 +167,9 @@ class ModelPricingLookup:
         entry = self._index.get(model_id)
         if entry is None:
             return 0.0
-        inp = entry.input_per_1m_usd if hasattr(entry, "input_per_1m_usd") else entry.get("input_per_1m_usd", 0.0)
-        out = entry.output_per_1m_usd if hasattr(entry, "output_per_1m_usd") else entry.get("output_per_1m_usd", 0.0)
-        return (input_tokens / 1_000_000 * inp) + (output_tokens / 1_000_000 * out)
+        inp: float = entry.input_per_1m_usd if hasattr(entry, "input_per_1m_usd") else entry.get("input_per_1m_usd", 0.0)
+        out: float = entry.output_per_1m_usd if hasattr(entry, "output_per_1m_usd") else entry.get("output_per_1m_usd", 0.0)
+        return float((input_tokens / 1_000_000 * inp) + (output_tokens / 1_000_000 * out))
 
     def has_model(self, model_id: str) -> bool:
         return model_id in self._index

@@ -54,7 +54,7 @@ async def open_storage(config: StorageConfig) -> StorageBackend:
         parsed = urlparse(config.clickhouse_url)
         host = parsed.hostname or "localhost"
         port = parsed.port or 8123
-        return await ClickHouseBackend.open(
+        return await ClickHouseBackend.open(  # type: ignore[return-value]
             host=host,
             port=port,
             database=config.clickhouse_database,

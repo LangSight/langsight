@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { RefreshCw, AlertTriangle, Clock, Server, CheckCircle } from "lucide-react";
@@ -123,11 +123,11 @@ function HistoryPanel({ serverName }: { serverName: string }) {
   const [history, setHistory] = useState<HealthResult[] | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useState(() => {
+  useEffect(() => {
     getServerHistoty(serverName, 30)
       .then((h) => { setHistory(h); setLoading(false); })
       .catch(() => setLoading(false));
-  });
+  }, [serverName]);
 
   const sparkData = history?.map((h) => ({ v: h.latency_ms ?? 0 })) ?? [];
   const avgLatency = history && history.length > 0

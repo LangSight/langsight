@@ -16,7 +16,7 @@ from langsight.alerts.engine import AlertEngine, AlertType
 from langsight.config import load_config
 from langsight.exceptions import MCPTimeoutError
 from langsight.health.checker import HealthChecker
-from langsight.models import ServerStatus, ToolInfo
+from langsight.models import ToolInfo
 from langsight.storage.sqlite import SQLiteBackend
 
 pytestmark = pytest.mark.regression

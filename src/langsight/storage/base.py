@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from langsight.models import AgentSLO, ApiKeyRecord, HealthCheckResult, InviteToken, ModelPricing, Project, ProjectMember, User
+from langsight.models import (
+    AgentSLO,
+    ApiKeyRecord,
+    HealthCheckResult,
+    InviteToken,
+    ModelPricing,
+    Project,
+    ProjectMember,
+    User,
+)
 
 
 @runtime_checkable
@@ -196,6 +205,36 @@ class StorageBackend(Protocol):
 
     async def delete_slo(self, slo_id: str) -> bool:
         """Delete an SLO. Returns True if found and deleted."""
+        ...
+
+    # ── Alert config ─────────────────────────────────────────────────────────
+
+    async def get_alert_config(self) -> dict[str, Any] | None:
+        """Return the persisted alert config (slack_webhook + alert_types), or None."""
+        ...
+
+    async def save_alert_config(self, slack_webhook: str | None, alert_types: dict[str, bool]) -> None:
+        """Upsert the singleton alert config row."""
+        ...
+
+    # ── Audit logs ────────────────────────────────────────────────────────────
+
+    async def append_audit_log(
+        self,
+        event: str,
+        user_id: str,
+        ip: str,
+        details: dict[str, Any],
+    ) -> None:
+        """Append a new audit log entry."""
+        ...
+
+    async def list_audit_logs(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        """Return audit log entries most-recent-first."""
+        ...
+
+    async def count_audit_logs(self) -> int:
+        """Return total number of audit log entries."""
         ...
 
     async def close(self) -> None:

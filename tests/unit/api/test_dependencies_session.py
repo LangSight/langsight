@@ -10,11 +10,10 @@ Covers:
 """
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import FastAPI, Request
-from fastapi.testclient import TestClient
+from fastapi import Request
 
 from langsight.api.dependencies import (
     _get_session_user,
@@ -23,8 +22,7 @@ from langsight.api.dependencies import (
     require_admin,
     verify_api_key,
 )
-from langsight.models import ApiKeyRole, ProjectRole
-
+from langsight.models import ApiKeyRole
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -37,13 +35,6 @@ def _make_request(
     storage: object | None = None,
 ) -> Request:
     """Build a minimal FastAPI Request-like object for dependency testing."""
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": "/api/test",
-        "headers": [],
-        "query_string": b"",
-    }
     request = MagicMock(spec=Request)
     request.client = MagicMock()
     request.client.host = client_ip
@@ -60,6 +51,8 @@ def _make_request(
     app_state = MagicMock()
     app_state.api_keys = api_keys or []
     app_state.storage = storage or MagicMock()
+    # Explicitly set to None so _is_proxy_request falls back to default loopback CIDRs
+    app_state.trusted_proxy_networks = None
     request.app = MagicMock()
     request.app.state = app_state
 
@@ -310,12 +303,12 @@ class TestRequireAdmin:
 
     async def test_db_viewer_key_raises_403(self) -> None:
         """A DB key with role=viewer attempting a write → 403."""
-        from fastapi import HTTPException
-
         import hashlib
 
+        from fastapi import HTTPException
+
         raw_key = "viewer-key"
-        key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+        hashlib.sha256(raw_key.encode()).hexdigest()
 
         viewer_record = MagicMock()
         viewer_record.role = ApiKeyRole.VIEWER
@@ -337,7 +330,6 @@ class TestRequireAdmin:
 
     async def test_db_admin_key_passes(self) -> None:
         """A DB key with role=admin passes require_admin."""
-        import hashlib
 
         raw_key = "admin-db-key"
 

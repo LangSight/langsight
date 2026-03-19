@@ -7,7 +7,7 @@ GET /api/reliability/tools      — per-tool reliability metrics
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Query
 
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/reliability", tags=["reliability"])
 
 
 def _anomaly_to_dict(a: Any) -> dict[str, Any]:
-    return a.to_dict()
+    return cast(dict[str, Any], a.to_dict())
 
 
 # ---------------------------------------------------------------------------

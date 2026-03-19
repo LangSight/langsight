@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -23,13 +23,13 @@ UP_RESULT = HealthCheckResult(
     latency_ms=42.0,
     tools_count=5,
     schema_hash="abc123def456ab12",
-    checked_at=datetime(2026, 3, 16, 12, 0, 0, tzinfo=timezone.utc),
+    checked_at=datetime(2026, 3, 16, 12, 0, 0, tzinfo=UTC),
 )
 DOWN_RESULT = HealthCheckResult(
     server_name="pg",
     status=ServerStatus.DOWN,
     error="timeout after 5s",
-    checked_at=datetime(2026, 3, 16, 13, 0, 0, tzinfo=timezone.utc),
+    checked_at=datetime(2026, 3, 16, 13, 0, 0, tzinfo=UTC),
 )
 
 

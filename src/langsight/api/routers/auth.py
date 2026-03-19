@@ -9,7 +9,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
-from langsight.api.dependencies import get_storage
+from langsight.api.dependencies import get_storage, require_admin
 from langsight.models import ApiKeyRecord, ApiKeyRole
 from langsight.storage.base import StorageBackend
 
@@ -72,6 +72,7 @@ async def create_api_key(
     body: CreateApiKeyRequest,
     request: Request,
     storage: StorageBackend = Depends(get_storage),
+    _: None = Depends(require_admin),
 ) -> ApiKeyCreatedResponse:
     """Generate a new API key.  The raw key is returned **once** — store it safely."""
     if not body.name.strip():
@@ -123,6 +124,7 @@ async def create_api_key(
 )
 async def list_api_keys(
     storage: StorageBackend = Depends(get_storage),
+    _: None = Depends(require_admin),
 ) -> list[ApiKeyResponse]:
     """Return all API keys (active and revoked)."""
     if not hasattr(storage, "list_api_keys"):
@@ -140,6 +142,7 @@ async def revoke_api_key(
     key_id: str,
     request: Request,
     storage: StorageBackend = Depends(get_storage),
+    _: None = Depends(require_admin),
 ) -> None:
     """Revoke an API key immediately. Revoked keys cannot be un-revoked."""
     if not hasattr(storage, "revoke_api_key"):

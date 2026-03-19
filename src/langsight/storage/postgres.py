@@ -1,11 +1,26 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
-import asyncpg  # type: ignore[import-untyped]
+import asyncpg
 import structlog
 
-from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, InviteToken, ModelPricing, Project, ProjectMember, ProjectRole, ServerStatus, SLOMetric, User, UserRole
+from langsight.models import (
+    AgentSLO,
+    ApiKeyRecord,
+    ApiKeyRole,
+    HealthCheckResult,
+    InviteToken,
+    ModelPricing,
+    Project,
+    ProjectMember,
+    ProjectRole,
+    ServerStatus,
+    SLOMetric,
+    User,
+    UserRole,
+)
 
 logger = structlog.get_logger()
 
@@ -135,6 +150,26 @@ _DDL_STATEMENTS = [
         window_hours INTEGER     NOT NULL DEFAULT 24,
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS alert_config (
+        id            TEXT        PRIMARY KEY DEFAULT 'singleton',
+        slack_webhook TEXT,
+        alert_types   JSONB       NOT NULL DEFAULT '{}'
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        id        BIGSERIAL   PRIMARY KEY,
+        timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        event     TEXT        NOT NULL,
+        user_id   TEXT        NOT NULL DEFAULT 'system',
+        ip        TEXT        NOT NULL DEFAULT 'unknown',
+        details   JSONB       NOT NULL DEFAULT '{}'
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_time ON audit_logs (timestamp DESC)
     """,
 ]
 
@@ -288,7 +323,7 @@ class PostgresBackend:
         return _row_to_api_key(row) if row else None
 
     async def revoke_api_key(self, key_id: str) -> bool:
-        result = await self._pool.execute(
+        result: str = await self._pool.execute(
             "UPDATE api_keys SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL",
             key_id,
         )
@@ -333,7 +368,7 @@ class PostgresBackend:
 
     async def deactivate_model_pricing(self, entry_id: str) -> bool:
         from datetime import UTC, datetime
-        result = await self._pool.execute(
+        result: str = await self._pool.execute(
             "UPDATE model_pricing SET effective_to = $1 WHERE id = $2 AND effective_to IS NULL",
             datetime.now(UTC), entry_id,
         )
@@ -372,14 +407,14 @@ class PostgresBackend:
         return [_row_to_project(r) for r in rows]
 
     async def update_project(self, project_id: str, name: str, slug: str) -> bool:
-        result = await self._pool.execute(
+        result: str = await self._pool.execute(
             "UPDATE projects SET name = $1, slug = $2 WHERE id = $3", name, slug, project_id
         )
         return result != "UPDATE 0"
 
     async def delete_project(self, project_id: str) -> bool:
         await self._pool.execute("DELETE FROM project_members WHERE project_id = $1", project_id)
-        result = await self._pool.execute("DELETE FROM projects WHERE id = $1", project_id)
+        result: str = await self._pool.execute("DELETE FROM projects WHERE id = $1", project_id)
         return result != "DELETE 0"
 
     # ── Project membership ────────────────────────────────────────────────────
@@ -407,14 +442,14 @@ class PostgresBackend:
         return [_row_to_member(r) for r in rows]
 
     async def update_member_role(self, project_id: str, user_id: str, role: str) -> bool:
-        result = await self._pool.execute(
+        result: str = await self._pool.execute(
             "UPDATE project_members SET role = $1 WHERE project_id = $2 AND user_id = $3",
             role, project_id, user_id,
         )
         return result != "UPDATE 0"
 
     async def remove_member(self, project_id: str, user_id: str) -> bool:
-        result = await self._pool.execute(
+        result: str = await self._pool.execute(
             "DELETE FROM project_members WHERE project_id = $1 AND user_id = $2", project_id, user_id
         )
         return result != "DELETE 0"
@@ -446,13 +481,13 @@ class PostgresBackend:
         return [_row_to_user(r) for r in rows]
 
     async def update_user_role(self, user_id: str, role: str) -> bool:
-        result = await self._pool.execute(
+        result: str = await self._pool.execute(
             "UPDATE users SET role = $1 WHERE id = $2", role, user_id
         )
         return result != "UPDATE 0"
 
     async def deactivate_user(self, user_id: str) -> bool:
-        result = await self._pool.execute(
+        result: str = await self._pool.execute(
             "UPDATE users SET active = FALSE WHERE id = $1", user_id
         )
         return result != "UPDATE 0"
@@ -514,10 +549,78 @@ class PostgresBackend:
         return _row_to_slo(row) if row else None
 
     async def delete_slo(self, slo_id: str) -> bool:
-        result = await self._pool.execute(
+        result: str = await self._pool.execute(
             "DELETE FROM agent_slos WHERE id = $1", slo_id
         )
         return result != "DELETE 0"
+
+    # ── Alert config ──────────────────────────────────────────────────────────
+
+    async def get_alert_config(self) -> dict[str, Any] | None:
+        """Return the persisted alert config, or None if never saved."""
+        row = await self._pool.fetchrow(
+            "SELECT slack_webhook, alert_types FROM alert_config WHERE id = 'singleton'"
+        )
+        if row is None:
+            return None
+        alert_types = row["alert_types"] or {}
+        if isinstance(alert_types, str):
+            import json
+            alert_types = json.loads(alert_types)
+        return {"slack_webhook": row["slack_webhook"], "alert_types": alert_types}
+
+    async def save_alert_config(self, slack_webhook: str | None, alert_types: dict[str, bool]) -> None:
+        """Upsert the singleton alert config row."""
+        import json
+        await self._pool.execute(
+            """
+            INSERT INTO alert_config (id, slack_webhook, alert_types)
+            VALUES ('singleton', $1, $2::jsonb)
+            ON CONFLICT (id) DO UPDATE SET
+                slack_webhook = EXCLUDED.slack_webhook,
+                alert_types   = EXCLUDED.alert_types
+            """,
+            slack_webhook, json.dumps(alert_types),
+        )
+
+    # ── Audit logs ────────────────────────────────────────────────────────────
+
+    async def append_audit_log(
+        self,
+        event: str,
+        user_id: str,
+        ip: str,
+        details: dict[str, Any],
+    ) -> None:
+        """Append a new audit log entry."""
+        import json
+        await self._pool.execute(
+            "INSERT INTO audit_logs (event, user_id, ip, details) VALUES ($1, $2, $3, $4::jsonb)",
+            event, user_id, ip, json.dumps(details),
+        )
+
+    async def list_audit_logs(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        """Return audit log entries most-recent-first."""
+        rows = await self._pool.fetch(
+            "SELECT id, timestamp, event, user_id, ip, details FROM audit_logs ORDER BY id DESC LIMIT $1 OFFSET $2",
+            limit, offset,
+        )
+        return [
+            {
+                "id": r["id"],
+                "timestamp": r["timestamp"].isoformat() if hasattr(r["timestamp"], "isoformat") else str(r["timestamp"]),
+                "event": r["event"],
+                "user_id": r["user_id"],
+                "ip": r["ip"],
+                "details": r["details"] if isinstance(r["details"], dict) else {},
+            }
+            for r in rows
+        ]
+
+    async def count_audit_logs(self) -> int:
+        """Return total number of audit log entries."""
+        row = await self._pool.fetchrow("SELECT COUNT(*) AS n FROM audit_logs")
+        return int(row["n"]) if row else 0
 
     async def close(self) -> None:
         """Close the connection pool."""

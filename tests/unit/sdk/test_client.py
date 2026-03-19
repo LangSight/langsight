@@ -39,7 +39,7 @@ class TestLangSightClient:
     async def test_send_span_fires_task(self) -> None:
         client = LangSightClient(url="http://localhost:8000")
         span = _span()
-        with patch.object(client, "_post_spans", new_callable=AsyncMock) as mock_post:
+        with patch.object(client, "_post_spans", new_callable=AsyncMock):
             # Need event loop to process tasks
             import asyncio
             task = asyncio.create_task(client.send_span(span))
@@ -78,7 +78,7 @@ class TestLangSightClient:
             MockHttp.return_value.post = AsyncMock(return_value=mock_response)
             await client._post_spans([_span()])
         headers = MockHttp.return_value.post.call_args[1]["headers"]
-        assert headers.get("Authorization") == "Bearer secret-key"
+        assert headers.get("X-API-Key") == "secret-key"
 
 
 class TestMCPClientProxy:

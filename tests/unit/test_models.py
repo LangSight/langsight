@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -82,7 +82,7 @@ class TestHealthCheckResult:
 
     def test_checked_at_is_utc(self) -> None:
         r = HealthCheckResult(server_name="srv", status=ServerStatus.UP)
-        assert r.checked_at.tzinfo == timezone.utc
+        assert r.checked_at.tzinfo == UTC
 
     def test_down_with_error(self) -> None:
         r = HealthCheckResult(

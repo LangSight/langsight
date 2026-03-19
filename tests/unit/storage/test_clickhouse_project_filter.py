@@ -62,7 +62,7 @@ class TestGetCostCallCountsProjectFilter:
         await backend.get_cost_call_counts(hours=24, project_id=None)
 
         call_args = mock_client.query.call_args
-        sql: str = call_args[0][0]
+        call_args[0][0]
         params: dict = call_args[1]["parameters"]
 
         # project_id param should not be in the parameters dict

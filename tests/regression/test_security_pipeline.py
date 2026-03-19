@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 from langsight.config import load_config
-from langsight.models import ServerStatus, ToolInfo
+from langsight.models import ToolInfo
 from langsight.security.models import Severity
 from langsight.security.scanner import SecurityScanner
 from langsight.storage.sqlite import SQLiteBackend

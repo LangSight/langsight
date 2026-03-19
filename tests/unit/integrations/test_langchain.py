@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID, uuid4
+from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 
 from langsight.integrations.langchain import LangSightLangChainCallback
 from langsight.sdk.client import LangSightClient
-from langsight.sdk.models import ToolCallStatus
 
 
 @pytest.fixture

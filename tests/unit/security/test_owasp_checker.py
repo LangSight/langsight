@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from langsight.models import HealthCheckResult, MCPServer, ServerStatus, ToolInfo, TransportType
 from langsight.security.models import Severity
 from langsight.security.owasp_checker import (

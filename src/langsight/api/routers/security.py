@@ -8,12 +8,12 @@ from fastapi import status as http_status
 from pydantic import BaseModel
 
 from langsight.api.dependencies import get_config, get_storage, require_admin
-
-logger = structlog.get_logger()
 from langsight.config import LangSightConfig
 from langsight.security.models import ScanResult
 from langsight.security.scanner import SecurityScanner
 from langsight.storage.base import StorageBackend
+
+logger = structlog.get_logger()
 
 router = APIRouter(prefix="/security", tags=["security"])
 

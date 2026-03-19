@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
@@ -124,7 +125,7 @@ class Settings(BaseSettings):
 
     def apply_to_storage(self, storage: StorageConfig) -> StorageConfig:
         """Return a new StorageConfig with env var overrides applied."""
-        overrides: dict = {}
+        overrides: dict[str, Any] = {}
         if self.storage_mode:
             overrides["mode"] = self.storage_mode
         if self.clickhouse_url:

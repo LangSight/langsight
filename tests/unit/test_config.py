@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from langsight.config import AlertConfig, LangSightConfig, StorageConfig, load_config
+from langsight.config import AlertConfig, StorageConfig, load_config
 from langsight.exceptions import ConfigError
 from langsight.models import TransportType
 

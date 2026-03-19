@@ -14,10 +14,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from langsight.reliability.engine import (
-    AnomalyDetector,
-    AnomalyResult,
     _MIN_STDDEV_ERROR_RATE,
     _MIN_STDDEV_LATENCY_MS,
+    AnomalyDetector,
+    AnomalyResult,
 )
 
 # ---------------------------------------------------------------------------

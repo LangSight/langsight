@@ -2,11 +2,26 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 import structlog
 
-from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, InviteToken, ModelPricing, Project, ProjectMember, ProjectRole, ServerStatus, SLOMetric, User, UserRole
+from langsight.models import (
+    AgentSLO,
+    ApiKeyRecord,
+    ApiKeyRole,
+    HealthCheckResult,
+    InviteToken,
+    ModelPricing,
+    Project,
+    ProjectMember,
+    ProjectRole,
+    ServerStatus,
+    SLOMetric,
+    User,
+    UserRole,
+)
 
 logger = structlog.get_logger()
 
@@ -120,6 +135,23 @@ CREATE TABLE IF NOT EXISTS agent_slos (
     window_hours INTEGER NOT NULL DEFAULT 24,
     created_at   TEXT    NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS alert_config (
+    id            TEXT    PRIMARY KEY DEFAULT 'singleton',
+    slack_webhook TEXT,
+    alert_types   TEXT    NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT    NOT NULL,
+    event     TEXT    NOT NULL,
+    user_id   TEXT    NOT NULL DEFAULT 'system',
+    ip        TEXT    NOT NULL DEFAULT 'unknown',
+    details   TEXT    NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_time ON audit_logs (timestamp DESC);
 """
 
 
@@ -549,6 +581,80 @@ class SQLiteBackend:
         )
         await self._conn.commit()
         return cursor.rowcount > 0
+
+    # ── Alert config ──────────────────────────────────────────────────────────
+
+    async def get_alert_config(self) -> dict[str, Any] | None:
+        """Return the persisted alert config, or None if never saved."""
+        import json
+        async with self._conn.execute(
+            "SELECT slack_webhook, alert_types FROM alert_config WHERE id = 'singleton'"
+        ) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        return {
+            "slack_webhook": row[0],
+            "alert_types": json.loads(row[1]) if row[1] else {},
+        }
+
+    async def save_alert_config(self, slack_webhook: str | None, alert_types: dict[str, bool]) -> None:
+        """Upsert the singleton alert config row."""
+        import json
+        await self._conn.execute(
+            """
+            INSERT INTO alert_config (id, slack_webhook, alert_types)
+            VALUES ('singleton', ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                slack_webhook = excluded.slack_webhook,
+                alert_types   = excluded.alert_types
+            """,
+            (slack_webhook, json.dumps(alert_types)),
+        )
+        await self._conn.commit()
+
+    # ── Audit logs ────────────────────────────────────────────────────────────
+
+    async def append_audit_log(
+        self,
+        event: str,
+        user_id: str,
+        ip: str,
+        details: dict[str, Any],
+    ) -> None:
+        """Append a new audit log entry."""
+        import json
+        await self._conn.execute(
+            "INSERT INTO audit_logs (timestamp, event, user_id, ip, details) VALUES (?, ?, ?, ?, ?)",
+            (datetime.now(UTC).isoformat(), event, user_id, ip, json.dumps(details)),
+        )
+        await self._conn.commit()
+
+    async def list_audit_logs(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        """Return audit log entries most-recent-first."""
+        import json
+        async with self._conn.execute(
+            "SELECT id, timestamp, event, user_id, ip, details FROM audit_logs ORDER BY id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [
+            {
+                "id": r[0],
+                "timestamp": r[1],
+                "event": r[2],
+                "user_id": r[3],
+                "ip": r[4],
+                "details": json.loads(r[5]) if r[5] else {},
+            }
+            for r in rows
+        ]
+
+    async def count_audit_logs(self) -> int:
+        """Return total number of audit log entries."""
+        async with self._conn.execute("SELECT COUNT(*) FROM audit_logs") as cur:
+            row = await cur.fetchone()
+        return int(row[0]) if row else 0
 
     async def close(self) -> None:
         """Close the database connection."""

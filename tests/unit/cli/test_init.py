@@ -7,8 +7,8 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from langsight.cli.main import cli
 from langsight.cli.init import _parse_mcp_config
+from langsight.cli.main import cli
 
 
 def _claude_config(tmp_path: Path, servers: dict) -> Path:
@@ -108,7 +108,7 @@ class TestInitCommand:
                 "langsight.cli.init._MCP_CONFIG_SOURCES",
                 [("Claude Desktop", cfg_json)],
             )
-            result = runner.invoke(cli, [
+            runner.invoke(cli, [
                 "init", "--yes",
                 "--slack-webhook", "https://hooks.slack.com/test",
                 "--output", str(output),

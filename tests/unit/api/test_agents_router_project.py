@@ -172,9 +172,7 @@ class TestGetSessionProjectIdWiring:
 class TestCostsBreakdownProjectIdWiring:
     async def test_project_id_param_passed_to_storage(self, client) -> None:
         """?project_id=p1 on /api/costs/breakdown must be forwarded to storage."""
-        from pathlib import Path as _Path
 
-        import yaml as _yaml
 
         # Need a costs-config-bearing app for this test
         c, mock_storage = client

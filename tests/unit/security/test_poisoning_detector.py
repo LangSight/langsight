@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import base64
 
-import pytest
-
 from langsight.models import HealthCheckResult, ServerStatus, ToolInfo
 from langsight.security.models import Severity
 from langsight.security.poisoning_detector import scan_all_tools, scan_tool

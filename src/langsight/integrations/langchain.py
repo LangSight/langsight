@@ -67,7 +67,7 @@ class LangSightLangChainCallback(BaseIntegration):
     ) -> None:
         # Lazy import — don't require langchain at module level
         try:
-            from langchain.callbacks.base import (  # type: ignore[import-not-found]
+            from langchain.callbacks.base import (
                 BaseCallbackHandler,
             )
 

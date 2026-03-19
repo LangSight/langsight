@@ -8,8 +8,8 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
+from langsight.cli.investigate import _analyse_with_rules, _parse_window
 from langsight.cli.main import cli
-from langsight.cli.investigate import _parse_window, _analyse_with_rules
 from langsight.models import HealthCheckResult, ServerStatus
 
 
@@ -91,7 +91,6 @@ class TestInvestigateCommand:
     def test_rule_based_fallback_when_no_api_key(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage([_result()])
-        env = {"ANTHROPIC_API_KEY": ""}
         with patch("langsight.cli.investigate.open_storage", new_callable=AsyncMock, return_value=storage):
             with patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}):
                 result = runner.invoke(cli, ["investigate", "--config", str(config_file)])
@@ -112,6 +111,7 @@ class TestInvestigateCommand:
 class TestRuleBasedAnalysis:
     def test_healthy_server_shows_healthy(self) -> None:
         from io import StringIO
+
         from rich.console import Console
 
         evidence = {
@@ -130,6 +130,7 @@ class TestRuleBasedAnalysis:
 
     def test_down_server_shows_root_cause(self) -> None:
         from io import StringIO
+
         from rich.console import Console
 
         output = StringIO()
@@ -151,6 +152,7 @@ class TestRuleBasedAnalysis:
 
     def test_no_data_handled_gracefully(self) -> None:
         from io import StringIO
+
         from rich.console import Console
 
         evidence = {

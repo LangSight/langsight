@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
-from langsight.models import MCPServer, ServerStatus, ToolInfo, TransportType
+from langsight.models import MCPServer, ServerStatus, TransportType
 from langsight.security.models import ScanResult, SecurityFinding, Severity
 from langsight.security.scanner import SecurityScanner
 

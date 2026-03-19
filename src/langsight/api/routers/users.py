@@ -24,12 +24,11 @@ from pydantic import BaseModel, EmailStr, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-_limiter = Limiter(key_func=get_remote_address)
-
 from langsight.api.dependencies import get_storage, require_admin
 from langsight.models import InviteToken, User, UserRole
 from langsight.storage.base import StorageBackend
 
+_limiter = Limiter(key_func=get_remote_address)
 logger = structlog.get_logger()
 router = APIRouter(prefix="/users", tags=["users"])
 # Public endpoints — no API key required (used during login and invite acceptance)

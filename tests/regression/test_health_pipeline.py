@@ -180,12 +180,12 @@ class TestHealthPipelineDriftDetected:
         async with await SQLiteBackend.open(db_path) as storage:
             with patch("langsight.health.checker.ping", new_callable=AsyncMock) as mock_ping:
                 mock_ping.return_value = (42.0, TOOLS_V1)
-                r1 = await HealthChecker(storage=storage).check_many(config.servers)
+                await HealthChecker(storage=storage).check_many(config.servers)
 
         async with await SQLiteBackend.open(db_path) as storage:
             with patch("langsight.health.checker.ping", new_callable=AsyncMock) as mock_ping:
                 mock_ping.return_value = (42.0, TOOLS_V2)
-                r2 = await HealthChecker(storage=storage).check_many(config.servers)
+                await HealthChecker(storage=storage).check_many(config.servers)
 
         # Third run — new schema should now be the baseline (no drift)
         async with await SQLiteBackend.open(db_path) as storage:

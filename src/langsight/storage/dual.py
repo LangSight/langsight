@@ -34,9 +34,9 @@ from langsight.models import (
     ModelPricing,
     Project,
     ProjectMember,
-    ToolCallSpan,
     User,
 )
+from langsight.sdk.models import ToolCallSpan
 from langsight.storage.clickhouse import ClickHouseBackend
 from langsight.storage.postgres import PostgresBackend
 
@@ -228,6 +228,31 @@ class DualStorage:
 
     async def delete_slo(self, slo_id: str) -> bool:
         return await self._meta.delete_slo(slo_id)
+
+    # Alert config → Postgres
+
+    async def get_alert_config(self) -> dict[str, Any] | None:
+        return await self._meta.get_alert_config()
+
+    async def save_alert_config(self, slack_webhook: str | None, alert_types: dict[str, bool]) -> None:
+        return await self._meta.save_alert_config(slack_webhook, alert_types)
+
+    # Audit logs → Postgres
+
+    async def append_audit_log(
+        self,
+        event: str,
+        user_id: str,
+        ip: str,
+        details: dict[str, Any],
+    ) -> None:
+        return await self._meta.append_audit_log(event, user_id, ip, details)
+
+    async def list_audit_logs(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        return await self._meta.list_audit_logs(limit, offset)
+
+    async def count_audit_logs(self) -> int:
+        return await self._meta.count_audit_logs()
 
     # ── ClickHouse extension methods ──────────────────────────────────────────
     # Methods not in the base StorageBackend protocol but used by API routers
