@@ -212,9 +212,12 @@
 | `/api/config` | GET/PUT MCP server configs | API key |
 
 **Design decisions**:
-- Simple API key auth (header: `X-AgentGuard-Key`)
+- Two auth paths coexist (decided 2026-03-19 — Phase 9):
+  1. **Session headers from proxy** — dashboard users authenticate via NextAuth; the Next.js proxy injects `X-User-Id` + `X-User-Role` headers; FastAPI trusts these only from `127.0.0.1` / `::1`
+  2. **X-API-Key header** — SDK and CLI direct access; no session required
 - JSON responses, standard pagination (offset/limit)
 - WebSocket endpoint for real-time health updates (dashboard use)
+- `get_active_project_id` FastAPI dependency enforces project membership before returning a `project_id` filter; non-members receive 404 (no enumeration)
 
 ### 2.9 LangSight SDK (Phase 2)
 
@@ -551,11 +554,81 @@ Full stack (Docker Compose) needed for: OTEL ingestion, dashboard, continuous mo
 
 ---
 
-## 8. Security Considerations
+## 8. Authentication Architecture (added Phase 9, 2026-03-19)
 
-- **API keys** for all API access (generated via CLI or dashboard)
-- **MCP credentials** stored in .agentguard.yaml (gitignored) or env vars
+### Two auth paths
+
+```
+Dashboard users:
+  Browser
+    │ HTTPS
+    ▼
+  Next.js App (dashboard/)
+    │ Server-side: reads NextAuth session
+    │ Injects X-User-Id + X-User-Role headers
+    ▼
+  Next.js proxy route
+  dashboard/app/api/proxy/[...path]/route.ts
+    │ Forwards to FastAPI (localhost only)
+    ▼
+  FastAPI
+    └── _is_proxy_request(): trusts headers only from 127.0.0.1 / ::1
+    └── _get_session_user(): extracts user_id + role from headers
+
+SDK / CLI users:
+  langsight CLI / Python SDK
+    │ X-API-Key header
+    ▼
+  FastAPI
+    └── verify_api_key(): validates against api_keys table
+```
+
+### Trusted proxy pattern (decided 2026-03-19)
+
+FastAPI trusts `X-User-Id` and `X-User-Role` only when the request originates from `127.0.0.1` or `::1`. External clients that set these headers directly are ignored — the headers are treated as regular headers, not auth. This means:
+- No JWT verification in FastAPI — simpler, no shared secret dependency
+- Security boundary is the network: the proxy and API must be co-located (Docker Compose / same host)
+- Not suitable for deployments where FastAPI is exposed publicly without a reverse proxy
+
+### Why not Bearer token forwarding (rejected approach, decided 2026-03-19)
+
+The original plan was to forward the NextAuth JWT as `Authorization: Bearer` to FastAPI, requiring FastAPI to verify the JWT using the shared `AUTH_SECRET`. This was rejected because:
+- Adds a JWT parsing dependency (`python-jose`) to FastAPI for a path that only the proxy uses
+- Requires both services to share `AUTH_SECRET` via env var coordination
+- The trusted-proxy-headers pattern is equally secure when the network boundary is enforced, and simpler
+
+### Security headers (added Phase 9, 2026-03-19)
+
+`SecurityHeadersMiddleware` in `src/langsight/api/main.py` adds to every response:
+
+| Header | Value |
+|--------|-------|
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `X-XSS-Protection` | `1; mode=block` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Strict-Transport-Security` | `max-age=31536000` (HTTPS only) |
+
+### Project isolation (added Phase 10, 2026-03-19)
+
+`get_active_project_id` FastAPI dependency:
+1. Reads `project_id` query param from the request
+2. Verifies the caller is a member of that project (or is global admin)
+3. Returns the `project_id` to pass as a DB-level filter, or `None` for global admin with no filter
+4. Non-members receive HTTP 404 — project existence is not confirmed to non-members (no enumeration)
+
+All ClickHouse queries in `storage/clickhouse.py` that read from `mcp_tool_calls` accept an optional `project_id` parameter and apply it as a `WHERE project_id = {project_id}` clause. Filtering is at the DB layer — no Python post-filter.
+
+---
+
+## 9. Security Considerations
+
+- **Two auth paths**: session headers (dashboard via Next.js proxy) and X-API-Key (SDK/CLI)
+- **Trusted proxy**: X-User-Id/X-User-Role headers trusted only from localhost — FastAPI must not be internet-exposed without the Next.js proxy
+- **MCP credentials** stored in .langsight.yaml (gitignored) or env vars
 - **No external exposure by default** — Docker network is internal, only dashboard port exposed
-- **PII in traces**: Optional redaction processor in OTEL Collector config
+- **PII in traces**: `redact_payloads: true` config suppresses payload capture before transmission
 - **Principle of least privilege**: Health checker uses read-only MCP operations only
-- **Rate limiting**: Built-in limits on health check frequency to avoid overloading MCP servers
+- **Rate limiting**: `/api/users/verify` limited to 10 requests/minute per IP (via slowapi); health check frequency capped to avoid overloading MCP servers
+- **Project isolation**: all ClickHouse queries filtered by `project_id` at DB level when a project context is active
+- **Security headers**: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, HSTS on all API responses

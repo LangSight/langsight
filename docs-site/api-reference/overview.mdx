@@ -13,12 +13,30 @@ Start the API with `langsight serve` or `docker compose up -d api`.
 
 ## Authentication
 
-All API routes require an `X-API-Key` header. API keys are created in the dashboard under **Settings → API Keys**.
+Two authentication methods are supported. Use whichever matches your client.
+
+### Method 1: X-API-Key (SDK and CLI)
+
+Direct API access for the LangSight SDK, CLI, and any external client.
 
 ```bash
 curl http://localhost:8000/api/health/servers \
   -H "X-API-Key: lsk_your_api_key_here"
 ```
+
+API keys are created in the dashboard under **Settings → API Keys**.
+
+### Method 2: Session headers via Next.js proxy (dashboard only)
+
+The dashboard never calls FastAPI directly. All requests go through the Next.js proxy at `/api/proxy/*`, which reads the NextAuth session server-side and injects `X-User-Id` and `X-User-Role` headers.
+
+FastAPI trusts `X-User-Id` / `X-User-Role` **only from localhost** (`127.0.0.1` or `::1`). External clients that set these headers are ignored — the headers have no effect when the request does not originate from the proxy.
+
+<Warning>
+  Do not set `X-User-Id` or `X-User-Role` in your own API clients. These are internal proxy headers. Use `X-API-Key` for all SDK and CLI access.
+</Warning>
+
+### Auth disabled mode
 
 Authentication is disabled only when running locally with no API keys configured (development mode). In all other cases, unauthenticated requests return `401`.
 

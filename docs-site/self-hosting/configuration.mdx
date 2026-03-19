@@ -80,10 +80,30 @@ All settings can be overridden with environment variables using the `LANGSIGHT_`
 | `redact_payloads` | `LANGSIGHT_REDACT_PAYLOADS` | `true` or `false` |
 | *(admin bootstrap)* | `LANGSIGHT_ADMIN_EMAIL` | First-run only — creates admin account |
 | *(admin bootstrap)* | `LANGSIGHT_ADMIN_PASSWORD` | First-run only |
-| *(auth)* | `AUTH_SECRET` | Required — JWT signing secret (min 32 chars) |
+| *(auth)* | `LANGSIGHT_AUTH_SECRET` | Required — shared session signing secret between Next.js and FastAPI (min 32 chars). Set the same value for both services. |
 | *(ClickHouse auth)* | `CLICKHOUSE_USER` | ClickHouse username |
 | *(ClickHouse auth)* | `CLICKHOUSE_PASSWORD` | ClickHouse password |
 
 <Note>
   `LANGSIGHT_ADMIN_EMAIL` and `LANGSIGHT_ADMIN_PASSWORD` are consumed once on first run to create the initial admin user. After that, manage users via Settings → Users in the dashboard.
 </Note>
+
+<Note>
+  `NEXT_PUBLIC_LANGSIGHT_API_KEY` is no longer required for the dashboard. Dashboard authentication is handled server-side via NextAuth — the session is never exposed to the browser. API keys are for SDK and CLI access only.
+</Note>
+
+## Dashboard authentication
+
+The dashboard authenticates users through the following flow:
+
+1. The user logs in via the NextAuth login page (`/auth/signin`).
+2. NextAuth creates a server-side session signed with `LANGSIGHT_AUTH_SECRET`.
+3. Every dashboard API call goes through the Next.js proxy at `/api/proxy/*`.
+4. The proxy reads the session server-side, injects `X-User-Id` and `X-User-Role` headers, and forwards the request to FastAPI.
+5. FastAPI trusts those headers only when the request originates from `localhost` (`127.0.0.1` / `::1`).
+
+This means **no API keys are needed in the browser** and no session tokens are exposed to client-side JavaScript.
+
+<Warning>
+  FastAPI must not be directly internet-accessible. It must sit behind the Next.js proxy (or a reverse proxy you control). If FastAPI is exposed publicly, external clients could set `X-User-Id` / `X-User-Role` headers directly and bypass authentication.
+</Warning>

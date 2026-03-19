@@ -28,18 +28,19 @@
 
 LangSight v0.2.0 has 434 tests, 85%+ coverage, full auth/RBAC, deep observability features, and production-grade security hardening. It is suitable for self-hosted production deployments and internal team use.
 
-### Production Readiness Gaps (must be resolved before 0.2.0 production claim)
+### Production Readiness Gaps
 
-| # | Gap | Severity |
-|---|-----|----------|
-| 1 | API is unauthenticated — wildcard CORS, no auth middleware | P0 — blocker |
-| 2 | Dashboard auth is demo-only — hardcoded users, any password accepted | P0 — blocker |
-| 3 | Docker Compose uses insecure defaults — default credentials, DB ports exposed to host | P1 |
-| 4 | Feature matrix conflates shipped with roadmap — `langsight sessions` cost field is a placeholder | P1 |
-| 5 | No rate limiting, audit logging, or operational metrics | P1 |
-| 6 | No threat model, deployment topology docs, or vulnerability disclosure policy | P1 |
+| # | Gap | Severity | Status |
+|---|-----|----------|--------|
+| 1 | API is unauthenticated — wildcard CORS, no auth middleware | P0 — blocker | FIXED ✅ Phase 9 (2026-03-19) |
+| 2 | Dashboard auth is demo-only — hardcoded users, any password accepted | P0 — blocker | FIXED ✅ Phase 9 (2026-03-19) |
+| 3 | Docker Compose uses insecure defaults — default credentials, DB ports exposed to host | P1 | Open |
+| 4 | Feature matrix conflates shipped with roadmap — `langsight sessions` cost field is a placeholder | P1 | Open |
+| 5 | No rate limiting, audit logging, or operational metrics | P1 | Partial — `/api/users/verify` rate limited (Phase 9); audit logging and Prometheus metrics still open |
+| 6 | No threat model, deployment topology docs, or vulnerability disclosure policy | P1 | FIXED ✅ S.9 threat model doc added |
+| 7 | Multi-tenancy: all users see all data regardless of project membership | P0 — blocker | FIXED ✅ Phase 10 (2026-03-19) |
 
-These gaps are tracked as tasks S.1-S.10 in `docs/04-implementation-plan.md` under "Pre-Production Security Hardening".
+Gaps 3, 4, 5 (partial) are tracked as remaining tasks in `docs/04-implementation-plan.md` under "Pre-Production Security Hardening".
 
 ---
 

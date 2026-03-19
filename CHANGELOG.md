@@ -9,6 +9,29 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (2026-03-19 — Phase 9: Production Auth + Phase 10: Multi-Tenancy)
+
+- `dashboard/app/api/proxy/[...path]/route.ts` — catch-all Next.js proxy route; reads NextAuth session server-side and injects `X-User-Id` + `X-User-Role` headers before forwarding to FastAPI; all dashboard API calls now go through `/api/proxy/*`; unauthenticated requests return 401 before reaching FastAPI
+- `get_active_project_id` FastAPI dependency (`src/langsight/api/dependencies.py`) — verifies project membership before returning `project_id` filter; non-members receive 404 (no enumeration); global admin with no `project_id` query param bypasses filter and sees all data
+- `SecurityHeadersMiddleware` in `src/langsight/api/main.py` — adds `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Strict-Transport-Security: max-age=31536000` (HTTPS only) to every API response
+- `_is_proxy_request()` and `_get_session_user()` helpers in `src/langsight/api/dependencies.py` — trust `X-User-Id` / `X-User-Role` headers only when request originates from `127.0.0.1` or `::1`
+- `require_admin()` dependency — checks session role for dashboard write operations
+
+### Changed (2026-03-19 — Phase 9: Production Auth + Phase 10: Multi-Tenancy)
+
+- `dashboard/lib/api.ts`: `BASE` changed from `/api` to `/api/proxy` — all dashboard requests are now authenticated via the NextAuth session proxy; `NEXT_PUBLIC_LANGSIGHT_API_KEY` is no longer required in the browser
+- `dashboard/lib/auth.ts`: session callbacks now expose `userId` and `userRole` so the proxy can forward them as `X-User-Id` / `X-User-Role`
+- `src/langsight/api/dependencies.py`: `verify_api_key()` now accepts session headers as auth — no API key required for dashboard users going through the proxy
+- ClickHouse `get_cost_call_counts()` and `get_session_trace()` now accept optional `project_id` parameter; filter applied as `WHERE project_id = {project_id}` at DB level (no Python post-filter)
+- `src/langsight/api/routers/agents.py`: `list_sessions` and `get_session` use `get_active_project_id` dependency — sessions are project-scoped
+- `src/langsight/api/routers/costs.py`: `get_costs_breakdown` uses `get_active_project_id` dependency — replaces Python post-filter with DB-level isolation
+- Dashboard pages (Overview, Sessions, Agents, Costs): all `useProject()` hook consumers now include `project_id` in SWR cache keys and fetch URLs when a project is active
+
+### Security (2026-03-19 — Phase 9: Production Auth + Phase 10: Multi-Tenancy)
+
+- `/api/users/verify` rate limited to 10 requests/minute per IP via `slowapi` — prevents brute-force against the login endpoint
+- `X-User-Id` / `X-User-Role` headers trusted only from localhost proxy (`127.0.0.1` / `::1`) — external clients cannot spoof session identity
+
 ### Added (2026-03-19 — S.9 Threat Model)
 - S.9: `docs/06-threat-model.md` — comprehensive threat model covering 5 trust boundaries, full attack surface table for all API endpoints and the OTEL Collector, data classification table with PII risk guidance, 10 threat scenarios (T-01 through T-10) each with attack path / impact / mitigations / residual risk, recommended production deployment topology with firewall rules, 8 documented known gaps (G-01 through G-08) with severity and mitigation notes, and a vulnerability disclosure policy with response time commitments
 - S.9: `docs/04-implementation-plan.md` updated — S.9 marked complete (2026-03-19); Security Hardening progress updated to 10%

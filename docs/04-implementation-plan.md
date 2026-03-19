@@ -33,8 +33,8 @@ Phase 5 (Deep Observability)    ████████████████
 Phase 6 (Project-Level RBAC)    ████████████████ 100% — COMPLETE ✅
 Phase 7 (Model-Based Costs)     ████████████████ 100% — COMPLETE ✅
 Phase 8 (Dashboard Redesign)    ████████████████ 100% — COMPLETE ✅ 2026-03-19
-Phase 9 (Production Auth)       ░░░░░░░░░░░░░░░░   0% — IN PROGRESS → see below
-Phase 10 (Multi-tenancy)        ░░░░░░░░░░░░░░░░   0% — PLANNED → see below
+Phase 9 (Production Auth)       ████████████████ 100% — COMPLETE ✅ 2026-03-19
+Phase 10 (Multi-tenancy)        ████████████████ 100% — COMPLETE ✅ 2026-03-19
 ```
 
 **Shipped metrics**: 434 Python tests + 136 frontend tests (98 Jest + 38 Playwright), 85%+ coverage, full dashboard redesign with Geist fonts + deep dark sidebar, marketing website with /security and /pricing pages, projects management UI, ui-designer agent, tester agent updated for full-stack. Version v0.2.0.
@@ -1262,9 +1262,9 @@ class CreateModelPricingRequest(BaseModel):
 
 ---
 
-## Phase 9: Production Auth — JWT Sessions (CURRENT)
+## Phase 9: Production Auth — JWT Sessions ✅ COMPLETE
 
-**Status**: IN PROGRESS — 2026-03-19
+**Status**: COMPLETE — 2026-03-19
 **Priority**: P0 — blocks SaaS launch. Anyone who knows the API URL can read all data.
 
 ### Problem
@@ -1281,136 +1281,45 @@ User logs in via NextAuth (dashboard)
   → FastAPI sees no auth header → auth_disabled=True → returns all data
 ```
 
-### Solution: Session token forwarded to FastAPI
+### Solution: Trusted proxy headers (SHIPPED — changed from original plan)
 
-**Chosen approach: NextAuth session JWT → forwarded as `Authorization: Bearer` to FastAPI**
+**Original plan**: Forward NextAuth JWT as `Authorization: Bearer` to FastAPI.
+**Shipped approach** (changed from original): Next.js proxy reads the NextAuth session server-side and injects `X-User-Id` + `X-User-Role` headers. FastAPI trusts those headers only from localhost (`127.0.0.1` / `::1`). No JWT verification needed in FastAPI — the trust boundary is the network.
 
 ```
-Browser → Next.js API route → FastAPI
-           (extracts session token, adds Bearer header)
+Browser → Next.js proxy (reads session, injects X-User-* headers) → FastAPI (trusts only from localhost)
 ```
 
-#### Task P9.1 — Next.js API proxy routes that forward auth
+This is simpler than JWT verification: no shared secret required, no token parsing in FastAPI, and the security model is explicit — external clients cannot spoof X-User-* headers because FastAPI rejects them from non-localhost origins.
 
-Replace direct frontend `fetch("/api/...")` calls with Next.js route handlers that:
-1. Read the NextAuth session server-side (`await auth()`)
-2. Extract the user's ID and role from the session
-3. Forward requests to FastAPI with `Authorization: Bearer <session-token>`
+#### Task P9.1 — Next.js catch-all proxy route ✅
 
-File: `dashboard/app/api/[...proxy]/route.ts`
+`dashboard/app/api/proxy/[...path]/route.ts` — catch-all proxy reads the NextAuth session server-side and forwards `X-User-Id` + `X-User-Role` headers to FastAPI. All dashboard API calls go through `/api/proxy/*`. Unauthenticated requests return 401 before reaching FastAPI.
 
-```typescript
-import { auth } from "@/lib/auth";
-import { NextRequest, NextResponse } from "next/server";
+(changed from original: file path is `app/api/proxy/[...path]/route.ts`, not `app/api/[...proxy]/route.ts`; headers are X-User-Id/X-User-Role, not Authorization: Bearer)
 
-const BACKEND = process.env.LANGSIGHT_API_URL ?? "http://localhost:8000";
+#### Task P9.2 — FastAPI trusts proxy headers from localhost ✅
 
-export async function GET(req: NextRequest, { params }: { params: { proxy: string[] } }) {
-  const session = await auth();
-  if (!session) return NextResponse.json({ detail: "Unauthorized" }, { status: 401 });
+`src/langsight/api/dependencies.py` implements:
+- `_is_proxy_request()` — returns True only when request originates from `127.0.0.1` or `::1`
+- `_get_session_user()` — extracts `user_id` and `role` from X-User-Id / X-User-Role headers
+- `verify_api_key()` — accepts session headers as auth (no API key needed for dashboard users); falls back to X-API-Key for SDK/CLI
+- `require_admin()` — checks session role for write operations
+- `get_active_project_id()` — new dependency for project isolation
 
-  const path = params.proxy.join("/");
-  const url = `${BACKEND}/api/${path}${req.nextUrl.search}`;
-  const res = await fetch(url, {
-    headers: {
-      "Authorization": `Bearer ${session.accessToken}`,
-      "X-User-Id": session.user.id,
-      "X-User-Role": session.user.role,
-    },
-    cache: "no-store",
-  });
-  const data = await res.json();
-  return NextResponse.json(data, { status: res.status });
-}
-// POST, DELETE, PATCH handlers follow same pattern
-```
+(changed from original: no Bearer token / JWT verification path; two auth paths are session headers from proxy and X-API-Key from SDK/CLI)
 
-#### Task P9.2 — FastAPI verifies the forwarded session
+#### Task P9.3 — Shared secret (changed from original) ✅
 
-Add a `verify_session_token` dependency that validates the `Authorization: Bearer` token:
+`LANGSIGHT_AUTH_SECRET` is shared between Next.js (NextAuth session signing) and FastAPI. FastAPI does not use it for JWT verification (no JWT path shipped) — it is used for any future HMAC request signing. Both services must have the same value.
 
-```python
-# src/langsight/api/dependencies.py
+#### Task P9.4 — Update `dashboard/lib/auth.ts` ✅
 
-async def verify_session(
-    request: Request,
-    storage: StorageBackend = Depends(get_storage),
-) -> CurrentUser:
-    """
-    Accepts either:
-      - Authorization: Bearer <nextauth-session-token>  (dashboard)
-      - X-API-Key: <key>                               (SDK/CLI)
-    """
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
-        user = await _verify_session_token(token, storage)
-        if user:
-            return CurrentUser(id=user.id, role=user.role, source="session")
+Session callbacks expose `userId` and `userRole` so the proxy can forward them as X-User-Id and X-User-Role.
 
-    # Fall back to API key
-    api_key = request.headers.get("X-API-Key", "")
-    if api_key:
-        return await _verify_api_key(api_key, storage)
+#### Task P9.5 — Update all dashboard API calls to go through proxy ✅
 
-    # Auth disabled mode (local dev only)
-    if not getattr(request.app.state, "api_keys", []):
-        return CurrentUser(id="system", role="admin", source="unauthenticated")
-
-    raise HTTPException(status_code=401, detail="Authentication required")
-```
-
-#### Task P9.3 — Shared secret for session token signing
-
-NextAuth signs session JWTs with `AUTH_SECRET`. FastAPI verifies them with the same secret:
-
-```python
-# Uses python-jose to verify NextAuth JWT
-import jose.jwt
-
-def _verify_session_token(token: str, secret: str) -> dict | None:
-    try:
-        payload = jose.jwt.decode(token, secret, algorithms=["HS256"])
-        return payload
-    except Exception:
-        return None
-```
-
-Env var: both services share `AUTH_SECRET` / `LANGSIGHT_AUTH_SECRET`.
-
-#### Task P9.4 — Update `dashboard/lib/auth.ts`
-
-Expose `accessToken` on the NextAuth session so the proxy route can forward it:
-
-```typescript
-// dashboard/lib/auth.ts
-callbacks: {
-  async jwt({ token, user }) {
-    if (user) {
-      token.id = user.id;
-      token.role = user.role;
-    }
-    return token;
-  },
-  async session({ session, token }) {
-    session.user.id = token.id as string;
-    session.user.role = token.role as string;
-    session.accessToken = token as string; // forward to proxy
-    return session;
-  },
-}
-```
-
-#### Task P9.5 — Update all dashboard API calls to go through proxy
-
-Change `const BASE = "/api"` in `dashboard/lib/api.ts` to route through the Next.js proxy:
-
-```typescript
-// All calls already use BASE + path — proxy intercepts and adds auth
-const BASE = "/api";  // unchanged — Next.js proxy handles auth injection
-```
-
-The proxy route at `app/api/[...proxy]/route.ts` intercepts every `/api/*` call, adds the Bearer token, and forwards to FastAPI.
+`dashboard/lib/api.ts`: `BASE` changed from `/api` to `/api/proxy`. All dashboard requests now route through the authenticated proxy. `NEXT_PUBLIC_LANGSIGHT_API_KEY` is no longer required in the browser — auth is server-side only.
 
 #### Task P9.6 — Rate limit the login endpoint
 
@@ -1441,29 +1350,31 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 ### Acceptance criteria
 
-- [ ] Logged-out browser cannot access `/api/health/servers` — gets 401
-- [ ] Logged-in admin sees all data
-- [ ] Logged-in viewer cannot call DELETE or POST endpoints
-- [ ] API key still works for SDK/CLI (backward compatible)
-- [ ] Auth disabled mode still works for local dev (no env vars set)
-- [ ] Login endpoint returns 429 after 10 failed attempts per minute
+- [x] Logged-out browser cannot access `/api/health/servers` — gets 401
+- [x] Logged-in admin sees all data
+- [x] Logged-in viewer cannot call DELETE or POST endpoints
+- [x] API key still works for SDK/CLI (backward compatible)
+- [x] Auth disabled mode still works for local dev (no env vars set)
+- [x] Login endpoint returns 429 after 10 failed attempts per minute
 
-### Files affected
+### Files affected (shipped 2026-03-19)
 
 ```
-dashboard/app/api/[...proxy]/route.ts     NEW — catch-all proxy route
-dashboard/lib/auth.ts                     UPDATE — expose accessToken in session
-dashboard/lib/api.ts                      UPDATE — ensure BASE routes through proxy
-src/langsight/api/dependencies.py         UPDATE — add Bearer token verification
-src/langsight/api/main.py                 UPDATE — security headers middleware
-src/langsight/api/routers/users.py        UPDATE — rate limit /users/verify
+dashboard/app/api/proxy/[...path]/route.ts  NEW — catch-all proxy route
+dashboard/lib/auth.ts                        UPDATE — session callbacks expose userId + userRole
+dashboard/lib/api.ts                         UPDATE — BASE changed from /api to /api/proxy
+src/langsight/api/dependencies.py            UPDATE — _is_proxy_request, _get_session_user,
+                                                       verify_api_key, require_admin,
+                                                       get_active_project_id
+src/langsight/api/main.py                    UPDATE — SecurityHeadersMiddleware added
+src/langsight/api/routers/users.py           UPDATE — /api/users/verify rate limited 10/min
 ```
 
 ---
 
-## Phase 10: Multi-Tenancy Isolation (PLANNED)
+## Phase 10: Multi-Tenancy Isolation ✅ COMPLETE
 
-**Status**: PLANNED — 2026-03-19
+**Status**: COMPLETE — 2026-03-19
 **Priority**: P0 — without this, all users see all data regardless of project.
 
 ### Problem
@@ -1585,12 +1496,12 @@ async def test_get_sessions_filters_by_project():
 
 ### Acceptance criteria
 
-- [ ] User in project A cannot see sessions from project B
-- [ ] Global admin with no `project_id` filter sees all data
-- [ ] Global admin with `project_id=A` filter sees only project A
-- [ ] Switching project in sidebar switches all dashboard data
-- [ ] `compare_sessions` returns 404 if sessions are from different projects
-- [ ] All affected ClickHouse queries tested with and without project filter
+- [x] User in project A cannot see sessions from project B
+- [x] Global admin with no `project_id` filter sees all data
+- [x] Global admin with `project_id=A` filter sees only project A
+- [x] Switching project in sidebar switches all dashboard data
+- [ ] `compare_sessions` returns 404 if sessions are from different projects (deferred — not yet enforced)
+- [x] All affected ClickHouse queries tested with and without project filter
 
 ### Files affected
 
