@@ -63,6 +63,7 @@ _DDL = [
     # Note: session_id / parent_span_id / agent_name use String DEFAULT ''
     # (empty string = absent) because ClickHouse ORDER BY cannot contain Nullable columns.
     # Query pattern: WHERE session_id != '' to filter sessions.
+    # input_json / output_json: P5.1 payload capture — Nullable, omitted when redact_payloads=True
     """
     CREATE TABLE IF NOT EXISTS mcp_tool_calls (
         span_id        String,
@@ -77,7 +78,12 @@ _DDL = [
         latency_ms     Float64,
         status         LowCardinality(String),
         error          Nullable(String),
-        agent_name     String DEFAULT ''
+        agent_name     String DEFAULT '',
+        input_json     Nullable(String),
+        output_json    Nullable(String),
+        llm_input      Nullable(String),
+        llm_output     Nullable(String),
+        replay_of      String DEFAULT ''
     )
     ENGINE = MergeTree()
     PARTITION BY toYYYYMM(started_at)
@@ -310,10 +316,24 @@ class ClickHouseBackend:
         "status",
         "error",
         "agent_name",
+        "input_json",
+        "output_json",
+        "llm_input",
+        "llm_output",
+        "replay_of",
     ]
 
     def _span_row(self, s: ToolCallSpan) -> list[Any]:
+        import json
+
         # None → '' for String DEFAULT '' columns (no Nullable in ORDER BY)
+        input_json: str | None = None
+        if s.input_args is not None:
+            try:
+                input_json = json.dumps(s.input_args, default=str)
+            except Exception:  # noqa: BLE001
+                input_json = str(s.input_args)
+
         return [
             s.span_id,
             s.parent_span_id or "",
@@ -326,8 +346,13 @@ class ClickHouseBackend:
             s.ended_at,
             s.latency_ms,
             s.status.value,
-            s.error,  # Nullable(String) — kept for error messages
+            s.error,          # Nullable(String) — kept for error messages
             s.agent_name or "",
+            input_json,       # Nullable(String) — None when redacted
+            s.output_result,  # Nullable(String) — None when redacted
+            s.llm_input,      # Nullable(String) — LLM prompt (agent spans only)
+            s.llm_output,     # Nullable(String) — LLM completion (agent spans only)
+            s.replay_of or "", # String DEFAULT '' — original span_id (empty = not a replay)
         ]
 
     async def save_tool_call_span(self, span: ToolCallSpan) -> None:
@@ -473,7 +498,10 @@ class ClickHouseBackend:
                 span_id, parent_span_id, span_type,
                 server_name, tool_name, agent_name,
                 started_at, ended_at, latency_ms,
-                status, error, trace_id
+                status, error, trace_id,
+                input_json, output_json,
+                llm_input, llm_output,
+                replay_of
             FROM mcp_tool_calls
             WHERE session_id = {session_id:String}
             ORDER BY started_at ASC
@@ -494,6 +522,89 @@ class ClickHouseBackend:
             "status",
             "error",
             "trace_id",
+            "input_json",
+            "output_json",
+            "llm_input",
+            "llm_output",
+            "replay_of",
+        ]
+        return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+    async def compare_sessions(
+        self,
+        session_a: str,
+        session_b: str,
+    ) -> dict[str, Any]:
+        """Fetch both session traces and compute a diff.
+
+        Returns:
+          session_a: flat span list for session A
+          session_b: flat span list for session B
+          diff: list of DiffEntry dicts describing per-position comparison
+          summary: high-level counts (only_in_a, only_in_b, matched, diverged)
+        """
+        import asyncio
+
+        spans_a, spans_b = await asyncio.gather(
+            self.get_session_trace(session_a),
+            self.get_session_trace(session_b),
+        )
+
+        diff, summary = _diff_spans(spans_a, spans_b)
+
+        return {
+            "session_a": session_a,
+            "session_b": session_b,
+            "spans_a": spans_a,
+            "spans_b": spans_b,
+            "diff": diff,
+            "summary": summary,
+        }
+
+    async def get_baseline_stats(
+        self,
+        baseline_hours: int = 168,  # 7 days
+    ) -> list[dict[str, Any]]:
+        """Return per-tool baseline statistics (mean + stddev) for anomaly detection.
+
+        Computes statistics from hourly aggregated data in mv_tool_reliability.
+        Each row contains: server_name, tool_name, baseline_error_mean,
+        baseline_error_stddev, baseline_latency_mean, baseline_latency_stddev,
+        baseline_hours (samples used).
+        """
+        result = await self._client.query(
+            """
+            SELECT
+                server_name,
+                tool_name,
+                avg(error_rate)          AS baseline_error_mean,
+                stddevPop(error_rate)    AS baseline_error_stddev,
+                avg(avg_latency)         AS baseline_latency_mean,
+                stddevPop(avg_latency)   AS baseline_latency_stddev,
+                count()                  AS sample_hours
+            FROM (
+                SELECT
+                    server_name,
+                    tool_name,
+                    hour,
+                    error_calls / greatest(total_calls, 1)       AS error_rate,
+                    total_latency_ms / greatest(total_calls, 1)  AS avg_latency
+                FROM mv_tool_reliability
+                WHERE hour >= now() - INTERVAL {baseline_hours:UInt32} HOUR
+                  AND total_calls > 0
+                GROUP BY server_name, tool_name, hour, error_calls, total_calls, total_latency_ms
+            )
+            GROUP BY server_name, tool_name
+            HAVING sample_hours >= 3
+            ORDER BY server_name, tool_name
+            """,
+            parameters={"baseline_hours": baseline_hours},
+        )
+        cols = [
+            "server_name", "tool_name",
+            "baseline_error_mean", "baseline_error_stddev",
+            "baseline_latency_mean", "baseline_latency_stddev",
+            "sample_hours",
         ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
@@ -545,6 +656,86 @@ class ClickHouseBackend:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _diff_spans(
+    spans_a: list[dict[str, Any]],
+    spans_b: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Align two span sequences by tool identity and produce a diff.
+
+    Alignment strategy: match spans by (server_name, tool_name) in call order.
+    This handles agents that call the same tool multiple times by matching
+    the Nth call in A to the Nth call in B.
+
+    Returns (diff_entries, summary).
+    Each diff_entry has:
+      tool_key:      "server/tool"
+      status:        "matched" | "diverged" | "only_a" | "only_b"
+      span_a:        span dict or None
+      span_b:        span dict or None
+      latency_delta_pct: float | None (positive = B is slower)
+      status_changed: bool
+    """
+    from collections import defaultdict
+
+    # Group spans by tool_key preserving order
+    def _index(spans: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+        idx: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for s in spans:
+            key = f"{s.get('server_name', '')}/{s.get('tool_name', '')}"
+            idx[key].append(s)
+        return idx
+
+    idx_a = _index(spans_a)
+    idx_b = _index(spans_b)
+
+    all_keys: list[str] = []
+    seen: set[str] = set()
+    for s in spans_a + spans_b:
+        k = f"{s.get('server_name', '')}/{s.get('tool_name', '')}"
+        if k not in seen:
+            all_keys.append(k)
+            seen.add(k)
+
+    diff: list[dict[str, Any]] = []
+    summary = {"matched": 0, "diverged": 0, "only_a": 0, "only_b": 0}
+
+    for key in all_keys:
+        calls_a = idx_a.get(key, [])
+        calls_b = idx_b.get(key, [])
+        max_len = max(len(calls_a), len(calls_b))
+
+        for i in range(max_len):
+            sa = calls_a[i] if i < len(calls_a) else None
+            sb = calls_b[i] if i < len(calls_b) else None
+
+            if sa is None:
+                diff.append({"tool_key": key, "status": "only_b", "span_a": None, "span_b": sb,
+                              "latency_delta_pct": None, "status_changed": False})
+                summary["only_b"] += 1
+            elif sb is None:
+                diff.append({"tool_key": key, "status": "only_a", "span_a": sa, "span_b": None,
+                              "latency_delta_pct": None, "status_changed": False})
+                summary["only_a"] += 1
+            else:
+                lat_a = float(sa.get("latency_ms") or 0)
+                lat_b = float(sb.get("latency_ms") or 0)
+                lat_delta = round((lat_b - lat_a) / max(lat_a, 1) * 100, 1)
+                status_changed = sa.get("status") != sb.get("status")
+                diverged = status_changed or abs(lat_delta) >= 20
+                entry_status = "diverged" if diverged else "matched"
+                diff.append({
+                    "tool_key": key,
+                    "status": entry_status,
+                    "span_a": sa,
+                    "span_b": sb,
+                    "latency_delta_pct": lat_delta,
+                    "status_changed": status_changed,
+                })
+                summary["diverged" if diverged else "matched"] += 1
+
+    return diff, summary
 
 
 def _row_to_result(row: Any) -> HealthCheckResult:

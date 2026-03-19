@@ -6,7 +6,7 @@ from pathlib import Path
 import aiosqlite
 import structlog
 
-from langsight.models import HealthCheckResult, ServerStatus
+from langsight.models import AgentSLO, ApiKeyRecord, HealthCheckResult, ServerStatus, SLOMetric
 
 logger = structlog.get_logger()
 
@@ -14,6 +14,18 @@ logger = structlog.get_logger()
 # DDL — schema created on first open, idempotent
 # ---------------------------------------------------------------------------
 _DDL = """
+CREATE TABLE IF NOT EXISTS api_keys (
+    id           TEXT    PRIMARY KEY,
+    name         TEXT    NOT NULL,
+    key_prefix   TEXT    NOT NULL,
+    key_hash     TEXT    UNIQUE NOT NULL,
+    created_at   TEXT    NOT NULL,
+    last_used_at TEXT,
+    revoked_at   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys (key_hash);
+
 CREATE TABLE IF NOT EXISTS health_results (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     server_name  TEXT    NOT NULL,
@@ -38,6 +50,15 @@ CREATE INDEX IF NOT EXISTS idx_health_server_time
 
 CREATE INDEX IF NOT EXISTS idx_schema_server_time
     ON schema_snapshots (server_name, recorded_at DESC);
+
+CREATE TABLE IF NOT EXISTS agent_slos (
+    id           TEXT    PRIMARY KEY,
+    agent_name   TEXT    NOT NULL,
+    metric       TEXT    NOT NULL,
+    target       REAL    NOT NULL,
+    window_hours INTEGER NOT NULL DEFAULT 24,
+    created_at   TEXT    NOT NULL
+);
 """
 
 
@@ -154,6 +175,101 @@ class SQLiteBackend:
 
         return [_row_to_result(row) for row in rows]
 
+    # ── API key management ────────────────────────────────────────────────────
+
+    async def create_api_key(self, record: ApiKeyRecord) -> None:
+        """Persist a new API key record."""
+        await self._conn.execute(
+            """
+            INSERT INTO api_keys (id, name, key_prefix, key_hash, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                record.id,
+                record.name,
+                record.key_prefix,
+                record.key_hash,
+                record.created_at.isoformat(),
+            ),
+        )
+        await self._conn.commit()
+        logger.info("storage.sqlite.api_key_created", id=record.id, name=record.name)
+
+    async def list_api_keys(self) -> list[ApiKeyRecord]:
+        """Return all API key records (including revoked), newest first."""
+        async with self._conn.execute(
+            "SELECT * FROM api_keys ORDER BY created_at DESC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [_row_to_api_key(row) for row in rows]
+
+    async def get_api_key_by_hash(self, key_hash: str) -> ApiKeyRecord | None:
+        """Look up a key by its SHA-256 hash. Returns None if not found or revoked."""
+        async with self._conn.execute(
+            "SELECT * FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL",
+            (key_hash,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        return _row_to_api_key(row) if row else None
+
+    async def revoke_api_key(self, key_id: str) -> bool:
+        """Mark a key as revoked. Returns True if found."""
+        cursor = await self._conn.execute(
+            "UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+            (datetime.now(UTC).isoformat(), key_id),
+        )
+        await self._conn.commit()
+        found = cursor.rowcount > 0
+        if found:
+            logger.info("storage.sqlite.api_key_revoked", id=key_id)
+        return found
+
+    async def touch_api_key(self, key_id: str) -> None:
+        """Update last_used_at to now."""
+        await self._conn.execute(
+            "UPDATE api_keys SET last_used_at = ? WHERE id = ?",
+            (datetime.now(UTC).isoformat(), key_id),
+        )
+        await self._conn.commit()
+
+    # ── SLO management ────────────────────────────────────────────────────────
+
+    async def create_slo(self, slo: AgentSLO) -> None:
+        """Persist a new SLO definition."""
+        await self._conn.execute(
+            """
+            INSERT INTO agent_slos (id, agent_name, metric, target, window_hours, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (slo.id, slo.agent_name, slo.metric.value, slo.target, slo.window_hours, slo.created_at.isoformat()),
+        )
+        await self._conn.commit()
+        logger.info("storage.sqlite.slo_created", id=slo.id, agent=slo.agent_name)
+
+    async def list_slos(self) -> list[AgentSLO]:
+        """Return all SLO definitions, newest first."""
+        async with self._conn.execute(
+            "SELECT * FROM agent_slos ORDER BY created_at DESC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [_row_to_slo(row) for row in rows]
+
+    async def get_slo(self, slo_id: str) -> AgentSLO | None:
+        """Return a single SLO by ID, or None."""
+        async with self._conn.execute(
+            "SELECT * FROM agent_slos WHERE id = ?", (slo_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return _row_to_slo(row) if row else None
+
+    async def delete_slo(self, slo_id: str) -> bool:
+        """Delete an SLO. Returns True if found."""
+        cursor = await self._conn.execute(
+            "DELETE FROM agent_slos WHERE id = ?", (slo_id,)
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0
+
     async def close(self) -> None:
         """Close the database connection."""
         await self._conn.close()
@@ -173,6 +289,29 @@ class SQLiteBackend:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _row_to_api_key(row: aiosqlite.Row) -> ApiKeyRecord:
+    return ApiKeyRecord(
+        id=row["id"],
+        name=row["name"],
+        key_prefix=row["key_prefix"],
+        key_hash=row["key_hash"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        last_used_at=datetime.fromisoformat(row["last_used_at"]) if row["last_used_at"] else None,
+        revoked_at=datetime.fromisoformat(row["revoked_at"]) if row["revoked_at"] else None,
+    )
+
+
+def _row_to_slo(row: aiosqlite.Row) -> AgentSLO:
+    return AgentSLO(
+        id=row["id"],
+        agent_name=row["agent_name"],
+        metric=SLOMetric(row["metric"]),
+        target=float(row["target"]),
+        window_hours=int(row["window_hours"]),
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )
 
 
 def _row_to_result(row: aiosqlite.Row) -> HealthCheckResult:

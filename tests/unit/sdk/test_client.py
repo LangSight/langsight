@@ -174,3 +174,105 @@ class TestMCPClientProxy:
         traced_mcp = client.wrap(mock_mcp, server_name="my-server")  # line 2
 
         assert isinstance(traced_mcp, MCPClientProxy)
+
+
+class TestMCPClientProxyPayloads:
+    """P5.1 — proxy captures input_args and output_result on spans."""
+
+    @pytest.mark.unit
+    async def test_proxy_captures_input_args(self) -> None:
+        """Span sent to LangSight has input_args matching the call arguments."""
+        mock_mcp = MagicMock()
+        mock_mcp.call_tool = AsyncMock(return_value={"rows": []})
+        langsight = LangSightClient(url="http://localhost:8000")
+
+        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+            proxy = langsight.wrap(mock_mcp, server_name="pg")
+            await proxy.call_tool("query", {"sql": "SELECT 1"})
+
+        span: ToolCallSpan = mock_send.call_args[0][0]
+        assert span.input_args == {"sql": "SELECT 1"}
+
+    @pytest.mark.unit
+    async def test_proxy_captures_output_result(self) -> None:
+        """output_result on the span is the JSON-serialised return value."""
+        import json
+
+        return_value = {"rows": [{"id": 1}]}
+        mock_mcp = MagicMock()
+        mock_mcp.call_tool = AsyncMock(return_value=return_value)
+        langsight = LangSightClient(url="http://localhost:8000")
+
+        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+            proxy = langsight.wrap(mock_mcp, server_name="pg")
+            await proxy.call_tool("query", {"sql": "SELECT 1"})
+
+        span: ToolCallSpan = mock_send.call_args[0][0]
+        assert span.output_result == json.dumps(return_value, default=str)
+
+    @pytest.mark.unit
+    async def test_proxy_redact_omits_payloads(self) -> None:
+        """Proxy with redact_payloads=True sends None for both payload fields."""
+        mock_mcp = MagicMock()
+        mock_mcp.call_tool = AsyncMock(return_value={"rows": []})
+        langsight = LangSightClient(url="http://localhost:8000")
+
+        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+            proxy = langsight.wrap(mock_mcp, server_name="pg", redact_payloads=True)
+            await proxy.call_tool("query", {"sql": "SELECT 1"})
+
+        span: ToolCallSpan = mock_send.call_args[0][0]
+        assert span.input_args is None
+        assert span.output_result is None
+
+    @pytest.mark.unit
+    async def test_proxy_redact_per_wrap_overrides_client_default(self) -> None:
+        """wrap(redact_payloads=True) overrides client-level redact_payloads=False."""
+        mock_mcp = MagicMock()
+        mock_mcp.call_tool = AsyncMock(return_value={"rows": []})
+        # Client has redact off — wrap-level override turns it on
+        langsight = LangSightClient(url="http://localhost:8000", redact_payloads=False)
+
+        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+            proxy = langsight.wrap(mock_mcp, server_name="pg", redact_payloads=True)
+            await proxy.call_tool("query", {"sql": "SELECT 1"})
+
+        span: ToolCallSpan = mock_send.call_args[0][0]
+        assert span.input_args is None
+        assert span.output_result is None
+
+    @pytest.mark.unit
+    async def test_proxy_output_result_none_on_error(self) -> None:
+        """When the underlying call_tool raises, output_result is None in the span."""
+        mock_mcp = MagicMock()
+        mock_mcp.call_tool = AsyncMock(side_effect=RuntimeError("db error"))
+        langsight = LangSightClient(url="http://localhost:8000")
+
+        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+            proxy = langsight.wrap(mock_mcp, server_name="pg")
+            with pytest.raises(RuntimeError):
+                await proxy.call_tool("query", {"sql": "SELECT 1"})
+
+        span: ToolCallSpan = mock_send.call_args[0][0]
+        assert span.output_result is None
+
+    @pytest.mark.unit
+    async def test_proxy_output_fallback_to_str_when_not_json_serialisable(self) -> None:
+        """Non-JSON-serialisable result falls back to str(result) rather than raising."""
+        class _Unserializable:
+            def __repr__(self) -> str:
+                return "<Unserializable>"
+
+        unserializable = _Unserializable()
+        mock_mcp = MagicMock()
+        mock_mcp.call_tool = AsyncMock(return_value=unserializable)
+        langsight = LangSightClient(url="http://localhost:8000")
+
+        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+            proxy = langsight.wrap(mock_mcp, server_name="pg")
+            await proxy.call_tool("inspect", {})
+
+        span: ToolCallSpan = mock_send.call_args[0][0]
+        # output_result must be a string (the str() fallback), not None and not raising
+        assert span.output_result is not None
+        assert isinstance(span.output_result, str)

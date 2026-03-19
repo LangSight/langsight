@@ -58,6 +58,10 @@ export interface SpanNode {
   status: ToolCallStatus;
   error: string | null;
   trace_id: string | null;
+  input_json: string | null;   // P5.1 — tool call arguments (null when redacted)
+  output_json: string | null;  // P5.1 — tool return value (null when redacted or error)
+  llm_input: string | null;    // P5.3 — LLM prompt/messages (agent spans only)
+  llm_output: string | null;   // P5.3 — LLM completion text (agent spans only)
   children: SpanNode[];
 }
 
@@ -75,6 +79,25 @@ export interface ApiStatus {
   status: string;
   version: string;
   servers_configured: number;
+  auth_enabled?: boolean;
+  storage_mode?: string;
+}
+
+export interface ApiKeyResponse {
+  id: string;
+  name: string;
+  key_prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
+export interface ApiKeyCreatedResponse {
+  id: string;
+  name: string;
+  key: string;
+  key_prefix: string;
+  created_at: string;
 }
 
 export interface CostBreakdownEntry {
@@ -96,6 +119,57 @@ export interface SessionCostBreakdownEntry {
   agent_name: string | null;
   total_calls: number;
   total_cost_usd: number;
+}
+
+export interface AnomalyResult {
+  server_name: string;
+  tool_name: string;
+  metric: "error_rate" | "avg_latency_ms";
+  current_value: number;
+  baseline_mean: number;
+  baseline_stddev: number;
+  z_score: number;
+  severity: "warning" | "critical";
+  sample_hours: number;
+}
+
+export interface ReplayResponse {
+  original_session_id: string;
+  replay_session_id: string;
+  total_spans: number;
+  replayed: number;
+  skipped: number;
+  failed: number;
+  duration_ms: number;
+}
+
+export interface DiffEntry {
+  tool_key: string;
+  status: "matched" | "diverged" | "only_a" | "only_b";
+  span_a: Record<string, unknown> | null;
+  span_b: Record<string, unknown> | null;
+  latency_delta_pct: number | null;
+  status_changed: boolean;
+}
+
+export interface SessionComparison {
+  session_a: string;
+  session_b: string;
+  spans_a: Record<string, unknown>[];
+  spans_b: Record<string, unknown>[];
+  diff: DiffEntry[];
+  summary: { matched: number; diverged: number; only_a: number; only_b: number };
+}
+
+export interface SLOStatus {
+  slo_id: string;
+  agent_name: string;
+  metric: "success_rate" | "latency_p99";
+  target: number;
+  current_value: number | null;
+  window_hours: number;
+  status: "ok" | "breached" | "no_data";
+  evaluated_at: string;
 }
 
 export interface CostsBreakdownResponse {

@@ -382,6 +382,13 @@ storage:
 # OTEL ingestion (full stack mode only)
 otel:
   collector_endpoint: http://localhost:4318
+
+# Privacy / PII safety
+# Set to true to prevent tool call arguments and return values from being stored.
+# When true, ToolCallSpan.input_args and output_result are set to None before
+# transmission — payloads never leave the host process.
+# Default: false (payloads captured for maximum debuggability).
+redact_payloads: false
 ```
 
 **Environment variable overrides**: Any config value can be overridden via env var with `AGENTGUARD_` prefix:
@@ -406,7 +413,8 @@ The current IA is agent-first: **Overview → Agents → Workflows → Tools & M
 
 ### 4.3 Workflows Page
 - **Session table**: One row per workflow/session with agent, tool-call count, failures, duration, and touched backends
-- **Trace drawer**: Tree of `agent`, `handoff`, and `tool_call` spans for one workflow
+- **Trace drawer**: Tree of `agent`, `handoff`, and `tool_call` spans for one workflow. Clicking a span row expands an inline panel showing formatted input arguments and return value; error details shown for failed spans. Payload visibility requires P5.1 payload capture to be active (`redact_payloads: false`, default).
+- **Session comparison**: Click one session row to select it as A (row highlighted blue); click a second row to select it as B (row highlighted purple); a Compare button appears. Clicking Compare opens a diff drawer that calls `GET /api/agents/sessions/compare?a=&b=` and renders a per-tool aligned diff table. Each diff row shows tool key, A status, A latency, B status, B latency, and latency delta percentage. Row colours: matched=green, diverged=yellow, only_a=blue, only_b=purple. Diverged = status changed OR latency delta >= 20%.
 
 ### 4.4 Tools & MCPs Page
 - **Server list table**: Name, status badge, p99 latency, schema status, tools count, last check time

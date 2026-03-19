@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -39,6 +39,10 @@ class ToolCallSpan(BaseModel):
         │   ├── span: handoff   / → billing-agent      / parent=above
         │   │   ├── span: tool_call / crm-mcp/update   / parent=handoff
         │   │   └── span: tool_call / slack-mcp/notify  / parent=handoff
+
+    Payload fields (P5.1):
+        input_args:    the arguments passed to the tool (None if redact_payloads=True)
+        output_result: the tool's return value serialised to string (None if redacted or on error)
     """
 
     span_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -54,6 +58,11 @@ class ToolCallSpan(BaseModel):
     status: ToolCallStatus
     error: str | None = None
     agent_name: str | None = None  # which agent emitted this span
+    input_args: dict[str, Any] | None = None   # tool call arguments (omitted when redacted)
+    output_result: str | None = None            # tool return value as string (omitted when redacted)
+    llm_input: str | None = None               # P5.3 — LLM prompt/messages (agent spans only)
+    llm_output: str | None = None              # P5.3 — LLM completion text (agent spans only)
+    replay_of: str | None = None               # P5.7 — original span_id this is a replay of
 
     @classmethod
     def record(
@@ -68,6 +77,11 @@ class ToolCallSpan(BaseModel):
         session_id: str | None = None,
         parent_span_id: str | None = None,
         span_type: SpanType = "tool_call",
+        input_args: dict[str, Any] | None = None,
+        output_result: str | None = None,
+        llm_input: str | None = None,
+        llm_output: str | None = None,
+        replay_of: str | None = None,
     ) -> ToolCallSpan:
         """Convenience constructor — computes ended_at and latency_ms automatically."""
         ended_at = datetime.now(UTC)
@@ -85,6 +99,11 @@ class ToolCallSpan(BaseModel):
             session_id=session_id,
             parent_span_id=parent_span_id,
             span_type=span_type,
+            input_args=input_args,
+            output_result=output_result,
+            llm_input=llm_input,
+            llm_output=llm_output,
+            replay_of=replay_of,
         )
 
     @classmethod

@@ -9,6 +9,62 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (2026-03-19 — P5.7 Playground Replay)
+- P5.7: Playground Replay — re-execute any session's tool calls against live MCP servers using stored `input_args`; replay stored as new session and auto-compared with original in the compare drawer
+- P5.7: `POST /api/agents/sessions/{id}/replay` endpoint — configurable `timeout_per_call` (default 10s) and `total_timeout` (default 60s) parameters; returns `ReplayResponse` with `replay_session_id`
+- P5.7: `replay_of: str | None` field on `ToolCallSpan` and `replay_of String DEFAULT ''` column on `mcp_tool_calls` ClickHouse table — links each replay span to its original span_id
+- P5.7: `ReplayEngine` in `src/langsight/replay/engine.py` — filters to `tool_call` spans with `input_json` present, re-executes each via stored `input_args`, supports stdio (StdioServerParameters) and SSE/StreamableHTTP transports, fail-open per span (errors recorded as ERROR status spans, replay continues)
+- P5.7: Replay button in trace drawer header — one click to replay and auto-open compare drawer diff between original and replay session; shows spinner and "Replaying..." while in flight; inline error message on failure
+
+### Added (2026-03-19 — P5.6 Side-by-side session comparison)
+- P5.6: Side-by-side session comparison — select two sessions (A/B) in the Workflows page and click Compare to see a diff table aligned by tool call order; diverged spans (status change or >=20% latency delta) highlighted in yellow
+- P5.6: `GET /api/agents/sessions/compare?a=&b=` endpoint — returns aligned diff with `matched`/`diverged`/`only_a`/`only_b` entries and summary counts (`SessionComparison` response model)
+- P5.6: `compare_sessions(session_a, session_b)` method on `ClickHouseBackend` — fetches both traces concurrently via `asyncio.gather`, aligns spans by `(server_name, tool_name)` call order, computes per-entry status
+- P5.6: `_diff_spans()` helper — produces diff entries; `diverged` = status changed OR latency delta >= 20%; `only_a`/`only_b` for unmatched spans
+- P5.6: `DiffEntry` and `SessionComparison` TypeScript interfaces added to `dashboard/lib/types.ts`
+- P5.6: `compareSessions(a, b)` function added to `dashboard/lib/api.ts` — calls `GET /api/agents/sessions/compare`
+- P5.6: `CompareDrawer` and `DiffRow` components in sessions page — colour-coded diff table (matched=green, diverged=yellow, only_a/only_b=blue/purple); latency delta column; first session row click selects A (blue), second click selects B (purple), Compare button appears when both are selected
+
+### Added (2026-03-19 — P5.5 Agent SLO Tracking)
+- P5.5: Agent SLO Tracking — define `success_rate` and `latency_p99` SLOs per agent; CRUD API at `/api/slos`; `SLOEvaluator` queries session data to compute current vs target; status is `ok`, `breached`, or `no_data`
+- P5.5: `agent_slos` table added to SQLite and PostgreSQL backends; all four CRUD methods (`create_slo`, `list_slos`, `get_slo`, `delete_slo`) implemented on `StorageBackend` protocol and both backends
+- P5.5: `SLOMetric` StrEnum (`success_rate`, `latency_p99`), `AgentSLO` Pydantic model, and `SLOEvaluation` Pydantic model added to `src/langsight/models.py`
+- P5.5: `SLOEvaluator` class in `src/langsight/reliability/engine.py` — `success_rate` computed as `(clean_sessions / total_sessions) * 100`; `latency_p99` uses `max(duration_ms)` as a conservative proxy (true p99 requires raw span data)
+- P5.5: `GET /api/slos/status` — evaluate all SLOs against current session data; `GET /api/slos` — list SLO definitions; `POST /api/slos` — create SLO; `DELETE /api/slos/{slo_id}` — delete SLO
+- P5.5: Dashboard Overview "Agent SLOs" panel — shows per-SLO current value vs target with coloured status dot (`ok`=green, `breached`=red, `no_data`=grey); polls `/api/slos/status` every 60s via SWR; panel only renders when at least one SLO is defined
+- P5.5: `SLOStatus` TypeScript interface added to `dashboard/lib/types.ts`; `getSLOStatus()`, `listSLOs()`, `deleteSLO()` functions added to `dashboard/lib/api.ts`
+
+### Added (2026-03-19 — P5.4 Statistical anomaly detection)
+- P5.4: Statistical anomaly detection — `AnomalyDetector` in `src/langsight/reliability/engine.py` computes z-score per tool against a 7-day ClickHouse baseline; fires `warning` anomaly when |z| >= 2 and `critical` when |z| >= 3 for both `error_rate` and `avg_latency_ms` metrics
+- P5.4: `get_baseline_stats(baseline_hours=168)` method on `ClickHouseBackend` — queries `mv_tool_reliability` using `stddevPop()` and `avg()`; requires >= 3 sample hours to return a row, avoiding noisy baselines
+- P5.4: `AnomalyResult` dataclass — `server_name`, `tool_name`, `metric`, `current_value`, `baseline_mean`, `baseline_stddev`, `z_score`, `severity`, `sample_hours`
+- P5.4: Minimum stddev guards — `_MIN_STDDEV_ERROR_RATE = 0.01` (1%) and `_MIN_STDDEV_LATENCY_MS = 10.0` ms prevent false positives on perfectly stable tools
+- P5.4: `GET /api/reliability/anomalies?current_hours=1&baseline_hours=168&z_threshold=2.0` endpoint — configurable detection window and sensitivity
+- P5.4: `GET /api/reliability/tools?hours=24&server_name=...` endpoint — per-tool reliability metrics
+- P5.4: `dashboard/lib/types.ts` — new `AnomalyResult` TypeScript interface
+- P5.4: `dashboard/lib/api.ts` — new `getAnomalies(currentHours, zThreshold)` function calling `GET /api/reliability/anomalies`
+- P5.4: Dashboard Overview "Anomalies Detected" metric card — live anomaly count with critical/warning breakdown, colour-coded severity, polls every 60s via SWR (replaces static "Tool Alerts" card)
+
+### Added (2026-03-19 — P5.3 LLM reasoning capture)
+- P5.3: LLM reasoning capture — OTLP spans carrying `gen_ai.prompt`/`gen_ai.completion` (or `llm.prompts`/`llm.completions`) attributes are now extracted and stored as `span_type="agent"` spans with `llm_input`/`llm_output` fields; model name extracted from `gen_ai.request.model`/`llm.model_name` and written to `tool_name`
+- P5.3: `llm_input: str | None` and `llm_output: str | None` added to `ToolCallSpan` in `src/langsight/sdk/models.py`; `ToolCallSpan.record()` accepts and passes through both fields
+- P5.3: ClickHouse `mcp_tool_calls` DDL extended with `llm_input Nullable(String)` and `llm_output Nullable(String)`; `_SPAN_COLUMNS`, `_span_row()`, and `get_session_trace()` updated
+- P5.3: `SpanNode` API response model (`api/routers/agents.py`) includes `llm_input` and `llm_output` fields
+- P5.3: `SpanNode` TypeScript interface (`dashboard/lib/types.ts`) updated with `llm_input: string | null` and `llm_output: string | null`
+- P5.3: Sessions page (`dashboard/app/(dashboard)/sessions/page.tsx`) detects LLM spans (`span_type="agent"` with `llm_input`/`llm_output`) and shows "Prompt" / "Completion" labels in the detail panel instead of generic "Input" / "Output"
+- P5.3: OTLP attribute parser (`api/routers/traces.py`) now handles `intValue`, `doubleValue`, and `boolValue` in addition to `stringValue`
+
+### Added (2026-03-19 — P5.2 session replay payload visibility)
+- P5.2: Session replay payload visibility — clicking any span row in the trace tree now expands an inline panel showing formatted input arguments and output result; error details shown for failed spans with no output (requires P5.1 payload capture)
+- P5.2: `SpanNode` API response model (`api/routers/agents.py`) now includes `input_json: str | None` and `output_json: str | None` fields, passed through from `get_session_trace()`
+- P5.2: `SpanNode` TypeScript interface (`dashboard/lib/types.ts`) updated with `input_json: string | null` and `output_json: string | null`
+
+### Added (2026-03-18 — P5.1 payload capture)
+- P5.1: Input/output payload capture — `ToolCallSpan` now records tool call arguments (`input_args: dict | None`) and return values (`output_result: str | None`); stored in ClickHouse `mcp_tool_calls` as `input_json Nullable(String)` / `output_json Nullable(String)`
+- P5.1: `redact_payloads: bool = False` config flag on `LangSightConfig` and `LangSightClient` constructor — set `true` to suppress payload capture for PII-sensitive tools; redaction is applied before transmission (payloads never leave the host process when enabled)
+- P5.1: Per-wrap `redact_payloads` override on `LangSightClient.wrap()` — allows different redaction behaviour per MCP client instance without changing the global config
+- P5.1: `get_session_trace()` now returns `input_json` and `output_json` in every span row
+
 ### Added (2026-03-18 — costs API + agents dashboard)
 - `GET /api/costs/breakdown` — per-tool cost breakdown endpoint
 - `GET /api/costs/by-agent` — per-agent cost aggregation endpoint
@@ -48,6 +104,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `docs/04-implementation-plan.md`: Section 1 annotated with historical note explaining that `agentguard` CLI names and `pip install agentguard` are from the original pre-rename plan; current entry point is `langsight`
 
 Pre-production security hardening required before 0.2.0 can be positioned as production-grade.
+
+### Planned (Phase 5: Deep Observability — next major phase after Security Hardening)
+- Phase 5 gap analysis completed (2026-03-18): code review identified 7 missing features required for full session debugging capability
+- ~~P5.1: Input/output payload capture~~ — **shipped (2026-03-18)**, see Added section above
+- ~~P5.2: Session replay trace tree UI~~ — **shipped (2026-03-19)**, see Added section above
+- ~~P5.3: LLM reasoning capture~~ — **shipped (2026-03-19)**, see Added section above
+- ~~P5.4: Statistical anomaly detection~~ — **shipped (2026-03-19)**, see Added section above
+- ~~P5.5: Agent SLO tracking~~ — **shipped (2026-03-19)**, see Added section above
+- ~~P5.6: Side-by-side session comparison~~ — **shipped (2026-03-19)**, see Added section above
+- ~~P5.7: Playground replay~~ — **shipped (2026-03-19)**, see Added section above
 
 ### Planned (Security Hardening S.1-S.10 — required before 0.2.0 production positioning)
 - S.1: API key middleware for all API endpoints (currently unauthenticated — P0)

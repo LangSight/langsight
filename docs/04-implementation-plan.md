@@ -29,6 +29,7 @@ Phase 3 (OTEL + Costs)          ████████████████
 Release 0.1.0                   ████████████████ 100% — SHIPPED ✅ (PyPI + GitHub)
 Phase 4 (Dashboard + Website)   █████████████░░░  85% — website + dashboard built; Vercel deploy pending
 Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░   0% — NOT STARTED
+Phase 5 (Deep Observability)    ████████████████ 100% — COMPLETE ✅ P5.1 (2026-03-18), P5.2-P5.7 (2026-03-19)
 ```
 
 **Shipped metrics**: 378 tests passing, 83.69% coverage, 8 CLI commands, 9 API endpoints, SQLite + PostgreSQL + ClickHouse storage backends, FastAPI REST API, GitHub Actions CI, 28 Mintlify docs pages (including sessions.mdx), marketing website built, dashboard v2 built with demo-mode auth (P0.2 gap — auth is not production-grade), PyPI 0.1.0 published, GitHub release v0.1.0 tagged.
@@ -523,7 +524,9 @@ The MVP is "done" when all of the following are true:
 
 ---
 
-### Phase 5: RCA Agent (Weeks 11-12)
+### Phase 2 Extension: RCA Agent (Weeks 11-12) — COMPLETE ✅
+
+**Status**: COMPLETE — delivered as `langsight investigate` in Phase 2. LLM providers: Claude, OpenAI, Gemini, Ollama.
 
 **Goal**: AI-powered root cause analysis using Claude Agent SDK to investigate failures and provide actionable remediation.
 
@@ -595,6 +598,160 @@ The MVP is "done" when all of the following are true:
 - [ ] Rate limiter prevents more than 10 investigations per hour (configurable)
 - [ ] Fallback mode produces useful (if less detailed) RCA without Claude API
 - [ ] `agentguard investigations list` shows past investigations with timestamps and outcomes
+
+---
+
+### Phase 5: Deep Observability (the Missing Killer Features)
+
+**Status**: COMPLETE ✅ (2026-03-19) — all seven features shipped
+
+**Goal**: Make LangSight the tool engineers actually reach for when debugging a failed agent run. Close the gap between "we have trace metadata" and "we can fully replay and diagnose what happened".
+
+**Why this matters**: Currently LangSight captures *that* a tool was called and *whether it succeeded*, but not *what it was called with* or *what it returned*. Without payloads, session replay shows a skeleton, not a full picture. Every feature in this phase builds on payload capture.
+
+---
+
+#### P5.1 — Input/Output Payload Capture ✅ COMPLETE (2026-03-18)
+
+| Task | Description | Status |
+|------|-------------|--------|
+| P5.1.1 | Add `input_args: dict \| None` and `output_result: str \| None` fields to `ToolCallSpan` in `src/langsight/sdk/models.py` | ✅ Done |
+| P5.1.2 | Add `input_json Nullable(String)` and `output_json Nullable(String)` columns to `mcp_tool_calls` ClickHouse table | ✅ Done |
+| P5.1.3 | Update `MCPClientProxy.call_tool()` in `src/langsight/sdk/client.py` to capture `arguments` as input and serialise result as output | ✅ Done |
+| P5.1.4 | Update `ClickHouseBackend.save_tool_call_span()` to write new columns | ✅ Done |
+| P5.1.5 | Update `get_session_trace()` to return input/output in span rows | ✅ Done |
+| P5.1.6 | PII risk: payloads may contain sensitive data — add optional `redact_payloads: bool = False` config flag to `LangSightConfig` | ✅ Done |
+| P5.1.7 | Update `StorageBackend` protocol if needed | ✅ Done |
+
+**Acceptance Criteria**:
+- [x] `ToolCallSpan` has `input_args` and `output_result` fields (both optional, default None)
+- [x] `MCPClientProxy.call_tool()` populates both fields on every span
+- [x] ClickHouse schema has `input_json` and `output_json` columns
+- [x] `get_session_trace()` returns input/output for each span
+- [x] `redact_payloads: true` in config causes both fields to be set to None before storage
+- [x] Existing tests pass; new unit tests cover payload capture and redaction
+
+---
+
+#### P5.2 — Session Replay Trace Tree UI ✅ COMPLETE (2026-03-19)
+
+| Task | Description | Status |
+|------|-------------|--------|
+| P5.2.1 | `SpanNode` API response model (`api/routers/agents.py`) includes `input_json` and `output_json` fields, passed through from `get_session_trace()` | ✅ Done |
+| P5.2.2 | Dashboard sessions page (`dashboard/app/(dashboard)/sessions/page.tsx`) — clicking a span row expands an inline detail panel with formatted input/output; error details shown for failed spans | ✅ Done |
+| P5.2.3 | `SpanNode` TypeScript interface (`dashboard/lib/types.ts`) updated with `input_json: string \| null` and `output_json: string \| null` | ✅ Done |
+
+**Requires**: P5.1
+
+**Acceptance Criteria**:
+- [x] `GET /api/agents/sessions/{id}` returns ordered span list with `input_json` and `output_json`
+- [x] Dashboard renders session trace as a tree; clicking a span opens an inline detail panel
+- [x] Detail panel shows input args, output result, and error for failed spans
+
+---
+
+#### P5.3 — LLM Reasoning Capture ✅ COMPLETE (2026-03-19)
+
+| Task | Description | Status |
+|------|-------------|--------|
+| P5.3.1 | Extend OTLP parser (`src/langsight/api/routers/traces.py`) to extract `gen_ai.completion` / `gen_ai.prompt` / `llm.prompts` / `llm.completions` attributes from OTLP spans; model name from `gen_ai.request.model` / `llm.model_name` | ✅ Done |
+| P5.3.2 | Add `llm_input: str \| None` and `llm_output: str \| None` to `ToolCallSpan` in `src/langsight/sdk/models.py` (populated for `span_type="agent"` spans) | ✅ Done |
+| P5.3.3 | Store in ClickHouse `mcp_tool_calls` as `llm_input Nullable(String)` and `llm_output Nullable(String)`; `_SPAN_COLUMNS` and `_span_row()` updated | ✅ Done |
+| P5.3.4 | Render in trace tree UI — sessions page (`dashboard/app/(dashboard)/sessions/page.tsx`) shows "Prompt" / "Completion" labels for LLM spans instead of generic "Input" / "Output" | ✅ Done |
+| P5.3.5 | `SpanNode` API response model (`api/routers/agents.py`) includes `llm_input` and `llm_output` fields | ✅ Done |
+| P5.3.6 | `SpanNode` TypeScript interface (`dashboard/lib/types.ts`) updated with `llm_input: string \| null` and `llm_output: string \| null` | ✅ Done |
+| P5.3.7 | OTLP attribute parser extended to handle `intValue`, `doubleValue`, and `boolValue` in addition to `stringValue` | ✅ Done |
+
+**Acceptance Criteria**:
+- [x] OTLP spans with `gen_ai.prompt`/`gen_ai.completion` (or `llm.prompts`/`llm.completions`) attributes are parsed into `llm_input`/`llm_output`
+- [x] LLM generation spans are stored as `span_type="agent"` spans with `llm_input`/`llm_output` populated
+- [x] Agent spans in session trace show "Prompt" / "Completion" labels in the detail panel
+- [x] Non-agent spans leave both fields as None
+- [x] `get_session_trace()` returns `llm_input` and `llm_output` in every span row
+
+---
+
+#### P5.4 — Statistical Anomaly Detection ✅ COMPLETE (2026-03-19)
+
+| Task | Description | Status |
+|------|-------------|--------|
+| P5.4.1 | Add `AnomalyDetector` in `src/langsight/reliability/engine.py` | ✅ Done |
+| P5.4.2 | Compute per-tool 7-day rolling baseline (mean + stddev) for latency and error rate from `mv_tool_reliability` | ✅ Done |
+| P5.4.3 | Fire anomaly alert when current value > baseline + 2 stddev (configurable: `anomaly_z_score_threshold: float = 2.0`) | ✅ Done |
+| P5.4.4 | `AnomalyResult` dataclass with `server_name`, `tool_name`, `metric`, `current_value`, `baseline_mean`, `baseline_stddev`, `z_score`, `severity`, `sample_hours`; minimum stddev guards added | ✅ Done |
+| P5.4.5 | `GET /api/reliability/anomalies` and `GET /api/reliability/tools` endpoints in `api/routers/reliability.py`; router registered in `api/main.py` | ✅ Done |
+| P5.4.6 | Dashboard Overview "Anomalies Detected" card — critical/warning breakdown, polls every 60s | ✅ Done |
+| P5.4.7 | `AnomalyResult` TypeScript interface in `dashboard/lib/types.ts`; `getAnomalies()` in `dashboard/lib/api.ts` | ✅ Done |
+
+**Acceptance Criteria**:
+- [x] `AnomalyDetector` computes 7-day baseline from `mv_tool_reliability` MV
+- [x] Alert fires when current metric exceeds baseline + (z_score_threshold * stddev)
+- [x] `z_score_threshold` is configurable (default 2.0, `warning` at |z|>=2, `critical` at |z|>=3)
+- [x] `GET /api/reliability/anomalies` returns current anomalies with baseline, current value, and z-score
+- [x] Minimum stddev guards prevent false positives on perfectly stable tools
+
+---
+
+#### P5.5 — Agent SLO Tracking ✅ COMPLETE (2026-03-19)
+
+| Task | Description | Status |
+|------|-------------|--------|
+| P5.5.1 | New models: `SLOMetric` StrEnum (`success_rate`, `latency_p99`), `AgentSLO` Pydantic model (`id`, `agent_name`, `metric`, `target`, `window_hours`, `created_at`), `SLOEvaluation` Pydantic model (`slo_id`, `agent_name`, `metric`, `target`, `current_value`, `window_hours`, `status`, `evaluated_at`) | ✅ Done |
+| P5.5.2 | `agent_slos` table in SQLite and PostgreSQL; `create_slo`, `list_slos`, `get_slo`, `delete_slo` added to `StorageBackend` protocol and both backends | ✅ Done |
+| P5.5.3 | `SLOEvaluator` in `src/langsight/reliability/engine.py` — evaluates SLOs against `get_agent_sessions()` data; `success_rate` = `(clean_sessions / total_sessions) * 100`; `latency_p99` uses `max(duration_ms)` as conservative proxy | ✅ Done |
+| P5.5.4 | CLI: `langsight slo list` and `langsight slo status` not yet added (API and dashboard shipped; CLI deferred) | Deferred |
+| P5.5.5 | `GET /api/slos/status`, `GET /api/slos`, `POST /api/slos`, `DELETE /api/slos/{slo_id}` in `src/langsight/api/routers/slos.py`; router registered at `/api` with auth dependency in `api/main.py` | ✅ Done |
+| P5.5.6 | Dashboard Overview "Agent SLOs" panel — per-SLO current vs target with coloured status dot; SWR poll every 60s; panel hidden when no SLOs defined | ✅ Done |
+
+**Acceptance Criteria**:
+- [x] `AgentSLO` model persisted and retrievable via `GET /api/slos`
+- [x] SLO evaluator computes current value from session data; status is `ok`, `breached`, or `no_data`
+- [ ] `langsight slo status` CLI shows current vs target per SLO with pass/fail indicator (deferred)
+- [x] SLO panel on Overview page updates every 60s via SWR poll
+
+---
+
+#### P5.6 — Side-by-Side Session Comparison ✅ COMPLETE (2026-03-19)
+
+| Task | Description | Status |
+|------|-------------|--------|
+| P5.6.1 | API: `GET /api/agents/sessions/compare?a={session_id}&b={session_id}` — returns both session traces aligned by `(server_name, tool_name)` call order; `SessionComparison` response model with `session_a`, `session_b`, `spans_a`, `spans_b`, `diff`, `summary` | ✅ Done |
+| P5.6.2 | `_diff_spans()` helper on `ClickHouseBackend` — produces `matched`/`diverged`/`only_a`/`only_b` diff entries; `diverged` = status changed OR latency delta >= 20% | ✅ Done |
+| P5.6.3 | Dashboard: `CompareDrawer` + `DiffRow` components in sessions page — A/B row selection (blue/purple), Compare button, colour-coded diff table, latency delta column | ✅ Done |
+
+**Requires**: P5.1
+
+**Acceptance Criteria**:
+- [ ] Compare endpoint returns both traces with per-span diff annotations
+- [ ] Spans with different status between A and B are flagged
+- [ ] Latency differences > 20% are flagged with percentage shown
+- [ ] Dashboard renders diff view with clear visual separation between sessions
+
+---
+
+#### P5.7 — Playground Replay ✅ COMPLETE (2026-03-19)
+
+| Task | Description | Status |
+|------|-------------|--------|
+| P5.7.1 | `replay_of: str \| None` field added to `ToolCallSpan` in `src/langsight/sdk/models.py`; `ToolCallSpan.record()` passes it through | ✅ Done |
+| P5.7.2 | `replay_of String DEFAULT ''` column added to `mcp_tool_calls` ClickHouse DDL; `_SPAN_COLUMNS`, `_span_row()`, and `get_session_trace()` updated | ✅ Done |
+| P5.7.3 | `src/langsight/replay/__init__.py` and `src/langsight/replay/engine.py` created; `ReplayResult` dataclass (`original_session_id`, `replay_session_id`, `total_spans`, `replayed`, `skipped`, `failed`, `duration_ms`) and `ReplayEngine` class | ✅ Done |
+| P5.7.4 | `ReplayEngine.replay(session_id)` filters to `span_type="tool_call"` spans with `input_json` present, re-executes each via `_call_tool()` using stored `input_args`; supports stdio (StdioServerParameters) and SSE/StreamableHTTP transports | ✅ Done |
+| P5.7.5 | Hard per-span timeout (`timeout_per_call=10s`) and total session timeout (`total_timeout=60s`) via `asyncio.timeout()`; fail-open per span — errors recorded as ERROR status spans, replay continues | ✅ Done |
+| P5.7.6 | Replay spans stored as a new session with `replay_of=original_span_id` | ✅ Done |
+| P5.7.7 | `ReplayResponse` Pydantic model and `POST /api/agents/sessions/{session_id}/replay?timeout_per_call=10&total_timeout=60` endpoint in `api/routers/agents.py`; returns `replay_session_id` | ✅ Done |
+| P5.7.8 | `ReplayResponse` TypeScript interface added to `dashboard/lib/types.ts`; `replaySession(sessionId, timeoutPerCall, totalTimeout)` function added to `dashboard/lib/api.ts` | ✅ Done |
+| P5.7.9 | `TraceDrawer` in `dashboard/app/(dashboard)/sessions/page.tsx` — `onReplay` callback prop + Replay button; spinner + "Replaying..." during flight; on success calls `onReplay(replaySessionId)` which auto-opens `CompareDrawer`; inline error message on failure | ✅ Done |
+
+**Requires**: P5.1 and P5.6
+
+**Acceptance Criteria**:
+- [x] Replay endpoint re-executes tool calls in original order with original `input_args`
+- [x] Each replay span has `replay_of` set to the original span's `span_id`
+- [x] Replay result stored as a new session; `replay_session_id` returned in response
+- [x] Per-call and total timeouts are configurable via query parameters
+- [x] Failed spans recorded as ERROR status; replay continues (fail-open)
+- [x] On completion, dashboard auto-opens compare drawer between original and replay sessions
 
 ---
 

@@ -60,6 +60,10 @@ class LangSightConfig(BaseModel):
     alerts: AlertConfig = Field(default_factory=AlertConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     investigate: InvestigateConfig = Field(default_factory=InvestigateConfig)
+    # P5.1 — payload capture
+    # Set to True to prevent tool call arguments and return values from being
+    # stored. Use this when tools may handle PII (names, emails, financial data).
+    redact_payloads: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +83,14 @@ class Settings(BaseSettings):
     security_scan_interval_seconds: int = 3600
     log_level: str = "INFO"
 
+    # --- Auth ------------------------------------------------------------------
+    # Comma-separated list of valid API keys, e.g. "key1,key2".
+    # When empty (default), authentication is DISABLED — safe for local dev only.
+    # Set at least one key before exposing the API on a network.
+    api_keys: str = ""
+    # CORS allowed origins.  Use "*" only for local dev.
+    cors_origins: str = "*"
+
     # Storage overrides (take precedence over .langsight.yaml)
     storage_mode: str | None = None
     clickhouse_url: str | None = None
@@ -92,6 +104,14 @@ class Settings(BaseSettings):
         env_prefix="LANGSIGHT_",
         extra="ignore",
     )
+
+    def parsed_api_keys(self) -> list[str]:
+        """Return the list of valid API keys (empty = auth disabled)."""
+        return [k.strip() for k in self.api_keys.split(",") if k.strip()]
+
+    def parsed_cors_origins(self) -> list[str]:
+        """Return the list of allowed CORS origins."""
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     def apply_to_storage(self, storage: StorageConfig) -> StorageConfig:
         """Return a new StorageConfig with env var overrides applied."""

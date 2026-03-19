@@ -84,3 +84,61 @@ class TestToolCallSpanRecord:
         assert span.trace_id == "trace-123"
         assert span.agent_name == "support-agent"
         assert span.session_id == "sess-abc"
+
+
+class TestToolCallSpanPayloads:
+    """P5.1 — payload capture: input_args and output_result fields."""
+
+    @pytest.mark.unit
+    def test_tool_call_span_defaults_payloads_to_none(self) -> None:
+        """record() with no payload kwargs leaves both fields as None."""
+        span = ToolCallSpan.record(
+            server_name="pg",
+            tool_name="query",
+            started_at=datetime.now(UTC),
+            status=ToolCallStatus.SUCCESS,
+        )
+        assert span.input_args is None
+        assert span.output_result is None
+
+    @pytest.mark.unit
+    def test_tool_call_span_stores_input_args(self) -> None:
+        """input_args dict is stored verbatim on the span."""
+        args = {"sql": "SELECT 1", "limit": 100}
+        span = ToolCallSpan.record(
+            server_name="pg",
+            tool_name="query",
+            started_at=datetime.now(UTC),
+            status=ToolCallStatus.SUCCESS,
+            input_args=args,
+        )
+        assert span.input_args == {"sql": "SELECT 1", "limit": 100}
+
+    @pytest.mark.unit
+    def test_tool_call_span_stores_output_result(self) -> None:
+        """output_result string is stored verbatim on the span."""
+        span = ToolCallSpan.record(
+            server_name="pg",
+            tool_name="query",
+            started_at=datetime.now(UTC),
+            status=ToolCallStatus.SUCCESS,
+            output_result='{"rows": 1}',
+        )
+        assert span.output_result == '{"rows": 1}'
+
+    @pytest.mark.unit
+    def test_tool_call_span_serialises_to_json(self) -> None:
+        """model_dump(mode='json') includes input_args and output_result keys."""
+        span = ToolCallSpan.record(
+            server_name="pg",
+            tool_name="query",
+            started_at=datetime.now(UTC),
+            status=ToolCallStatus.SUCCESS,
+            input_args={"sql": "SELECT 1"},
+            output_result='{"rows": 1}',
+        )
+        data = span.model_dump(mode="json")
+        assert "input_args" in data
+        assert "output_result" in data
+        assert data["input_args"] == {"sql": "SELECT 1"}
+        assert data["output_result"] == '{"rows": 1}'

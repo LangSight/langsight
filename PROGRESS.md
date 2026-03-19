@@ -1,6 +1,6 @@
 # LangSight — Build Progress
 
-> Last updated: 2026-03-18 (costs API + agents dashboard)
+> Last updated: 2026-03-19 (P5.7 Playground Replay — Phase 5 COMPLETE)
 > Maintained by: docs-keeper agent — update after every feature, architectural decision, or milestone
 
 **Project framing**: LangSight is complete observability for everything an AI agent calls — MCP servers, HTTP APIs, Python functions, and sub-agents. Agent-level instrumentation captures all tool types in one trace. MCP servers additionally receive proactive health checks, security scanning, schema drift detection, and alerting because the MCP protocol is standard and inspectable. Non-MCP tools (HTTP APIs, functions) are passively observed in traces only.
@@ -49,6 +49,62 @@ It is **not yet suitable** for internet-facing or multi-tenant deployment withou
 
 ---
 
+## Phase 5 — Deep Observability: Gap Analysis (2026-03-18)
+
+A thorough code review identified a set of high-value observability features that are implied by the product vision but not yet built. These form Phase 5.
+
+### Gap Table
+
+| Feature | Gap Severity | Blocks |
+|---------|-------------|--------|
+| Input/output payload capture (P5.1) | ✅ Implemented (2026-03-18) | P5.2, P5.6, P5.7 |
+| Session replay trace tree UI (P5.2) | ✅ Implemented (2026-03-19) | Debugging workflows |
+| LLM reasoning capture (P5.3) | ✅ Implemented (2026-03-19) | Full session context |
+| Statistical anomaly detection (P5.4) | ✅ Implemented (2026-03-19) | Proactive incident detection |
+| Agent SLO tracking (P5.5) | ✅ Implemented (2026-03-19) | SLO-based alerting |
+| Side-by-side session comparison (P5.6) | ✅ Implemented (2026-03-19) | Playground replay |
+| Playground replay (P5.7) | ✅ Implemented (2026-03-19) | Iterative debugging |
+
+### What IS built (confirmed from code review)
+
+- `ToolCallSpan` fields: `span_id`, `parent_span_id`, `span_type` (`tool_call`/`agent`/`handoff`), `trace_id`, `session_id`, `server_name`, `tool_name`, `started_at`, `ended_at`, `latency_ms`, `status`, `error`, `agent_name`
+- ClickHouse `mcp_tool_calls` table with all the above columns
+- `mv_tool_reliability` materialized view (hourly aggregates: `success_rate`, `avg_latency`, `error_calls`)
+- `mv_agent_sessions` materialized view (per-session: `tool_calls`, `failed_calls`, `duration_ms`, `servers_used`)
+- `get_session_trace(session_id)` — returns flat span list ordered by time (tree reconstruction done by caller)
+- `get_agent_sessions()` — session list with aggregates
+- `get_tool_reliability()` — tool metrics from MV
+- `MCPClientProxy.call_tool()` — captures timing, status, error — **NOT args/result**
+- SDK sends spans fire-and-forget via `asyncio.create_task`
+- OTLP parser extracts MCP spans from OTLP/JSON payloads; extracts `gen_ai.agent.name` but **not prompt/completion content**
+- Cost engine: `get_cost_call_counts()` groups by server/tool/agent/session
+
+### What is NOT built (the gaps)
+
+- ~~`input_args` and `output_result` fields on `ToolCallSpan`~~ — **built (P5.1, 2026-03-18)**: `input_args`/`output_result` on `ToolCallSpan`; `input_json`/`output_json` columns in ClickHouse `mcp_tool_calls`; `redact_payloads` config flag
+- ~~LLM reasoning capture (`gen_ai.prompt`, `gen_ai.completion`) not extracted from OTLP spans~~ — **built (P5.3, 2026-03-19)**: OTLP spans with `gen_ai.prompt`/`gen_ai.completion` (or `llm.prompts`/`llm.completions`) are parsed into agent spans with `llm_input`/`llm_output`; "Prompt"/"Completion" panels visible in session trace tree; `intValue`/`doubleValue`/`boolValue` OTLP attributes now also handled
+- ~~No confirmed dashboard UI that renders a session as a visual trace timeline/tree~~ — **built (P5.2, 2026-03-19)**: sessions page trace tree now shows inline payload panels per span; `SpanNode` API and TypeScript type include `input_json`/`output_json`
+- ~~No statistical baseline learning — alerts are purely threshold-based~~ — **built (P5.4, 2026-03-19)**: `AnomalyDetector` computes z-score per tool against 7-day ClickHouse baseline; `warning` at |z|>=2, `critical` at |z|>=3; minimum stddev guards prevent false positives; `GET /api/reliability/anomalies` endpoint; dashboard "Anomalies Detected" card with critical/warning breakdown
+- ~~No `AgentSLO` model, no SLO evaluator, no burn rate calculation~~ — **built (P5.5, 2026-03-19)**: `SLOMetric` StrEnum, `AgentSLO` and `SLOEvaluation` Pydantic models; `agent_slos` table in SQLite and PostgreSQL; `SLOEvaluator` evaluates session data; `success_rate` = clean/total sessions; `latency_p99` uses `max(duration_ms)` as conservative proxy; `/api/slos` CRUD; dashboard Overview "Agent SLOs" panel; CLI commands deferred
+- ~~No session comparison API endpoint or UI~~ — **built (P5.6, 2026-03-19)**: `compare_sessions()` on ClickHouse backend; `GET /api/agents/sessions/compare?a=&b=` endpoint; `CompareDrawer` in sessions page with colour-coded diff table (matched/diverged/only_a/only_b) and latency delta column; A/B selection via row click
+- ~~No playground replay~~ — **built (P5.7, 2026-03-19)**: `ReplayEngine` in `src/langsight/replay/engine.py`; `replay_of` field on `ToolCallSpan` and `mcp_tool_calls`; `POST /api/agents/sessions/{id}/replay` endpoint; Replay button in trace drawer auto-opens compare drawer on completion
+
+### Implementation Order and Rationale
+
+The order is determined by dependency. P5.1 is the foundation — without payload capture, session replay (P5.2), comparison (P5.6), and replay (P5.7) are all blocked or severely limited. P5.3, P5.4, and P5.5 are independent and can proceed in parallel once P5.1 is done. P5.6 requires P5.1. P5.7 requires both P5.1 and P5.6.
+
+```
+P5.1 (Payload Capture)
+  ├── P5.2 (Session Replay UI)         — blocked on P5.1
+  ├── P5.3 (LLM Reasoning Capture)     — independent, can run in parallel
+  ├── P5.4 (Anomaly Detection)         — independent, can run in parallel
+  ├── P5.5 (SLO Tracking)              — independent, can run in parallel
+  └── P5.6 (Session Comparison)        — blocked on P5.1
+        └── P5.7 (Playground Replay)   — blocked on P5.1 + P5.6
+```
+
+---
+
 ## Current Status: Release 0.1.0 — Shipped ✅
 
 ```
@@ -58,6 +114,7 @@ Phase 3 (OTEL + Costs)          ████████████████
 Release 0.1.0                   ████████████████ 100% — SHIPPED ✅ (PyPI + GitHub)
 Phase 4 (Dashboard + Website)   ██████████████░░  90% — costs API + agents page added, Vercel deploy pending
 Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░   0% — NOT STARTED
+Phase 5 (Deep Observability)    ████████████████ 100% — COMPLETE ✅ P5.1 (2026-03-18), P5.2-P5.7 (2026-03-19)
 ```
 
 ---

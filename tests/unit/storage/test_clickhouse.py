@@ -197,6 +197,44 @@ class TestGetToolReliability:
         assert results[0]["success_rate_pct"] == 95.0
 
 
+class TestSpanRowPayloads:
+    """P5.1 — _span_row() serialises input_args and output_result correctly."""
+
+    @pytest.mark.unit
+    def test_span_row_includes_input_json(self, backend: ClickHouseBackend) -> None:
+        """Span with input_args produces a JSON string in the input_json position."""
+        import json
+
+        span = _span()
+        span = span.model_copy(update={"input_args": {"k": "v"}})
+        row = backend._span_row(span)
+
+        # input_json is at index 13 (matches _SPAN_COLUMNS order)
+        col_index = ClickHouseBackend._SPAN_COLUMNS.index("input_json")
+        assert row[col_index] == json.dumps({"k": "v"})
+
+    @pytest.mark.unit
+    def test_span_row_input_json_none_when_no_args(self, backend: ClickHouseBackend) -> None:
+        """Span with input_args=None produces None in the input_json position."""
+        span = _span()
+        # _span() helper leaves input_args as None by default
+        assert span.input_args is None
+        row = backend._span_row(span)
+
+        col_index = ClickHouseBackend._SPAN_COLUMNS.index("input_json")
+        assert row[col_index] is None
+
+    @pytest.mark.unit
+    def test_span_row_output_json_stored(self, backend: ClickHouseBackend) -> None:
+        """Span with output_result set passes the value through to output_json."""
+        span = _span()
+        span = span.model_copy(update={"output_result": '{"rows":1}'})
+        row = backend._span_row(span)
+
+        col_index = ClickHouseBackend._SPAN_COLUMNS.index("output_json")
+        assert row[col_index] == '{"rows":1}'
+
+
 class TestContextManager:
     async def test_close_called_on_exit(self, mock_client: MagicMock) -> None:
         backend = ClickHouseBackend(mock_client)

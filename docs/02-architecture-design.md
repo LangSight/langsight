@@ -108,6 +108,8 @@
   - LLM call spans (model, tokens, cost)
   - Agent spans (agent name, task, handoffs)
 
+**LLM reasoning capture** (added P5.3, 2026-03-19): OTLP spans carrying `gen_ai.prompt`/`gen_ai.completion` (or `llm.prompts`/`llm.completions`) are detected in the OTLP parser and stored as `span_type="agent"` spans with `llm_input`/`llm_output` fields populated. Model name is extracted from `gen_ai.request.model` or `llm.model_name` and written to the `tool_name` column. These spans surface as "Prompt"/"Completion" panels in the session trace tree, making the full reasoning context visible alongside tool calls. The attribute parser also handles `intValue`, `doubleValue`, and `boolValue` attribute types in addition to `stringValue`.
+
 **Key design decisions**:
 - We do NOT build custom instrumentation — we accept standard OTEL GenAI spans
 - Works with any framework that emits OTEL: Pydantic AI, Strands, AG2, Claude Agent SDK
@@ -124,10 +126,15 @@
 - Categorizes failures: timeout, connection_error, invalid_response, schema_mismatch, stale_data, auth_error, rate_limited
 - Correlates: tool failure rate → agent task failure rate (via trace/session IDs)
 
+**Statistical anomaly detection** (added P5.4, 2026-03-19): `AnomalyDetector` in `src/langsight/reliability/engine.py` computes a per-tool z-score by fetching a 7-day baseline (mean + stddev via `stddevPop()`) from `mv_tool_reliability` and comparing it against the current window (default: last 1 hour). Anomalies fire at |z| >= 2.0 (configurable `z_threshold`), with severity `warning` at |z| >= 2 and `critical` at |z| >= 3. Both `error_rate` and `avg_latency_ms` metrics are evaluated. Baseline and current queries run concurrently via `asyncio.gather()`. Minimum stddev guards (`_MIN_STDDEV_ERROR_RATE = 0.01`, `_MIN_STDDEV_LATENCY_MS = 10.0`) prevent false positives on perfectly stable tools. The engine requires >= 3 sample hours in the baseline window before returning results. Exposed via `GET /api/reliability/anomalies?current_hours=1&baseline_hours=168&z_threshold=2.0` and surfaced in the dashboard Overview as an "Anomalies Detected" card.
+
+**SLO tracking** (added P5.5, 2026-03-19): `SLOEvaluator` in `src/langsight/reliability/engine.py` evaluates user-defined `AgentSLO` records against live session data returned by `get_agent_sessions()`. Two metric types are supported: `success_rate` (computed as `(clean_sessions / total_sessions) * 100`) and `latency_p99` (uses `max(duration_ms)` as a conservative proxy — true p99 requires raw span data, not session aggregates). SLO definitions are persisted in the `agent_slos` table in both SQLite and PostgreSQL backends. Evaluation produces `SLOEvaluation` records with status `ok`, `breached`, or `no_data`. The full CRUD surface (`POST /api/slos`, `GET /api/slos`, `GET /api/slos/status`, `DELETE /api/slos/{slo_id}`) is exposed via `src/langsight/api/routers/slos.py`. The dashboard Overview page polls `/api/slos/status` every 60s and renders an "Agent SLOs" panel when SLOs are defined.
+
 **Key design decisions**:
 - All computation happens in ClickHouse (no separate analytics engine)
 - Time buckets: 1min (real-time), 1hr (dashboards), 1day (trends)
-- Baselines learned from first 7 days of data — alerts fire on deviation from baseline
+- Baselines learned from 7-day rolling window of `mv_tool_reliability` data — anomalies fire on z-score deviation (P5.4, implemented 2026-03-19); threshold-based alerts remain alongside for rule-based triggers
+- SLO `latency_p99` intentionally uses `max(duration_ms)` rather than a true percentile (decided 2026-03-19): session aggregates in `mv_agent_sessions` do not retain the full latency distribution needed for a real p99. `max` is conservative — it will never understate a latency SLO breach. True p99 calculation is deferred to P5.6+ when raw span windows are queryable per agent.
 
 ### 2.5 Cost Attribution Engine
 
@@ -201,6 +208,7 @@
 | `/api/tools` | GET tool metrics, GET tool errors | API key |
 | `/api/costs` | GET cost breakdown, GET cost trends | API key |
 | `/api/alerts` | GET alerts, POST acknowledge, PUT rules | API key |
+| `/api/slos` | GET list, POST create, DELETE by id, GET /status (evaluate all) | API key |
 | `/api/config` | GET/PUT MCP server configs | API key |
 
 **Design decisions**:
@@ -213,8 +221,9 @@
 **Purpose**: Python client library that wraps any MCP client and records tool call spans to the LangSight API. This is the primary integration path for Python agent developers.
 
 **Design** (decided 2026-03-17 — SDK-first before OTEL):
-- `LangSightClient(url, api_key)`: async HTTP client, reads `LANGSIGHT_URL` + `LANGSIGHT_API_KEY` from env if not provided
-- `wrap(mcp_client, langsight_client)`: returns a proxy object that intercepts `call_tool()`, measures latency, and POSTs a `ToolCallSpan` to `POST /api/traces/spans`
+- `LangSightClient(url, api_key, redact_payloads=False)`: async HTTP client, reads `LANGSIGHT_URL` + `LANGSIGHT_API_KEY` from env if not provided. `redact_payloads` suppresses input/output capture globally.
+- `LangSightClient.wrap(mcp_client, redact_payloads=None)`: per-wrap override for `redact_payloads`; `None` inherits the client-level setting.
+- `MCPClientProxy` captures tool call arguments as `input_args` and JSON-serialises return values as `output_result` on every `ToolCallSpan`. Both fields are set to `None` when `redact_payloads=True`.
 - Fail-open: SDK errors are logged but never propagate to the wrapped MCP client — observability cannot break an agent
 - Context manager support for lifecycle management
 
@@ -224,6 +233,7 @@
 - Chose proxy/wrapper pattern over monkey-patching: explicit, debuggable, no magic
 - Fire-and-forget HTTP POST for spans: agent latency is not impacted by LangSight availability
 - `ToolCallSpan` is sent asynchronously using `asyncio.create_task()` — the wrapped `call_tool()` returns to the caller immediately after the underlying call completes
+- **Payload capture is opt-out, not opt-in** (decided 2026-03-18): `input_args` and `output_result` are captured by default for maximum debuggability. Set `redact_payloads: true` in `.langsight.yaml` (or pass `redact_payloads=True` to `LangSightClient`) for tools that handle PII. Redaction is applied before transmission — payloads never leave the host process when redaction is enabled.
 
 ### 2.10 LibreChat Plugin (Phase 2)
 
@@ -255,6 +265,51 @@
 | `openai_agents.py` | OpenAI Agents SDK | Hooks into function call events |
 
 All adapters share a common `IntegrationBase` that handles span serialization and HTTP dispatch. Fail-open behavior is enforced at the base class level.
+
+### 2.13 Replay Engine (Phase 5.7)
+
+**Purpose**: Re-execute a past session's tool calls against live MCP servers using the stored `input_args`, producing a new session that can be compared with the original.
+
+**How it works**:
+- `ReplayEngine.__init__(storage, config, timeout_per_call=10s, total_timeout=60s)` — accepts per-call and total timeout values; both are configurable via the API endpoint query parameters
+- `ReplayEngine.replay(session_id)` fetches the original session trace, filters to `span_type="tool_call"` spans where `input_json` is present, and re-executes each in original order via `_call_tool()`
+- `_call_tool()` reconstructs a live MCP client connection using the span's `server_name` and the config entry for that server; supports stdio (`StdioServerParameters`), SSE, and StreamableHTTP transports
+- Each replay span is stored as a new `ToolCallSpan` with `replay_of=<original_span_id>`, linked into a new `session_id` (the replay session)
+- Fail-open per span: if `_call_tool()` raises or times out, the span is recorded with `status="ERROR"` and the replay continues to the next span
+- Hard timeout enforcement: `asyncio.timeout()` applied at both the per-call and total-session level
+- Returns `ReplayResult` dataclass: `original_session_id`, `replay_session_id`, `total_spans`, `replayed`, `skipped`, `failed`, `duration_ms`
+
+**Replay → compare workflow**:
+```
+User clicks Replay button in TraceDrawer
+        │
+        ▼
+POST /api/agents/sessions/{id}/replay
+        │
+        ▼
+ReplayEngine.replay(session_id)
+  ├── fetch original trace spans
+  ├── for each tool_call span with input_json:
+  │     ├── open live MCP connection (stdio / SSE / StreamableHTTP)
+  │     ├── call tool with stored input_args
+  │     └── store replay span with replay_of=original_span_id
+  └── return ReplayResult with replay_session_id
+        │
+        ▼
+Dashboard receives replay_session_id
+        │
+        ▼
+onReplay(replaySessionId) callback auto-opens CompareDrawer
+  └── GET /api/agents/sessions/compare?a={original}&b={replay}
+```
+
+**Key design decisions** (decided 2026-03-19):
+- **Sequential replay, not concurrent**: Tool calls are replayed in the original order. Concurrent replay would change observable side effects and make the comparison meaningless.
+- **Fail-open per span**: A single tool failure must not abort the entire replay. Engineers need to see which calls succeed and which fail on replay — aborting early hides that information.
+- **`replay_of` link, not a separate table**: Replay spans are regular `ToolCallSpan` rows in `mcp_tool_calls` with a `replay_of` foreign reference to the original span. No separate replay table — the existing compare infrastructure (`compare_sessions`) works without modification.
+- **No `model_override`**: The original spec included model substitution. This was deferred — replay operates at the tool-call layer and does not involve the LLM. Model substitution requires a full agent re-run, which is out of scope for P5.7.
+
+**Source**: `src/langsight/replay/`
 
 ### 2.12 Next.js Dashboard (Phase 4)
 
@@ -357,10 +412,20 @@ agentguard investigate "customer got wrong refund amount"
 |---|---|---|
 | `mcp_health_checks` | Every health check result (timestamp, server, status, latency, schema_hash) | 90 days |
 | `otel_traces` | Standard OTEL trace/span data from agent frameworks | 30 days |
+| `mcp_tool_calls` | Every SDK/OTLP tool call span. Columns include `input_json Nullable(String)` and `output_json Nullable(String)` for payload capture (P5.1, added 2026-03-18); `llm_input Nullable(String)` and `llm_output Nullable(String)` for LLM reasoning capture (P5.3, added 2026-03-19). MergeTree, TTL 90 days. | 90 days |
 | `tool_calls_mv` | Materialized view: extracted tool call spans with metrics | 30 days |
 | `tool_reliability_hourly` | Aggregated: per-tool success rate, latency percentiles, error counts per hour | 1 year |
 | `cost_daily` | Aggregated: per-tool, per-agent cost per day | 1 year |
 | `mcp_schema_snapshots` | Full tool schema JSON, stored on change (not on every check) | Forever |
+
+**`mcp_tool_calls` payload columns** (added P5.1 + P5.3):
+| Column | Type | Description |
+|--------|------|-------------|
+| `input_json` | `Nullable(String)` | JSON-serialised tool call arguments (`input_args` from `ToolCallSpan`). `NULL` when `redact_payloads=True`. (P5.1) |
+| `output_json` | `Nullable(String)` | JSON-serialised tool return value (`output_result` from `ToolCallSpan`). `NULL` when `redact_payloads=True`. (P5.1) |
+| `llm_input` | `Nullable(String)` | LLM prompt text extracted from OTLP `gen_ai.prompt` / `llm.prompts` attributes. Populated only on `span_type="agent"` spans originating from LLM generation spans. (P5.3) |
+| `llm_output` | `Nullable(String)` | LLM completion text extracted from OTLP `gen_ai.completion` / `llm.completions` attributes. Populated only on `span_type="agent"` spans originating from LLM generation spans. (P5.3) |
+| `replay_of` | `String DEFAULT ''` | When this span is a replay, contains the `span_id` of the original span being replayed. Empty string for non-replay spans. Links replay sessions back to their originals without a separate table. (P5.7, added 2026-03-19) |
 
 ### PostgreSQL (application state)
 | Table | What it stores |
@@ -371,6 +436,7 @@ agentguard investigate "customer got wrong refund amount"
 | `alerts` | Fired alerts with lifecycle (firing/ack/resolved) |
 | `api_keys` | API authentication keys |
 | `model_pricing` | LLM model → price per 1K input/output tokens |
+| `agent_slos` | User-defined SLO definitions (`agent_name`, `metric`, `target`, `window_hours`, `created_at`). Present in both SQLite and PostgreSQL backends. (P5.5, added 2026-03-19) |
 
 ---
 

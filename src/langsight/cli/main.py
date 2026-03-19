@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import click
 
+from langsight.cli.api_key import api_key
 from langsight.cli.costs import costs
 from langsight.cli.init import init
 from langsight.cli.investigate import investigate
@@ -15,13 +16,15 @@ from langsight.cli.sessions import sessions
 @click.group()
 @click.version_option(version="0.1.0", prog_name="langsight")
 def cli() -> None:
-    """LangSight — MCP observability and security platform.
+    """LangSight — agent observability and security platform.
 
-    Monitor MCP server health, detect security vulnerabilities,
-    and attribute AI agent failures to their root cause.
+    Trace every tool call your agents make, monitor MCP server health,
+    detect security vulnerabilities, and attribute agent failures to
+    their root cause.
     """
 
 
+cli.add_command(api_key)
 cli.add_command(costs)
 cli.add_command(init)
 cli.add_command(sessions)

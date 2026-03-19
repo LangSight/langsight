@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import asyncpg  # type: ignore[import-untyped]
 import structlog
 
-from langsight.models import HealthCheckResult, ServerStatus
+from langsight.models import AgentSLO, ApiKeyRecord, HealthCheckResult, ServerStatus, SLOMetric
 
 logger = structlog.get_logger()
 
@@ -13,6 +13,20 @@ logger = structlog.get_logger()
 # DDL — idempotent, runs on first open
 # ---------------------------------------------------------------------------
 _DDL_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS api_keys (
+        id           TEXT        PRIMARY KEY,
+        name         TEXT        NOT NULL,
+        key_prefix   TEXT        NOT NULL,
+        key_hash     TEXT        UNIQUE NOT NULL,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_used_at TIMESTAMPTZ,
+        revoked_at   TIMESTAMPTZ
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys (key_hash)
+    """,
     """
     CREATE TABLE IF NOT EXISTS health_results (
         id           SERIAL PRIMARY KEY,
@@ -41,6 +55,16 @@ _DDL_STATEMENTS = [
     """
     CREATE INDEX IF NOT EXISTS idx_schema_server_time
         ON schema_snapshots (server_name, recorded_at DESC)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS agent_slos (
+        id           TEXT        PRIMARY KEY,
+        agent_name   TEXT        NOT NULL,
+        metric       TEXT        NOT NULL,
+        target       DOUBLE PRECISION NOT NULL,
+        window_hours INTEGER     NOT NULL DEFAULT 24,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
     """,
 ]
 
@@ -162,6 +186,82 @@ class PostgresBackend:
             )
         return [_row_to_result(row) for row in rows]
 
+    # ── API key management ────────────────────────────────────────────────────
+    # Full Postgres implementation — uses a dedicated api_keys table.
+
+    async def create_api_key(self, record: ApiKeyRecord) -> None:
+        await self._pool.execute(
+            """
+            INSERT INTO api_keys (id, name, key_prefix, key_hash, created_at)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            record.id,
+            record.name,
+            record.key_prefix,
+            record.key_hash,
+            record.created_at,
+        )
+        logger.info("storage.postgres.api_key_created", id=record.id, name=record.name)
+
+    async def list_api_keys(self) -> list[ApiKeyRecord]:
+        rows = await self._pool.fetch(
+            "SELECT * FROM api_keys ORDER BY created_at DESC"
+        )
+        return [_row_to_api_key(r) for r in rows]
+
+    async def get_api_key_by_hash(self, key_hash: str) -> ApiKeyRecord | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL",
+            key_hash,
+        )
+        return _row_to_api_key(row) if row else None
+
+    async def revoke_api_key(self, key_id: str) -> bool:
+        result = await self._pool.execute(
+            "UPDATE api_keys SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL",
+            key_id,
+        )
+        found = result != "UPDATE 0"
+        if found:
+            logger.info("storage.postgres.api_key_revoked", id=key_id)
+        return found
+
+    async def touch_api_key(self, key_id: str) -> None:
+        await self._pool.execute(
+            "UPDATE api_keys SET last_used_at = NOW() WHERE id = $1",
+            key_id,
+        )
+
+    # ── SLO management ────────────────────────────────────────────────────────
+
+    async def create_slo(self, slo: AgentSLO) -> None:
+        await self._pool.execute(
+            """
+            INSERT INTO agent_slos (id, agent_name, metric, target, window_hours, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            slo.id, slo.agent_name, slo.metric.value, slo.target, slo.window_hours, slo.created_at,
+        )
+        logger.info("storage.postgres.slo_created", id=slo.id, agent=slo.agent_name)
+
+    async def list_slos(self) -> list[AgentSLO]:
+        rows = await self._pool.fetch(
+            "SELECT * FROM agent_slos ORDER BY created_at DESC"
+        )
+        return [_row_to_slo(r) for r in rows]
+
+    async def get_slo(self, slo_id: str) -> AgentSLO | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM agent_slos WHERE id = $1", slo_id
+        )
+        return _row_to_slo(row) if row else None
+
+    async def delete_slo(self, slo_id: str) -> bool:
+        result = await self._pool.execute(
+            "DELETE FROM agent_slos WHERE id = $1", slo_id
+        )
+        return result != "DELETE 0"
+
     async def close(self) -> None:
         """Close the connection pool."""
         await self._pool.close()
@@ -181,6 +281,29 @@ class PostgresBackend:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _row_to_slo(row: asyncpg.Record) -> AgentSLO:
+    return AgentSLO(
+        id=row["id"],
+        agent_name=row["agent_name"],
+        metric=SLOMetric(row["metric"]),
+        target=float(row["target"]),
+        window_hours=int(row["window_hours"]),
+        created_at=row["created_at"],
+    )
+
+
+def _row_to_api_key(row: asyncpg.Record) -> ApiKeyRecord:
+    return ApiKeyRecord(
+        id=row["id"],
+        name=row["name"],
+        key_prefix=row["key_prefix"],
+        key_hash=row["key_hash"],
+        created_at=row["created_at"],
+        last_used_at=row["last_used_at"],
+        revoked_at=row["revoked_at"],
+    )
 
 
 def _row_to_result(row: asyncpg.Record) -> HealthCheckResult:

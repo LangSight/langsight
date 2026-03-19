@@ -68,6 +68,11 @@ services:
       LANGSIGHT_CLICKHOUSE_DATABASE: langsight
       LANGSIGHT_POSTGRES_URL: postgresql://langsight:${POSTGRES_PASSWORD:-langsight}@postgres:5432/langsight
       LANGSIGHT_LOG_LEVEL: INFO
+      # Set a real key before exposing to a network.
+      # Generate one with: langsight api-key generate
+      LANGSIGHT_API_KEYS: ${LANGSIGHT_API_KEYS:-}
+      # Restrict to dashboard origin in production
+      LANGSIGHT_CORS_ORIGINS: ${LANGSIGHT_CORS_ORIGINS:-http://localhost:3003,http://localhost:3002}
     ports:
       - "8000:8000"
     volumes:
@@ -105,8 +110,10 @@ services:
     container_name: langsight-dashboard
     environment:
       LANGSIGHT_API_URL: http://api:8000
+      NEXT_PUBLIC_LANGSIGHT_API_KEY: ${LANGSIGHT_API_KEYS:-}
       NEXTAUTH_URL: http://localhost:3003
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-langsight-change-in-production}
+      AUTH_SECRET: ${AUTH_SECRET:-langsight-change-in-production}
+      NEXTAUTH_SECRET: ${AUTH_SECRET:-langsight-change-in-production}
       AUTH_TRUST_HOST: "true"
       NODE_ENV: production
       PORT: 3002

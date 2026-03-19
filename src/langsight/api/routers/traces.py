@@ -132,15 +132,52 @@ def _extract_mcp_spans(otlp_body: dict[str, Any]) -> list[ToolCallSpan]:
 
 
 def _parse_otlp_span(span: dict[str, Any]) -> ToolCallSpan | None:
-    """Try to parse a single OTLP span as a ToolCallSpan. Returns None if not MCP."""
+    """Try to parse a single OTLP span as a ToolCallSpan. Returns None if not MCP or LLM.
+
+    Recognises two span kinds:
+      1. MCP tool call spans — identified by mcp.*/gen_ai.tool.* attributes or span name pattern
+      2. LLM generation spans — identified by gen_ai.completion / gen_ai.prompt attributes
+         These become span_type="agent" spans carrying llm_input / llm_output.
+    """
+    import json as _json
     from datetime import UTC, datetime
 
     name: str = span.get("name", "")
-    attrs: dict[str, Any] = {
-        a["key"]: a.get("value", {}).get("stringValue", "") for a in span.get("attributes", [])
-    }
+    attrs: dict[str, Any] = {}
+    for a in span.get("attributes", []):
+        key = a["key"]
+        val = a.get("value", {})
+        # Support stringValue, intValue, doubleValue, boolValue, arrayValue
+        if "stringValue" in val:
+            attrs[key] = val["stringValue"]
+        elif "intValue" in val:
+            attrs[key] = val["intValue"]
+        elif "doubleValue" in val:
+            attrs[key] = val["doubleValue"]
+        elif "boolValue" in val:
+            attrs[key] = val["boolValue"]
+        else:
+            attrs[key] = str(val)
 
-    # Detect MCP spans
+    # ── LLM generation span detection (P5.3) ──────────────────────────────
+    # GenAI semantic conventions: gen_ai.completion / gen_ai.prompt
+    # Also handle prompt stored as JSON array (messages format)
+    llm_input: str | None = None
+    llm_output: str | None = None
+    is_llm_span = False
+
+    raw_prompt = attrs.get("gen_ai.prompt") or attrs.get("llm.prompts")
+    raw_completion = attrs.get("gen_ai.completion") or attrs.get("llm.completions")
+
+    if raw_prompt or raw_completion:
+        is_llm_span = True
+        if raw_prompt:
+            # May already be a string or a JSON-encoded messages array
+            llm_input = raw_prompt if isinstance(raw_prompt, str) else _json.dumps(raw_prompt, default=str)
+        if raw_completion:
+            llm_output = raw_completion if isinstance(raw_completion, str) else _json.dumps(raw_completion, default=str)
+
+    # ── MCP / tool call span detection ────────────────────────────────────
     server_name = attrs.get("mcp.server.name") or attrs.get("gen_ai.system")
     tool_name = attrs.get("gen_ai.tool.name") or attrs.get("mcp.tool.name")
 
@@ -151,19 +188,25 @@ def _parse_otlp_span(span: dict[str, Any]) -> ToolCallSpan | None:
             server_name = server_name or parts[1]
             tool_name = parts[2]
 
+    # LLM spans: synthesise server/tool from model info if not already set
+    if is_llm_span and not tool_name:
+        model = attrs.get("gen_ai.request.model") or attrs.get("llm.model_name") or "llm"
+        server_name = server_name or attrs.get("gen_ai.system") or "llm"
+        tool_name = f"generate/{model}"
+
     if not tool_name:
         return None
 
     server_name = server_name or "unknown"
 
-    # Convert OTLP nanoseconds to datetime
+    # ── Timing ────────────────────────────────────────────────────────────
     start_ns = int(span.get("startTimeUnixNano", 0))
     end_ns = int(span.get("endTimeUnixNano", 0))
     started_at = datetime.fromtimestamp(start_ns / 1e9, tz=UTC) if start_ns else datetime.now(UTC)
     ended_at = datetime.fromtimestamp(end_ns / 1e9, tz=UTC) if end_ns else datetime.now(UTC)
     latency_ms = (end_ns - start_ns) / 1e6 if start_ns and end_ns else 0.0
 
-    # Map OTLP status to ToolCallStatus
+    # ── Status ────────────────────────────────────────────────────────────
     otlp_status = span.get("status", {}).get("code", 0)
     error_msg = span.get("status", {}).get("message")
     if otlp_status == 2:  # STATUS_CODE_ERROR
@@ -184,4 +227,7 @@ def _parse_otlp_span(span: dict[str, Any]) -> ToolCallSpan | None:
         trace_id=span.get("traceId"),
         session_id=attrs.get("session.id"),
         agent_name=attrs.get("gen_ai.agent.name"),
+        span_type="agent" if is_llm_span else "tool_call",
+        llm_input=llm_input,
+        llm_output=llm_output,
     )

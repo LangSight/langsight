@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from langsight.models import HealthCheckResult
+from langsight.models import AgentSLO, ApiKeyRecord, HealthCheckResult
 
 
 @runtime_checkable
@@ -38,6 +38,46 @@ class StorageBackend(Protocol):
         limit: int = 10,
     ) -> list[HealthCheckResult]:
         """Return the N most recent health results for a server, newest first."""
+        ...
+
+    # ── API key management ────────────────────────────────────────────────────
+
+    async def create_api_key(self, record: ApiKeyRecord) -> None:
+        """Persist a new API key record (key_hash already hashed by caller)."""
+        ...
+
+    async def list_api_keys(self) -> list[ApiKeyRecord]:
+        """Return all non-revoked API key records, newest first."""
+        ...
+
+    async def get_api_key_by_hash(self, key_hash: str) -> ApiKeyRecord | None:
+        """Look up a key by its hash. Returns None if not found or revoked."""
+        ...
+
+    async def revoke_api_key(self, key_id: str) -> bool:
+        """Mark a key as revoked. Returns True if found, False if not."""
+        ...
+
+    async def touch_api_key(self, key_id: str) -> None:
+        """Update last_used_at to now (called on each authenticated request)."""
+        ...
+
+    # ── SLO management ───────────────────────────────────────────────────────
+
+    async def create_slo(self, slo: AgentSLO) -> None:
+        """Persist a new SLO definition."""
+        ...
+
+    async def list_slos(self) -> list[AgentSLO]:
+        """Return all SLO definitions."""
+        ...
+
+    async def get_slo(self, slo_id: str) -> AgentSLO | None:
+        """Return a single SLO by ID, or None if not found."""
+        ...
+
+    async def delete_slo(self, slo_id: str) -> bool:
+        """Delete an SLO. Returns True if found and deleted."""
         ...
 
     async def close(self) -> None:

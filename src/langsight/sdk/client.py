@@ -43,10 +43,12 @@ class LangSightClient:
         url: str,
         api_key: str | None = None,
         timeout: float = _SEND_TIMEOUT,
+        redact_payloads: bool = False,
     ) -> None:
         self._url = url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout
+        self._redact_payloads = redact_payloads
 
     def wrap(
         self,
@@ -56,6 +58,7 @@ class LangSightClient:
         session_id: str | None = None,
         trace_id: str | None = None,
         parent_span_id: str | None = None,
+        redact_payloads: bool | None = None,
     ) -> MCPClientProxy:
         """Wrap an MCP client to automatically trace all tool calls.
 
@@ -90,6 +93,8 @@ class LangSightClient:
                                       trace_id=trace_id,
                                       parent_span_id=handoff.span_id)
         """
+        # Per-wrap override takes precedence; fall back to client-level setting
+        effective_redact = redact_payloads if redact_payloads is not None else self._redact_payloads
         return MCPClientProxy(
             mcp_client,
             langsight=self,
@@ -98,6 +103,7 @@ class LangSightClient:
             session_id=session_id,
             trace_id=trace_id,
             parent_span_id=parent_span_id,
+            redact_payloads=effective_redact,
         )
 
     async def send_span(self, span: ToolCallSpan) -> None:
@@ -153,6 +159,7 @@ class MCPClientProxy:
         session_id: str | None = None,
         trace_id: str | None = None,
         parent_span_id: str | None = None,
+        redact_payloads: bool = False,
     ) -> None:
         # Use object.__setattr__ to avoid triggering our __getattr__
         object.__setattr__(self, "_client", client)
@@ -162,6 +169,7 @@ class MCPClientProxy:
         object.__setattr__(self, "_session_id", session_id)
         object.__setattr__(self, "_trace_id", trace_id)
         object.__setattr__(self, "_parent_span_id", parent_span_id)
+        object.__setattr__(self, "_redact_payloads", redact_payloads)
 
     def __getattr__(self, name: str) -> object:
         """Forward all attribute access to the wrapped client."""
@@ -169,6 +177,7 @@ class MCPClientProxy:
 
     async def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> object:
         """Call a tool and record a ToolCallSpan regardless of outcome."""
+        import json
         from datetime import UTC, datetime
 
         from langsight.sdk.models import ToolCallSpan, ToolCallStatus
@@ -180,13 +189,20 @@ class MCPClientProxy:
         session_id = object.__getattribute__(self, "_session_id")
         trace_id = object.__getattribute__(self, "_trace_id")
         parent_span_id = object.__getattribute__(self, "_parent_span_id")
+        redact = object.__getattribute__(self, "_redact_payloads")
 
         started_at = datetime.now(UTC)
         status = ToolCallStatus.SUCCESS
         error: str | None = None
+        output_result: str | None = None
 
         try:
             result = await client.call_tool(name, arguments)
+            if not redact:
+                try:
+                    output_result = json.dumps(result, default=str)
+                except Exception:  # noqa: BLE001
+                    output_result = str(result)
             return result
         except TimeoutError as exc:
             status = ToolCallStatus.TIMEOUT
@@ -208,5 +224,7 @@ class MCPClientProxy:
                 session_id=session_id,
                 parent_span_id=parent_span_id,
                 span_type="tool_call",
+                input_args=None if redact else arguments,
+                output_result=output_result,
             )
             await langsight.send_span(span)

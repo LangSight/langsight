@@ -55,3 +55,60 @@ class HealthCheckResult(BaseModel):
     schema_hash: str | None = None
     checked_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     error: str | None = None
+
+
+class SLOMetric(StrEnum):
+    SUCCESS_RATE = "success_rate"    # % of sessions with zero failed calls
+    LATENCY_P99 = "latency_p99"      # p99 session duration in ms (approximated from avg)
+
+
+class AgentSLO(BaseModel):
+    """Definition of a Service Level Objective for an agent.
+
+    Example: "customer-support-bot must have >= 95% success rate over 24h"
+        AgentSLO(agent_name="customer-support-bot", metric="success_rate",
+                 target=95.0, window_hours=24)
+    """
+
+    id: str  # uuid4 hex — assigned on creation
+    agent_name: str
+    metric: SLOMetric
+    target: float   # success_rate: percentage 0-100 | latency_p99: milliseconds
+    window_hours: int = 24
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    model_config = {"frozen": True}
+
+
+class SLOEvaluation(BaseModel):
+    """Result of evaluating one SLO against current data."""
+
+    slo_id: str
+    agent_name: str
+    metric: SLOMetric
+    target: float
+    current_value: float | None  # None when no data available
+    window_hours: int
+    status: str  # "ok" | "breached" | "no_data"
+    evaluated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @property
+    def is_breached(self) -> bool:
+        return self.status == "breached"
+
+
+class ApiKeyRecord(BaseModel):
+    """A stored API key (the raw key is never persisted — only the hash)."""
+
+    id: str  # uuid4 hex
+    name: str  # user-given label
+    key_prefix: str  # first 8 chars of raw key — shown in UI for identification
+    key_hash: str  # sha256(raw_key) — used for lookup
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    last_used_at: datetime | None = None
+    revoked_at: datetime | None = None
+
+    @property
+    def is_revoked(self) -> bool:
+        return self.revoked_at is not None
+
