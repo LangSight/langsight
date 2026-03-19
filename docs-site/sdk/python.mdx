@@ -22,7 +22,10 @@ uv add langsight
 ```python
 from langsight.sdk import LangSightClient
 
-client = LangSightClient(url="http://localhost:8000")           # line 1
+client = LangSightClient(
+    url="http://localhost:8000",
+    project_id="my-project",   # required for multi-project deployments
+)
 traced_mcp = client.wrap(mcp_session, server_name="my-server") # line 2
 
 # All call_tool() calls are now traced automatically
@@ -41,7 +44,9 @@ async def main():
     # Start LangSight client
     langsight = LangSightClient(
         url="http://localhost:8000",
-        api_key="your-api-key",      # optional
+        api_key="your-api-key",      # required in production (X-API-Key header)
+        project_id="my-project",     # required for multi-project deployments
+        redact_payloads=False,       # set True to omit input_args/output_result from spans
     )
 
     # Connect to your MCP server
@@ -86,6 +91,48 @@ traced = langsight.wrap(
     trace_id="trace-abc",      # links to a parent trace
 )
 ```
+
+## PII redaction
+
+Set `redact_payloads=True` on the client to omit `input_args` and `output_result` from every span. Use this when tool arguments or results may contain PII:
+
+```python
+langsight = LangSightClient(
+    url="http://localhost:8000",
+    project_id="my-project",
+    redact_payloads=True,
+)
+```
+
+You can also set this globally in `.langsight.yaml`:
+
+```yaml
+redact_payloads: true
+```
+
+<Warning>
+  `redact_payloads: true` disables session replay payload inspection and Playground Replay. Span timing, status, and counts are still captured.
+</Warning>
+
+## LLM token and cost fields
+
+When wrapping a session that calls an LLM, attach token counts and the model ID to spans for cost tracking (Phase 7):
+
+```python
+from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+
+await langsight.send_span(ToolCallSpan.record(
+    server_name="openai-mcp",
+    tool_name="chat_completion",
+    started_at=started,
+    status=ToolCallStatus.SUCCESS,
+    input_tokens=512,
+    output_tokens=128,
+    model_id="gpt-4o",
+))
+```
+
+These map directly to OTLP semantic conventions: `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.request.model`. If you are sending OTLP traces, LangSight extracts these attributes automatically — no SDK changes needed.
 
 ## Manual spans
 

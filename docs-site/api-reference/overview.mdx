@@ -1,6 +1,6 @@
 ---
 title: "API Overview"
-description: "LangSight REST API — health, security, and trace ingestion endpoints"
+description: "LangSight REST API — all endpoints with authentication and rate limits"
 ---
 
 ## Base URL
@@ -13,7 +13,29 @@ Start the API with `langsight serve` or `docker compose up -d api`.
 
 ## Authentication
 
-The API currently has no authentication in the open-source version. In production, place it behind a reverse proxy (nginx, Caddy) and restrict access to your network.
+All API routes require an `X-API-Key` header. API keys are created in the dashboard under **Settings → API Keys**.
+
+```bash
+curl http://localhost:8000/api/health/servers \
+  -H "X-API-Key: lsk_your_api_key_here"
+```
+
+Authentication is disabled only when running locally with no API keys configured (development mode). In all other cases, unauthenticated requests return `401`.
+
+### Roles
+
+| Role | Access |
+|------|--------|
+| `admin` | Full read/write on all endpoints |
+| `viewer` | Read-only — `POST`/`PATCH`/`DELETE` return `403` |
+
+## Rate limits
+
+| Route | Limit |
+|-------|-------|
+| `POST /api/traces/spans` | 200 requests/min |
+| `POST /api/traces/otlp` | 60 requests/min |
+| All other routes | No limit |
 
 ## Interactive docs
 
@@ -27,7 +49,9 @@ Once the API is running:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/status` | API health check — returns `{"status": "ok"}` |
+| `GET` | `/api/liveness` | Instant liveness probe — no I/O, always fast |
+| `GET` | `/api/readiness` | Readiness probe — verifies storage connectivity |
+| `GET` | `/api/status` | API status (deprecated — use `/api/liveness`) |
 
 ### Health
 
@@ -56,10 +80,10 @@ Once the API is running:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/agents/sessions` | List agent sessions with aggregated cost, call count, and failure count |
-| `GET` | `/api/agents/sessions/{session_id}` | Full span tree for one session, ordered by time, with `parent_span_id` hierarchy |
+| `GET` | `/api/agents/sessions` | List agent sessions with aggregated cost, call count, failure count |
+| `GET` | `/api/agents/sessions/{session_id}` | Full span tree for one session with `parent_span_id` hierarchy |
 
-**Session object** (returned by both endpoints):
+**Session object**:
 
 ```json
 {
@@ -75,20 +99,98 @@ Once the API is running:
 }
 ```
 
+### Projects
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/projects` | List projects visible to the current user |
+| `POST` | `/api/projects` | Create a new project (admin only) |
+| `GET` | `/api/projects/{project_id}` | Get project details |
+| `PATCH` | `/api/projects/{project_id}` | Update project name/settings (admin only) |
+| `DELETE` | `/api/projects/{project_id}` | Delete project (admin only) |
+
+### Users
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/users` | List users (admin only) |
+| `POST` | `/api/users/invite` | Send an invitation link (admin only) |
+| `PATCH` | `/api/users/{user_id}/role` | Change user role (admin only) |
+| `DELETE` | `/api/users/{user_id}` | Deactivate user (admin only) |
+
+### SLOs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/slos` | List all defined SLOs |
+| `POST` | `/api/slos` | Create a new SLO |
+| `GET` | `/api/slos/status` | Current pass/fail status for all SLOs |
+| `PATCH` | `/api/slos/{slo_id}` | Update an SLO definition |
+| `DELETE` | `/api/slos/{slo_id}` | Delete an SLO |
+
+**SLO object**:
+
+```json
+{
+  "slo_id": "slo-abc123",
+  "agent_name": "support-agent",
+  "project_id": "my-project",
+  "metric": "success_rate",
+  "threshold": 0.99,
+  "window_hours": 24
+}
+```
+
+Supported `metric` values: `success_rate`, `latency_p99`.
+
+### Costs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/costs/breakdown` | Cost breakdown by model and tool call (project-scoped) |
+| `GET` | `/api/costs/models` | List model pricing records |
+| `POST` | `/api/costs/models` | Add a custom model pricing record (admin only) |
+| `PATCH` | `/api/costs/models/{model_id}` | Update model pricing (admin only) |
+| `DELETE` | `/api/costs/models/{model_id}` | Remove a model pricing record (admin only) |
+
+Query params for `/api/costs/breakdown`: `project_id`, `window` (24h, 7d, 30d).
+
+### Reliability
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/reliability/anomalies` | Anomalies detected via z-score vs 7-day baseline |
+
+**Anomaly object**:
+
+```json
+{
+  "server_name": "jira-mcp",
+  "tool_name": "get_issue",
+  "metric": "latency_p99",
+  "z_score": 4.2,
+  "current_value": 1842.0,
+  "baseline_value": 142.0,
+  "detected_at": "2026-03-19T08:14:00Z"
+}
+```
+
 ## Quick test
 
 ```bash
-# Health check
-curl http://localhost:8000/api/status
+# Liveness
+curl http://localhost:8000/api/liveness
 
-# Latest server health
-curl http://localhost:8000/api/health/servers | jq .
+# Readiness (checks storage)
+curl http://localhost:8000/api/readiness
 
-# Trigger health check
-curl -X POST http://localhost:8000/api/health/check | jq .
+# Latest server health (authenticated)
+curl http://localhost:8000/api/health/servers \
+  -H "X-API-Key: lsk_your_key" | jq .
 
 # Send a span
 curl -X POST http://localhost:8000/api/traces/spans \
   -H "Content-Type: application/json" \
-  -d '[{"server_name":"pg","tool_name":"query","started_at":"2026-03-17T12:00:00Z","ended_at":"2026-03-17T12:00:00.042Z","latency_ms":42,"status":"success"}]'
+  -H "X-API-Key: lsk_your_key" \
+  -d '[{"server_name":"pg","tool_name":"query","started_at":"2026-03-17T12:00:00Z","ended_at":"2026-03-17T12:00:00.042Z","latency_ms":42,"status":"success","project_id":"default"}]'
 ```

@@ -59,10 +59,17 @@ Add two lines to your agent code:
 ```python
 from langsight.sdk import LangSightClient
 
-client = LangSightClient(url="http://localhost:8000")     # line 1
+client = LangSightClient(
+    url="http://localhost:8000",
+    project_id="my-project",   # groups all spans under this project
+)
 traced = client.wrap(mcp_session, server_name="my-mcp")  # line 2
 # All call_tool() calls are now traced automatically
 ```
+
+<Note>
+  On first run, LangSight creates a "Default" project automatically. You can use `project_id="default"` or omit it to send spans to the default project. Create additional projects in the dashboard under Settings.
+</Note>
 
 Then view sessions from the CLI:
 

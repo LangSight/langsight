@@ -7,6 +7,7 @@ You are the documentation guardian for LangSight. Your job is to ensure that eve
 
 ## Documentation Files You Own
 
+### Internal engineering docs
 | File | What it covers | Update trigger |
 |---|---|---|
 | `docs/01-product-spec.md` | Product features, user personas, what we build/don't build | New feature added or scope changed |
@@ -16,6 +17,40 @@ You are the documentation guardian for LangSight. Your job is to ensure that eve
 | `docs/05-risks-costs-testing.md` | Risks, SaaS costs, test scenarios | New risks identified, test scenarios added |
 | `CHANGELOG.md` | All meaningful changes | Every feature, fix, or breaking change |
 | `README.md` | Quickstart, installation, usage | Any user-facing change |
+
+### User-facing Mintlify docs site (`docs-site/`)
+**This is the live public documentation at docs.langsight.io — auto-deploys on every commit. Always update these alongside internal docs.**
+
+| File | What it covers | Update trigger |
+|---|---|---|
+| `docs-site/introduction.mdx` | What LangSight is, key features | New major feature shipped |
+| `docs-site/quickstart.mdx` | 60-second getting started guide | Install flow or SDK usage changes |
+| `docs-site/installation.mdx` | pip install, Docker, env vars | Dependency or config changes |
+| `docs-site/cli/init.mdx` | `langsight init` command | Init wizard changes |
+| `docs-site/cli/mcp-health.mdx` | `langsight mcp-health` | Health check changes |
+| `docs-site/cli/security-scan.mdx` | `langsight security-scan` | Scanner changes |
+| `docs-site/cli/monitor.mdx` | `langsight monitor` | Monitor daemon changes |
+| `docs-site/cli/investigate.mdx` | `langsight investigate` | RCA changes |
+| `docs-site/cli/costs.mdx` | `langsight costs` | Cost engine changes (P7: token-based) |
+| `docs-site/cli/serve.mdx` | `langsight serve` | API server changes |
+| `docs-site/cli/sessions.mdx` | `langsight sessions` | Session CLI changes |
+| `docs-site/sdk/python.mdx` | Python SDK, LangSightClient | SDK API changes (project_id, redact_payloads etc.) |
+| `docs-site/sdk/integrations/*.mdx` | Framework integrations | Integration changes |
+| `docs-site/self-hosting/docker-compose.mdx` | Docker deployment | docker-compose.yml changes |
+| `docs-site/self-hosting/configuration.mdx` | All env vars and config | Any new env var or config key |
+| `docs-site/self-hosting/storage.mdx` | SQLite/Postgres/ClickHouse | Storage backend changes |
+| `docs-site/api-reference/*.mdx` | REST API endpoints | Any new or changed endpoint |
+| `docs-site/mint.json` | Navigation structure | New pages added |
+
+**Missing pages to create when the feature ships:**
+- `docs-site/projects.mdx` — project isolation and RBAC (Phase 6)
+- `docs-site/users.mdx` — user management and invites
+- `docs-site/costs-model-pricing.mdx` — token-based model pricing (Phase 7)
+- `docs-site/slos.mdx` — Agent SLO tracking (Phase 5.5)
+- `docs-site/session-replay.mdx` — session replay and comparison (Phase 5.2/5.6)
+
+### Rule: always update both
+When a feature ships, update BOTH the internal engineering docs AND the `docs-site/` MDX pages in the same pass. The Mintlify site auto-deploys — stale user docs ship immediately.
 
 ## Update Rules
 

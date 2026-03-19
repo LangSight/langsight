@@ -7,6 +7,7 @@ description: "Install LangSight on macOS, Linux, or Windows."
 
 - Python 3.11 or higher
 - pip or uv
+- Docker + Docker Compose (for server deployments)
 
 ## Install with uv (recommended)
 
@@ -68,6 +69,31 @@ Commands:
 | Linux (x86_64, arm64) | ✅ Supported |
 | Windows (WSL2) | ✅ Supported |
 | Windows (native) | ⚠️ Untested |
+
+## First-run bootstrap (server deployments)
+
+When running with PostgreSQL or ClickHouse, set these environment variables before starting the stack. LangSight creates the admin user and the "Default" project automatically on first run.
+
+```bash
+# Required on first run
+LANGSIGHT_ADMIN_EMAIL=you@example.com
+LANGSIGHT_ADMIN_PASSWORD=your-secure-password
+AUTH_SECRET=a-long-random-string-32-chars-min
+
+# ClickHouse credentials
+CLICKHOUSE_USER=langsight
+CLICKHOUSE_PASSWORD=your-clickhouse-password
+```
+
+After the first run, apply database migrations:
+
+```bash
+uv run alembic upgrade head
+```
+
+<Note>
+  If `LANGSIGHT_ADMIN_EMAIL` or `LANGSIGHT_ADMIN_PASSWORD` are not set, the API starts but no admin account exists and login will fail. The stack will log a warning and refuse to start in strict mode.
+</Note>
 
 ## Upgrading
 

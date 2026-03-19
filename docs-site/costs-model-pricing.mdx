@@ -1,0 +1,118 @@
+---
+title: "Model Pricing"
+description: "Token-based LLM cost tracking — pre-seeded models, custom pricing, per-project filtering"
+---
+
+## How token-based costing works
+
+For every LLM span, LangSight calculates cost as:
+
+```
+cost = (input_tokens / 1,000,000 × input_price_per_million)
+     + (output_tokens / 1,000,000 × output_price_per_million)
+```
+
+Token counts and model ID come from span attributes. If you use the LangSight SDK directly, set them on the span:
+
+```python
+await langsight.send_span(ToolCallSpan.record(
+    server_name="openai-mcp",
+    tool_name="chat_completion",
+    started_at=started,
+    status=ToolCallStatus.SUCCESS,
+    input_tokens=512,
+    output_tokens=128,
+    model_id="gpt-4o",
+))
+```
+
+If you send OTLP traces, LangSight extracts these automatically from standard semantic convention attributes:
+
+| OTLP attribute | Maps to |
+|----------------|---------|
+| `gen_ai.usage.input_tokens` | `input_tokens` |
+| `gen_ai.usage.output_tokens` | `output_tokens` |
+| `gen_ai.request.model` | `model_id` |
+
+Most agent frameworks (LangChain, LlamaIndex, PydanticAI) already emit these — no extra instrumentation needed.
+
+## Pre-seeded models
+
+LangSight ships with pricing for 21 models. Prices reflect rates as of early 2026 and can be updated at any time.
+
+| Provider | Models |
+|----------|--------|
+| Anthropic | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5 |
+| OpenAI | gpt-4o, gpt-4o-mini, o3, o3-mini, o1 |
+| Google | gemini-1.5-pro, gemini-1.5-flash, gemini-2.0-flash, gemini-2.5-pro |
+| AWS Bedrock | nova-pro, nova-lite, nova-micro |
+| Meta | llama-3.1-70b, llama-3.3-70b, llama-3.1-8b |
+
+<Note>
+  Model prices change frequently. Check **Settings → Model Pricing** to confirm prices match your current contract before using cost data for chargebacks or budgeting.
+</Note>
+
+## Updating prices
+
+**Settings → Model Pricing** → find the model → **Edit** → update `input_price_per_million` and/or `output_price_per_million` → **Save**.
+
+Via API (admin only):
+
+```bash
+PATCH /api/costs/models/gpt-4o
+Content-Type: application/json
+X-API-Key: lsk_admin_key
+
+{
+  "input_price_per_million": 2.50,
+  "output_price_per_million": 10.00
+}
+```
+
+## Adding custom models
+
+For models not in the pre-seeded list (fine-tuned models, private deployments):
+
+**Settings → Model Pricing** → **Add Model** → fill in model ID and prices.
+
+Via API:
+
+```bash
+POST /api/costs/models
+Content-Type: application/json
+X-API-Key: lsk_admin_key
+
+{
+  "model_id": "my-fine-tuned-gpt4o",
+  "provider": "openai",
+  "input_price_per_million": 5.00,
+  "output_price_per_million": 15.00
+}
+```
+
+Spans with an unrecognised `model_id` appear in cost reports with `$0.00` cost and a warning flag until pricing is added.
+
+## Per-project cost filtering
+
+All cost queries are scoped to a project. Use the project switcher in the sidebar to filter the Costs page, or pass `project_id` to the API:
+
+```bash
+GET /api/costs/breakdown?project_id=production&window=7d
+```
+
+## Non-LLM tool call costs
+
+Tool calls to MCP servers that are not LLM providers use fixed `cost_per_call` pricing rules from `.langsight.yaml`:
+
+```yaml
+costs:
+  rules:
+    - server: jira-mcp
+      tool: "*"
+      cost_per_call: 0.001
+    - server: "*"
+      tool: "*"
+      cost_per_call: 0.0
+```
+
+These show as the "Tool call cost" line in the Costs page, separate from LLM cost.

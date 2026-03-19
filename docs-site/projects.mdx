@@ -1,0 +1,85 @@
+---
+title: "Projects"
+description: "Project isolation and RBAC — scope all observability data per project"
+---
+
+## What is a project?
+
+A project is the top-level isolation boundary in LangSight. Every span, session, SLO, alert rule, and cost record belongs to exactly one project. Users see only the projects they are members of.
+
+Use projects to separate environments (production vs staging), teams (platform vs product), or products.
+
+## Default project
+
+On first run, LangSight creates a "Default" project automatically. The Default project ID is `default`. You can rename it in **Settings → Projects**.
+
+## Creating projects
+
+In the dashboard: click the project switcher in the sidebar → **New Project** → enter a name.
+
+Via API:
+
+```bash
+POST /api/projects
+Content-Type: application/json
+X-API-Key: lsk_your_key
+
+{
+  "name": "Production",
+  "slug": "production"
+}
+```
+
+## Sending spans to a project
+
+Set `project_id` on `LangSightClient`:
+
+```python
+from langsight.sdk import LangSightClient
+
+client = LangSightClient(
+    url="http://localhost:8000",
+    project_id="production",
+)
+```
+
+All spans from this client are tagged with `project_id="production"`.
+
+You can also set `project_id` per span in the SDK or via the API:
+
+```json
+{
+  "server_name": "jira-mcp",
+  "tool_name": "get_issue",
+  "project_id": "production",
+  ...
+}
+```
+
+## Project roles
+
+| Role | What they can do |
+|------|-----------------|
+| `owner` | Full access — invite members, delete project |
+| `member` | Read + write spans, SLOs, alerts |
+| `viewer` | Read-only |
+
+Global admins (see [Users](/users)) see all projects regardless of membership.
+
+## Project switcher
+
+Click the project name in the sidebar to switch the active project. All dashboard pages filter to the selected project.
+
+## API reference
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/projects` | List your projects |
+| `POST` | `/api/projects` | Create a project (admin only) |
+| `GET` | `/api/projects/{project_id}` | Project details |
+| `PATCH` | `/api/projects/{project_id}` | Rename / update settings |
+| `DELETE` | `/api/projects/{project_id}` | Delete (admin only, irreversible) |
+
+<Warning>
+  Deleting a project permanently deletes all spans, sessions, SLOs, and cost records in that project. This cannot be undone.
+</Warning>

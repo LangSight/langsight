@@ -50,7 +50,8 @@ investigate:
   api_key: null                   # optional — prefer env vars
   base_url: null                  # optional — for Ollama remotes
 
-# Tool call pricing rules for langsight costs
+# Tool call pricing rules for langsight costs (non-LLM tool calls)
+# LLM span costs are calculated from token counts — see Settings → Model Pricing
 costs:
   rules:
     - server: openai-mcp
@@ -59,16 +60,30 @@ costs:
     - server: "*"
       tool: "*"
       cost_per_call: 0.001
+
+# PII protection — omit input_args and output_result from all spans
+# Disables session replay payload inspection and Playground Replay
+redact_payloads: false
 ```
 
 ## Environment variable overrides
 
 All settings can be overridden with environment variables using the `LANGSIGHT_` prefix:
 
-| YAML key | Env var |
-|----------|---------|
-| `storage.mode` | `LANGSIGHT_STORAGE_MODE` |
-| `storage.clickhouse_url` | `LANGSIGHT_CLICKHOUSE_URL` |
-| `storage.postgres_url` | `LANGSIGHT_POSTGRES_URL` |
-| `alerts.slack_webhook` | `LANGSIGHT_SLACK_WEBHOOK` |
-| `health_check_interval_seconds` | `LANGSIGHT_HEALTH_CHECK_INTERVAL_SECONDS` |
+| YAML key | Env var | Notes |
+|----------|---------|-------|
+| `storage.mode` | `LANGSIGHT_STORAGE_MODE` | |
+| `storage.clickhouse_url` | `LANGSIGHT_CLICKHOUSE_URL` | |
+| `storage.postgres_url` | `LANGSIGHT_POSTGRES_URL` | |
+| `alerts.slack_webhook` | `LANGSIGHT_SLACK_WEBHOOK` | |
+| `health_check_interval_seconds` | `LANGSIGHT_HEALTH_CHECK_INTERVAL_SECONDS` | |
+| `redact_payloads` | `LANGSIGHT_REDACT_PAYLOADS` | `true` or `false` |
+| *(admin bootstrap)* | `LANGSIGHT_ADMIN_EMAIL` | First-run only — creates admin account |
+| *(admin bootstrap)* | `LANGSIGHT_ADMIN_PASSWORD` | First-run only |
+| *(auth)* | `AUTH_SECRET` | Required — JWT signing secret (min 32 chars) |
+| *(ClickHouse auth)* | `CLICKHOUSE_USER` | ClickHouse username |
+| *(ClickHouse auth)* | `CLICKHOUSE_PASSWORD` | ClickHouse password |
+
+<Note>
+  `LANGSIGHT_ADMIN_EMAIL` and `LANGSIGHT_ADMIN_PASSWORD` are consumed once on first run to create the initial admin user. After that, manage users via Settings → Users in the dashboard.
+</Note>

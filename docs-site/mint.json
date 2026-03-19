@@ -58,6 +58,7 @@
         "cli/mcp-health",
         "cli/security-scan",
         "cli/monitor",
+        "cli/sessions",
         "cli/investigate",
         "cli/costs",
         "cli/serve"
@@ -82,6 +83,20 @@
         "sdk/integrations/pydantic-ai",
         "sdk/integrations/librechat",
         "sdk/integrations/otel"
+      ]
+    },
+    {
+      "group": "Observability Features",
+      "pages": [
+        "session-replay",
+        "costs-model-pricing"
+      ]
+    },
+    {
+      "group": "Teams & Access",
+      "pages": [
+        "projects",
+        "users"
       ]
     },
     {

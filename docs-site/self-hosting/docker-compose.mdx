@@ -9,10 +9,14 @@ The root `docker-compose.yml` starts the full LangSight production stack.
 
 | Service | Port | Purpose |
 |---------|------|---------|
-| `clickhouse` | 8123 | Time-series span storage + reliability analytics |
-| `postgres` | 5432 | App state: configs, alert rules |
+| `clickhouse` | 8123 (internal only) | Time-series span storage + reliability analytics |
+| `postgres` | 5432 (internal only) | App state: configs, users, alert rules, model pricing |
 | `otel-collector` | 4317, 4318 | Receives OTLP traces from agent frameworks |
 | `api` | 8000 | LangSight REST API |
+
+<Warning>
+  Database ports (5432, 8123) are not exposed to the host by default. Access databases through the `api` service only. Do not override this in production.
+</Warning>
 
 ## Start the stack
 
@@ -21,28 +25,59 @@ The root `docker-compose.yml` starts the full LangSight production stack.
 git clone https://github.com/sumankalyan123/langsight
 cd langsight
 
-# Set required secrets
-echo "POSTGRES_PASSWORD=your-secure-password" > .env
+# Copy and fill in the required secrets
+cp .env.example .env
+```
 
+Edit `.env` — all of these are required. The stack will fail fast if any are unset:
+
+```bash
+# .env
+
+# Admin bootstrap (consumed once on first run)
+LANGSIGHT_ADMIN_EMAIL=you@example.com
+LANGSIGHT_ADMIN_PASSWORD=your-secure-admin-password
+
+# JWT signing secret (min 32 characters, generate with: openssl rand -hex 32)
+AUTH_SECRET=replace-with-32-char-random-string
+
+# PostgreSQL
+POSTGRES_PASSWORD=your-secure-postgres-password
+
+# ClickHouse
+CLICKHOUSE_USER=langsight
+CLICKHOUSE_PASSWORD=your-secure-clickhouse-password
+```
+
+```bash
 # Start everything
 docker compose up -d
+
+# Apply database migrations
+docker compose exec api uv run alembic upgrade head
 
 # Check status
 docker compose ps
 ```
+
+<Note>
+  On first run, LangSight creates the admin user (from `LANGSIGHT_ADMIN_EMAIL` / `LANGSIGHT_ADMIN_PASSWORD`) and a "Default" project automatically. You can log in at `http://localhost:8000` immediately after migrations complete.
+</Note>
 
 ## Send your first span
 
 ```bash
 curl -X POST http://localhost:8000/api/traces/spans \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
   -d '[{
     "server_name": "my-mcp",
     "tool_name": "query",
     "started_at": "2026-03-17T12:00:00Z",
     "ended_at": "2026-03-17T12:00:00.042Z",
     "latency_ms": 42.0,
-    "status": "success"
+    "status": "success",
+    "project_id": "default"
   }]'
 ```
 
@@ -52,11 +87,21 @@ curl -X POST http://localhost:8000/api/traces/spans \
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
+## Health and readiness probes
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/liveness` | Instant liveness probe — returns `{"status": "ok"}` with no I/O |
+| `GET /api/readiness` | Readiness probe — checks storage connectivity before returning `200` |
+
+Use `/api/liveness` for container restart checks and `/api/readiness` for load balancer routing.
+
 ## Upgrade
 
 ```bash
 docker compose pull
 docker compose up -d
+docker compose exec api uv run alembic upgrade head
 ```
 
 ## Volumes
@@ -66,11 +111,17 @@ Data persists in named Docker volumes:
 | Volume | Contains |
 |--------|---------|
 | `clickhouse_data` | All span data, health history, reliability aggregations |
-| `postgres_data` | Server configs, alert rules |
+| `postgres_data` | Users, projects, server configs, alert rules, model pricing |
 
-## Environment variables
+## Environment variables reference
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `POSTGRES_PASSWORD` | `langsight` | PostgreSQL password |
-| `LANGSIGHT_LOG_LEVEL` | `INFO` | Log verbosity |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `LANGSIGHT_ADMIN_EMAIL` | Yes (first run) | Bootstrap admin email |
+| `LANGSIGHT_ADMIN_PASSWORD` | Yes (first run) | Bootstrap admin password |
+| `AUTH_SECRET` | Yes | JWT signing secret |
+| `POSTGRES_PASSWORD` | Yes | PostgreSQL password |
+| `CLICKHOUSE_USER` | Yes | ClickHouse username |
+| `CLICKHOUSE_PASSWORD` | Yes | ClickHouse password |
+| `LANGSIGHT_LOG_LEVEL` | No | Log verbosity (default: `INFO`) |
+| `LANGSIGHT_REDACT_PAYLOADS` | No | Set `true` to omit span payloads |

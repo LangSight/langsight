@@ -1,0 +1,77 @@
+---
+title: "Session Replay"
+description: "Inspect span payloads, compare sessions, and re-execute tool calls against live MCP servers"
+---
+
+## Trace tree
+
+Open the **Workflows** page and click any session row to expand the trace tree. Each node in the tree is a span — a single tool call, LLM prompt/completion, or agent handoff.
+
+The tree is reconstructed at read time from `parent_span_id` relationships. No separate tree is stored.
+
+## Viewing span payloads
+
+Click any span in the trace tree to open the span drawer. The drawer shows:
+
+- Tool name, status, latency, timestamps
+- **Input** — the full `input_args` passed to the tool (JSON, formatted)
+- **Output** — the full `output_result` returned by the tool (JSON, formatted)
+- For LLM spans: the prompt (`gen_ai.prompt`) and completion (`gen_ai.completion`) text
+
+Payloads are captured automatically by the SDK. No extra instrumentation is required.
+
+## PII protection with redact_payloads
+
+If tool arguments or results contain PII (names, emails, keys), enable payload redaction. When active, `input_args` and `output_result` are set to `null` before storage — they never reach the database.
+
+In `.langsight.yaml`:
+
+```yaml
+redact_payloads: true
+```
+
+Or per SDK client:
+
+```python
+client = LangSightClient(
+    url="http://localhost:8000",
+    project_id="production",
+    redact_payloads=True,
+)
+```
+
+<Warning>
+  When `redact_payloads` is enabled, span payload inspection in the trace drawer shows "Payload redacted". Side-by-side comparison and Playground Replay are also disabled for those spans.
+</Warning>
+
+## Side-by-side session comparison
+
+Compare two sessions to find regressions, prompt drift, or routing differences:
+
+1. On the **Workflows** page, select two sessions using the checkboxes
+2. Click **Compare** in the toolbar
+3. The comparison view shows an aligned diff table:
+   - Matching tool calls in the same row
+   - Latency delta highlighted
+   - Status changes (success vs failure) highlighted in red
+   - Tool calls present in one session but not the other flagged as added/removed
+
+This is useful for comparing a failed session against a known-good session with the same task.
+
+## Playground Replay
+
+Replay re-executes a session's tool calls against your live MCP servers. Use it to reproduce bugs, test fixes, or verify that a corrected prompt produces the expected tool sequence.
+
+1. Open a session in the trace drawer
+2. Click **Replay** in the drawer header
+3. LangSight replays each tool call in order against the live MCP servers defined in your config
+4. The results appear in a new "replay session" row on the Workflows page, linked to the original
+
+<Note>
+  Playground Replay requires:
+  - `redact_payloads: false` (payloads must be stored to replay them)
+  - The MCP servers from the original session must be reachable
+  - An `admin` or `member` role (viewers cannot trigger replays)
+</Note>
+
+Replay sessions are tagged `replay: true` and linked to the original via `parent_session_id`. They appear in cost reports but are excluded from SLO calculations by default.

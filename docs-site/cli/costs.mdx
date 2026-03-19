@@ -1,6 +1,6 @@
 ---
 title: "langsight costs"
-description: "Show MCP tool call cost attribution by server and tool"
+description: "Show cost breakdown by LLM model, tool call, and project"
 ---
 
 ## Usage
@@ -15,10 +15,11 @@ langsight costs [OPTIONS]
 |--------|---------|-------------|
 | `--config` | auto-discovered | Path to `.langsight.yaml` |
 | `--window`, `-w` | `24h` | Look-back window (24h, 7d, 30d) |
+| `--project` | all | Filter to a specific project ID |
 | `--json` | false | Output as JSON |
 
 <Warning>
-`langsight costs` requires the ClickHouse backend (`storage.mode: clickhouse`) and the LangSight SDK or OTLP integration to be sending spans. It shows "No tool call data found" on SQLite.
+  `langsight costs` requires the ClickHouse backend (`storage.mode: clickhouse`) and the LangSight SDK or OTLP integration to be sending spans. It shows "No span data found" on SQLite.
 </Warning>
 
 ## Example
@@ -28,44 +29,67 @@ langsight costs --window 7d
 ```
 
 ```
-MCP Tool Costs  (last 168h — 12,450 total calls)
-────────────────────────────────────────────────────────────
+Cost Breakdown  (last 7d — project: default)
+──────────────────────────────────────────────────────────────────────
+Total: $58.42   LLM: $55.10   Tool calls: $3.32
+Tokens: 11,200,000 input  /  2,840,000 output
+
+By model:
+Model                    Input tokens   Output tokens   Cost
+claude-sonnet-4-6        4,200,000       980,000       $24.18
+gpt-4o                   3,800,000       720,000       $19.80
+gemini-1.5-pro           2,100,000       640,000        $8.61
+claude-haiku-4-5           800,000       290,000        $2.51
+gpt-4o-mini              <other>                        —
+
+By tool call (non-LLM):
 Server          Tool               Calls     $/call   Total
-openai-mcp      chat_completion    8,200    $0.0050  $41.00
 jira-mcp        get_issue          2,100    $0.0010   $2.10
-confluence-mcp  search             1,150    $0.0010   $1.15
 slack-mcp       post_message         850    $0.0010   $0.85
 postgres-mcp    query                150    $0.0000   $0.00
-
-Total: $45.10 over 168h
 ```
 
-## Configuring pricing rules
+## How costs are calculated
 
-Add pricing rules to `.langsight.yaml`:
+### LLM spans
+
+Token-based pricing: `(input_tokens / 1,000,000 × input_price) + (output_tokens / 1,000,000 × output_price)`
+
+Prices are stored in the database and pre-seeded for 21 models. Update them in the dashboard under **Settings → Model Pricing**.
+
+Supported models (pre-seeded):
+- **Anthropic**: claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5
+- **OpenAI**: gpt-4o, gpt-4o-mini, o3, o3-mini, o1
+- **Google**: gemini-1.5-pro, gemini-1.5-flash, gemini-2.0-flash, gemini-2.5-pro
+- **AWS Bedrock**: nova-pro, nova-lite, nova-micro
+- **Meta**: llama-3.1-70b, llama-3.3-70b, and others
+
+### Tool call spans
+
+Fixed `cost_per_call` rules from `.langsight.yaml` (applies to non-LLM MCP tool calls):
 
 ```yaml
 costs:
   rules:
-    # Specific tool pricing
-    - server: openai-mcp
-      tool: chat_completion
-      cost_per_call: 0.005
-
-    # All tools on a server
-    - server: confluence-mcp
-      tool: "*"
-      cost_per_call: 0.001
-
-    # Self-hosted servers are free
-    - server: postgres-mcp
-      tool: "*"
-      cost_per_call: 0.0
-
-    # Default for anything not matched
     - server: "*"
       tool: "*"
       cost_per_call: 0.001
 ```
 
-Rules are evaluated top-to-bottom — first match wins. Both `server` and `tool` support glob patterns (`*`).
+### OTLP token extraction
+
+If you send OTLP traces, LangSight extracts token counts and model ID automatically from span attributes:
+
+- `gen_ai.usage.input_tokens`
+- `gen_ai.usage.output_tokens`
+- `gen_ai.request.model`
+
+No SDK changes are needed if your framework already emits these attributes (LangChain, LlamaIndex, etc. all do).
+
+## API endpoint
+
+```bash
+GET /api/costs/breakdown?project_id=my-project&window=7d
+```
+
+See [API Reference](/api-reference/overview) for the full response schema.

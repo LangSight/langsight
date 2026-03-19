@@ -1,0 +1,69 @@
+---
+title: "User Management"
+description: "Invite teammates, assign roles, and manage access"
+---
+
+## First admin (bootstrap)
+
+The first admin account is created automatically on first run from two environment variables:
+
+```bash
+LANGSIGHT_ADMIN_EMAIL=you@example.com
+LANGSIGHT_ADMIN_PASSWORD=your-secure-password
+```
+
+These are read once. After the admin account exists, you can change the password in **Settings → Profile** and the env vars are no longer used.
+
+<Note>
+  If these env vars are not set before the first run, no admin account is created. Set them, then restart the container to trigger bootstrap.
+</Note>
+
+## Inviting teammates
+
+1. Go to **Settings → Users**
+2. Click **Invite User**
+3. Enter the teammate's email address and select a role
+4. Copy the invite link and send it to them
+5. They open the link, set a password, and are added to the team
+
+Invite links expire after 48 hours.
+
+## Roles
+
+| Role | What they can do |
+|------|-----------------|
+| `admin` | Full access to all projects, users, settings, and API keys |
+| `viewer` | Read-only across all projects they are a member of |
+
+Admins can see and manage all projects. Viewers can only see projects they have been added to.
+
+## Changing roles
+
+**Settings → Users** → find the user → **Edit** → change role → **Save**.
+
+Via API (admin only):
+
+```bash
+PATCH /api/users/{user_id}/role
+Content-Type: application/json
+X-API-Key: lsk_admin_key
+
+{"role": "viewer"}
+```
+
+## Deactivating users
+
+**Settings → Users** → find the user → **Deactivate**. Deactivated users cannot log in and their API keys stop working immediately. Their data is not deleted.
+
+Via API:
+
+```bash
+DELETE /api/users/{user_id}
+X-API-Key: lsk_admin_key
+```
+
+## API keys
+
+Each user can create API keys in **Settings → API Keys**. Keys inherit the user's role. API keys are passed as `X-API-Key` on all API requests.
+
+Service accounts (CI, agents) should have their own API key created by an admin under a dedicated service account user.
