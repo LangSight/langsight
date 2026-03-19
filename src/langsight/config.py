@@ -23,10 +23,10 @@ class AlertConfig(BaseModel):
 
 
 class StorageConfig(BaseModel):
-    mode: str = "sqlite"  # "sqlite" | "postgres" | "clickhouse" | "dual"
-    # "dual" = Postgres (metadata) + ClickHouse (analytics) — production topology
-    sqlite_path: str = "~/.langsight/data.db"  # mode="sqlite"
-    postgres_url: str | None = None  # mode="postgres"
+    mode: str = "dual"  # "postgres" | "clickhouse" | "dual" (default: production topology)
+    # "dual" = Postgres (metadata: users/projects/API keys/SLOs) +
+    #          ClickHouse (analytics: spans/health/costs/reliability)
+    postgres_url: str | None = None  # required for mode="postgres" or "dual"
     clickhouse_url: str = "http://localhost:8123"  # mode="clickhouse"
     clickhouse_database: str = "langsight"  # mode="clickhouse"
     clickhouse_username: str = "default"  # mode="clickhouse"

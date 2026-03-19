@@ -1,9 +1,122 @@
+"""
+Top-level pytest fixtures shared across all test suites.
+
+Docker health checks
+--------------------
+Integration tests require a running Docker Compose stack:
+
+    docker compose up -d
+
+The `require_postgres` and `require_clickhouse` fixtures automatically
+skip any test that depends on them when the service isn't reachable.
+All tests under tests/integration/ depend on these fixtures.
+"""
 from __future__ import annotations
+
+import os
 
 import pytest
 
 from langsight.models import MCPServer, TransportType
 
+# ---------------------------------------------------------------------------
+# Default DSNs — override via env vars when running against a custom instance
+# ---------------------------------------------------------------------------
+
+_POSTGRES_DSN = os.environ.get(
+    "TEST_POSTGRES_URL",
+    "postgresql://langsight:${POSTGRES_PASSWORD}@localhost:5432/langsight",
+)
+# Allow a plain test DSN without the env-var substitution
+_POSTGRES_TEST_DSN = os.environ.get(
+    "TEST_POSTGRES_URL",
+    "postgresql://langsight:testpassword@localhost:5432/langsight",
+)
+_CLICKHOUSE_HOST = os.environ.get("TEST_CLICKHOUSE_HOST", "localhost")
+_CLICKHOUSE_PORT = int(os.environ.get("TEST_CLICKHOUSE_PORT", "8123"))
+
+
+# ---------------------------------------------------------------------------
+# Docker service health checks
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def postgres_dsn() -> str:
+    """Return the Postgres DSN used for integration tests.
+
+    Override by setting TEST_POSTGRES_URL in the environment.
+    Default: postgresql://langsight:testpassword@localhost:5432/langsight
+    """
+    return _POSTGRES_TEST_DSN
+
+
+@pytest.fixture(scope="session")
+def postgres_available(postgres_dsn: str) -> bool:
+    """Return True if Postgres is reachable at the test DSN."""
+    import asyncio
+    try:
+        import asyncpg
+        async def _check() -> bool:
+            try:
+                conn = await asyncpg.connect(postgres_dsn, timeout=3)
+                await conn.close()
+                return True
+            except Exception:
+                return False
+        return asyncio.get_event_loop().run_until_complete(_check())
+    except Exception:
+        return False
+
+
+@pytest.fixture(scope="session")
+def clickhouse_available() -> bool:
+    """Return True if ClickHouse HTTP endpoint is reachable."""
+    import urllib.request
+    try:
+        urllib.request.urlopen(
+            f"http://{_CLICKHOUSE_HOST}:{_CLICKHOUSE_PORT}/ping", timeout=3
+        )
+        return True
+    except Exception:
+        return False
+
+
+@pytest.fixture
+def require_postgres(postgres_available: bool) -> None:
+    """Skip the test if Postgres is not available.
+
+    Usage:
+        def test_something(require_postgres):
+            ...  # only runs when 'docker compose up -d' is running
+    """
+    if not postgres_available:
+        pytest.skip(
+            "Postgres not available. Run: docker compose up -d\n"
+            "Or set TEST_POSTGRES_URL to point at a running instance."
+        )
+
+
+@pytest.fixture
+def require_clickhouse(clickhouse_available: bool) -> None:
+    """Skip the test if ClickHouse is not available."""
+    if not clickhouse_available:
+        pytest.skip(
+            "ClickHouse not available. Run: docker compose up -d\n"
+            "Or set TEST_CLICKHOUSE_HOST / TEST_CLICKHOUSE_PORT."
+        )
+
+
+@pytest.fixture
+def require_all_services(require_postgres: None, require_clickhouse: None) -> None:
+    """Skip unless both Postgres and ClickHouse are reachable.
+
+    Use this for tests that exercise the full 'dual' storage topology.
+    """
+
+
+# ---------------------------------------------------------------------------
+# MCP server fixtures (used by integration/e2e tests)
+# ---------------------------------------------------------------------------
 
 @pytest.fixture
 def stdio_server() -> MCPServer:

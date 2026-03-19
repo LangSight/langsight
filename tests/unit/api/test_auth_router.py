@@ -16,7 +16,7 @@ from langsight.models import ApiKeyRecord, ApiKeyRole
 @pytest.fixture
 def config_file(tmp_path: Path) -> Path:
     cfg = tmp_path / ".langsight.yaml"
-    cfg.write_text(yaml.dump({"servers": [], "storage": {"mode": "sqlite"}}))
+    cfg.write_text(yaml.dump({"servers": []}))
     return cfg
 
 

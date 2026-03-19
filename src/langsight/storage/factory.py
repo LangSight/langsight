@@ -9,32 +9,17 @@ async def open_storage(config: StorageConfig) -> StorageBackend:
     """Open the configured storage backend and return it.
 
     Dispatches based on config.mode:
-      - "sqlite"   → SQLiteBackend  (default, zero-dependency local mode)
-      - "postgres"  → PostgresBackend (production, requires postgres_url)
+      - "postgres"    → PostgresBackend  (metadata only — users, projects, API keys, SLOs)
+      - "clickhouse"  → ClickHouseBackend (analytics only — spans, health, costs)
+      - "dual"        → DualStorage (Postgres metadata + ClickHouse analytics) — production default
 
     The returned backend is open but not yet inside a context manager.
     Callers should use it as an async context manager:
 
         async with await open_storage(config) as storage:
             await storage.save_health_result(result)
-
-    Or manage lifecycle manually:
-
-        storage = await open_storage(config)
-        try:
-            ...
-        finally:
-            await storage.close()
     """
     mode = config.mode.lower()
-
-    if mode == "sqlite":
-        from pathlib import Path
-
-        from langsight.storage.sqlite import SQLiteBackend
-
-        path = Path(config.sqlite_path).expanduser() if config.sqlite_path else None  # noqa: ASYNC240
-        return await SQLiteBackend.open(path)
 
     if mode == "postgres":
         if not config.postgres_url:
@@ -88,5 +73,8 @@ async def open_storage(config: StorageConfig) -> StorageBackend:
         return DualStorage(metadata, analytics)
 
     raise ConfigError(
-        f"Unknown storage mode '{config.mode}'. Valid values: 'sqlite', 'postgres', 'clickhouse', 'dual'."
+        f"Unknown storage mode '{config.mode}'. "
+        "Valid values: 'postgres', 'clickhouse', 'dual'. "
+        "SQLite has been removed — use 'dual' (Postgres + ClickHouse) for production "
+        "or 'postgres' for metadata-only deployments."
     )

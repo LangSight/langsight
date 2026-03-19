@@ -111,5 +111,4 @@ class TestAlertConfig:
 class TestStorageConfig:
     def test_defaults(self) -> None:
         s = StorageConfig()
-        assert s.mode == "sqlite"
-        assert "langsight" in s.sqlite_path
+        assert s.mode == "dual"
