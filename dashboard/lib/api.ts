@@ -8,6 +8,8 @@ import type {
   DashboardUser,
   HealthResult,
   InviteResponse,
+  ProjectMember,
+  ProjectResponse,
   ReplayResponse,
   SecurityScanResult,
   SessionComparison,
@@ -102,6 +104,20 @@ export const replaySession = (sessionId: string, timeoutPerCall = 10, totalTimeo
 // ─── Reliability / Anomalies (P5.4) ───────────────────────────────────────────
 export const getAnomalies = (currentHours = 1, zThreshold = 2.0) =>
   get<AnomalyResult[]>(`/reliability/anomalies?current_hours=${currentHours}&z_threshold=${zThreshold}`);
+
+// ─── Projects ─────────────────────────────────────────────────────────────────
+export const listProjects = () => get<ProjectResponse[]>("/projects");
+export const createProject = (name: string, slug?: string) =>
+  post<ProjectResponse>("/projects", { name, slug });
+export const getProject = (id: string) => get<ProjectResponse>(`/projects/${encodeURIComponent(id)}`);
+export const updateProject = (id: string, name: string, slug?: string) =>
+  post<ProjectResponse>(`/projects/${encodeURIComponent(id)}`, { name, slug });
+export const deleteProject = (id: string) => del(`/projects/${encodeURIComponent(id)}`);
+export const listProjectMembers = (id: string) => get<ProjectMember[]>(`/projects/${encodeURIComponent(id)}/members`);
+export const addProjectMember = (projectId: string, userId: string, role: string) =>
+  post<ProjectMember>(`/projects/${encodeURIComponent(projectId)}/members`, { user_id: userId, role });
+export const removeProjectMember = (projectId: string, userId: string) =>
+  del(`/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`);
 
 // ─── User management ──────────────────────────────────────────────────────────
 export const listUsers = () => get<DashboardUser[]>("/users");

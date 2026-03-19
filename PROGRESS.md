@@ -105,6 +105,24 @@ P5.1 (Payload Capture)
 
 ---
 
+## Phase 6 — Project-Level RBAC: Planned (2026-03-19)
+
+A project is the top-level isolation boundary. Every piece of observability data belongs to a project. Users hold project-level roles (`owner`, `member`, `viewer`). Global admins retain cross-project visibility. Non-members receive HTTP 404 on any project endpoint to prevent enumeration.
+
+### Sub-phases
+
+| ID | Description | Status |
+|----|-------------|--------|
+| P6.1 | Data model — `Project`, `ProjectMember` Pydantic models; `projects` + `project_members` tables; `project_id` columns on `mcp_tool_calls`, `agent_slos`, `api_keys`; Alembic migration | NOT STARTED |
+| P6.2 | Storage layer — project + member CRUD protocol methods; implemented on `SQLiteBackend` and `PostgresBackend` | NOT STARTED |
+| P6.3 | API middleware — `get_project` dependency (404 for non-members, global admin bypass); `require_project_role` factory; `/api/projects` router with 9 endpoints | NOT STARTED |
+| P6.4 | Scope existing endpoints — optional `project_id` query param on sessions, reliability, costs, SLOs, and traces ingestion endpoints | NOT STARTED |
+| P6.5 | SDK — `project_id` param on `LangSightClient`; propagated to every `ToolCallSpan` | NOT STARTED |
+| P6.6 | Dashboard — project switcher in sidebar; active project in localStorage; Settings > Projects tab for create/invite/manage | NOT STARTED |
+| P6.7 | Bootstrap — `_bootstrap_default_project()` creates "Default" project with admin as owner on first API startup; idempotent | NOT STARTED |
+
+---
+
 ## Current Status: Release 0.1.0 — Shipped ✅
 
 ```
@@ -115,6 +133,7 @@ Release 0.1.0                   ████████████████
 Phase 4 (Dashboard + Website)   ██████████████░░  90% — costs API + agents page added, Vercel deploy pending
 Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░   0% — NOT STARTED
 Phase 5 (Deep Observability)    ████████████████ 100% — COMPLETE ✅ P5.1 (2026-03-18), P5.2-P5.7 (2026-03-19)
+Phase 6 (Project-Level RBAC)    ░░░░░░░░░░░░░░░░   0% — NOT STARTED
 ```
 
 ---

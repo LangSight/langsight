@@ -1,11 +1,11 @@
 # LangSight: Implementation Plan
 
-> **Version**: 1.3.0
-> **Date**: 2026-03-18
-> **Status**: Active — Phase 1-3 COMPLETE (alpha). Pre-Production Security Hardening phase added. Release 0.1.0 is an alpha release.
+> **Version**: 1.4.0
+> **Date**: 2026-03-19
+> **Status**: Active — Phase 1-3 COMPLETE (alpha). Phase 5 COMPLETE. Phase 6 (Project-Level RBAC) planned. Pre-Production Security Hardening phase added. Release 0.1.0 is an alpha release.
 > **Author**: Engineering
 >
-> **Change from 1.2**: Pre-Production Security Hardening phase (S.1-S.10) added based on 2026-03-18 security assessment. Metrics corrected to 378 tests / 83.69% coverage. Dashboard v2 noted as demo-auth-only. See CHANGELOG.md and PROGRESS.md for full assessment details.
+> **Change from 1.3**: Phase 6 (Project-Level RBAC) section added (2026-03-19). Progress bar updated. Phase 6 covers multi-project isolation, project-level roles, SDK `project_id` param, dashboard project switcher, and bootstrap Default project on first startup.
 
 ---
 
@@ -30,6 +30,7 @@ Release 0.1.0                   ████████████████
 Phase 4 (Dashboard + Website)   █████████████░░░  85% — website + dashboard built; Vercel deploy pending
 Security Hardening (S.1-S.10)   █░░░░░░░░░░░░░░░  10% — S.9 COMPLETE ✅
 Phase 5 (Deep Observability)    ████████████████ 100% — COMPLETE ✅ P5.1 (2026-03-18), P5.2-P5.7 (2026-03-19)
+Phase 6 (Project-Level RBAC)    ░░░░░░░░░░░░░░░░   0% — NOT STARTED
 ```
 
 **Shipped metrics**: 378 tests passing, 83.69% coverage, 8 CLI commands, 9 API endpoints, SQLite + PostgreSQL + ClickHouse storage backends, FastAPI REST API, GitHub Actions CI, 28 Mintlify docs pages (including sessions.mdx), marketing website built, dashboard v2 built with demo-mode auth (P0.2 gap — auth is not production-grade), PyPI 0.1.0 published, GitHub release v0.1.0 tagged.
@@ -755,7 +756,228 @@ The MVP is "done" when all of the following are true:
 
 ---
 
-### Phase 6: Dashboard + Polish (Weeks 13-16)
+---
+
+### Phase 6: Project-Level RBAC (decided 2026-03-19)
+
+**Status**: NOT STARTED
+
+**Goal**: Introduce the Project as the top-level isolation boundary. All observability data belongs to a project. Users hold project-level roles. Global admins see everything. Non-members receive HTTP 404 (not 403) to prevent project enumeration.
+
+**Why this matters**: LangSight currently operates as a single flat namespace — every user sees every trace, SLO, and API key. Teams running multiple agents (e.g., "Customer Support Bot" vs "Internal HR Bot") need data isolation, independent API keys, and per-project access control before LangSight can be deployed in a shared environment.
+
+---
+
+#### Role Hierarchy
+
+```
+Global roles (on User model — existing):
+  admin  → sees all projects, create/delete projects, manage all users
+  viewer → sees only projects where they have explicit membership
+
+Project-level roles (new — on ProjectMember):
+  owner  → full control: rename project, invite members, delete project
+  member → operational access: view traces, create SLOs, trigger scans, manage API keys
+  viewer → read-only: view all data, no write operations
+```
+
+**Three access rules**:
+1. Global admin → full access to every project regardless of membership
+2. Project owner/member/viewer → access only to projects they are a member of
+3. No membership → project is invisible (HTTP 404, prevents enumeration)
+
+---
+
+#### P6.1 — Data Model
+
+| Task | Description | Files Affected | Status |
+|------|-------------|----------------|--------|
+| P6.1.1 | Add `ProjectRole` StrEnum (`owner`, `member`, `viewer`) to `src/langsight/models.py` | `src/langsight/models.py` | [ ] |
+| P6.1.2 | Add `Project` Pydantic model (`id: str` uuid4 hex, `name: str`, `slug: str` url-safe unique, `created_by: str`, `created_at: datetime`) | `src/langsight/models.py` | [ ] |
+| P6.1.3 | Add `ProjectMember` Pydantic model (`project_id`, `user_id`, `role: ProjectRole`, `added_by`, `added_at`) | `src/langsight/models.py` | [ ] |
+| P6.1.4 | `projects` table — SQLite DDL (`src/langsight/storage/sqlite.py`) and Postgres DDL (`src/langsight/storage/postgres.py`) | `storage/sqlite.py`, `storage/postgres.py` | [ ] |
+| P6.1.5 | `project_members` table — SQLite and Postgres DDL, unique constraint on `(project_id, user_id)` | `storage/sqlite.py`, `storage/postgres.py` | [ ] |
+| P6.1.6 | Add `project_id String DEFAULT ''` column to ClickHouse `mcp_tool_calls` (ALTER TABLE + migration script) | `storage/clickhouse.py`, `migrations/` | [ ] |
+| P6.1.7 | Add `project_id TEXT` column to `agent_slos` table — SQLite and Postgres | `storage/sqlite.py`, `storage/postgres.py` | [ ] |
+| P6.1.8 | Add `project_id TEXT` column to `api_keys` table (nullable — NULL = all-project key) | `storage/sqlite.py`, `storage/postgres.py` | [ ] |
+| P6.1.9 | Alembic migration covering `projects`, `project_members`, `agent_slos.project_id`, `api_keys.project_id` | `alembic/versions/` | [ ] |
+
+**Acceptance Criteria**:
+- [ ] `Project` and `ProjectMember` models importable from `langsight.models`
+- [ ] `projects` and `project_members` tables exist in SQLite after first open
+- [ ] Alembic migration runs cleanly on a fresh Postgres database
+- [ ] `mcp_tool_calls` in ClickHouse has `project_id` column (migration script idempotent)
+- [ ] `agent_slos` and `api_keys` have `project_id` column
+
+---
+
+#### P6.2 — Storage Layer
+
+| Task | Description | Files Affected | Status |
+|------|-------------|----------------|--------|
+| P6.2.1 | Add project CRUD protocol methods to `StorageBackend`: `create_project`, `get_project`, `get_project_by_slug`, `list_projects`, `update_project`, `delete_project` | `src/langsight/storage/base.py` | [ ] |
+| P6.2.2 | Add membership protocol methods: `add_member`, `get_member`, `list_members`, `update_member_role`, `remove_member` | `src/langsight/storage/base.py` | [ ] |
+| P6.2.3 | Add `list_projects_for_user(user_id)` — returns projects where user has any membership | `src/langsight/storage/base.py` | [ ] |
+| P6.2.4 | Implement all project + member methods on `SQLiteBackend` | `src/langsight/storage/sqlite.py` | [ ] |
+| P6.2.5 | Implement all project + member methods on `PostgresBackend` | `src/langsight/storage/postgres.py` | [ ] |
+| P6.2.6 | Unit tests for SQLite project/member CRUD | `tests/unit/storage/test_projects_sqlite.py` | [ ] |
+| P6.2.7 | Integration tests for Postgres project/member CRUD | `tests/integration/storage/test_projects_postgres.py` | [ ] |
+
+**Acceptance Criteria**:
+- [ ] `create_project` persists a `Project` and returns it
+- [ ] `get_project_by_slug` returns `None` for unknown slugs (not an exception)
+- [ ] `list_projects_for_user` returns only projects the user is a member of
+- [ ] `delete_project` cascades to `project_members` (foreign key or explicit delete)
+- [ ] All methods covered by unit tests with in-memory SQLite
+
+---
+
+#### P6.3 — API Middleware and Projects Router
+
+| Task | Description | Files Affected | Status |
+|------|-------------|----------------|--------|
+| P6.3.1 | `ProjectAccess` dataclass (`project: Project`, `role: ProjectRole`) returned by the project dependency | `src/langsight/api/dependencies.py` | [ ] |
+| P6.3.2 | `get_project` FastAPI dependency: resolves `project_id` path param, verifies current user has access (global admin always passes; non-member gets HTTP 404) | `src/langsight/api/dependencies.py` | [ ] |
+| P6.3.3 | `require_project_role(minimum_role)` dependency factory — raises HTTP 403 if user's project role is below minimum; used to gate owner-only operations | `src/langsight/api/dependencies.py` | [ ] |
+| P6.3.4 | New router `src/langsight/api/routers/projects.py` with 9 endpoints (see endpoint list below) | `src/langsight/api/routers/projects.py`, `src/langsight/api/main.py` | [ ] |
+| P6.3.5 | Register projects router in `api/main.py` at `/api/projects` | `src/langsight/api/main.py` | [ ] |
+| P6.3.6 | Unit tests for `get_project` dependency — covers global admin bypass, member access, non-member 404 | `tests/unit/api/test_project_dependency.py` | [ ] |
+| P6.3.7 | Unit tests for all 9 projects endpoints | `tests/unit/api/test_projects_router.py` | [ ] |
+
+**Endpoints in `projects.py`**:
+
+| Method | Path | Role required | Description |
+|--------|------|---------------|-------------|
+| `GET` | `/api/projects` | authenticated | List projects visible to current user |
+| `POST` | `/api/projects` | authenticated | Create a new project; creator becomes owner |
+| `GET` | `/api/projects/{project_id}` | member+ | Project detail |
+| `PATCH` | `/api/projects/{project_id}` | owner | Rename project or update slug |
+| `DELETE` | `/api/projects/{project_id}` | owner or global admin | Delete project and all its data |
+| `GET` | `/api/projects/{project_id}/members` | member+ | List project members |
+| `POST` | `/api/projects/{project_id}/members` | owner | Add a user as member |
+| `PATCH` | `/api/projects/{project_id}/members/{user_id}` | owner | Change a member's role |
+| `DELETE` | `/api/projects/{project_id}/members/{user_id}` | owner | Remove member from project |
+
+**Acceptance Criteria**:
+- [ ] Non-member calling `GET /api/projects/{id}` receives HTTP 404 (not 403)
+- [ ] Global admin calling any project endpoint receives HTTP 200 regardless of membership
+- [ ] `POST /api/projects` automatically creates an `owner` membership for the creating user
+- [ ] `DELETE /api/projects/{id}` by a member (not owner) returns HTTP 403
+- [ ] Owner cannot demote themselves below owner if they are the last owner (HTTP 409)
+
+---
+
+#### P6.4 — Scope Existing Endpoints by Project
+
+| Task | Description | Files Affected | Status |
+|------|-------------|----------------|--------|
+| P6.4.1 | `GET /api/agents/sessions` — add optional `project_id` query param; filter `mcp_tool_calls` by `project_id` when provided | `src/langsight/api/routers/agents.py`, `src/langsight/storage/clickhouse.py` | [ ] |
+| P6.4.2 | `GET /api/agents/sessions/{id}` — verify session's `project_id` matches access context when `project_id` provided | `src/langsight/api/routers/agents.py` | [ ] |
+| P6.4.3 | `GET /api/agents/sessions/compare` — both sessions must belong to the same project | `src/langsight/api/routers/agents.py` | [ ] |
+| P6.4.4 | `POST /api/agents/sessions/{id}/replay` — session must belong to accessible project | `src/langsight/api/routers/agents.py` | [ ] |
+| P6.4.5 | `GET /api/reliability/anomalies` and `GET /api/reliability/tools` — add optional `project_id` filter | `src/langsight/api/routers/reliability.py` | [ ] |
+| P6.4.6 | `GET /api/costs/*` (breakdown, by-agent, by-session) — add optional `project_id` filter | `src/langsight/api/routers/costs.py` | [ ] |
+| P6.4.7 | `GET /api/slos`, `POST /api/slos`, `DELETE /api/slos/{id}` — `agent_slos.project_id` column used for scoping | `src/langsight/api/routers/slos.py` | [ ] |
+| P6.4.8 | `POST /api/traces/spans` — extract `project_id` from span payload and write to `mcp_tool_calls.project_id` | `src/langsight/api/routers/traces.py` | [ ] |
+| P6.4.9 | `POST /api/traces/otlp` — extract `project_id` from OTLP resource attribute `langsight.project_id` | `src/langsight/api/routers/traces.py` | [ ] |
+
+**Acceptance Criteria**:
+- [ ] `GET /api/agents/sessions?project_id=X` returns only spans where `project_id = X`
+- [ ] Spans submitted via `POST /api/traces/spans` with `project_id` set are stored correctly
+- [ ] Requests without `project_id` param continue to work (backward compatible — return all data visible to user)
+- [ ] `GET /api/agents/sessions/compare` returns HTTP 400 if sessions belong to different projects
+
+---
+
+#### P6.5 — SDK Changes
+
+| Task | Description | Files Affected | Status |
+|------|-------------|----------------|--------|
+| P6.5.1 | Add `project_id: str \| None = None` field to `ToolCallSpan` in `src/langsight/sdk/models.py` | `src/langsight/sdk/models.py` | [ ] |
+| P6.5.2 | Add `project_id: str \| None = None` parameter to `LangSightClient.__init__()` | `src/langsight/sdk/client.py` | [ ] |
+| P6.5.3 | `MCPClientProxy.call_tool()` includes `project_id` from client config on every `ToolCallSpan` | `src/langsight/sdk/client.py` | [ ] |
+| P6.5.4 | Update SDK docs and `README.md` quickstart example to show `project_id` param | `README.md`, `docs-site/sdk/python.mdx` | [ ] |
+| P6.5.5 | Unit tests for SDK `project_id` propagation | `tests/unit/sdk/test_client.py` | [ ] |
+
+**SDK usage after this change**:
+```python
+client = LangSightClient(
+    url="http://localhost:8000",
+    api_key="lsk_...",
+    project_id="customer-support",  # new — scopes all spans to this project
+)
+```
+
+**Acceptance Criteria**:
+- [ ] `LangSightClient(project_id="...")` populates `project_id` on every emitted `ToolCallSpan`
+- [ ] `LangSightClient()` without `project_id` emits spans with `project_id=None` (backward compatible)
+- [ ] `ToolCallSpan.project_id` is included in the JSON payload sent to `POST /api/traces/spans`
+
+---
+
+#### P6.6 — Dashboard: Project Switcher
+
+| Task | Description | Files Affected | Status |
+|------|-------------|----------------|--------|
+| P6.6.1 | Fetch user's project list from `GET /api/projects` on app load; store active project in React context or Zustand | `dashboard/lib/store.ts` (new) or `dashboard/lib/context.tsx` | [ ] |
+| P6.6.2 | Sidebar project switcher dropdown — shows active project name with chevron; opens list of user's projects + "Create project" link | `dashboard/components/sidebar.tsx` | [ ] |
+| P6.6.3 | All dashboard API calls append `?project_id={activeProjectId}` when a project is selected | `dashboard/lib/api.ts` | [ ] |
+| P6.6.4 | Active project persisted to `localStorage` per user; restored on next visit | `dashboard/lib/store.ts` | [ ] |
+| P6.6.5 | Settings page: "Projects" tab — list user's projects, "Create project" form (name + slug), member list per project, invite by user ID, change role dropdown, remove member button | `dashboard/app/(dashboard)/settings/page.tsx` | [ ] |
+| P6.6.6 | TypeScript types: `Project`, `ProjectMember`, `ProjectRole` added to `dashboard/lib/types.ts` | `dashboard/lib/types.ts` | [ ] |
+| P6.6.7 | API functions: `listProjects()`, `createProject()`, `getProject()`, `listMembers()`, `addMember()`, `updateMemberRole()`, `removeMember()` added to `dashboard/lib/api.ts` | `dashboard/lib/api.ts` | [ ] |
+
+**Acceptance Criteria**:
+- [ ] Sidebar shows active project name; clicking opens switcher with all user's projects
+- [ ] Switching project updates all dashboard pages to show data scoped to new project
+- [ ] Active project selection survives page reload (localStorage)
+- [ ] Settings > Projects tab allows creating a project and inviting members
+- [ ] Global admin can see all projects in the switcher regardless of membership
+
+---
+
+#### P6.7 — Bootstrap: Default Project on First Startup
+
+| Task | Description | Files Affected | Status |
+|------|-------------|----------------|--------|
+| P6.7.1 | Add `_bootstrap_default_project(storage, admin_user_id)` async function to `src/langsight/api/main.py` | `src/langsight/api/main.py` | [ ] |
+| P6.7.2 | Call `_bootstrap_default_project` inside the existing `_bootstrap_admin` flow after the admin user is created/confirmed | `src/langsight/api/main.py` | [ ] |
+| P6.7.3 | Bootstrap creates: `Project(id=uuid4(), name="Default", slug="default", created_by=admin_id)` and `ProjectMember(project_id=..., user_id=admin_id, role=ProjectRole.OWNER)` | `src/langsight/api/main.py` | [ ] |
+| P6.7.4 | Bootstrap is idempotent — if a project with `slug="default"` already exists, skip creation | `src/langsight/api/main.py` | [ ] |
+| P6.7.5 | Unit test for bootstrap idempotency | `tests/unit/api/test_bootstrap.py` | [ ] |
+
+**Acceptance Criteria**:
+- [ ] Fresh API startup creates "Default" project with the bootstrap admin as owner
+- [ ] Second startup does not create a duplicate "Default" project
+- [ ] Bootstrap admin can immediately use the dashboard scoped to the Default project without manual setup
+- [ ] No environment variable is needed to enable bootstrap — it is automatic
+
+---
+
+#### Phase 6 Summary
+
+| Sub-phase | Description | Key files | Status |
+|-----------|-------------|-----------|--------|
+| P6.1 | Data model — `Project`, `ProjectMember`, schema migrations | `models.py`, `storage/*.py`, `alembic/` | NOT STARTED |
+| P6.2 | Storage layer — project + member CRUD on all backends | `storage/base.py`, `storage/sqlite.py`, `storage/postgres.py` | NOT STARTED |
+| P6.3 | API middleware + `/api/projects` router | `api/dependencies.py`, `api/routers/projects.py` | NOT STARTED |
+| P6.4 | Scope existing endpoints by `project_id` | `api/routers/agents.py`, `traces.py`, `costs.py`, `slos.py`, `reliability.py` | NOT STARTED |
+| P6.5 | SDK: `project_id` param on `LangSightClient` | `sdk/client.py`, `sdk/models.py` | NOT STARTED |
+| P6.6 | Dashboard: project switcher + Settings > Projects tab | `dashboard/components/sidebar.tsx`, `dashboard/lib/*`, `dashboard/app/(dashboard)/settings/` | NOT STARTED |
+| P6.7 | Bootstrap: Default project on first API startup | `api/main.py` | NOT STARTED |
+
+**Phase 6 overall acceptance gate**:
+- [ ] Global admin has full cross-project visibility
+- [ ] Member of project A cannot see any data from project B (traces, SLOs, API keys)
+- [ ] Non-member calling any project endpoint receives HTTP 404
+- [ ] SDK `project_id` param routes all spans to the correct project
+- [ ] Dashboard project switcher correctly scopes all pages
+- [ ] "Default" project created automatically on first startup with admin as owner
+- [ ] All new code covered by tests; coverage does not drop below 80%
+
+---
+
+### Phase 7: Dashboard + Polish (Weeks 13-16)
 
 **Status**: POST-0.1.0 — marketing website (`website/`) and product dashboard (`dashboard/`) are post-release work. The CLI, API, SDK, integrations, and docs ship in 0.1.0. Dashboard deferred to maintain release velocity.
 

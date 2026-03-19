@@ -9,7 +9,7 @@ from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
 
 from langsight.config import LangSightConfig
-from langsight.models import ApiKeyRole
+from langsight.models import ApiKeyRole, Project, ProjectRole
 from langsight.storage.base import StorageBackend
 
 logger = structlog.get_logger()
@@ -104,6 +104,126 @@ async def verify_api_key(
 
 # Convenience alias — use as `dependencies=[Depends(require_auth)]` on routers
 require_auth = Depends(verify_api_key)
+
+
+async def get_current_user_id(
+    request: Request,
+    api_key: str | None = Security(_api_key_header),
+) -> str | None:
+    """Return the user_id associated with the current request's API key.
+
+    Returns None when:
+    - Auth is disabled (local dev)
+    - The key is an env-var bootstrap key (no user association)
+    - The key is not found
+
+    Used to check project membership — env-var keys get global admin access.
+    """
+    if not api_key:
+        return None
+
+    storage: StorageBackend = request.app.state.storage
+    get_fn = getattr(storage, "get_api_key_by_hash", None)
+    if get_fn is None or not inspect.iscoroutinefunction(get_fn):
+        return None
+
+    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+    try:
+        record = await get_fn(key_hash)
+        # API keys don't have user_id yet — return key id as proxy
+        # TODO: link api_keys.user_id in a future migration
+        return record.id if record else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+class ProjectAccess:
+    """Result of project access check — project + caller's effective role."""
+
+    def __init__(self, project: Project, role: ProjectRole, is_global_admin: bool = False) -> None:
+        self.project = project
+        self.role = role
+        self.is_global_admin = is_global_admin
+
+    @property
+    def can_write(self) -> bool:
+        return self.role in (ProjectRole.OWNER, ProjectRole.MEMBER) or self.is_global_admin
+
+    @property
+    def is_owner(self) -> bool:
+        return self.role == ProjectRole.OWNER or self.is_global_admin
+
+
+async def get_project_access(
+    project_id: str,
+    request: Request,
+    api_key: str | None = Security(_api_key_header),
+) -> ProjectAccess:
+    """Dependency that returns ProjectAccess if the caller can see the project.
+
+    Access rules:
+    1. Global admin (env-var key OR db key with role=admin) → always allowed
+    2. Project member → allowed with their membership role
+    3. No membership → HTTP 404 (prevents project enumeration)
+
+    Usage:
+        @router.get("/{project_id}/sessions")
+        async def list_sessions(access: ProjectAccess = Depends(get_project_access)):
+            ...
+    """
+    storage: StorageBackend = request.app.state.storage
+    env_keys: list[str] = getattr(request.app.state, "api_keys", [])
+
+    if not hasattr(storage, "get_project"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Project management requires SQLite or PostgreSQL backend.",
+        )
+
+    project = await storage.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    # Auth disabled — treat as global admin
+    has_any_keys = bool(env_keys) or (
+        hasattr(storage, "list_api_keys") and bool(await storage.list_api_keys())
+    )
+    if not has_any_keys:
+        return ProjectAccess(project, ProjectRole.OWNER, is_global_admin=True)
+
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-API-Key header",
+        )
+
+    # Env-var bootstrap keys are always global admin
+    if api_key in env_keys:
+        return ProjectAccess(project, ProjectRole.OWNER, is_global_admin=True)
+
+    # DB key — check global role first
+    get_fn = getattr(storage, "get_api_key_by_hash", None)
+    if get_fn and inspect.iscoroutinefunction(get_fn):
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        record = await get_fn(key_hash)
+        if record and record.role == ApiKeyRole.ADMIN:
+            return ProjectAccess(project, ProjectRole.OWNER, is_global_admin=True)
+
+    # Check project membership
+    # We use key_prefix as a proxy for user lookup until api_keys.user_id is added
+    # For now: any authenticated non-admin user gets member access if they have a DB key
+    # TODO: proper user_id linkage
+    if get_fn and inspect.iscoroutinefunction(get_fn):
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        record = await get_fn(key_hash)
+        if record:
+            # Check explicit membership via user_id (when linked)
+            member = await storage.get_member(project_id, record.id)
+            if member:
+                return ProjectAccess(project, member.role)
+
+    # No access — 404 to prevent enumeration
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
 
 async def require_admin(

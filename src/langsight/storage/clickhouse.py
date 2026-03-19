@@ -83,7 +83,8 @@ _DDL = [
         output_json    Nullable(String),
         llm_input      Nullable(String),
         llm_output     Nullable(String),
-        replay_of      String DEFAULT ''
+        replay_of      String DEFAULT '',
+        project_id     String DEFAULT ''
     )
     ENGINE = MergeTree()
     PARTITION BY toYYYYMM(started_at)
@@ -321,6 +322,7 @@ class ClickHouseBackend:
         "llm_input",
         "llm_output",
         "replay_of",
+        "project_id",
     ]
 
     def _span_row(self, s: ToolCallSpan) -> list[Any]:
@@ -352,7 +354,8 @@ class ClickHouseBackend:
             s.output_result,  # Nullable(String) — None when redacted
             s.llm_input,      # Nullable(String) — LLM prompt (agent spans only)
             s.llm_output,     # Nullable(String) — LLM completion (agent spans only)
-            s.replay_of or "", # String DEFAULT '' — original span_id (empty = not a replay)
+            s.replay_of or "",  # String DEFAULT '' — original span_id (empty = not a replay)
+            s.project_id or "",  # String DEFAULT '' — project scope (empty = global/legacy)
         ]
 
     async def save_tool_call_span(self, span: ToolCallSpan) -> None:
@@ -441,6 +444,7 @@ class ClickHouseBackend:
         hours: int = 24,
         agent_name: str | None = None,
         limit: int = 50,
+        project_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Return recent agent sessions with call counts, failures, and cost estimate.
 
@@ -452,6 +456,9 @@ class ClickHouseBackend:
         if agent_name:
             where += " AND agent_name = {agent_name:String}"
             params["agent_name"] = agent_name
+        if project_id:
+            where += " AND project_id = {project_id:String}"
+            params["project_id"] = project_id
 
         result = await self._client.query(
             f"""
@@ -501,7 +508,7 @@ class ClickHouseBackend:
                 status, error, trace_id,
                 input_json, output_json,
                 llm_input, llm_output,
-                replay_of
+                replay_of, project_id
             FROM mcp_tool_calls
             WHERE session_id = {session_id:String}
             ORDER BY started_at ASC
@@ -527,6 +534,7 @@ class ClickHouseBackend:
             "llm_input",
             "llm_output",
             "replay_of",
+            "project_id",
         ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 

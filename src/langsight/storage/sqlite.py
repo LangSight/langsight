@@ -6,7 +6,7 @@ from pathlib import Path
 import aiosqlite
 import structlog
 
-from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, InviteToken, ServerStatus, SLOMetric, User, UserRole
+from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, InviteToken, Project, ProjectMember, ProjectRole, ServerStatus, SLOMetric, User, UserRole
 
 logger = structlog.get_logger()
 
@@ -51,6 +51,27 @@ CREATE INDEX IF NOT EXISTS idx_health_server_time
 
 CREATE INDEX IF NOT EXISTS idx_schema_server_time
     ON schema_snapshots (server_name, recorded_at DESC);
+
+CREATE TABLE IF NOT EXISTS projects (
+    id          TEXT    PRIMARY KEY,
+    name        TEXT    NOT NULL,
+    slug        TEXT    UNIQUE NOT NULL,
+    created_by  TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_slug ON projects (slug);
+
+CREATE TABLE IF NOT EXISTS project_members (
+    project_id  TEXT    NOT NULL,
+    user_id     TEXT    NOT NULL,
+    role        TEXT    NOT NULL DEFAULT 'viewer',
+    added_by    TEXT    NOT NULL,
+    added_at    TEXT    NOT NULL,
+    PRIMARY KEY (project_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members (user_id);
 
 CREATE TABLE IF NOT EXISTS users (
     id            TEXT    PRIMARY KEY,
@@ -257,6 +278,94 @@ class SQLiteBackend:
         )
         await self._conn.commit()
 
+    # ── Project management ────────────────────────────────────────────────────
+
+    async def create_project(self, project: Project) -> None:
+        await self._conn.execute(
+            "INSERT INTO projects (id, name, slug, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+            (project.id, project.name, project.slug, project.created_by, project.created_at.isoformat()),
+        )
+        await self._conn.commit()
+
+    async def get_project(self, project_id: str) -> Project | None:
+        async with self._conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)) as cur:
+            row = await cur.fetchone()
+        return _row_to_project(row) if row else None
+
+    async def get_project_by_slug(self, slug: str) -> Project | None:
+        async with self._conn.execute("SELECT * FROM projects WHERE slug = ?", (slug,)) as cur:
+            row = await cur.fetchone()
+        return _row_to_project(row) if row else None
+
+    async def list_projects(self) -> list[Project]:
+        async with self._conn.execute("SELECT * FROM projects ORDER BY created_at DESC") as cur:
+            rows = await cur.fetchall()
+        return [_row_to_project(r) for r in rows]
+
+    async def list_projects_for_user(self, user_id: str) -> list[Project]:
+        async with self._conn.execute(
+            """
+            SELECT p.* FROM projects p
+            JOIN project_members m ON p.id = m.project_id
+            WHERE m.user_id = ?
+            ORDER BY p.created_at DESC
+            """,
+            (user_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [_row_to_project(r) for r in rows]
+
+    async def update_project(self, project_id: str, name: str, slug: str) -> bool:
+        cursor = await self._conn.execute(
+            "UPDATE projects SET name = ?, slug = ? WHERE id = ?", (name, slug, project_id)
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0
+
+    async def delete_project(self, project_id: str) -> bool:
+        await self._conn.execute("DELETE FROM project_members WHERE project_id = ?", (project_id,))
+        cursor = await self._conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        await self._conn.commit()
+        return cursor.rowcount > 0
+
+    # ── Project membership ────────────────────────────────────────────────────
+
+    async def add_member(self, member: ProjectMember) -> None:
+        await self._conn.execute(
+            "INSERT OR REPLACE INTO project_members (project_id, user_id, role, added_by, added_at) VALUES (?, ?, ?, ?, ?)",
+            (member.project_id, member.user_id, member.role.value, member.added_by, member.added_at.isoformat()),
+        )
+        await self._conn.commit()
+
+    async def get_member(self, project_id: str, user_id: str) -> ProjectMember | None:
+        async with self._conn.execute(
+            "SELECT * FROM project_members WHERE project_id = ? AND user_id = ?", (project_id, user_id)
+        ) as cur:
+            row = await cur.fetchone()
+        return _row_to_member(row) if row else None
+
+    async def list_members(self, project_id: str) -> list[ProjectMember]:
+        async with self._conn.execute(
+            "SELECT * FROM project_members WHERE project_id = ? ORDER BY added_at DESC", (project_id,)
+        ) as cur:
+            rows = await cur.fetchall()
+        return [_row_to_member(r) for r in rows]
+
+    async def update_member_role(self, project_id: str, user_id: str, role: str) -> bool:
+        cursor = await self._conn.execute(
+            "UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?",
+            (role, project_id, user_id),
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0
+
+    async def remove_member(self, project_id: str, user_id: str) -> bool:
+        cursor = await self._conn.execute(
+            "DELETE FROM project_members WHERE project_id = ? AND user_id = ?", (project_id, user_id)
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0
+
     # ── User management ───────────────────────────────────────────────────────
 
     async def create_user(self, user: User) -> None:
@@ -413,6 +522,26 @@ def _row_to_api_key(row: aiosqlite.Row) -> ApiKeyRecord:
         created_at=datetime.fromisoformat(row["created_at"]),
         last_used_at=datetime.fromisoformat(row["last_used_at"]) if row["last_used_at"] else None,
         revoked_at=datetime.fromisoformat(row["revoked_at"]) if row["revoked_at"] else None,
+    )
+
+
+def _row_to_project(row: aiosqlite.Row) -> Project:
+    return Project(
+        id=row["id"],
+        name=row["name"],
+        slug=row["slug"],
+        created_by=row["created_by"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
+def _row_to_member(row: aiosqlite.Row) -> ProjectMember:
+    return ProjectMember(
+        project_id=row["project_id"],
+        user_id=row["user_id"],
+        role=ProjectRole(row["role"]),
+        added_by=row["added_by"],
+        added_at=datetime.fromisoformat(row["added_at"]),
     )
 
 

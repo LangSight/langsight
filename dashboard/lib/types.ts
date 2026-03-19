@@ -133,6 +133,23 @@ export interface AnomalyResult {
   sample_hours: number;
 }
 
+export interface ProjectResponse {
+  id: string;
+  name: string;
+  slug: string;
+  created_by: string;
+  created_at: string;
+  member_count: number;
+  your_role: string | null;
+}
+
+export interface ProjectMember {
+  user_id: string;
+  role: string;
+  added_by: string;
+  added_at: string;
+}
+
 export interface DashboardUser {
   id: string;
   email: string;

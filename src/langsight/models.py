@@ -57,6 +57,36 @@ class HealthCheckResult(BaseModel):
     error: str | None = None
 
 
+class ProjectRole(StrEnum):
+    OWNER = "owner"    # full control — rename, invite, delete project
+    MEMBER = "member"  # operational — view traces, create SLOs, trigger scans
+    VIEWER = "viewer"  # read-only — view all data, no writes
+
+
+class Project(BaseModel):
+    """A project groups all observability data for one product or environment."""
+
+    id: str           # uuid4 hex
+    name: str         # display name, e.g. "Customer Support"
+    slug: str         # url-safe unique identifier, e.g. "customer-support"
+    created_by: str   # user id of creator
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    model_config = {"frozen": True}
+
+
+class ProjectMember(BaseModel):
+    """A user's membership in a project with a project-level role."""
+
+    project_id: str
+    user_id: str
+    role: ProjectRole = ProjectRole.VIEWER
+    added_by: str     # user id of whoever granted membership
+    added_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    model_config = {"frozen": True}
+
+
 class UserRole(StrEnum):
     ADMIN = "admin"    # full access — can invite users, trigger scans, manage API keys
     VIEWER = "viewer"  # read-only — dashboards and traces, no write operations

@@ -44,11 +44,13 @@ class LangSightClient:
         api_key: str | None = None,
         timeout: float = _SEND_TIMEOUT,
         redact_payloads: bool = False,
+        project_id: str | None = None,
     ) -> None:
         self._url = url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout
         self._redact_payloads = redact_payloads
+        self._project_id = project_id
 
     def wrap(
         self,
@@ -59,6 +61,7 @@ class LangSightClient:
         trace_id: str | None = None,
         parent_span_id: str | None = None,
         redact_payloads: bool | None = None,
+        project_id: str | None = None,
     ) -> MCPClientProxy:
         """Wrap an MCP client to automatically trace all tool calls.
 
@@ -93,8 +96,8 @@ class LangSightClient:
                                       trace_id=trace_id,
                                       parent_span_id=handoff.span_id)
         """
-        # Per-wrap override takes precedence; fall back to client-level setting
         effective_redact = redact_payloads if redact_payloads is not None else self._redact_payloads
+        effective_project = project_id if project_id is not None else self._project_id
         return MCPClientProxy(
             mcp_client,
             langsight=self,
@@ -104,6 +107,7 @@ class LangSightClient:
             trace_id=trace_id,
             parent_span_id=parent_span_id,
             redact_payloads=effective_redact,
+            project_id=effective_project,
         )
 
     async def send_span(self, span: ToolCallSpan) -> None:
@@ -160,8 +164,8 @@ class MCPClientProxy:
         trace_id: str | None = None,
         parent_span_id: str | None = None,
         redact_payloads: bool = False,
+        project_id: str | None = None,
     ) -> None:
-        # Use object.__setattr__ to avoid triggering our __getattr__
         object.__setattr__(self, "_client", client)
         object.__setattr__(self, "_langsight", langsight)
         object.__setattr__(self, "_server_name", server_name)
@@ -170,6 +174,7 @@ class MCPClientProxy:
         object.__setattr__(self, "_trace_id", trace_id)
         object.__setattr__(self, "_parent_span_id", parent_span_id)
         object.__setattr__(self, "_redact_payloads", redact_payloads)
+        object.__setattr__(self, "_project_id", project_id)
 
     def __getattr__(self, name: str) -> object:
         """Forward all attribute access to the wrapped client."""
@@ -190,6 +195,7 @@ class MCPClientProxy:
         trace_id = object.__getattribute__(self, "_trace_id")
         parent_span_id = object.__getattribute__(self, "_parent_span_id")
         redact = object.__getattribute__(self, "_redact_payloads")
+        project_id = object.__getattribute__(self, "_project_id")
 
         started_at = datetime.now(UTC)
         status = ToolCallStatus.SUCCESS
@@ -226,5 +232,6 @@ class MCPClientProxy:
                 span_type="tool_call",
                 input_args=None if redact else arguments,
                 output_result=output_result,
+                project_id=project_id,
             )
             await langsight.send_span(span)

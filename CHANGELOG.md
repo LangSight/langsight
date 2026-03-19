@@ -109,6 +109,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 Pre-production security hardening required before 0.2.0 can be positioned as production-grade.
 
+### Planned (Phase 6: Project-Level RBAC — planned 2026-03-19)
+
+- P6.1: Data model — `Project` and `ProjectMember` Pydantic models; `projects` + `project_members` tables (SQLite + Postgres); `project_id` column on ClickHouse `mcp_tool_calls`, `agent_slos`, `api_keys`; Alembic migration
+- P6.2: Storage layer — project + member CRUD protocol methods on `StorageBackend`; implemented on `SQLiteBackend` and `PostgresBackend`; `list_projects_for_user(user_id)` for membership-scoped project lists
+- P6.3: API middleware — `get_project` FastAPI dependency (global admin bypass, HTTP 404 for non-members); `require_project_role` dependency factory; new `/api/projects` router with 9 endpoints (list, create, get, rename, delete, list-members, add-member, change-role, remove-member)
+- P6.4: Scope existing endpoints — optional `project_id` query param on `GET /api/agents/sessions`, reliability, costs, SLOs, and OTLP/span ingestion endpoints; compare endpoint rejects cross-project pairs with HTTP 400
+- P6.5: SDK — `project_id: str | None` param on `LangSightClient.__init__()`; field on `ToolCallSpan`; propagated to every emitted span
+- P6.6: Dashboard — project switcher dropdown in sidebar; active project stored in `localStorage`; all API calls scoped by `?project_id=`; Settings > Projects tab for create/invite/manage
+- P6.7: Bootstrap — `_bootstrap_default_project()` creates "Default" project with admin as owner on first API startup; idempotent on subsequent restarts
+
 ### Planned (Phase 5: Deep Observability — next major phase after Security Hardening)
 - Phase 5 gap analysis completed (2026-03-18): code review identified 7 missing features required for full session debugging capability
 - ~~P5.1: Input/output payload capture~~ — **shipped (2026-03-18)**, see Added section above

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from langsight.models import AgentSLO, ApiKeyRecord, HealthCheckResult, InviteToken, User
+from langsight.models import AgentSLO, ApiKeyRecord, HealthCheckResult, InviteToken, Project, ProjectMember, User
 
 
 @runtime_checkable
@@ -60,6 +60,58 @@ class StorageBackend(Protocol):
 
     async def touch_api_key(self, key_id: str) -> None:
         """Update last_used_at to now (called on each authenticated request)."""
+        ...
+
+    # ── Project management ───────────────────────────────────────────────────
+
+    async def create_project(self, project: Project) -> None:
+        """Persist a new project."""
+        ...
+
+    async def get_project(self, project_id: str) -> Project | None:
+        """Return a project by ID, or None."""
+        ...
+
+    async def get_project_by_slug(self, slug: str) -> Project | None:
+        """Return a project by slug, or None."""
+        ...
+
+    async def list_projects(self) -> list[Project]:
+        """Return all projects (global admin view)."""
+        ...
+
+    async def list_projects_for_user(self, user_id: str) -> list[Project]:
+        """Return projects where user has explicit membership."""
+        ...
+
+    async def update_project(self, project_id: str, name: str, slug: str) -> bool:
+        """Rename a project. Returns True if found."""
+        ...
+
+    async def delete_project(self, project_id: str) -> bool:
+        """Delete a project and all its memberships. Returns True if found."""
+        ...
+
+    # ── Project membership ────────────────────────────────────────────────────
+
+    async def add_member(self, member: ProjectMember) -> None:
+        """Add a user to a project."""
+        ...
+
+    async def get_member(self, project_id: str, user_id: str) -> ProjectMember | None:
+        """Return a user's membership in a project, or None."""
+        ...
+
+    async def list_members(self, project_id: str) -> list[ProjectMember]:
+        """Return all members of a project."""
+        ...
+
+    async def update_member_role(self, project_id: str, user_id: str, role: str) -> bool:
+        """Change a member's project role. Returns True if found."""
+        ...
+
+    async def remove_member(self, project_id: str, user_id: str) -> bool:
+        """Remove a user from a project. Returns True if found."""
         ...
 
     # ── User management ──────────────────────────────────────────────────────

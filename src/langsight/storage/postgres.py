@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import asyncpg  # type: ignore[import-untyped]
 import structlog
 
-from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, InviteToken, ServerStatus, SLOMetric, User, UserRole
+from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, InviteToken, Project, ProjectMember, ProjectRole, ServerStatus, SLOMetric, User, UserRole
 
 logger = structlog.get_logger()
 
@@ -56,6 +56,31 @@ _DDL_STATEMENTS = [
     """
     CREATE INDEX IF NOT EXISTS idx_schema_server_time
         ON schema_snapshots (server_name, recorded_at DESC)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS projects (
+        id          TEXT        PRIMARY KEY,
+        name        TEXT        NOT NULL,
+        slug        TEXT        UNIQUE NOT NULL,
+        created_by  TEXT        NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_projects_slug ON projects (slug)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS project_members (
+        project_id  TEXT        NOT NULL,
+        user_id     TEXT        NOT NULL,
+        role        TEXT        NOT NULL DEFAULT 'viewer',
+        added_by    TEXT        NOT NULL,
+        added_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (project_id, user_id)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members (user_id)
     """,
     """
     CREATE TABLE IF NOT EXISTS users (
@@ -260,6 +285,86 @@ class PostgresBackend:
             key_id,
         )
 
+    # ── Project management ────────────────────────────────────────────────────
+
+    async def create_project(self, project: Project) -> None:
+        await self._pool.execute(
+            "INSERT INTO projects (id, name, slug, created_by, created_at) VALUES ($1,$2,$3,$4,$5)",
+            project.id, project.name, project.slug, project.created_by, project.created_at,
+        )
+
+    async def get_project(self, project_id: str) -> Project | None:
+        row = await self._pool.fetchrow("SELECT * FROM projects WHERE id = $1", project_id)
+        return _row_to_project(row) if row else None
+
+    async def get_project_by_slug(self, slug: str) -> Project | None:
+        row = await self._pool.fetchrow("SELECT * FROM projects WHERE slug = $1", slug)
+        return _row_to_project(row) if row else None
+
+    async def list_projects(self) -> list[Project]:
+        rows = await self._pool.fetch("SELECT * FROM projects ORDER BY created_at DESC")
+        return [_row_to_project(r) for r in rows]
+
+    async def list_projects_for_user(self, user_id: str) -> list[Project]:
+        rows = await self._pool.fetch(
+            """
+            SELECT p.* FROM projects p
+            JOIN project_members m ON p.id = m.project_id
+            WHERE m.user_id = $1
+            ORDER BY p.created_at DESC
+            """,
+            user_id,
+        )
+        return [_row_to_project(r) for r in rows]
+
+    async def update_project(self, project_id: str, name: str, slug: str) -> bool:
+        result = await self._pool.execute(
+            "UPDATE projects SET name = $1, slug = $2 WHERE id = $3", name, slug, project_id
+        )
+        return result != "UPDATE 0"
+
+    async def delete_project(self, project_id: str) -> bool:
+        await self._pool.execute("DELETE FROM project_members WHERE project_id = $1", project_id)
+        result = await self._pool.execute("DELETE FROM projects WHERE id = $1", project_id)
+        return result != "DELETE 0"
+
+    # ── Project membership ────────────────────────────────────────────────────
+
+    async def add_member(self, member: ProjectMember) -> None:
+        await self._pool.execute(
+            """
+            INSERT INTO project_members (project_id, user_id, role, added_by, added_at)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role
+            """,
+            member.project_id, member.user_id, member.role.value, member.added_by, member.added_at,
+        )
+
+    async def get_member(self, project_id: str, user_id: str) -> ProjectMember | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM project_members WHERE project_id = $1 AND user_id = $2", project_id, user_id
+        )
+        return _row_to_member(row) if row else None
+
+    async def list_members(self, project_id: str) -> list[ProjectMember]:
+        rows = await self._pool.fetch(
+            "SELECT * FROM project_members WHERE project_id = $1 ORDER BY added_at DESC", project_id
+        )
+        return [_row_to_member(r) for r in rows]
+
+    async def update_member_role(self, project_id: str, user_id: str, role: str) -> bool:
+        result = await self._pool.execute(
+            "UPDATE project_members SET role = $1 WHERE project_id = $2 AND user_id = $3",
+            role, project_id, user_id,
+        )
+        return result != "UPDATE 0"
+
+    async def remove_member(self, project_id: str, user_id: str) -> bool:
+        result = await self._pool.execute(
+            "DELETE FROM project_members WHERE project_id = $1 AND user_id = $2", project_id, user_id
+        )
+        return result != "DELETE 0"
+
     # ── User management ───────────────────────────────────────────────────────
 
     async def create_user(self, user: User) -> None:
@@ -379,6 +484,26 @@ class PostgresBackend:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _row_to_project(row: asyncpg.Record) -> Project:
+    return Project(
+        id=row["id"],
+        name=row["name"],
+        slug=row["slug"],
+        created_by=row["created_by"],
+        created_at=row["created_at"],
+    )
+
+
+def _row_to_member(row: asyncpg.Record) -> ProjectMember:
+    return ProjectMember(
+        project_id=row["project_id"],
+        user_id=row["user_id"],
+        role=ProjectRole(row["role"]),
+        added_by=row["added_by"],
+        added_at=row["added_at"],
+    )
 
 
 def _row_to_user(row: asyncpg.Record) -> User:

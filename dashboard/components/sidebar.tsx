@@ -5,12 +5,17 @@ import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
 import { useState } from "react";
+import useSWR from "swr";
 import {
   LayoutDashboard, Activity, Shield, GitBranch, DollarSign, Bot,
   ChevronUp, LogOut, Sun, Moon, Settings, ExternalLink, Search,
+  Folder, ChevronDown, Plus, Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useProject } from "@/lib/project-context";
+import { fetcher, createProject } from "@/lib/api";
+import type { ProjectResponse } from "@/lib/types";
 
 const PRIMARY_NAV = [
   { href: "/",         label: "Overview",  icon: LayoutDashboard },
@@ -47,6 +52,94 @@ function NavItem({ href, label, icon: Icon, active, count }: {
         </span>
       )}
     </Link>
+  );
+}
+
+function ProjectSwitcher() {
+  const { activeProject, setActiveProject } = useProject();
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const { data: projects } = useSWR<ProjectResponse[]>("/api/projects", fetcher, { refreshInterval: 60_000 });
+
+  async function handleCreate() {
+    if (!newName.trim()) return;
+    setCreating(true);
+    try {
+      const p = await createProject(newName.trim());
+      setActiveProject(p);
+      setNewName("");
+      setOpen(false);
+      toast.success(`Project "${p.name}" created`);
+    } catch {
+      toast.error("Failed to create project");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  const label = activeProject?.name ?? "All Projects";
+
+  return (
+    <div className="relative px-3 pt-2 pb-1">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 w-full h-8 px-2.5 rounded-md border border-border text-[13px] transition-colors hover:bg-accent/40 text-foreground">
+        <Folder size={13} className="text-primary flex-shrink-0" />
+        <span className="flex-1 text-left truncate">{label}</span>
+        <ChevronDown size={12} className={cn("text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-3 right-3 mt-1 rounded-lg border border-border bg-card shadow-lg z-20 py-1 overflow-hidden">
+            {/* All projects option */}
+            <button
+              onClick={() => { setActiveProject(null); setOpen(false); }}
+              className="flex items-center gap-2 w-full px-3 py-2 text-[13px] transition-colors hover:bg-accent text-foreground">
+              {!activeProject && <Check size={12} className="text-primary" />}
+              {activeProject && <span className="w-3" />}
+              All Projects
+            </button>
+
+            {projects && projects.length > 0 && (
+              <div className="border-t border-border my-1" />
+            )}
+
+            {projects?.map(p => (
+              <button
+                key={p.id}
+                onClick={() => { setActiveProject(p); setOpen(false); }}
+                className="flex items-center gap-2 w-full px-3 py-2 text-[13px] transition-colors hover:bg-accent text-foreground">
+                {activeProject?.id === p.id ? <Check size={12} className="text-primary" /> : <span className="w-3" />}
+                <span className="flex-1 truncate text-left">{p.name}</span>
+                <span className="text-[10px] text-muted-foreground">{p.your_role}</span>
+              </button>
+            ))}
+
+            <div className="border-t border-border my-1 px-3 pt-2 pb-1">
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleCreate()}
+                  placeholder="New project name…"
+                  className="flex-1 min-w-0 text-[12px] bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
+                />
+                <button
+                  onClick={handleCreate}
+                  disabled={creating || !newName.trim()}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50">
+                  <Plus size={10} />{creating ? "…" : "Add"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -134,8 +227,11 @@ export function Sidebar() {
         </span>
       </div>
 
+      {/* Project switcher */}
+      <ProjectSwitcher />
+
       {/* Search */}
-      <div className="px-3 pt-3 pb-1">
+      <div className="px-3 pt-1 pb-1">
         <button
           className="flex items-center gap-2 w-full h-8 px-2.5 rounded-md border border-border text-[13px] text-muted-foreground transition-colors hover:bg-accent/40"
           onClick={() => toast.info("Search — coming soon")}>
