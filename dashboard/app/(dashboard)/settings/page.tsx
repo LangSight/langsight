@@ -1486,32 +1486,64 @@ function NotificationsSection() {
 
       {/* Alert type toggles */}
       <Section title="Alert Types" description="Choose which events trigger a Slack notification.">
-        <div className="space-y-5">
+        <div className="space-y-6">
           {ALERT_GROUPS.map(group => (
             <div key={group.label}>
               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
                 {group.label}
               </p>
-              <div className="space-y-3">
-                {group.keys.map(key => {
-                  const enabled = alertTypes[key] !== false; // default true
+              <div
+                className="rounded-xl overflow-hidden"
+                style={{ border: "1px solid hsl(var(--border))" }}
+              >
+                {group.keys.map((key, i) => {
+                  const enabled = alertTypes[key] !== false;
                   return (
-                    <div key={key} className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="text-[13px] font-medium text-foreground">{group.descriptions[key]}</p>
-                        <p className="text-[11px] text-muted-foreground font-mono">{key}</p>
-                      </div>
-                      <button
-                        onClick={() => handleToggle(key, !enabled)}
-                        className="relative flex-shrink-0 w-10 h-5 rounded-full transition-colors"
-                        style={{ background: enabled ? "hsl(var(--primary))" : "hsl(var(--muted))" }}
-                        aria-label={enabled ? "Disable" : "Enable"}
-                      >
+                    <div
+                      key={key}
+                      className="flex items-center justify-between gap-4 px-4 py-3.5 transition-colors hover:bg-accent/40 cursor-pointer"
+                      style={{
+                        borderTop: i > 0 ? "1px solid hsl(var(--border))" : undefined,
+                      }}
+                      onClick={() => handleToggle(key, !enabled)}
+                    >
+                      {/* Status dot + text */}
+                      <div className="flex items-center gap-3 min-w-0">
                         <span
-                          className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-                          style={{ transform: enabled ? "translateX(20px)" : "translateX(2px)" }}
+                          className="w-2 h-2 rounded-full flex-shrink-0 transition-colors"
+                          style={{ background: enabled ? "hsl(var(--success))" : "hsl(var(--border))" }}
                         />
-                      </button>
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-medium text-foreground leading-tight">
+                            {group.descriptions[key]}
+                          </p>
+                          <p
+                            className="text-[10.5px] text-muted-foreground mt-0.5"
+                            style={{ fontFamily: "var(--font-geist-mono)" }}
+                          >
+                            {key}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Toggle pill */}
+                      <div className="flex-shrink-0 flex items-center gap-2">
+                        <span
+                          className="text-[11px] font-medium"
+                          style={{ color: enabled ? "hsl(var(--success))" : "hsl(var(--muted-foreground))" }}
+                        >
+                          {enabled ? "On" : "Off"}
+                        </span>
+                        <div
+                          className="relative w-9 h-[20px] rounded-full transition-colors duration-200"
+                          style={{ background: enabled ? "hsl(var(--primary))" : "hsl(var(--muted))" }}
+                        >
+                          <span
+                            className="absolute top-[2px] w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200"
+                            style={{ transform: enabled ? "translateX(18px)" : "translateX(2px)" }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
