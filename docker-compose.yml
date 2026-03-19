@@ -5,11 +5,13 @@ services:
     container_name: langsight-clickhouse
     environment:
       CLICKHOUSE_DB: langsight
-      CLICKHOUSE_USER: default
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?CLICKHOUSE_USER env var is required}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD env var is required}
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-    ports:
-      - "8123:8123"
-      - "9000:9000"
+    # No host port binding — only reachable within the Docker network
+    expose:
+      - "8123"
+      - "9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
     healthcheck:
@@ -20,16 +22,16 @@ services:
       start_period: 20s
     restart: unless-stopped
 
-  # Port 5433 on host — avoids conflict with test-mcps postgres on 5432
   postgres:
     image: postgres:16-alpine
     container_name: langsight-app-postgres
     environment:
       POSTGRES_DB: langsight
       POSTGRES_USER: langsight
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-langsight}
-    ports:
-      - "5433:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}
+    # No host port binding — only reachable within the Docker network
+    expose:
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -66,13 +68,14 @@ services:
       LANGSIGHT_STORAGE_MODE: clickhouse
       LANGSIGHT_CLICKHOUSE_URL: http://clickhouse:8123
       LANGSIGHT_CLICKHOUSE_DATABASE: langsight
-      LANGSIGHT_POSTGRES_URL: postgresql://langsight:${POSTGRES_PASSWORD:-langsight}@postgres:5432/langsight
+      LANGSIGHT_CLICKHOUSE_USERNAME: ${CLICKHOUSE_USER:?CLICKHOUSE_USER env var is required}
+      LANGSIGHT_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD env var is required}
+      LANGSIGHT_POSTGRES_URL: postgresql://langsight:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}@postgres:5432/langsight
       LANGSIGHT_LOG_LEVEL: INFO
-      # Set a real key before exposing to a network.
-      # Generate one with: langsight api-key generate
-      LANGSIGHT_API_KEYS: ${LANGSIGHT_API_KEYS:-}
-      # Restrict to dashboard origin in production
-      LANGSIGHT_CORS_ORIGINS: ${LANGSIGHT_CORS_ORIGINS:-http://localhost:3003,http://localhost:3002}
+      # At least one API key is required — generate with: langsight api-key create <name>
+      LANGSIGHT_API_KEYS: ${LANGSIGHT_API_KEYS:?LANGSIGHT_API_KEYS env var is required}
+      # Restrict CORS to the dashboard origin
+      LANGSIGHT_CORS_ORIGINS: ${LANGSIGHT_CORS_ORIGINS:-http://localhost:3003}
     ports:
       - "8000:8000"
     volumes:
@@ -89,7 +92,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/status')",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/liveness')",
         ]
       interval: 10s
       timeout: 5s
@@ -110,10 +113,12 @@ services:
     container_name: langsight-dashboard
     environment:
       LANGSIGHT_API_URL: http://api:8000
-      NEXT_PUBLIC_LANGSIGHT_API_KEY: ${LANGSIGHT_API_KEYS:-}
-      NEXTAUTH_URL: http://localhost:3003
-      AUTH_SECRET: ${AUTH_SECRET:-langsight-change-in-production}
-      NEXTAUTH_SECRET: ${AUTH_SECRET:-langsight-change-in-production}
+      NEXT_PUBLIC_LANGSIGHT_API_KEY: ${LANGSIGHT_API_KEYS:?LANGSIGHT_API_KEYS env var is required}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3003}
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET env var is required — generate with: openssl rand -base64 32}
+      NEXTAUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET env var is required}
+      LANGSIGHT_ADMIN_EMAIL: ${LANGSIGHT_ADMIN_EMAIL:?LANGSIGHT_ADMIN_EMAIL env var is required}
+      LANGSIGHT_ADMIN_PASSWORD: ${LANGSIGHT_ADMIN_PASSWORD:?LANGSIGHT_ADMIN_PASSWORD env var is required}
       AUTH_TRUST_HOST: "true"
       NODE_ENV: production
       PORT: 3002

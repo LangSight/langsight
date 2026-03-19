@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import asyncpg  # type: ignore[import-untyped]
 import structlog
 
-from langsight.models import AgentSLO, ApiKeyRecord, HealthCheckResult, ServerStatus, SLOMetric
+from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, ServerStatus, SLOMetric
 
 logger = structlog.get_logger()
 
@@ -19,6 +19,7 @@ _DDL_STATEMENTS = [
         name         TEXT        NOT NULL,
         key_prefix   TEXT        NOT NULL,
         key_hash     TEXT        UNIQUE NOT NULL,
+        role         TEXT        NOT NULL DEFAULT 'admin',
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         last_used_at TIMESTAMPTZ,
         revoked_at   TIMESTAMPTZ
@@ -192,13 +193,14 @@ class PostgresBackend:
     async def create_api_key(self, record: ApiKeyRecord) -> None:
         await self._pool.execute(
             """
-            INSERT INTO api_keys (id, name, key_prefix, key_hash, created_at)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO api_keys (id, name, key_prefix, key_hash, role, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
             """,
             record.id,
             record.name,
             record.key_prefix,
             record.key_hash,
+            record.role.value,
             record.created_at,
         )
         logger.info("storage.postgres.api_key_created", id=record.id, name=record.name)
@@ -300,6 +302,7 @@ def _row_to_api_key(row: asyncpg.Record) -> ApiKeyRecord:
         name=row["name"],
         key_prefix=row["key_prefix"],
         key_hash=row["key_hash"],
+        role=ApiKeyRole(row["role"]) if row["role"] else ApiKeyRole.ADMIN,
         created_at=row["created_at"],
         last_used_at=row["last_used_at"],
         revoked_at=row["revoked_at"],

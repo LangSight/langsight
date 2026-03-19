@@ -6,11 +6,11 @@ import uuid
 from datetime import UTC, datetime
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
 from langsight.api.dependencies import get_storage
-from langsight.models import ApiKeyRecord
+from langsight.models import ApiKeyRecord, ApiKeyRole
 from langsight.storage.base import StorageBackend
 
 logger = structlog.get_logger()
@@ -24,6 +24,7 @@ _KEY_BYTES = 32  # 256-bit key → 64 hex chars
 
 class CreateApiKeyRequest(BaseModel):
     name: str  # user-given label, e.g. "LibreChat production"
+    role: ApiKeyRole = ApiKeyRole.ADMIN  # "admin" or "viewer"
 
 
 class ApiKeyCreatedResponse(BaseModel):
@@ -69,6 +70,7 @@ class ApiKeyResponse(BaseModel):
 )
 async def create_api_key(
     body: CreateApiKeyRequest,
+    request: Request,
     storage: StorageBackend = Depends(get_storage),
 ) -> ApiKeyCreatedResponse:
     """Generate a new API key.  The raw key is returned **once** — store it safely."""
@@ -86,6 +88,7 @@ async def create_api_key(
         name=body.name.strip(),
         key_prefix=key_prefix,
         key_hash=key_hash,
+        role=body.role,
         created_at=now,
     )
 
@@ -98,7 +101,12 @@ async def create_api_key(
             detail="Current storage backend does not support API key management",
         )
 
-    logger.info("auth.api_key.created", id=key_id, name=record.name)
+    logger.info(
+        "audit.api_key.created",
+        id=key_id,
+        name=record.name,
+        client_ip=request.client.host if request.client else "unknown",
+    )
     return ApiKeyCreatedResponse(
         id=key_id,
         name=record.name,
@@ -130,6 +138,7 @@ async def list_api_keys(
 )
 async def revoke_api_key(
     key_id: str,
+    request: Request,
     storage: StorageBackend = Depends(get_storage),
 ) -> None:
     """Revoke an API key immediately. Revoked keys cannot be un-revoked."""
@@ -139,4 +148,8 @@ async def revoke_api_key(
     found = await storage.revoke_api_key(key_id)
     if not found:
         raise HTTPException(status_code=404, detail="API key not found or already revoked")
-    logger.info("auth.api_key.revoked", id=key_id)
+    logger.info(
+        "audit.api_key.revoked",
+        id=key_id,
+        client_ip=request.client.host if request.client else "unknown",
+    )

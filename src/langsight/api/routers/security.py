@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+import structlog
+from fastapi import APIRouter, Depends, Request
 from fastapi import status as http_status
 from pydantic import BaseModel
 
-from langsight.api.dependencies import get_config, get_storage
+from langsight.api.dependencies import get_config, get_storage, require_admin
+
+logger = structlog.get_logger()
 from langsight.config import LangSightConfig
 from langsight.security.models import ScanResult
 from langsight.security.scanner import SecurityScanner
@@ -57,8 +60,10 @@ def _scan_to_response(scan: ScanResult) -> SecurityScanResponse:
     response_model=list[SecurityScanResponse],
     status_code=http_status.HTTP_200_OK,
     summary="Trigger on-demand security scan for all servers",
+    dependencies=[Depends(require_admin)],
 )
 async def trigger_security_scan(
+    request: Request,
     storage: StorageBackend = Depends(get_storage),
     config: LangSightConfig = Depends(get_config),
 ) -> list[SecurityScanResponse]:
@@ -67,8 +72,18 @@ async def trigger_security_scan(
     Each scan runs a health check first to retrieve the live tools list,
     then evaluates all security rules concurrently.
     """
+    logger.info(
+        "audit.security_scan.triggered",
+        client_ip=request.client.host if request.client else "unknown",
+        server_count=len(config.servers),
+    )
     if not config.servers:
         return []
     scanner = SecurityScanner(storage=storage)
     scans = await scanner.scan_many(config.servers)
+    logger.info(
+        "audit.security_scan.complete",
+        server_count=len(scans),
+        critical_total=sum(s.critical_count for s in scans),
+    )
     return [_scan_to_response(s) for s in scans]

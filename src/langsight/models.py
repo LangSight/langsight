@@ -97,6 +97,11 @@ class SLOEvaluation(BaseModel):
         return self.status == "breached"
 
 
+class ApiKeyRole(StrEnum):
+    ADMIN = "admin"    # full access — can trigger scans, ingest spans, manage keys
+    VIEWER = "viewer"  # read-only — GET endpoints only
+
+
 class ApiKeyRecord(BaseModel):
     """A stored API key (the raw key is never persisted — only the hash)."""
 
@@ -104,6 +109,7 @@ class ApiKeyRecord(BaseModel):
     name: str  # user-given label
     key_prefix: str  # first 8 chars of raw key — shown in UI for identification
     key_hash: str  # sha256(raw_key) — used for lookup
+    role: ApiKeyRole = ApiKeyRole.ADMIN  # default admin for backwards compatibility
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_used_at: datetime | None = None
     revoked_at: datetime | None = None

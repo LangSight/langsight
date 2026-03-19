@@ -9,6 +9,7 @@ from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
 
 from langsight.config import LangSightConfig
+from langsight.models import ApiKeyRole
 from langsight.storage.base import StorageBackend
 
 logger = structlog.get_logger()
@@ -60,7 +61,12 @@ async def verify_api_key(
         return
 
     if not api_key:
-        logger.warning("api.auth.missing_key", path=str(request.url.path))
+        logger.warning(
+            "audit.auth.missing_key",
+            path=str(request.url.path),
+            client_ip=request.client.host if request.client else "unknown",
+            method=request.method,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing X-API-Key header",
@@ -83,7 +89,13 @@ async def verify_api_key(
     if api_key in env_keys:
         return
 
-    logger.warning("api.auth.invalid_key", path=str(request.url.path))
+    logger.warning(
+        "audit.auth.invalid_key",
+        path=str(request.url.path),
+        client_ip=request.client.host if request.client else "unknown",
+        method=request.method,
+        key_prefix=api_key[:8] if api_key else None,
+    )
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Invalid API key",
@@ -92,3 +104,68 @@ async def verify_api_key(
 
 # Convenience alias — use as `dependencies=[Depends(require_auth)]` on routers
 require_auth = Depends(verify_api_key)
+
+
+async def require_admin(
+    request: Request,
+    api_key: str | None = Security(_api_key_header),
+) -> None:
+    """Dependency that enforces admin role.
+
+    Allows access when:
+    - Auth is disabled (no keys configured) — local dev mode
+    - Key is an env var key (bootstrap keys are always admin)
+    - Key is a DB key with role="admin"
+
+    Raises HTTP 403 when a viewer key attempts a write operation.
+    """
+    env_keys: list[str] = getattr(request.app.state, "api_keys", [])
+    storage: StorageBackend = request.app.state.storage
+
+    # Auth disabled — allow everything
+    has_env_keys = bool(env_keys)
+    has_db_keys = False
+    list_fn = getattr(storage, "list_api_keys", None)
+    if list_fn is not None and inspect.iscoroutinefunction(list_fn):
+        try:
+            db_keys = await list_fn()
+            has_db_keys = any(not k.is_revoked for k in db_keys)
+        except Exception:  # noqa: BLE001
+            pass
+
+    if not has_env_keys and not has_db_keys:
+        return  # auth disabled
+
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-API-Key header",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+
+    # Env var keys are always admin (bootstrap)
+    if api_key in env_keys:
+        return
+
+    # DB key — check role
+    get_fn = getattr(storage, "get_api_key_by_hash", None)
+    if get_fn is not None and inspect.iscoroutinefunction(get_fn):
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        record = await get_fn(key_hash)
+        if record:
+            if record.role == ApiKeyRole.VIEWER:
+                logger.warning(
+                    "audit.rbac.viewer_write_blocked",
+                    path=str(request.url.path),
+                    key_prefix=api_key[:8],
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Write operations require an admin API key",
+                )
+            return
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Invalid API key",
+    )

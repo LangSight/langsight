@@ -6,7 +6,7 @@ from pathlib import Path
 import aiosqlite
 import structlog
 
-from langsight.models import AgentSLO, ApiKeyRecord, HealthCheckResult, ServerStatus, SLOMetric
+from langsight.models import AgentSLO, ApiKeyRecord, ApiKeyRole, HealthCheckResult, ServerStatus, SLOMetric
 
 logger = structlog.get_logger()
 
@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     name         TEXT    NOT NULL,
     key_prefix   TEXT    NOT NULL,
     key_hash     TEXT    UNIQUE NOT NULL,
+    role         TEXT    NOT NULL DEFAULT 'admin',
     created_at   TEXT    NOT NULL,
     last_used_at TEXT,
     revoked_at   TEXT
@@ -181,14 +182,15 @@ class SQLiteBackend:
         """Persist a new API key record."""
         await self._conn.execute(
             """
-            INSERT INTO api_keys (id, name, key_prefix, key_hash, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO api_keys (id, name, key_prefix, key_hash, role, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 record.id,
                 record.name,
                 record.key_prefix,
                 record.key_hash,
+                record.role.value,
                 record.created_at.isoformat(),
             ),
         )
@@ -297,6 +299,7 @@ def _row_to_api_key(row: aiosqlite.Row) -> ApiKeyRecord:
         name=row["name"],
         key_prefix=row["key_prefix"],
         key_hash=row["key_hash"],
+        role=ApiKeyRole(row["role"]) if row["role"] else ApiKeyRole.ADMIN,
         created_at=datetime.fromisoformat(row["created_at"]),
         last_used_at=datetime.fromisoformat(row["last_used_at"]) if row["last_used_at"] else None,
         revoked_at=datetime.fromisoformat(row["revoked_at"]) if row["revoked_at"] else None,
