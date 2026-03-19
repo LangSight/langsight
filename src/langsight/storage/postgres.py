@@ -651,7 +651,8 @@ class PostgresBackend:
                 "user_id": r["user_id"],
                 "ip": r["ip"],
                 "details": (
-                    json.loads(r["details"]) if isinstance(r["details"], str)
+                    json.loads(r["details"])
+                    if isinstance(r["details"], str)
                     else r["details"] or {}
                 ),
             }
