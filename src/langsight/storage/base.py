@@ -18,8 +18,7 @@ from langsight.models import (
 class StorageBackend(Protocol):
     """Protocol that all storage backends must implement.
 
-    Implementations: SQLiteBackend (Phase 1), PostgresBackend (Phase 2),
-    ClickHouseBackend (Phase 3).
+    Implementations: PostgresBackend (metadata), ClickHouseBackend (traces).
     The rest of the codebase talks only to this interface — never to a
     concrete backend directly. Switching backends is a config change.
     """

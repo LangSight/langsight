@@ -99,7 +99,7 @@ def _require_storage(storage: StorageBackend) -> None:
     if not hasattr(storage, "create_project"):
         raise HTTPException(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Project management requires SQLite or PostgreSQL backend.",
+            detail="Project management requires PostgreSQL backend.",
         )
 
 
@@ -441,6 +441,7 @@ async def update_member_role(
     project_id: str,
     user_id: str,
     body: UpdateMemberRoleRequest,
+    request: Request,
     storage: StorageBackend = Depends(get_storage),
     access: ProjectAccess = Depends(get_project_access),
 ) -> MemberResponse:
@@ -454,6 +455,13 @@ async def update_member_role(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Member not found.")
     member = await storage.get_member(project_id, user_id)
     assert member is not None  # we just updated it; can't be None
+    append_audit(
+        "project.member_role_changed",
+        None,
+        request.client.host if request.client else "unknown",
+        {"project_id": project_id, "user_id": user_id, "new_role": body.role.value},
+        storage=storage,
+    )
     return MemberResponse(
         user_id=member.user_id,
         role=member.role.value,
@@ -470,6 +478,7 @@ async def update_member_role(
 async def remove_member(
     project_id: str,
     user_id: str,
+    request: Request,
     storage: StorageBackend = Depends(get_storage),
     access: ProjectAccess = Depends(get_project_access),
 ) -> None:
@@ -481,3 +490,10 @@ async def remove_member(
     found = await storage.remove_member(project_id, user_id)
     if not found:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Member not found.")
+    append_audit(
+        "project.member_removed",
+        None,
+        request.client.host if request.client else "unknown",
+        {"project_id": project_id, "user_id": user_id},
+        storage=storage,
+    )

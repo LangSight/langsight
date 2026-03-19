@@ -124,19 +124,19 @@ describe("triggerHealthCheck", () => {
 /* ── getCostsBreakdown ──────────────────────────────────────── */
 describe("getCostsBreakdown", () => {
   it("uses default 24h window", async () => {
-    mockFetch({ total_cost_usd: 0, total_calls: 0, supports_costs: false, hours: 24, by_tool: [], by_agent: [], by_session: [], storage_mode: "sqlite" });
+    mockFetch({ total_cost_usd: 0, total_calls: 0, supports_costs: false, hours: 24, by_tool: [], by_agent: [], by_session: [], storage_mode: "postgres" });
     await getCostsBreakdown();
     expect((fetch as jest.Mock).mock.calls[0][0]).toContain("hours=24");
   });
 
   it("passes custom hours parameter", async () => {
-    mockFetch({ total_cost_usd: 0, total_calls: 0, supports_costs: false, hours: 168, by_tool: [], by_agent: [], by_session: [], storage_mode: "sqlite" });
+    mockFetch({ total_cost_usd: 0, total_calls: 0, supports_costs: false, hours: 168, by_tool: [], by_agent: [], by_session: [], storage_mode: "postgres" });
     await getCostsBreakdown(168);
     expect((fetch as jest.Mock).mock.calls[0][0]).toContain("hours=168");
   });
 
   it("appends project_id when provided", async () => {
-    mockFetch({ total_cost_usd: 0, total_calls: 0, supports_costs: false, hours: 24, by_tool: [], by_agent: [], by_session: [], storage_mode: "sqlite" });
+    mockFetch({ total_cost_usd: 0, total_calls: 0, supports_costs: false, hours: 24, by_tool: [], by_agent: [], by_session: [], storage_mode: "postgres" });
     await getCostsBreakdown(24, "proj-abc");
     expect((fetch as jest.Mock).mock.calls[0][0]).toContain("project_id=proj-abc");
   });

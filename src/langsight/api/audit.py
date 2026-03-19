@@ -8,6 +8,7 @@ existing structlog calls. The helper schedules an async DB write via
 from __future__ import annotations
 
 import asyncio
+import inspect
 from typing import Any
 
 
@@ -25,13 +26,14 @@ def append_audit(
     written to the ``audit_logs`` table. This is fire-and-forget — it
     schedules an async task rather than blocking the caller.
     """
-    if storage is None or not hasattr(storage, "append_audit_log"):
+    fn = getattr(storage, "append_audit_log", None)
+    if fn is None or not inspect.iscoroutinefunction(fn):
         return
 
     try:
         loop = asyncio.get_running_loop()
         loop.create_task(
-            storage.append_audit_log(
+            fn(
                 event,
                 user_id or "system",
                 ip or "unknown",
