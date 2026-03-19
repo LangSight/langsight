@@ -53,7 +53,7 @@ class InviteResponse(BaseModel):
     email: str
     role: str
     expires_at: str
-    invite_url: str   # full URL with token — admin shares this
+    invite_url: str  # full URL with token — admin shares this
 
 
 class AcceptInviteRequest(BaseModel):

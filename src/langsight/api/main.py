@@ -37,20 +37,44 @@ logger = structlog.get_logger()
 
 
 _MODEL_PRICING_SEED: list[tuple[str, str, str, float, float, float, str]] = [
-    ("anthropic", "claude-opus-4-6",           "Claude Opus 4.6",       15.00, 75.00, 1.50,  "Public pricing 2026-03"),
-    ("anthropic", "claude-sonnet-4-6",         "Claude Sonnet 4.6",      3.00, 15.00, 0.30,  "Public pricing 2026-03"),
-    ("anthropic", "claude-haiku-4-5-20251001", "Claude Haiku 4.5",       0.80,  4.00, 0.08,  "Public pricing 2026-03"),
-    ("openai",    "gpt-4o",                    "GPT-4o",                  2.50, 10.00, 0.00,  "Public pricing 2026-03"),
-    ("openai",    "gpt-4o-mini",               "GPT-4o Mini",             0.15,  0.60, 0.00,  "Public pricing 2026-03"),
-    ("openai",    "o3",                        "o3",                     10.00, 40.00, 0.00,  "Public pricing 2026-03"),
-    ("openai",    "o3-mini",                   "o3-mini",                 1.10,  4.40, 0.00,  "Public pricing 2026-03"),
-    ("google",    "gemini-1.5-pro",            "Gemini 1.5 Pro",          1.25,  5.00, 0.00,  "Public pricing 2026-03"),
-    ("google",    "gemini-1.5-flash",          "Gemini 1.5 Flash",        0.075, 0.30, 0.00,  "Public pricing 2026-03"),
-    ("google",    "gemini-2.0-flash",          "Gemini 2.0 Flash",        0.10,  0.40, 0.00,  "Public pricing 2026-03"),
-    ("meta",      "llama-3.1-70b",             "Llama 3.1 70B",           0.00,  0.00, 0.00,  "Self-hosted — no API cost"),
-    ("meta",      "llama-3.3-70b",             "Llama 3.3 70B",           0.00,  0.00, 0.00,  "Self-hosted — no API cost"),
-    ("aws",       "amazon.nova-pro-v1",        "Amazon Nova Pro",         0.80,  3.20, 0.00,  "Public pricing 2026-03"),
-    ("aws",       "amazon.nova-lite-v1",       "Amazon Nova Lite",        0.06,  0.24, 0.00,  "Public pricing 2026-03"),
+    (
+        "anthropic",
+        "claude-opus-4-6",
+        "Claude Opus 4.6",
+        15.00,
+        75.00,
+        1.50,
+        "Public pricing 2026-03",
+    ),
+    (
+        "anthropic",
+        "claude-sonnet-4-6",
+        "Claude Sonnet 4.6",
+        3.00,
+        15.00,
+        0.30,
+        "Public pricing 2026-03",
+    ),
+    (
+        "anthropic",
+        "claude-haiku-4-5-20251001",
+        "Claude Haiku 4.5",
+        0.80,
+        4.00,
+        0.08,
+        "Public pricing 2026-03",
+    ),
+    ("openai", "gpt-4o", "GPT-4o", 2.50, 10.00, 0.00, "Public pricing 2026-03"),
+    ("openai", "gpt-4o-mini", "GPT-4o Mini", 0.15, 0.60, 0.00, "Public pricing 2026-03"),
+    ("openai", "o3", "o3", 10.00, 40.00, 0.00, "Public pricing 2026-03"),
+    ("openai", "o3-mini", "o3-mini", 1.10, 4.40, 0.00, "Public pricing 2026-03"),
+    ("google", "gemini-1.5-pro", "Gemini 1.5 Pro", 1.25, 5.00, 0.00, "Public pricing 2026-03"),
+    ("google", "gemini-1.5-flash", "Gemini 1.5 Flash", 0.075, 0.30, 0.00, "Public pricing 2026-03"),
+    ("google", "gemini-2.0-flash", "Gemini 2.0 Flash", 0.10, 0.40, 0.00, "Public pricing 2026-03"),
+    ("meta", "llama-3.1-70b", "Llama 3.1 70B", 0.00, 0.00, 0.00, "Self-hosted — no API cost"),
+    ("meta", "llama-3.3-70b", "Llama 3.3 70B", 0.00, 0.00, 0.00, "Self-hosted — no API cost"),
+    ("aws", "amazon.nova-pro-v1", "Amazon Nova Pro", 0.80, 3.20, 0.00, "Public pricing 2026-03"),
+    ("aws", "amazon.nova-lite-v1", "Amazon Nova Lite", 0.06, 0.24, 0.00, "Public pricing 2026-03"),
 ]
 
 
@@ -110,7 +134,7 @@ async def _bootstrap_admin(storage: Any) -> str | None:
         if count > 0:
             return None  # users already exist — skip bootstrap
 
-        admin_email    = os.environ.get("LANGSIGHT_ADMIN_EMAIL", "").strip()
+        admin_email = os.environ.get("LANGSIGHT_ADMIN_EMAIL", "").strip()
         admin_password = os.environ.get("LANGSIGHT_ADMIN_PASSWORD", "").strip()
 
         if not admin_email or not admin_password:
@@ -120,9 +144,7 @@ async def _bootstrap_admin(storage: Any) -> str | None:
             )
             return None
 
-        password_hash = bcrypt.hashpw(
-            admin_password.encode(), bcrypt.gensalt(12)
-        ).decode()
+        password_hash = bcrypt.hashpw(admin_password.encode(), bcrypt.gensalt(12)).decode()
 
         admin = User(
             id=uuid.uuid4().hex,
@@ -208,7 +230,10 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         app.state.dashboard_url = settings.dashboard_url
         # Trusted proxy networks — CIDRs whose X-User-* headers are trusted for session auth
         from langsight.api.dependencies import parse_trusted_proxy_networks
-        app.state.trusted_proxy_networks = parse_trusted_proxy_networks(settings.trusted_proxy_cidrs)
+
+        app.state.trusted_proxy_networks = parse_trusted_proxy_networks(
+            settings.trusted_proxy_cidrs
+        )
         if api_keys:
             logger.info("api.startup.auth_enabled", key_count=len(api_keys))
         else:
@@ -262,7 +287,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
             # Only add HSTS in production (behind HTTPS)
             if request.headers.get("X-Forwarded-Proto") == "https":
-                response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+                response.headers["Strict-Transport-Security"] = (
+                    "max-age=31536000; includeSubDomains"
+                )
             return response
 
     app.add_middleware(SecurityHeadersMiddleware)
@@ -284,6 +311,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     app.state.config_path = config_path
     # Seed alert_types with defaults so GET /api/alerts/config returns them immediately
     from langsight.api.routers.alerts_config import _DEFAULT_ALERT_TYPES
+
     app.state.alert_types = dict(_DEFAULT_ALERT_TYPES)
 
     # Auth router — key management endpoints, also require auth (except first-run bootstrap)

@@ -45,7 +45,9 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 class CreateProjectRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=80)
-    slug: str | None = Field(default=None, description="URL-safe slug. Auto-generated from name if omitted.")
+    slug: str | None = Field(
+        default=None, description="URL-safe slug. Auto-generated from name if omitted."
+    )
 
 
 class UpdateProjectRequest(BaseModel):
@@ -69,7 +71,7 @@ class ProjectResponse(BaseModel):
     created_by: str
     created_at: str
     member_count: int = 0
-    your_role: str | None = None   # caller's role in this project
+    your_role: str | None = None  # caller's role in this project
 
 
 class MemberResponse(BaseModel):
@@ -100,7 +102,9 @@ def _require_storage(storage: StorageBackend) -> None:
         )
 
 
-def _project_to_response(p: Project, role: str | None = None, member_count: int = 0) -> ProjectResponse:
+def _project_to_response(
+    p: Project, role: str | None = None, member_count: int = 0
+) -> ProjectResponse:
     return ProjectResponse(
         id=p.id,
         name=p.name,
@@ -161,6 +165,7 @@ async def list_projects(
     is_admin = auth_disabled or api_key in env_keys
     if not is_admin and hasattr(storage, "get_api_key_by_hash") and api_key:
         import hashlib
+
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
         record = await storage.get_api_key_by_hash(key_hash)
         if record and record.role.value == "admin":
@@ -173,6 +178,7 @@ async def list_projects(
         projects = []
         if api_key and hasattr(storage, "get_api_key_by_hash"):
             import hashlib
+
             key_hash = hashlib.sha256(api_key.encode()).hexdigest()
             record = await storage.get_api_key_by_hash(key_hash)
             if record:
@@ -210,6 +216,7 @@ async def create_project(
     api_key = request.headers.get("X-API-Key", "")
     if api_key and hasattr(storage, "get_api_key_by_hash"):
         import hashlib
+
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
         record = await storage.get_api_key_by_hash(key_hash)
         if record:
@@ -234,15 +241,19 @@ async def create_project(
     await storage.create_project(project)
 
     # Auto-add creator as owner
-    await storage.add_member(ProjectMember(
-        project_id=project.id,
-        user_id=creator_id,
-        role=ProjectRole.OWNER,
-        added_by=creator_id,
-        added_at=datetime.now(UTC),
-    ))
+    await storage.add_member(
+        ProjectMember(
+            project_id=project.id,
+            user_id=creator_id,
+            role=ProjectRole.OWNER,
+            added_by=creator_id,
+            added_at=datetime.now(UTC),
+        )
+    )
 
-    logger.info("audit.project.created", project_id=project.id, name=project.name, creator=creator_id)
+    logger.info(
+        "audit.project.created", project_id=project.id, name=project.name, creator=creator_id
+    )
     return _project_to_response(project, role="owner", member_count=1)
 
 
@@ -275,8 +286,10 @@ async def update_project(
 ) -> ProjectResponse:
     """Rename or re-slug a project. Requires owner role."""
     if not access.is_owner:
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN,
-                            detail="Only project owners can rename a project.")
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Only project owners can rename a project.",
+        )
 
     slug = body.slug or _slugify(body.name)
     existing = await storage.get_project_by_slug(slug)
@@ -303,11 +316,16 @@ async def delete_project(
 ) -> None:
     """Delete a project and all its memberships. Irreversible."""
     if not access.is_owner:
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN,
-                            detail="Only project owners can delete a project.")
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Only project owners can delete a project.",
+        )
     await storage.delete_project(project_id)
-    logger.info("audit.project.deleted", project_id=project_id,
-                client_ip=request.client.host if request.client else "unknown")
+    logger.info(
+        "audit.project.deleted",
+        project_id=project_id,
+        client_ip=request.client.host if request.client else "unknown",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -326,10 +344,15 @@ async def list_members(
     access: ProjectAccess = Depends(get_project_access),
 ) -> list[MemberResponse]:
     members = await storage.list_members(project_id)
-    return [MemberResponse(
-        user_id=m.user_id, role=m.role.value,
-        added_by=m.added_by, added_at=m.added_at.isoformat(),
-    ) for m in members]
+    return [
+        MemberResponse(
+            user_id=m.user_id,
+            role=m.role.value,
+            added_by=m.added_by,
+            added_at=m.added_at.isoformat(),
+        )
+        for m in members
+    ]
 
 
 @router.post(
@@ -346,25 +369,40 @@ async def add_member(
     access: ProjectAccess = Depends(get_project_access),
 ) -> MemberResponse:
     if not access.is_owner:
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN,
-                            detail="Only project owners can add members.")
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Only project owners can add members.",
+        )
     now = datetime.now(UTC)
     api_key = request.headers.get("X-API-Key", "")
     adder_id = "system"
     if api_key and hasattr(storage, "get_api_key_by_hash"):
         import hashlib
+
         record = await storage.get_api_key_by_hash(hashlib.sha256(api_key.encode()).hexdigest())
         if record:
             adder_id = record.id
 
     member = ProjectMember(
-        project_id=project_id, user_id=body.user_id,
-        role=body.role, added_by=adder_id, added_at=now,
+        project_id=project_id,
+        user_id=body.user_id,
+        role=body.role,
+        added_by=adder_id,
+        added_at=now,
     )
     await storage.add_member(member)
-    logger.info("audit.project.member_added", project_id=project_id, user_id=body.user_id, role=body.role.value)
-    return MemberResponse(user_id=member.user_id, role=member.role.value,
-                          added_by=member.added_by, added_at=member.added_at.isoformat())
+    logger.info(
+        "audit.project.member_added",
+        project_id=project_id,
+        user_id=body.user_id,
+        role=body.role.value,
+    )
+    return MemberResponse(
+        user_id=member.user_id,
+        role=member.role.value,
+        added_by=member.added_by,
+        added_at=member.added_at.isoformat(),
+    )
 
 
 @router.patch(
@@ -380,14 +418,21 @@ async def update_member_role(
     access: ProjectAccess = Depends(get_project_access),
 ) -> MemberResponse:
     if not access.is_owner:
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN,
-                            detail="Only project owners can change member roles.")
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Only project owners can change member roles.",
+        )
     found = await storage.update_member_role(project_id, user_id, body.role.value)
     if not found:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Member not found.")
     member = await storage.get_member(project_id, user_id)
-    return MemberResponse(user_id=member.user_id, role=member.role.value,  # type: ignore[union-attr]
-                          added_by=member.added_by, added_at=member.added_at.isoformat())  # type: ignore[union-attr]
+    assert member is not None  # we just updated it; can't be None
+    return MemberResponse(
+        user_id=member.user_id,
+        role=member.role.value,
+        added_by=member.added_by,
+        added_at=member.added_at.isoformat(),
+    )
 
 
 @router.delete(
@@ -402,8 +447,10 @@ async def remove_member(
     access: ProjectAccess = Depends(get_project_access),
 ) -> None:
     if not access.is_owner:
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN,
-                            detail="Only project owners can remove members.")
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Only project owners can remove members.",
+        )
     found = await storage.remove_member(project_id, user_id)
     if not found:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Member not found.")

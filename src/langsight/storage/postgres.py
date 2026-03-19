@@ -310,9 +310,7 @@ class PostgresBackend:
         logger.info("storage.postgres.api_key_created", id=record.id, name=record.name)
 
     async def list_api_keys(self) -> list[ApiKeyRecord]:
-        rows = await self._pool.fetch(
-            "SELECT * FROM api_keys ORDER BY created_at DESC"
-        )
+        rows = await self._pool.fetch("SELECT * FROM api_keys ORDER BY created_at DESC")
         return [_row_to_api_key(r) for r in rows]
 
     async def get_api_key_by_hash(self, key_hash: str) -> ApiKeyRecord | None:
@@ -361,16 +359,26 @@ class PostgresBackend:
                  cache_read_per_1m_usd, effective_from, effective_to, notes, is_custom)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
             """,
-            entry.id, entry.provider, entry.model_id, entry.display_name,
-            entry.input_per_1m_usd, entry.output_per_1m_usd, entry.cache_read_per_1m_usd,
-            entry.effective_from, entry.effective_to, entry.notes, entry.is_custom,
+            entry.id,
+            entry.provider,
+            entry.model_id,
+            entry.display_name,
+            entry.input_per_1m_usd,
+            entry.output_per_1m_usd,
+            entry.cache_read_per_1m_usd,
+            entry.effective_from,
+            entry.effective_to,
+            entry.notes,
+            entry.is_custom,
         )
 
     async def deactivate_model_pricing(self, entry_id: str) -> bool:
         from datetime import UTC, datetime
+
         result: str = await self._pool.execute(
             "UPDATE model_pricing SET effective_to = $1 WHERE id = $2 AND effective_to IS NULL",
-            datetime.now(UTC), entry_id,
+            datetime.now(UTC),
+            entry_id,
         )
         return result != "UPDATE 0"
 
@@ -379,7 +387,11 @@ class PostgresBackend:
     async def create_project(self, project: Project) -> None:
         await self._pool.execute(
             "INSERT INTO projects (id, name, slug, created_by, created_at) VALUES ($1,$2,$3,$4,$5)",
-            project.id, project.name, project.slug, project.created_by, project.created_at,
+            project.id,
+            project.name,
+            project.slug,
+            project.created_by,
+            project.created_at,
         )
 
     async def get_project(self, project_id: str) -> Project | None:
@@ -426,12 +438,18 @@ class PostgresBackend:
             VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role
             """,
-            member.project_id, member.user_id, member.role.value, member.added_by, member.added_at,
+            member.project_id,
+            member.user_id,
+            member.role.value,
+            member.added_by,
+            member.added_at,
         )
 
     async def get_member(self, project_id: str, user_id: str) -> ProjectMember | None:
         row = await self._pool.fetchrow(
-            "SELECT * FROM project_members WHERE project_id = $1 AND user_id = $2", project_id, user_id
+            "SELECT * FROM project_members WHERE project_id = $1 AND user_id = $2",
+            project_id,
+            user_id,
         )
         return _row_to_member(row) if row else None
 
@@ -444,13 +462,17 @@ class PostgresBackend:
     async def update_member_role(self, project_id: str, user_id: str, role: str) -> bool:
         result: str = await self._pool.execute(
             "UPDATE project_members SET role = $1 WHERE project_id = $2 AND user_id = $3",
-            role, project_id, user_id,
+            role,
+            project_id,
+            user_id,
         )
         return result != "UPDATE 0"
 
     async def remove_member(self, project_id: str, user_id: str) -> bool:
         result: str = await self._pool.execute(
-            "DELETE FROM project_members WHERE project_id = $1 AND user_id = $2", project_id, user_id
+            "DELETE FROM project_members WHERE project_id = $1 AND user_id = $2",
+            project_id,
+            user_id,
         )
         return result != "DELETE 0"
 
@@ -462,8 +484,13 @@ class PostgresBackend:
             INSERT INTO users (id, email, password_hash, role, active, invited_by, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
-            user.id, user.email, user.password_hash, user.role.value,
-            user.active, user.invited_by, user.created_at,
+            user.id,
+            user.email,
+            user.password_hash,
+            user.role.value,
+            user.active,
+            user.invited_by,
+            user.created_at,
         )
 
     async def get_user_by_email(self, email: str) -> User | None:
@@ -493,9 +520,7 @@ class PostgresBackend:
         return result != "UPDATE 0"
 
     async def touch_user_login(self, user_id: str) -> None:
-        await self._pool.execute(
-            "UPDATE users SET last_login_at = NOW() WHERE id = $1", user_id
-        )
+        await self._pool.execute("UPDATE users SET last_login_at = NOW() WHERE id = $1", user_id)
 
     async def count_users(self) -> int:
         row = await self._pool.fetchrow("SELECT COUNT(*) AS n FROM users WHERE active = TRUE")
@@ -509,20 +534,20 @@ class PostgresBackend:
             INSERT INTO invite_tokens (token, email, role, invited_by, created_at, expires_at)
             VALUES ($1, $2, $3, $4, $5, $6)
             """,
-            invite.token, invite.email, invite.role.value,
-            invite.invited_by, invite.created_at, invite.expires_at,
+            invite.token,
+            invite.email,
+            invite.role.value,
+            invite.invited_by,
+            invite.created_at,
+            invite.expires_at,
         )
 
     async def get_invite(self, token: str) -> InviteToken | None:
-        row = await self._pool.fetchrow(
-            "SELECT * FROM invite_tokens WHERE token = $1", token
-        )
+        row = await self._pool.fetchrow("SELECT * FROM invite_tokens WHERE token = $1", token)
         return _row_to_invite(row) if row else None
 
     async def mark_invite_used(self, token: str) -> None:
-        await self._pool.execute(
-            "UPDATE invite_tokens SET used_at = NOW() WHERE token = $1", token
-        )
+        await self._pool.execute("UPDATE invite_tokens SET used_at = NOW() WHERE token = $1", token)
 
     # ── SLO management ────────────────────────────────────────────────────────
 
@@ -532,26 +557,25 @@ class PostgresBackend:
             INSERT INTO agent_slos (id, agent_name, metric, target, window_hours, created_at)
             VALUES ($1, $2, $3, $4, $5, $6)
             """,
-            slo.id, slo.agent_name, slo.metric.value, slo.target, slo.window_hours, slo.created_at,
+            slo.id,
+            slo.agent_name,
+            slo.metric.value,
+            slo.target,
+            slo.window_hours,
+            slo.created_at,
         )
         logger.info("storage.postgres.slo_created", id=slo.id, agent=slo.agent_name)
 
     async def list_slos(self) -> list[AgentSLO]:
-        rows = await self._pool.fetch(
-            "SELECT * FROM agent_slos ORDER BY created_at DESC"
-        )
+        rows = await self._pool.fetch("SELECT * FROM agent_slos ORDER BY created_at DESC")
         return [_row_to_slo(r) for r in rows]
 
     async def get_slo(self, slo_id: str) -> AgentSLO | None:
-        row = await self._pool.fetchrow(
-            "SELECT * FROM agent_slos WHERE id = $1", slo_id
-        )
+        row = await self._pool.fetchrow("SELECT * FROM agent_slos WHERE id = $1", slo_id)
         return _row_to_slo(row) if row else None
 
     async def delete_slo(self, slo_id: str) -> bool:
-        result: str = await self._pool.execute(
-            "DELETE FROM agent_slos WHERE id = $1", slo_id
-        )
+        result: str = await self._pool.execute("DELETE FROM agent_slos WHERE id = $1", slo_id)
         return result != "DELETE 0"
 
     # ── Alert config ──────────────────────────────────────────────────────────
@@ -566,12 +590,16 @@ class PostgresBackend:
         alert_types = row["alert_types"] or {}
         if isinstance(alert_types, str):
             import json
+
             alert_types = json.loads(alert_types)
         return {"slack_webhook": row["slack_webhook"], "alert_types": alert_types}
 
-    async def save_alert_config(self, slack_webhook: str | None, alert_types: dict[str, bool]) -> None:
+    async def save_alert_config(
+        self, slack_webhook: str | None, alert_types: dict[str, bool]
+    ) -> None:
         """Upsert the singleton alert config row."""
         import json
+
         await self._pool.execute(
             """
             INSERT INTO alert_config (id, slack_webhook, alert_types)
@@ -580,7 +608,8 @@ class PostgresBackend:
                 slack_webhook = EXCLUDED.slack_webhook,
                 alert_types   = EXCLUDED.alert_types
             """,
-            slack_webhook, json.dumps(alert_types),
+            slack_webhook,
+            json.dumps(alert_types),
         )
 
     # ── Audit logs ────────────────────────────────────────────────────────────
@@ -594,21 +623,28 @@ class PostgresBackend:
     ) -> None:
         """Append a new audit log entry."""
         import json
+
         await self._pool.execute(
             "INSERT INTO audit_logs (event, user_id, ip, details) VALUES ($1, $2, $3, $4::jsonb)",
-            event, user_id, ip, json.dumps(details),
+            event,
+            user_id,
+            ip,
+            json.dumps(details),
         )
 
     async def list_audit_logs(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         """Return audit log entries most-recent-first."""
         rows = await self._pool.fetch(
             "SELECT id, timestamp, event, user_id, ip, details FROM audit_logs ORDER BY id DESC LIMIT $1 OFFSET $2",
-            limit, offset,
+            limit,
+            offset,
         )
         return [
             {
                 "id": r["id"],
-                "timestamp": r["timestamp"].isoformat() if hasattr(r["timestamp"], "isoformat") else str(r["timestamp"]),
+                "timestamp": r["timestamp"].isoformat()
+                if hasattr(r["timestamp"], "isoformat")
+                else str(r["timestamp"]),
                 "event": r["event"],
                 "user_id": r["user_id"],
                 "ip": r["ip"],

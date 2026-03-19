@@ -85,3 +85,11 @@ ignore = [
 python_version = "3.11"
 strict = true
 files = ["src/langsight"]
+
+[[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["langchain", "langchain.*"]
+ignore_missing_imports = true

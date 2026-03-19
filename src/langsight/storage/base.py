@@ -213,7 +213,9 @@ class StorageBackend(Protocol):
         """Return the persisted alert config (slack_webhook + alert_types), or None."""
         ...
 
-    async def save_alert_config(self, slack_webhook: str | None, alert_types: dict[str, bool]) -> None:
+    async def save_alert_config(
+        self, slack_webhook: str | None, alert_types: dict[str, bool]
+    ) -> None:
         """Upsert the singleton alert config row."""
         ...
 

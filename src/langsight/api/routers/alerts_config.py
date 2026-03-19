@@ -28,6 +28,7 @@ router = APIRouter(tags=["alerts"])
 # Audit log helpers
 # ---------------------------------------------------------------------------
 
+
 def append_audit(
     event: str,
     user_id: str | None,
@@ -46,6 +47,7 @@ def append_audit(
     the actual DB write happens asynchronously.
     """
     import asyncio
+
     entry = {
         "event": event,
         "user_id": user_id or "system",
@@ -72,14 +74,14 @@ def append_audit(
 # ---------------------------------------------------------------------------
 
 _DEFAULT_ALERT_TYPES = {
-    "agent_failure":    True,   # session with failed_calls > 0
-    "slo_breached":     True,   # SLO evaluator returns breached
-    "anomaly_critical": True,   # z-score critical (|z| >= 3)
-    "anomaly_warning":  False,  # z-score warning (|z| >= 2)
-    "security_critical":True,   # CVE / OWASP critical finding
-    "security_high":    False,  # OWASP high finding
-    "mcp_down":         True,   # MCP server DOWN
-    "mcp_recovered":    True,   # MCP server recovered
+    "agent_failure": True,  # session with failed_calls > 0
+    "slo_breached": True,  # SLO evaluator returns breached
+    "anomaly_critical": True,  # z-score critical (|z| >= 3)
+    "anomaly_warning": False,  # z-score warning (|z| >= 2)
+    "security_critical": True,  # CVE / OWASP critical finding
+    "security_high": False,  # OWASP high finding
+    "mcp_down": True,  # MCP server DOWN
+    "mcp_recovered": True,  # MCP server recovered
 }
 
 
@@ -120,6 +122,7 @@ async def _load_alert_config(request: Request) -> dict[str, Any]:
 # Request / response models
 # ---------------------------------------------------------------------------
 
+
 class AlertConfigResponse(BaseModel):
     slack_webhook: str | None
     alert_types: dict[str, bool]
@@ -134,6 +137,7 @@ class AlertConfigUpdate(BaseModel):
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
 
 @router.get("/alerts/config", response_model=AlertConfigResponse)
 async def get_alerts_config(request: Request) -> AlertConfigResponse:
@@ -195,6 +199,7 @@ async def test_slack_webhook(
         )
 
     import httpx
+
     payload = {
         "text": ":white_check_mark: LangSight test notification",
         "blocks": [
@@ -213,8 +218,14 @@ async def test_slack_webhook(
                     "text": "Your Slack integration is working correctly.\nYou will receive alerts here when agent sessions fail, MCP servers go down, SLOs are breached, or anomalies are detected.",
                 },
                 "fields": [
-                    {"type": "mrkdwn", "text": f"*Instance*\n`{request.url.hostname}:{request.url.port or 8000}`"},
-                    {"type": "mrkdwn", "text": f"*Sent at*\n{datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}"},
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Instance*\n`{request.url.hostname}:{request.url.port or 8000}`",
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Sent at*\n{datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}",
+                    },
                 ],
             },
             {"type": "divider"},
@@ -238,6 +249,7 @@ async def test_slack_webhook(
 # ---------------------------------------------------------------------------
 # Audit log endpoint
 # ---------------------------------------------------------------------------
+
 
 @router.get("/audit/logs")
 async def list_audit_logs(

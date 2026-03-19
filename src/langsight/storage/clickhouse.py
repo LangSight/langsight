@@ -354,16 +354,16 @@ class ClickHouseBackend:
             s.ended_at,
             s.latency_ms,
             s.status.value,
-            s.error,          # Nullable(String) — kept for error messages
+            s.error,  # Nullable(String) — kept for error messages
             s.agent_name or "",
-            input_json,       # Nullable(String) — None when redacted
+            input_json,  # Nullable(String) — None when redacted
             s.output_result,  # Nullable(String) — None when redacted
-            s.llm_input,      # Nullable(String) — LLM prompt (agent spans only)
-            s.llm_output,     # Nullable(String) — LLM completion (agent spans only)
+            s.llm_input,  # Nullable(String) — LLM prompt (agent spans only)
+            s.llm_output,  # Nullable(String) — LLM completion (agent spans only)
             s.replay_of or "",
             s.project_id or "",
-            s.input_tokens,    # Nullable(UInt32)
-            s.output_tokens,   # Nullable(UInt32)
+            s.input_tokens,  # Nullable(UInt32)
+            s.output_tokens,  # Nullable(UInt32)
             s.model_id or "",
         ]
 
@@ -664,9 +664,12 @@ class ClickHouseBackend:
             parameters={"baseline_hours": baseline_hours},
         )
         cols = [
-            "server_name", "tool_name",
-            "baseline_error_mean", "baseline_error_stddev",
-            "baseline_latency_mean", "baseline_latency_stddev",
+            "server_name",
+            "tool_name",
+            "baseline_error_mean",
+            "baseline_error_stddev",
+            "baseline_latency_mean",
+            "baseline_latency_stddev",
             "sample_hours",
         ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
@@ -788,12 +791,28 @@ def _diff_spans(
             sb = calls_b[i] if i < len(calls_b) else None
 
             if sa is None:
-                diff.append({"tool_key": key, "status": "only_b", "span_a": None, "span_b": sb,
-                              "latency_delta_pct": None, "status_changed": False})
+                diff.append(
+                    {
+                        "tool_key": key,
+                        "status": "only_b",
+                        "span_a": None,
+                        "span_b": sb,
+                        "latency_delta_pct": None,
+                        "status_changed": False,
+                    }
+                )
                 summary["only_b"] += 1
             elif sb is None:
-                diff.append({"tool_key": key, "status": "only_a", "span_a": sa, "span_b": None,
-                              "latency_delta_pct": None, "status_changed": False})
+                diff.append(
+                    {
+                        "tool_key": key,
+                        "status": "only_a",
+                        "span_a": sa,
+                        "span_b": None,
+                        "latency_delta_pct": None,
+                        "status_changed": False,
+                    }
+                )
                 summary["only_a"] += 1
             else:
                 lat_a = float(sa.get("latency_ms") or 0)
@@ -802,14 +821,16 @@ def _diff_spans(
                 status_changed = sa.get("status") != sb.get("status")
                 diverged = status_changed or abs(lat_delta) >= 20
                 entry_status = "diverged" if diverged else "matched"
-                diff.append({
-                    "tool_key": key,
-                    "status": entry_status,
-                    "span_a": sa,
-                    "span_b": sb,
-                    "latency_delta_pct": lat_delta,
-                    "status_changed": status_changed,
-                })
+                diff.append(
+                    {
+                        "tool_key": key,
+                        "status": entry_status,
+                        "span_a": sa,
+                        "span_b": sb,
+                        "latency_delta_pct": lat_delta,
+                        "status_changed": status_changed,
+                    }
+                )
                 summary["diverged" if diverged else "matched"] += 1
 
     return diff, summary

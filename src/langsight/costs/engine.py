@@ -53,8 +53,8 @@ class CostEntry:
     total_calls: int
     cost_per_call: float
     total_cost_usd: float
-    cost_type: str = "call_based"    # "call_based" | "token_based"
-    model_id: str | None = None      # set for token_based entries
+    cost_type: str = "call_based"  # "call_based" | "token_based"
+    model_id: str | None = None  # set for token_based entries
     total_input_tokens: int = 0
     total_output_tokens: int = 0
 
@@ -167,8 +167,16 @@ class ModelPricingLookup:
         entry = self._index.get(model_id)
         if entry is None:
             return 0.0
-        inp: float = entry.input_per_1m_usd if hasattr(entry, "input_per_1m_usd") else entry.get("input_per_1m_usd", 0.0)
-        out: float = entry.output_per_1m_usd if hasattr(entry, "output_per_1m_usd") else entry.get("output_per_1m_usd", 0.0)
+        inp: float = (
+            entry.input_per_1m_usd
+            if hasattr(entry, "input_per_1m_usd")
+            else entry.get("input_per_1m_usd", 0.0)
+        )
+        out: float = (
+            entry.output_per_1m_usd
+            if hasattr(entry, "output_per_1m_usd")
+            else entry.get("output_per_1m_usd", 0.0)
+        )
         return float((input_tokens / 1_000_000 * inp) + (output_tokens / 1_000_000 * out))
 
     def has_model(self, model_id: str) -> bool:
@@ -221,7 +229,10 @@ def aggregate_cost_rows(
         )
 
         if use_token_pricing and model_pricing:
-            total_cost_usd = model_pricing.cost_for(row_model_id, input_tokens or 0, output_tokens or 0) * total_calls
+            total_cost_usd = (
+                model_pricing.cost_for(row_model_id, input_tokens or 0, output_tokens or 0)
+                * total_calls
+            )
             cost_per_call = total_cost_usd / max(total_calls, 1)
             cost_type = "token_based"
         else:

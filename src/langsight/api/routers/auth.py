@@ -146,7 +146,9 @@ async def revoke_api_key(
 ) -> None:
     """Revoke an API key immediately. Revoked keys cannot be un-revoked."""
     if not hasattr(storage, "revoke_api_key"):
-        raise HTTPException(status_code=501, detail="Storage backend does not support key revocation")
+        raise HTTPException(
+            status_code=501, detail="Storage backend does not support key revocation"
+        )
 
     found = await storage.revoke_api_key(key_id)
     if not found:

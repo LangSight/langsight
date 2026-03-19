@@ -53,10 +53,10 @@ class SpanNode(BaseModel):
     status: str
     error: str | None
     trace_id: str | None
-    input_json: str | None = None   # P5.1 payload — None when redacted or not captured
+    input_json: str | None = None  # P5.1 payload — None when redacted or not captured
     output_json: str | None = None  # P5.1 payload — None when redacted or on error
-    llm_input: str | None = None    # P5.3 — LLM prompt (agent spans only)
-    llm_output: str | None = None   # P5.3 — LLM completion (agent spans only)
+    llm_input: str | None = None  # P5.3 — LLM prompt (agent spans only)
+    llm_output: str | None = None  # P5.3 — LLM completion (agent spans only)
     children: list[SpanNode] = []
 
 
@@ -79,8 +79,8 @@ class SessionComparison(BaseModel):
     session_b: str
     spans_a: list[dict[str, Any]]
     spans_b: list[dict[str, Any]]
-    diff: list[dict[str, Any]]   # per-tool diff entries
-    summary: dict[str, int]      # matched / diverged / only_a / only_b
+    diff: list[dict[str, Any]]  # per-tool diff entries
+    summary: dict[str, int]  # matched / diverged / only_a / only_b
 
 
 class ReplayResponse(BaseModel):
@@ -119,7 +119,9 @@ async def list_sessions(
     if not hasattr(storage, "get_agent_sessions"):
         return []
 
-    rows = await storage.get_agent_sessions(hours=hours, agent_name=agent_name, limit=limit, project_id=project_id)
+    rows = await storage.get_agent_sessions(
+        hours=hours, agent_name=agent_name, limit=limit, project_id=project_id
+    )
     return [
         AgentSession(
             session_id=r["session_id"] or "unknown",
@@ -286,9 +288,13 @@ async def compare_sessions(
         spans_a_in_project = [s for s in result["spans_a"] if s.get("project_id") == project_id]
         spans_b_in_project = [s for s in result["spans_b"] if s.get("project_id") == project_id]
         if result["spans_a"] and not spans_a_in_project:
-            raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Session not found.")
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND, detail="Session not found."
+            )
         if result["spans_b"] and not spans_b_in_project:
-            raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Session not found.")
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND, detail="Session not found."
+            )
 
     if not result["spans_a"] and not result["spans_b"]:
         raise HTTPException(

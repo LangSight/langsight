@@ -42,6 +42,7 @@ def _read_api_key(request: Request, declared: str | None = None) -> str | None:
         return token or None
     return None
 
+
 # Default trusted proxy addresses — loopback only.
 # Overridden at startup via LANGSIGHT_TRUSTED_PROXY_CIDRS env var to support
 # Docker/K8s deployments where the dashboard runs in a separate container.
@@ -87,10 +88,9 @@ def _is_proxy_request(request: Request) -> bool:
         "state",
         None,
     )
-    trusted_nets: list[_IPNetwork] = (
-        getattr(trusted, "trusted_proxy_networks", None)
-        or parse_trusted_proxy_networks(_DEFAULT_TRUSTED_PROXY_CIDRS)
-    )
+    trusted_nets: list[_IPNetwork] = getattr(
+        trusted, "trusted_proxy_networks", None
+    ) or parse_trusted_proxy_networks(_DEFAULT_TRUSTED_PROXY_CIDRS)
 
     try:
         addr = ipaddress.ip_address(client_host)
@@ -113,7 +113,7 @@ def _get_session_user(request: Request) -> tuple[str | None, str | None]:
     """
     if not _is_proxy_request(request):
         return None, None
-    user_id   = request.headers.get("X-User-Id")
+    user_id = request.headers.get("X-User-Id")
     user_role = request.headers.get("X-User-Role")
     return user_id or None, user_role or None
 
@@ -152,7 +152,9 @@ async def verify_api_key(
     # Resolve API key from X-API-Key or Authorization: Bearer (SDK compat)
     api_key = _read_api_key(request, api_key)
     if user_id and user_role:
-        logger.debug("audit.auth.session", user_id=user_id, role=user_role, path=str(request.url.path))
+        logger.debug(
+            "audit.auth.session", user_id=user_id, role=user_role, path=str(request.url.path)
+        )
         return
 
     env_keys: list[str] = getattr(request.app.state, "api_keys", [])

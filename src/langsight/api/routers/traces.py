@@ -178,8 +178,16 @@ def _parse_otlp_span(span: dict[str, Any]) -> ToolCallSpan | None:
     output_tokens: int | None = None
 
     # Extract token counts (P7.2)
-    raw_input_tokens = attrs.get("gen_ai.usage.input_tokens") or attrs.get("gen_ai.usage.prompt_tokens") or attrs.get("llm.token_count.prompt")
-    raw_output_tokens = attrs.get("gen_ai.usage.output_tokens") or attrs.get("gen_ai.usage.completion_tokens") or attrs.get("llm.token_count.completion")
+    raw_input_tokens = (
+        attrs.get("gen_ai.usage.input_tokens")
+        or attrs.get("gen_ai.usage.prompt_tokens")
+        or attrs.get("llm.token_count.prompt")
+    )
+    raw_output_tokens = (
+        attrs.get("gen_ai.usage.output_tokens")
+        or attrs.get("gen_ai.usage.completion_tokens")
+        or attrs.get("llm.token_count.completion")
+    )
     if raw_input_tokens is not None:
         try:
             input_tokens = int(raw_input_tokens)
@@ -198,9 +206,15 @@ def _parse_otlp_span(span: dict[str, Any]) -> ToolCallSpan | None:
         is_llm_span = True
         if raw_prompt:
             # May already be a string or a JSON-encoded messages array
-            llm_input = raw_prompt if isinstance(raw_prompt, str) else _json.dumps(raw_prompt, default=str)
+            llm_input = (
+                raw_prompt if isinstance(raw_prompt, str) else _json.dumps(raw_prompt, default=str)
+            )
         if raw_completion:
-            llm_output = raw_completion if isinstance(raw_completion, str) else _json.dumps(raw_completion, default=str)
+            llm_output = (
+                raw_completion
+                if isinstance(raw_completion, str)
+                else _json.dumps(raw_completion, default=str)
+            )
 
     # ── MCP / tool call span detection ────────────────────────────────────
     server_name = attrs.get("mcp.server.name") or attrs.get("gen_ai.system")

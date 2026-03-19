@@ -67,16 +67,16 @@ class ModelPricing(BaseModel):
     """
 
     id: str
-    provider: str                       # "anthropic" | "openai" | "google" | "meta" | "custom"
-    model_id: str                       # matches gen_ai.request.model attribute
+    provider: str  # "anthropic" | "openai" | "google" | "meta" | "custom"
+    model_id: str  # matches gen_ai.request.model attribute
     display_name: str
-    input_per_1m_usd: float = 0.0      # $ per 1M input tokens
-    output_per_1m_usd: float = 0.0     # $ per 1M output tokens
-    cache_read_per_1m_usd: float = 0.0 # $ per 1M cached input tokens (Anthropic prompt caching)
+    input_per_1m_usd: float = 0.0  # $ per 1M input tokens
+    output_per_1m_usd: float = 0.0  # $ per 1M output tokens
+    cache_read_per_1m_usd: float = 0.0  # $ per 1M cached input tokens (Anthropic prompt caching)
     effective_from: datetime = Field(default_factory=lambda: datetime.now(UTC))
     effective_to: datetime | None = None
     notes: str | None = None
-    is_custom: bool = False             # True = user-added, False = seeded builtin
+    is_custom: bool = False  # True = user-added, False = seeded builtin
 
     model_config = {"frozen": True}
 
@@ -93,7 +93,7 @@ class ModelPricing(BaseModel):
 
 
 class ProjectRole(StrEnum):
-    OWNER = "owner"    # full control — rename, invite, delete project
+    OWNER = "owner"  # full control — rename, invite, delete project
     MEMBER = "member"  # operational — view traces, create SLOs, trigger scans
     VIEWER = "viewer"  # read-only — view all data, no writes
 
@@ -101,10 +101,10 @@ class ProjectRole(StrEnum):
 class Project(BaseModel):
     """A project groups all observability data for one product or environment."""
 
-    id: str           # uuid4 hex
-    name: str         # display name, e.g. "Customer Support"
-    slug: str         # url-safe unique identifier, e.g. "customer-support"
-    created_by: str   # user id of creator
+    id: str  # uuid4 hex
+    name: str  # display name, e.g. "Customer Support"
+    slug: str  # url-safe unique identifier, e.g. "customer-support"
+    created_by: str  # user id of creator
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     model_config = {"frozen": True}
@@ -116,14 +116,14 @@ class ProjectMember(BaseModel):
     project_id: str
     user_id: str
     role: ProjectRole = ProjectRole.VIEWER
-    added_by: str     # user id of whoever granted membership
+    added_by: str  # user id of whoever granted membership
     added_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     model_config = {"frozen": True}
 
 
 class UserRole(StrEnum):
-    ADMIN = "admin"    # full access — can invite users, trigger scans, manage API keys
+    ADMIN = "admin"  # full access — can invite users, trigger scans, manage API keys
     VIEWER = "viewer"  # read-only — dashboards and traces, no write operations
 
 
@@ -135,7 +135,7 @@ class User(BaseModel):
     password_hash: str  # bcrypt hash — never expose raw
     role: UserRole = UserRole.VIEWER
     active: bool = True
-    invited_by: str | None = None   # user id of the admin who invited them
+    invited_by: str | None = None  # user id of the admin who invited them
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_login_at: datetime | None = None
 
@@ -145,12 +145,12 @@ class User(BaseModel):
 class InviteToken(BaseModel):
     """A one-time invite token for a new user."""
 
-    token: str          # random 32-byte hex token
-    email: str          # email the invite is for
+    token: str  # random 32-byte hex token
+    email: str  # email the invite is for
     role: UserRole = UserRole.VIEWER
-    invited_by: str     # user id of admin
+    invited_by: str  # user id of admin
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    expires_at: datetime   # 72h after creation
+    expires_at: datetime  # 72h after creation
     used_at: datetime | None = None
 
     @property
@@ -163,8 +163,8 @@ class InviteToken(BaseModel):
 
 
 class SLOMetric(StrEnum):
-    SUCCESS_RATE = "success_rate"    # % of sessions with zero failed calls
-    LATENCY_P99 = "latency_p99"      # p99 session duration in ms (approximated from avg)
+    SUCCESS_RATE = "success_rate"  # % of sessions with zero failed calls
+    LATENCY_P99 = "latency_p99"  # p99 session duration in ms (approximated from avg)
 
 
 class AgentSLO(BaseModel):
@@ -178,7 +178,7 @@ class AgentSLO(BaseModel):
     id: str  # uuid4 hex — assigned on creation
     agent_name: str
     metric: SLOMetric
-    target: float   # success_rate: percentage 0-100 | latency_p99: milliseconds
+    target: float  # success_rate: percentage 0-100 | latency_p99: milliseconds
     window_hours: int = 24
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -203,7 +203,7 @@ class SLOEvaluation(BaseModel):
 
 
 class ApiKeyRole(StrEnum):
-    ADMIN = "admin"    # full access — can trigger scans, ingest spans, manage keys
+    ADMIN = "admin"  # full access — can trigger scans, ingest spans, manage keys
     VIEWER = "viewer"  # read-only — GET endpoints only
 
 
@@ -222,4 +222,3 @@ class ApiKeyRecord(BaseModel):
     @property
     def is_revoked(self) -> bool:
         return self.revoked_at is not None
-

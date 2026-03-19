@@ -31,8 +31,8 @@ logger = structlog.get_logger()
 
 # Minimum stddev to avoid near-zero division on very stable tools.
 # Treats any tool with stddev < this as having this much natural variation.
-_MIN_STDDEV_ERROR_RATE = 0.01   # 1% minimum variation
-_MIN_STDDEV_LATENCY_MS = 10.0   # 10ms minimum variation
+_MIN_STDDEV_ERROR_RATE = 0.01  # 1% minimum variation
+_MIN_STDDEV_LATENCY_MS = 10.0  # 10ms minimum variation
 
 
 class ErrorCategory(StrEnum):
@@ -160,13 +160,13 @@ class AnomalyResult:
 
     server_name: str
     tool_name: str
-    metric: str          # "error_rate" | "avg_latency_ms"
+    metric: str  # "error_rate" | "avg_latency_ms"
     current_value: float
     baseline_mean: float
     baseline_stddev: float
     z_score: float
-    severity: str        # "warning" (z>=2) | "critical" (z>=3)
-    sample_hours: int    # how many baseline hours were used
+    severity: str  # "warning" (z>=2) | "critical" (z>=3)
+    sample_hours: int  # how many baseline hours were used
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -311,9 +311,9 @@ class SLOEvaluator:
         for slo in slos:
             key = (slo.agent_name, slo.window_hours)
             if key not in windows:
-                windows[key] = await self._fetch_session_stats(
-                    slo.agent_name, slo.window_hours
-                ) or {}
+                windows[key] = (
+                    await self._fetch_session_stats(slo.agent_name, slo.window_hours) or {}
+                )
 
         results = []
         for slo in slos:
@@ -363,9 +363,7 @@ class SLOEvaluator:
             total = len(sessions)
             clean = sum(1 for s in sessions if int(s.get("failed_calls") or 0) == 0)
             durations = [
-                float(s["duration_ms"])
-                for s in sessions
-                if s.get("duration_ms") is not None
+                float(s["duration_ms"]) for s in sessions if s.get("duration_ms") is not None
             ]
             return {
                 "total_sessions": total,

@@ -33,8 +33,8 @@ from langsight.sdk.models import ToolCallSpan, ToolCallStatus
 
 logger = structlog.get_logger()
 
-DEFAULT_TIMEOUT_PER_CALL = 10.0   # seconds
-DEFAULT_TOTAL_TIMEOUT = 60.0      # seconds
+DEFAULT_TIMEOUT_PER_CALL = 10.0  # seconds
+DEFAULT_TOTAL_TIMEOUT = 60.0  # seconds
 
 
 @dataclass
@@ -44,9 +44,9 @@ class ReplayResult:
     original_session_id: str
     replay_session_id: str
     total_spans: int
-    replayed: int        # spans successfully re-executed
-    skipped: int         # spans without input_args (LLM/agent spans)
-    failed: int          # spans that errored during replay
+    replayed: int  # spans successfully re-executed
+    skipped: int  # spans without input_args (LLM/agent spans)
+    failed: int  # spans that errored during replay
     duration_ms: float
 
     def to_dict(self) -> dict[str, Any]:
@@ -96,10 +96,7 @@ class ReplayEngine:
         replay_session_id = f"replay-{uuid.uuid4().hex[:16]}"
         started = datetime.now(UTC)
 
-        replayable = [
-            s for s in spans
-            if s.get("span_type") == "tool_call" and s.get("input_json")
-        ]
+        replayable = [s for s in spans if s.get("span_type") == "tool_call" and s.get("input_json")]
         skipped = len(spans) - len(replayable)
 
         replay_spans: list[ToolCallSpan] = []

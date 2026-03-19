@@ -101,13 +101,15 @@ class CostsBreakdownResponse(BaseModel):
     hours: int
     total_calls: int
     total_cost_usd: float
-    llm_cost_usd: float = 0.0    # token-based LLM spend
-    tool_cost_usd: float = 0.0   # call-based tool spend
+    llm_cost_usd: float = 0.0  # token-based LLM spend
+    tool_cost_usd: float = 0.0  # call-based tool spend
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     by_tool: list[CostBreakdownEntry]
     by_agent: list[AgentCostBreakdownEntry]
     by_session: list[SessionCostBreakdownEntry]
+
+
 def _to_tool_entry(entry: CostEntry) -> CostBreakdownEntry:
     data = entry.to_dict()
     return CostBreakdownEntry(
@@ -177,7 +179,10 @@ async def create_model_pricing(
     """
     if not hasattr(storage, "create_model_pricing"):
         from fastapi import HTTPException
-        raise HTTPException(status_code=503, detail="Model pricing requires SQLite or PostgreSQL backend.")
+
+        raise HTTPException(
+            status_code=503, detail="Model pricing requires SQLite or PostgreSQL backend."
+        )
 
     entry = ModelPricing(
         id=uuid.uuid4().hex,
@@ -214,7 +219,10 @@ async def update_model_pricing(
     """
     if not hasattr(storage, "deactivate_model_pricing"):
         from fastapi import HTTPException
-        raise HTTPException(status_code=503, detail="Model pricing requires SQLite or PostgreSQL backend.")
+
+        raise HTTPException(
+            status_code=503, detail="Model pricing requires SQLite or PostgreSQL backend."
+        )
 
     await storage.deactivate_model_pricing(entry_id)
 
@@ -247,7 +255,10 @@ async def deactivate_model_pricing(
     """Deactivate a model pricing entry (sets effective_to=now)."""
     if not hasattr(storage, "deactivate_model_pricing"):
         from fastapi import HTTPException
-        raise HTTPException(status_code=503, detail="Model pricing requires SQLite or PostgreSQL backend.")
+
+        raise HTTPException(
+            status_code=503, detail="Model pricing requires SQLite or PostgreSQL backend."
+        )
     await storage.deactivate_model_pricing(entry_id)
 
 

@@ -58,15 +58,15 @@ class ToolCallSpan(BaseModel):
     status: ToolCallStatus
     error: str | None = None
     agent_name: str | None = None  # which agent emitted this span
-    input_args: dict[str, Any] | None = None   # tool call arguments (omitted when redacted)
-    output_result: str | None = None            # tool return value as string (omitted when redacted)
-    llm_input: str | None = None               # P5.3 — LLM prompt/messages (agent spans only)
-    llm_output: str | None = None              # P5.3 — LLM completion text (agent spans only)
-    replay_of: str | None = None               # P5.7 — original span_id this is a replay of
-    project_id: str | None = None             # P6 — project this span belongs to
-    input_tokens: int | None = None           # P7 — LLM input token count
-    output_tokens: int | None = None          # P7 — LLM output token count
-    model_id: str | None = None               # P7 — model used (gen_ai.request.model)
+    input_args: dict[str, Any] | None = None  # tool call arguments (omitted when redacted)
+    output_result: str | None = None  # tool return value as string (omitted when redacted)
+    llm_input: str | None = None  # P5.3 — LLM prompt/messages (agent spans only)
+    llm_output: str | None = None  # P5.3 — LLM completion text (agent spans only)
+    replay_of: str | None = None  # P5.7 — original span_id this is a replay of
+    project_id: str | None = None  # P6 — project this span belongs to
+    input_tokens: int | None = None  # P7 — LLM input token count
+    output_tokens: int | None = None  # P7 — LLM output token count
+    model_id: str | None = None  # P7 — model used (gen_ai.request.model)
 
     @classmethod
     def record(
