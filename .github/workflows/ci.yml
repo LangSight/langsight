@@ -141,6 +141,15 @@ jobs:
         run: uv sync --dev
 
       - name: Start ClickHouse
+        env:
+          # docker-compose.yml requires these vars even when only starting clickhouse
+          CLICKHOUSE_USER: default
+          CLICKHOUSE_PASSWORD: ""
+          POSTGRES_PASSWORD: ci-not-used
+          LANGSIGHT_API_KEYS: ci-test-key
+          AUTH_SECRET: ci-test-secret
+          LANGSIGHT_ADMIN_EMAIL: admin@test.com
+          LANGSIGHT_ADMIN_PASSWORD: testpassword
         run: |
           docker compose up -d clickhouse
           for i in {1..30}; do
@@ -150,8 +159,19 @@ jobs:
           done
 
       - name: Run ClickHouse integration tests
+        env:
+          TEST_CLICKHOUSE_HOST: localhost
+          TEST_CLICKHOUSE_PORT: "8123"
         run: uv run pytest tests/integration/storage/test_clickhouse_integration.py -m integration --no-cov -v
 
       - name: Stop ClickHouse
         if: always()
+        env:
+          CLICKHOUSE_USER: default
+          CLICKHOUSE_PASSWORD: ""
+          POSTGRES_PASSWORD: ci-not-used
+          LANGSIGHT_API_KEYS: ci-test-key
+          AUTH_SECRET: ci-test-secret
+          LANGSIGHT_ADMIN_EMAIL: admin@test.com
+          LANGSIGHT_ADMIN_PASSWORD: testpassword
         run: docker compose stop clickhouse && docker compose rm -f clickhouse

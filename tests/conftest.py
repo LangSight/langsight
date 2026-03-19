@@ -52,19 +52,21 @@ def postgres_dsn() -> str:
 
 @pytest.fixture(scope="session")
 def postgres_available(postgres_dsn: str) -> bool:
-    """Return True if Postgres is reachable at the test DSN."""
-    import asyncio
+    """Return True if Postgres is reachable at the test DSN.
+
+    Uses a plain TCP socket check — no event loop required, safe under
+    any pytest-asyncio mode. If the port is open we trust Postgres is up.
+    """
+    import socket
+    from urllib.parse import urlparse
+
+    parsed = urlparse(postgres_dsn)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 5432
     try:
-        import asyncpg
-        async def _check() -> bool:
-            try:
-                conn = await asyncpg.connect(postgres_dsn, timeout=3)
-                await conn.close()
-                return True
-            except Exception:
-                return False
-        return asyncio.get_event_loop().run_until_complete(_check())
-    except Exception:
+        with socket.create_connection((host, port), timeout=3):
+            return True
+    except OSError:
         return False
 
 
