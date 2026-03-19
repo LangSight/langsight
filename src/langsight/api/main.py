@@ -207,6 +207,56 @@ async def _bootstrap_default_project(storage: Any, admin_user_id: str) -> None:
         logger.warning("api.startup.project_bootstrap_error", error=str(exc))
 
 
+_SAMPLE_PROJECT_SLUG = "sample-project"
+
+
+async def _bootstrap_sample_project(storage: Any, admin_user_id: str) -> None:
+    """Create a 'Sample Project' with demo agent sessions on first run.
+
+    The sample project is isolated from user-created projects — users can
+    explore the demo data without mixing it with their own traces.
+    Skipped if the sample project already exists or LANGSIGHT_SKIP_DEMO_SEED=1.
+    """
+    if not hasattr(storage, "get_project_by_slug") or not hasattr(storage, "create_project"):
+        return
+
+    try:
+        existing = await storage.get_project_by_slug(_SAMPLE_PROJECT_SLUG)
+        if existing:
+            return  # already created on a previous startup
+
+        import uuid
+        from datetime import UTC, datetime
+
+        from langsight.demo_seed import seed_demo_data
+        from langsight.models import Project, ProjectMember, ProjectRole
+
+        now = datetime.now(UTC)
+        project = Project(
+            id=uuid.uuid4().hex,
+            name="Sample Project",
+            slug=_SAMPLE_PROJECT_SLUG,
+            created_by=admin_user_id,
+            created_at=now,
+        )
+        await storage.create_project(project)
+        await storage.add_member(
+            ProjectMember(
+                project_id=project.id,
+                user_id=admin_user_id,
+                role=ProjectRole.OWNER,
+                added_by=admin_user_id,
+                added_at=now,
+            )
+        )
+        logger.info("api.startup.sample_project_created", project_id=project.id)
+
+        await seed_demo_data(storage, project.id)
+
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("api.startup.sample_project_error", error=str(exc))
+
+
 def create_app(config_path: Path | None = None) -> FastAPI:
     """Application factory.
 
@@ -247,6 +297,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         admin_id = await _bootstrap_admin(app.state.storage)
         if admin_id:
             await _bootstrap_default_project(app.state.storage, admin_id)
+
+        # Seed a "Sample Project" with demo agent sessions on first run
+        await _bootstrap_sample_project(app.state.storage, admin_id or "system")
 
         logger.info(
             "api.startup",

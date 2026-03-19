@@ -127,25 +127,42 @@ Default mode is `dual` — both backends run together. `postgres` and `clickhous
 
 ### Prerequisites
 
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/) package manager
-- Docker and Docker Compose (required — no SQLite/zero-dependency mode)
+- Docker and Docker Compose
+- Python 3.11+ and [uv](https://docs.astral.sh/uv/) (for CLI and SDK)
 
-### Install
+### 1. Clone and start
 
 ```bash
-# Install from PyPI
-uv tool install langsight
-
-# Or install from source
 git clone https://github.com/sumankalyan123/langsight.git
 cd langsight
-uv sync
+./scripts/quickstart.sh
 ```
 
-### Start the infrastructure
+The quickstart script generates all secrets, writes `.env`, and runs `docker compose up`. Takes ~2 minutes on first run.
 
-LangSight requires Postgres (metadata) and ClickHouse (analytics). Copy the example env file, fill in the required values, then start the stack:
+### 2. Open the dashboard
+
+Go to **http://localhost:3003** and log in with `admin@localhost` / `langsight-demo-2026`.
+
+A **Sample Project** with 25 demo agent sessions is pre-loaded so you can explore the sessions, traces, and cost views immediately. Create your own project in Settings when you're ready to trace real agents.
+
+### 3. Trace your own agents
+
+```bash
+uv sync  # install the SDK
+```
+
+```python
+from langsight.sdk import LangSightClient
+
+client = LangSightClient(url="http://localhost:8000", api_key="<from quickstart output>")
+traced = client.wrap(mcp_session, server_name="postgres-mcp", agent_name="my-agent")
+result = await traced.call_tool("query", {"sql": "SELECT * FROM orders"})
+```
+
+### Manual setup (if you prefer)
+
+If you'd rather configure manually instead of using the quickstart script:
 
 ```bash
 cp .env.example .env
@@ -154,9 +171,10 @@ cp .env.example .env
 docker compose up -d
 ```
 
-### Initialize
+### Auto-discover MCP servers
 
 ```bash
+uv sync
 langsight init
 ```
 
