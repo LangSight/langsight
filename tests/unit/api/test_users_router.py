@@ -34,6 +34,7 @@ async def client(config_file: Path):
     storage.deactivate_user = AsyncMock(return_value=True)
     storage.get_user_by_id = AsyncMock(return_value=None)
     storage.append_audit_log = AsyncMock()
+    storage.accept_invite = AsyncMock(return_value=True)
     app.state.storage = storage
     app.state.config = load_config(config_file)
     app.state.dashboard_url = "http://localhost:3002"
@@ -138,7 +139,7 @@ class TestAcceptInvite:
         response = await c.post("/api/users/accept-invite",
                                 json={"token": "a" * 64, "password": "securepass123"})
         assert response.status_code == 201
-        storage.create_user.assert_called_once()
+        storage.accept_invite.assert_called_once()
 
     async def test_returns_404_for_invalid_token(self, client) -> None:
         c, storage = client

@@ -22,6 +22,8 @@ logger = structlog.get_logger()
 
 _SPANS_ENDPOINT = "/api/traces/spans"
 _SEND_TIMEOUT = 3.0
+_BATCH_SIZE = 50  # flush when buffer reaches this many spans
+_FLUSH_INTERVAL = 1.0  # seconds between automatic flushes
 
 
 class LangSightClient:
@@ -45,6 +47,8 @@ class LangSightClient:
         timeout: float = _SEND_TIMEOUT,
         redact_payloads: bool = False,
         project_id: str | None = None,
+        batch_size: int = _BATCH_SIZE,
+        flush_interval: float = _FLUSH_INTERVAL,
     ) -> None:
         self._url = url.rstrip("/")
         self._api_key = api_key
@@ -52,6 +56,10 @@ class LangSightClient:
         self._redact_payloads = redact_payloads
         self._project_id = project_id
         self._http: httpx.AsyncClient | None = None
+        self._batch_size = batch_size
+        self._flush_interval = flush_interval
+        self._buffer: list[ToolCallSpan] = []
+        self._flush_task: asyncio.Task[None] | None = None
 
     def wrap(
         self,
@@ -112,20 +120,47 @@ class LangSightClient:
         )
 
     async def send_span(self, span: ToolCallSpan) -> None:
-        """Send a single span to the LangSight API (fire-and-forget wrapper).
+        """Buffer a span for batched delivery. Never blocks, never raises.
 
-        Call this directly if you want to record a span outside of wrap().
-        Does not raise — all errors are logged.
+        Spans are flushed automatically when the buffer reaches ``batch_size``
+        or every ``flush_interval`` seconds — whichever comes first.
         """
-        asyncio.create_task(self._post_span(span))
+        self._buffer.append(span)
+        self._ensure_flush_loop()
+        if len(self._buffer) >= self._batch_size:
+            asyncio.create_task(self.flush())
 
     async def send_spans(self, spans: list[ToolCallSpan]) -> None:
-        """Send multiple spans in a single request."""
-        asyncio.create_task(self._post_spans(spans))
+        """Buffer multiple spans. Triggers immediate flush if threshold reached."""
+        self._buffer.extend(spans)
+        self._ensure_flush_loop()
+        if len(self._buffer) >= self._batch_size:
+            asyncio.create_task(self.flush())
 
-    async def _post_span(self, span: ToolCallSpan) -> None:
-        """Internal: POST a single span. Never raises."""
-        await self._post_spans([span])
+    async def flush(self) -> None:
+        """Flush all buffered spans to the API. Safe to call at any time."""
+        if not self._buffer:
+            return
+        batch, self._buffer = self._buffer, []
+        await self._post_spans(batch)
+
+    def _ensure_flush_loop(self) -> None:
+        """Start the periodic flush background task if not already running."""
+        if self._flush_task is None or self._flush_task.done():
+            try:
+                self._flush_task = asyncio.create_task(self._flush_loop())
+            except RuntimeError:
+                pass  # no running event loop (e.g. during shutdown)
+
+    async def _flush_loop(self) -> None:
+        """Background loop that flushes the buffer periodically."""
+        try:
+            while True:
+                await asyncio.sleep(self._flush_interval)
+                await self.flush()
+        except asyncio.CancelledError:
+            # Final flush on cancellation — don't lose buffered spans
+            await self.flush()
 
     async def _get_http(self) -> httpx.AsyncClient:
         """Return a shared httpx client (connection reuse across requests)."""
@@ -137,7 +172,14 @@ class LangSightClient:
         return self._http
 
     async def close(self) -> None:
-        """Close the shared HTTP client. Call on shutdown."""
+        """Flush remaining spans, cancel the flush loop, and close the HTTP client."""
+        if self._flush_task and not self._flush_task.done():
+            self._flush_task.cancel()
+            try:
+                await self._flush_task
+            except asyncio.CancelledError:
+                pass
+        await self.flush()
         if self._http and not self._http.is_closed:
             await self._http.aclose()
             self._http = None

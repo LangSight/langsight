@@ -188,6 +188,10 @@ class StorageBackend(Protocol):
         """Mark an invite as used."""
         ...
 
+    async def accept_invite(self, token: str, user: User) -> bool:
+        """Atomically mark invite used + create user. Returns False on race."""
+        ...
+
     # ── SLO management ───────────────────────────────────────────────────────
 
     async def create_slo(self, slo: AgentSLO) -> None:

@@ -36,15 +36,30 @@ class TestLangSightClient:
         proxy = client.wrap(mock_mcp, server_name="pg")
         assert isinstance(proxy, MCPClientProxy)
 
-    async def test_send_span_fires_task(self) -> None:
-        client = LangSightClient(url="http://localhost:8000")
-        span = _span()
-        with patch.object(client, "_post_spans", new_callable=AsyncMock):
-            # Need event loop to process tasks
+    async def test_send_span_buffers_and_flushes(self) -> None:
+        client = LangSightClient(url="http://localhost:8000", batch_size=2)
+        with patch.object(client, "_post_spans", new_callable=AsyncMock) as mock_post:
+            await client.send_span(_span())
+            # Buffer not full yet — no post
+            assert len(client._buffer) == 1
+            mock_post.assert_not_called()
+
+            await client.send_span(_span())
+            # Buffer hits batch_size=2 — triggers flush task
             import asyncio
-            task = asyncio.create_task(client.send_span(span))
-            await asyncio.sleep(0)  # yield to let task fire
-            await task
+            await asyncio.sleep(0)  # let flush task run
+            mock_post.assert_called_once()
+            assert len(mock_post.call_args[0][0]) == 2
+
+    async def test_flush_sends_all_buffered_spans(self) -> None:
+        client = LangSightClient(url="http://localhost:8000")
+        with patch.object(client, "_post_spans", new_callable=AsyncMock) as mock_post:
+            await client.send_span(_span())
+            await client.send_span(_span())
+            await client.send_span(_span())
+            await client.flush()
+            mock_post.assert_called_once()
+            assert len(mock_post.call_args[0][0]) == 3
 
     async def test_post_spans_fail_open_on_network_error(self) -> None:
         client = LangSightClient(url="http://localhost:8000")

@@ -552,7 +552,40 @@ class PostgresBackend:
         return _row_to_invite(row) if row else None
 
     async def mark_invite_used(self, token: str) -> None:
-        await self._pool.execute("UPDATE invite_tokens SET used_at = NOW() WHERE token = $1", token)
+        await self._pool.execute(
+            "UPDATE invite_tokens SET used_at = NOW() WHERE token = $1 AND used_at IS NULL",
+            token,
+        )
+
+    async def accept_invite(self, token: str, user: User) -> bool:
+        """Atomically mark an invite as used and create the user account.
+
+        Returns True on success. Returns False if the invite was already
+        consumed (concurrent accept race). The caller should treat False
+        as a 409 Conflict.
+        """
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                result: str = await conn.execute(
+                    "UPDATE invite_tokens SET used_at = NOW() WHERE token = $1 AND used_at IS NULL",
+                    token,
+                )
+                if result == "UPDATE 0":
+                    return False  # already consumed — no user created
+                await conn.execute(
+                    """
+                    INSERT INTO users (id, email, password_hash, role, active, invited_by, created_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """,
+                    user.id,
+                    user.email,
+                    user.password_hash,
+                    user.role.value,
+                    user.active,
+                    user.invited_by,
+                    user.created_at,
+                )
+                return True
 
     # ── SLO management ────────────────────────────────────────────────────────
 

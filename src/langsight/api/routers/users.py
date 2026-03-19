@@ -257,10 +257,18 @@ async def accept_invite(
         created_at=datetime.now(UTC),
     )
 
-    # Mark invite used FIRST to prevent concurrent double-accepts.
-    # Email UNIQUE constraint on users table is the final safety net.
-    await storage.mark_invite_used(body.token)
-    await storage.create_user(user)
+    # Prefer atomic accept_invite (single transaction) when available.
+    # Falls back to two-step for backends without transaction support.
+    if hasattr(storage, "accept_invite"):
+        ok = await storage.accept_invite(body.token, user)
+        if not ok:
+            raise HTTPException(
+                status_code=http_status.HTTP_409_CONFLICT,
+                detail="This invite has already been used.",
+            )
+    else:
+        await storage.mark_invite_used(body.token)
+        await storage.create_user(user)
 
     client_ip = request.client.host if request.client else "unknown"
     logger.info("audit.user.account_created", email=user.email, role=user.role.value, client_ip=client_ip)
