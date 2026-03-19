@@ -89,7 +89,9 @@
       "group": "Observability Features",
       "pages": [
         "session-replay",
-        "costs-model-pricing"
+        "costs-model-pricing",
+        "slos",
+        "anomaly-detection"
       ]
     },
     {

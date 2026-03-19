@@ -8,8 +8,11 @@ If your agent framework already emits OpenTelemetry spans, point its exporter at
 ## Setup
 
 ```bash
-# One environment variable
+# Required
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8000/api/traces/otlp
+
+# Optional — scope spans to a project
+export LANGSIGHT_PROJECT_ID=my-project
 ```
 
 Or via the OTEL Collector (production):
@@ -65,3 +68,15 @@ docker compose up -d otel-collector
 ```
 
 The collector receives on ports `4317` (gRPC) and `4318` (HTTP), filters to MCP spans, and forwards to LangSight.
+
+## Token cost attributes
+
+LangSight extracts token counts from OTEL spans automatically if your framework emits them:
+
+| OTLP attribute | Maps to | Used for |
+|---|---|---|
+| `gen_ai.usage.input_tokens` | input_tokens | LLM cost calculation |
+| `gen_ai.usage.output_tokens` | output_tokens | LLM cost calculation |
+| `gen_ai.request.model` | model_id | Matches against model pricing table |
+
+If these are present, the cost breakdown will use token-based pricing ($/1M tokens) instead of flat per-call pricing.

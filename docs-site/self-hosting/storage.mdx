@@ -60,3 +60,24 @@ Production SaaS → ClickHouse (scale + analytics)
 ```
 
 Switching is a one-line config change. The `StorageBackend` protocol ensures all three behave identically from the CLI and API's perspective.
+
+## Database migrations (PostgreSQL)
+
+LangSight uses Alembic for schema migrations. When using PostgreSQL, run migrations after each update:
+
+```bash
+uv run alembic upgrade head
+```
+
+The migration chain (as of v0.2.0):
+
+| Revision | Description |
+|---|---|
+| `5a5d53a4c81a` | Initial schema — `api_keys`, `health_results`, `schema_snapshots`, `agent_slos` |
+| `e368ec31ce04` | Users and `invite_tokens` |
+| `dc0bf058f21c` | Projects and `project_members` |
+| `0eaccc40f932` | `model_pricing` with seed data |
+
+SQLite runs DDL automatically on startup — no migration step needed.
+
+ClickHouse schema is also managed automatically on startup.

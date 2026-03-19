@@ -10,7 +10,11 @@ from langsight.sdk import LangSightClient
 from langsight.integrations.crewai import LangSightCrewAICallback
 from crewai import Agent
 
-client = LangSightClient(url="http://localhost:8000")
+client = LangSightClient(
+    url="http://localhost:8000",
+    project_id="my-project",      # scope traces to a project
+    redact_payloads=True,          # redact tool args/outputs — recommended if tool args contain PII
+)
 
 callback = LangSightCrewAICallback(
     client=client,

@@ -26,11 +26,16 @@ plugins:
 ```bash
 # Required
 LANGSIGHT_URL=http://localhost:8000
+LANGSIGHT_API_KEY=your-api-key   # Required — create a key in Settings → API Keys
 
 # Optional
-LANGSIGHT_API_KEY=your-api-key
 LANGSIGHT_AGENT_NAME=librechat
+LANGSIGHT_PROJECT_ID=my-project  # Scope LibreChat spans to a project
 ```
+
+<Note>
+`LANGSIGHT_API_KEY` is now required when authentication is enabled on your LangSight instance. Create a key at **Settings → API Keys** in the dashboard (or via `POST /api/auth/api-keys`). Without it, span ingestion will return `401 Unauthorized`.
+</Note>
 
 ### 4. Restart LibreChat
 

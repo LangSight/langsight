@@ -47,6 +47,8 @@ Once running, interactive docs are available at:
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/api/liveness` | Instant liveness probe — no dependencies checked |
+| GET | `/api/readiness` | Readiness probe — checks storage; returns `503` if unhealthy |
 | GET | `/api/status` | API health check |
 | GET | `/api/health/servers` | Latest health for all servers |
 | GET | `/api/health/servers/{name}` | Latest health for one server |
@@ -55,6 +57,30 @@ Once running, interactive docs are available at:
 | POST | `/api/security/scan` | Trigger security scan |
 | POST | `/api/traces/spans` | Ingest SDK spans |
 | POST | `/api/traces/otlp` | Ingest OTLP/JSON traces |
+
+## Authentication
+
+When `LANGSIGHT_API_KEYS` is set, all routes require an `X-API-Key` header:
+
+```bash
+export LANGSIGHT_API_KEYS=key-abc123,key-def456   # comma-separated; any one is accepted
+```
+
+```bash
+curl http://localhost:8000/api/health/servers \
+  -H "X-API-Key: key-abc123"
+```
+
+Liveness (`/api/liveness`) and readiness (`/api/readiness`) probes are always unauthenticated — they are safe to expose to orchestrators such as Kubernetes.
+
+## Rate limits
+
+| Endpoint | Limit |
+|----------|-------|
+| `POST /api/traces/spans` | 200 req/min |
+| `POST /api/traces/otlp` | 60 req/min |
+
+All other endpoints are not rate-limited by default.
 
 ## Production deployment
 

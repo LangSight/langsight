@@ -1,0 +1,72 @@
+---
+title: "Agent SLOs"
+description: "Define success_rate and latency_p99 SLOs per agent — track whether your agents meet their targets"
+---
+
+# Agent SLOs
+
+An Agent SLO (Service Level Objective) defines a performance target for a specific agent. LangSight evaluates SLOs continuously against live session data and shows breaches on the Overview dashboard.
+
+## SLO types
+
+| Metric | What it measures | Target format |
+|---|---|---|
+| `success_rate` | % of sessions with zero failed tool calls | percentage 0–100 (e.g. `95.0`) |
+| `latency_p99` | max session duration as a proxy for p99 latency | milliseconds (e.g. `30000`) |
+
+## Creating an SLO
+
+Via API:
+
+```bash
+curl -X POST http://localhost:8000/api/slos \
+  -H "X-API-Key: <your-key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_name": "customer-support-bot",
+    "metric": "success_rate",
+    "target": 95.0,
+    "window_hours": 24
+  }'
+```
+
+Via dashboard: Settings → (coming soon — use API for now)
+
+## Checking SLO status
+
+```bash
+curl http://localhost:8000/api/slos/status \
+  -H "X-API-Key: <your-key>"
+```
+
+Response:
+
+```json
+[
+  {
+    "slo_id": "abc123",
+    "agent_name": "customer-support-bot",
+    "metric": "success_rate",
+    "target": 95.0,
+    "current_value": 97.3,
+    "window_hours": 24,
+    "status": "ok",
+    "evaluated_at": "2026-03-19T10:00:00Z"
+  }
+]
+```
+
+Status values: `ok` | `breached` | `no_data`
+
+## Dashboard
+
+The Overview page shows an "Agent SLOs" panel when SLOs are defined. Each row shows the agent, metric, target, current value, and a colour-coded status dot (green = ok, red = breached, grey = no data).
+
+## API reference
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/slos` | List all SLO definitions |
+| `POST /api/slos` | Create a new SLO |
+| `GET /api/slos/status` | Evaluate all SLOs against current data |
+| `DELETE /api/slos/{id}` | Delete an SLO |

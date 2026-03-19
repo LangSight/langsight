@@ -130,3 +130,13 @@ See the [SDK quickstart](/quickstart) and [multi-agent tracing](/sdk/multi-agent
 | ClickHouse | Yes | Full support — `mv_agent_sessions` materialized view pre-aggregates session metrics |
 
 To enable ClickHouse, set `storage.mode: clickhouse` in `.langsight.yaml` and run `docker compose up -d`.
+
+## Dashboard features
+
+The `langsight sessions` CLI shows a summary. For full session debugging, open the dashboard (port 3003):
+
+- **Trace tree** — click any span to see formatted input/output payloads inline
+- **Compare** — select two sessions (A/B) and click Compare for a side-by-side diff
+- **Replay** — click Replay in the trace drawer to re-execute tool calls against live MCP servers
+
+See [Session Replay](/session-replay) for details.

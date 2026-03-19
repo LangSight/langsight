@@ -17,7 +17,11 @@ pip install langsight langchain
 from langsight.sdk import LangSightClient
 from langsight.integrations.langchain import LangSightLangChainCallback
 
-client = LangSightClient(url="http://localhost:8000")
+client = LangSightClient(
+    url="http://localhost:8000",
+    project_id="my-project",      # scope traces to a project
+    redact_payloads=True,          # redact tool args/outputs — recommended if tool args contain PII
+)
 
 callback = LangSightLangChainCallback(
     client=client,
@@ -70,7 +74,11 @@ from langsight.integrations.langchain import LangSightLangChainCallback
 from langsight.sdk import LangSightClient
 
 callback = LangSightLangChainCallback(
-    client=LangSightClient(url=os.getenv("LANGSIGHT_URL", "http://localhost:8000")),
+    client=LangSightClient(
+        url=os.getenv("LANGSIGHT_URL", "http://localhost:8000"),
+        project_id=os.getenv("LANGSIGHT_PROJECT_ID"),
+        redact_payloads=True,
+    ),
     agent_name="langflow-agent",
 )
 ```

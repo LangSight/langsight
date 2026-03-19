@@ -9,7 +9,11 @@ description: "Trace MCP tool calls from Pydantic AI with a decorator"
 from langsight.sdk import LangSightClient
 from langsight.integrations.pydantic_ai import langsight_tool
 
-client = LangSightClient(url="http://localhost:8000")
+client = LangSightClient(
+    url="http://localhost:8000",
+    project_id="my-project",      # scope traces to a project
+    redact_payloads=True,          # redact tool args/outputs — recommended if tool args contain PII
+)
 
 @langsight_tool(client=client, server_name="postgres-mcp")
 async def query_database(sql: str) -> list[dict]:

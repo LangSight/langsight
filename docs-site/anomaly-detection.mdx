@@ -1,0 +1,73 @@
+---
+title: "Anomaly Detection"
+description: "Statistically detect unusual tool behaviour using z-score comparison against a 7-day baseline"
+---
+
+# Anomaly Detection
+
+LangSight detects statistically unusual tool behaviour by comparing current metrics against a 7-day rolling baseline using z-score analysis. This catches real problems that threshold-based alerts miss — a tool that's normally noisy won't alert; a reliable tool that suddenly spikes will.
+
+## How it works
+
+For each tool, LangSight computes a baseline (mean + standard deviation) from the last 7 days of hourly data. Current metrics are compared:
+
+```
+z = (current_value - baseline_mean) / baseline_stddev
+```
+
+An anomaly fires when |z| >= threshold (default 2.0):
+
+- **Warning**: |z| >= 2.0
+- **Critical**: |z| >= 3.0
+
+Two metrics are checked per tool:
+
+- `error_rate` — fraction of failed calls
+- `avg_latency_ms` — mean call latency
+
+## API
+
+```bash
+curl "http://localhost:8000/api/reliability/anomalies?current_hours=1&z_threshold=2.0" \
+  -H "X-API-Key: <your-key>"
+```
+
+Parameters:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `current_hours` | `1` | Time window for current metrics |
+| `baseline_hours` | `168` | Baseline window (default 7 days) |
+| `z_threshold` | `2.0` | Z-score threshold to fire an anomaly (1.0–5.0) |
+
+Response:
+
+```json
+[
+  {
+    "server_name": "postgres-mcp",
+    "tool_name": "query",
+    "metric": "avg_latency_ms",
+    "current_value": 4200.0,
+    "baseline_mean": 142.0,
+    "baseline_stddev": 18.5,
+    "z_score": 22.1,
+    "severity": "critical",
+    "sample_hours": 168
+  }
+]
+```
+
+Results are sorted by |z_score| descending — worst anomalies first.
+
+## Dashboard
+
+The Overview page shows an "Anomalies Detected" card that polls every 60 seconds. It shows the count of current anomalies with a critical/warning breakdown.
+
+## Requires ClickHouse
+
+Anomaly detection uses the `mv_tool_reliability` materialized view. It requires `storage.mode: clickhouse`. Returns an empty list on SQLite.
+
+## Minimum baseline
+
+A tool needs at least 3 hours of historical data before anomaly detection kicks in. New tools are skipped until enough baseline exists.
