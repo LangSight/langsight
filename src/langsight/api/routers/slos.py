@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
 from pydantic import BaseModel, Field
 
-from langsight.api.dependencies import get_storage, require_admin
+from langsight.api.dependencies import get_active_project_id, get_storage, require_admin
 from langsight.models import AgentSLO, SLOMetric
 from langsight.reliability.engine import SLOEvaluator
 from langsight.storage.base import StorageBackend
@@ -67,6 +67,7 @@ class SLOStatusResponse(BaseModel):
 
 @router.get("/status", response_model=list[SLOStatusResponse], summary="Evaluate all SLOs")
 async def get_slo_status(
+    project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
 ) -> list[SLOStatusResponse]:
     """Evaluate every defined SLO against current session data.
@@ -79,7 +80,7 @@ async def get_slo_status(
 
     slos = await storage.list_slos()
     evaluator = SLOEvaluator(storage)
-    evaluations = await evaluator.evaluate_all(slos)
+    evaluations = await evaluator.evaluate_all(slos, project_id=project_id)
 
     return [
         SLOStatusResponse(
@@ -127,7 +128,7 @@ async def create_slo(
     if not hasattr(storage, "create_slo"):
         raise HTTPException(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="SLO management requires SQLite or PostgreSQL backend.",
+            detail="SLO management requires PostgreSQL backend.",
         )
     slo = AgentSLO(
         id=uuid.uuid4().hex,
@@ -155,7 +156,7 @@ async def delete_slo(
     if not hasattr(storage, "delete_slo"):
         raise HTTPException(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="SLO management requires SQLite or PostgreSQL backend.",
+            detail="SLO management requires PostgreSQL backend.",
         )
     found = await storage.delete_slo(slo_id)
     if not found:

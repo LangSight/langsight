@@ -26,7 +26,12 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from langsight.api.audit import append_audit
-from langsight.api.dependencies import _is_proxy_request, get_storage, require_admin
+from langsight.api.dependencies import (
+    _is_proxy_request,
+    get_current_user_id,
+    get_storage,
+    require_admin,
+)
 from langsight.models import InviteToken, User, UserRole
 from langsight.storage.base import StorageBackend
 
@@ -161,6 +166,7 @@ async def invite_user(
     body: InviteRequest,
     request: Request,
     storage: StorageBackend = Depends(get_storage),
+    caller_user_id: str | None = Depends(get_current_user_id),
 ) -> InviteResponse:
     """Generate a one-time invite link. Send the invite_url to the new user.
 
@@ -177,8 +183,7 @@ async def invite_user(
             detail=f"A user with email '{body.email}' already exists.",
         )
 
-    # Determine inviter — use first admin user id or "system" for bootstrap
-    inviter_id = "system"
+    inviter_id = caller_user_id or "system"
     token = secrets.token_hex(32)
     now = datetime.now(UTC)
     expires_at = now + timedelta(hours=_INVITE_TTL_HOURS)

@@ -28,6 +28,7 @@ from langsight.api.audit import append_audit
 from langsight.api.dependencies import (
     ProjectAccess,
     _read_api_key,
+    get_current_user_id,
     get_project_access,
     get_session_user,
     get_storage,
@@ -387,6 +388,7 @@ async def add_member(
     request: Request,
     storage: StorageBackend = Depends(get_storage),
     access: ProjectAccess = Depends(get_project_access),
+    caller_user_id: str | None = Depends(get_current_user_id),
 ) -> MemberResponse:
     if not access.is_owner:
         raise HTTPException(
@@ -394,14 +396,7 @@ async def add_member(
             detail="Only project owners can add members.",
         )
     now = datetime.now(UTC)
-    api_key = request.headers.get("X-API-Key", "")
-    adder_id = "system"
-    if api_key and hasattr(storage, "get_api_key_by_hash"):
-        import hashlib
-
-        record = await storage.get_api_key_by_hash(hashlib.sha256(api_key.encode()).hexdigest())
-        if record:
-            adder_id = record.user_id or record.id
+    adder_id = caller_user_id or "system"
 
     member = ProjectMember(
         project_id=project_id,

@@ -391,38 +391,64 @@ class ClickHouseBackend:
         self,
         server_name: str | None = None,
         hours: int = 24,
+        project_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Return tool reliability metrics for the given time window.
 
         Uses the mv_tool_reliability materialized view for fast aggregation.
-        Returns rows sorted by total_calls descending.
+        When project_id is set, queries the base mcp_tool_calls table instead
+        (the MV does not carry project_id).
         """
-        where = "WHERE hour >= now() - INTERVAL {hours:UInt32} HOUR"
         params: dict[str, Any] = {"hours": hours}
 
-        if server_name:
-            where += " AND server_name = {server_name:String}"
-            params["server_name"] = server_name
-
-        # Compute ratios in Python to avoid nested aggregation errors in ClickHouse
-        result = await self._client.query(
-            f"""
-            SELECT
-                server_name,
-                tool_name,
-                sum(total_calls)       AS total_calls,
-                sum(success_calls)     AS success_calls,
-                sum(error_calls)       AS error_calls,
-                sum(timeout_calls)     AS timeout_calls,
-                sum(total_latency_ms)  AS total_latency_ms,
-                max(max_latency_ms)    AS max_latency_ms
-            FROM mv_tool_reliability
-            {where}
-            GROUP BY server_name, tool_name
-            ORDER BY total_calls DESC
-            """,
-            parameters=params,
-        )
+        if project_id:
+            # Fall back to base table for project-scoped queries
+            where = "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+            if server_name:
+                where += " AND server_name = {server_name:String}"
+                params["server_name"] = server_name
+            result = await self._client.query(
+                f"""
+                SELECT
+                    server_name,
+                    tool_name,
+                    count()                              AS total_calls,
+                    countIf(status = 'success')           AS success_calls,
+                    countIf(status = 'error')              AS error_calls,
+                    countIf(status = 'timeout')            AS timeout_calls,
+                    sum(latency_ms)                        AS total_latency_ms,
+                    max(latency_ms)                        AS max_latency_ms
+                FROM mcp_tool_calls
+                {where}
+                GROUP BY server_name, tool_name
+                ORDER BY total_calls DESC
+                """,
+                parameters=params,
+            )
+        else:
+            where = "WHERE hour >= now() - INTERVAL {hours:UInt32} HOUR"
+            if server_name:
+                where += " AND server_name = {server_name:String}"
+                params["server_name"] = server_name
+            result = await self._client.query(
+                f"""
+                SELECT
+                    server_name,
+                    tool_name,
+                    sum(total_calls)       AS total_calls,
+                    sum(success_calls)     AS success_calls,
+                    sum(error_calls)       AS error_calls,
+                    sum(timeout_calls)     AS timeout_calls,
+                    sum(total_latency_ms)  AS total_latency_ms,
+                    max(max_latency_ms)    AS max_latency_ms
+                FROM mv_tool_reliability
+                {where}
+                GROUP BY server_name, tool_name
+                ORDER BY total_calls DESC
+                """,
+                parameters=params,
+            )
 
         rows = []
         for row in result.result_rows:
@@ -627,25 +653,33 @@ class ClickHouseBackend:
     async def get_baseline_stats(
         self,
         baseline_hours: int = 168,  # 7 days
+        project_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Return per-tool baseline statistics (mean + stddev) for anomaly detection.
 
         Computes statistics from hourly aggregated data in mv_tool_reliability.
-        Each row contains: server_name, tool_name, baseline_error_mean,
-        baseline_error_stddev, baseline_latency_mean, baseline_latency_stddev,
-        baseline_hours (samples used).
+        When project_id is set, queries the base mcp_tool_calls table instead.
         """
-        result = await self._client.query(
+        params: dict[str, Any] = {"baseline_hours": baseline_hours}
+
+        if project_id:
+            # Base table for project-scoped queries
+            params["project_id"] = project_id
+            inner_query = """
+                SELECT
+                    server_name,
+                    tool_name,
+                    toStartOfHour(started_at)                    AS hour,
+                    countIf(status = 'error') / greatest(count(), 1) AS error_rate,
+                    avg(latency_ms)                              AS avg_latency
+                FROM mcp_tool_calls
+                WHERE started_at >= now() - INTERVAL {baseline_hours:UInt32} HOUR
+                  AND project_id = {project_id:String}
+                GROUP BY server_name, tool_name, hour
+                HAVING count() > 0
             """
-            SELECT
-                server_name,
-                tool_name,
-                avg(error_rate)          AS baseline_error_mean,
-                stddevPop(error_rate)    AS baseline_error_stddev,
-                avg(avg_latency)         AS baseline_latency_mean,
-                stddevPop(avg_latency)   AS baseline_latency_stddev,
-                count()                  AS sample_hours
-            FROM (
+        else:
+            inner_query = """
                 SELECT
                     server_name,
                     tool_name,
@@ -656,12 +690,24 @@ class ClickHouseBackend:
                 WHERE hour >= now() - INTERVAL {baseline_hours:UInt32} HOUR
                   AND total_calls > 0
                 GROUP BY server_name, tool_name, hour, error_calls, total_calls, total_latency_ms
-            )
+            """
+
+        result = await self._client.query(
+            f"""
+            SELECT
+                server_name,
+                tool_name,
+                avg(error_rate)          AS baseline_error_mean,
+                stddevPop(error_rate)    AS baseline_error_stddev,
+                avg(avg_latency)         AS baseline_latency_mean,
+                stddevPop(avg_latency)   AS baseline_latency_stddev,
+                count()                  AS sample_hours
+            FROM ({inner_query})
             GROUP BY server_name, tool_name
             HAVING sample_hours >= 3
             ORDER BY server_name, tool_name
             """,
-            parameters={"baseline_hours": baseline_hours},
+            parameters=params,
         )
         cols = [
             "server_name",

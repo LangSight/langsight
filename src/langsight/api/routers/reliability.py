@@ -11,7 +11,7 @@ from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Query
 
-from langsight.api.dependencies import get_storage
+from langsight.api.dependencies import get_active_project_id, get_storage
 from langsight.reliability.engine import AnomalyDetector, ReliabilityEngine
 from langsight.storage.base import StorageBackend
 
@@ -56,6 +56,7 @@ async def get_anomalies(
         le=5.0,
         description="Z-score threshold to fire an anomaly (default 2.0 = 2 standard deviations)",
     ),
+    project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
 ) -> list[dict[str, Any]]:
     """Return tools whose current metrics deviate significantly from their baseline.
@@ -70,12 +71,13 @@ async def get_anomalies(
       - error_rate: fraction of failed calls
       - avg_latency_ms: mean call latency
 
-    Requires ClickHouse backend. Returns empty list on SQLite.
+    Requires ClickHouse backend.
     """
     detector = AnomalyDetector(storage, z_threshold=z_threshold)
     anomalies = await detector.detect(
         current_hours=current_hours,
         baseline_hours=baseline_hours,
+        project_id=project_id,
     )
     return [_anomaly_to_dict(a) for a in anomalies]
 
@@ -88,12 +90,13 @@ async def get_anomalies(
 async def get_tool_metrics(
     hours: int = Query(default=24, ge=1, le=720),
     server_name: str | None = Query(default=None),
+    project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
 ) -> list[dict[str, Any]]:
     """Return reliability metrics for all tools over the given time window.
 
-    Requires ClickHouse backend. Returns empty list on SQLite.
+    Requires ClickHouse backend.
     """
     engine = ReliabilityEngine(storage)
-    metrics = await engine.get_metrics(server_name=server_name, hours=hours)
+    metrics = await engine.get_metrics(server_name=server_name, hours=hours, project_id=project_id)
     return [m.to_dict() for m in metrics]
