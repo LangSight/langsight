@@ -141,11 +141,12 @@ function SpanRow({ span, depth = 0 }: { span: SpanNode; depth?: number }) {
 
 /* ── Trace drawer ───────────────────────────────────────────── */
 function TraceDrawer({
-  sessionId, onClose, onReplay,
+  sessionId, onClose, onReplay, projectId,
 }: {
   sessionId: string;
   onClose: () => void;
   onReplay: (replaySessionId: string) => void;
+  projectId?: string;
 }) {
   const [trace, setTrace] = useState<SessionTrace | null>(null);
   const [loading, setLoading] = useState(true);
@@ -157,16 +158,16 @@ function TraceDrawer({
     setLoading(true);
     setTrace(null);
     setError(null);
-    getSessionTrace(sessionId)
+    getSessionTrace(sessionId, projectId)
       .then((t) => { setTrace(t); setLoading(false); })
       .catch((e) => { setError(e.message); setLoading(false); });
-  }, [sessionId]);
+  }, [sessionId, projectId]);
 
   async function handleReplay() {
     setReplaying(true);
     setReplayError(null);
     try {
-      const result: ReplayResponse = await replaySession(sessionId);
+      const result: ReplayResponse = await replaySession(sessionId, 10, 60, projectId);
       onReplay(result.replay_session_id);
     } catch (e: unknown) {
       setReplayError(e instanceof Error ? e.message : "Replay failed");
@@ -336,16 +337,16 @@ function DiffRow({ entry }: { entry: DiffEntry }) {
   );
 }
 
-function CompareDrawer({ idA, idB, onClose }: { idA: string; idB: string; onClose: () => void }) {
+function CompareDrawer({ idA, idB, onClose, projectId }: { idA: string; idB: string; onClose: () => void; projectId?: string }) {
   const [cmp, setCmp] = useState<SessionComparison | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    compareSessions(idA, idB)
+    compareSessions(idA, idB, projectId)
       .then((c) => { setCmp(c); setLoading(false); })
       .catch((e) => { setError(e.message); setLoading(false); });
-  }, [idA, idB]);
+  }, [idA, idB, projectId]);
 
   return (
     <div
@@ -805,6 +806,7 @@ export default function SessionsPage() {
           idA={selected}
           idB={compareWith}
           onClose={() => { setComparing(false); setCompareWith(null); }}
+          projectId={activeProject?.id}
         />
       )}
       {!comparing && selected && (
@@ -815,6 +817,7 @@ export default function SessionsPage() {
             setCompareWith(replayId);
             setComparing(true);
           }}
+          projectId={activeProject?.id}
         />
       )}
     </div>

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
 from langsight.api.audit import append_audit
-from langsight.api.dependencies import get_session_user, get_storage, require_admin
+from langsight.api.dependencies import get_current_user_id, get_storage, require_admin
 from langsight.models import ApiKeyRecord, ApiKeyRole
 from langsight.storage.base import StorageBackend
 
@@ -74,6 +74,7 @@ async def create_api_key(
     request: Request,
     storage: StorageBackend = Depends(get_storage),
     _: None = Depends(require_admin),
+    caller_user_id: str | None = Depends(get_current_user_id),
 ) -> ApiKeyCreatedResponse:
     """Generate a new API key.  The raw key is returned **once** — store it safely."""
     if not body.name.strip():
@@ -85,9 +86,9 @@ async def create_api_key(
     key_id = uuid.uuid4().hex
     now = datetime.now(UTC)
 
-    # Capture the owning user from the session (dashboard proxy) or API key caller.
+    # Capture the owning user — session proxy, API key lookup, or None.
     # This links the key to its creator for project membership checks.
-    creator_user_id, _creator_role = get_session_user(request)
+    creator_user_id = caller_user_id
 
     record = ApiKeyRecord(
         id=key_id,

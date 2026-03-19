@@ -51,6 +51,7 @@ class LangSightClient:
         self._timeout = timeout
         self._redact_payloads = redact_payloads
         self._project_id = project_id
+        self._http: httpx.AsyncClient | None = None
 
     def wrap(
         self,
@@ -126,21 +127,31 @@ class LangSightClient:
         """Internal: POST a single span. Never raises."""
         await self._post_spans([span])
 
+    async def _get_http(self) -> httpx.AsyncClient:
+        """Return a shared httpx client (connection reuse across requests)."""
+        if self._http is None or self._http.is_closed:
+            headers = {"Content-Type": "application/json"}
+            if self._api_key:
+                headers["X-API-Key"] = self._api_key
+            self._http = httpx.AsyncClient(timeout=self._timeout, headers=headers)
+        return self._http
+
+    async def close(self) -> None:
+        """Close the shared HTTP client. Call on shutdown."""
+        if self._http and not self._http.is_closed:
+            await self._http.aclose()
+            self._http = None
+
     async def _post_spans(self, spans: list[ToolCallSpan]) -> None:
         """Internal: POST a batch of spans. Never raises."""
-        headers = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["X-API-Key"] = self._api_key
-
         payload = [s.model_dump(mode="json") for s in spans]
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as http:
-                response = await http.post(
-                    f"{self._url}{_SPANS_ENDPOINT}",
-                    json=payload,
-                    headers=headers,
-                )
-                response.raise_for_status()
+            http = await self._get_http()
+            response = await http.post(
+                f"{self._url}{_SPANS_ENDPOINT}",
+                json=payload,
+            )
+            response.raise_for_status()
             logger.debug("sdk.spans_sent", count=len(spans))
         except Exception as exc:  # noqa: BLE001
             # Fail-open: log but never raise — monitoring must not break the app

@@ -333,11 +333,25 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     @app.get("/api/status", tags=["meta"])
     async def status() -> dict[str, Any]:
         """Combined status — kept for backwards compatibility. Prefer /readiness."""
+        env_keys = bool(getattr(app.state, "api_keys", []))
+        db_keys = False
+        storage = getattr(app.state, "storage", None)
+        if storage and hasattr(storage, "list_api_keys"):
+            import inspect
+
+            list_fn = getattr(storage, "list_api_keys", None)
+            if list_fn and inspect.iscoroutinefunction(list_fn):
+                try:
+                    keys = await list_fn()
+                    db_keys = any(not k.is_revoked for k in keys)
+                except Exception:  # noqa: BLE001
+                    db_keys = True  # fail-closed
         return {
             "status": "ok",
             "version": "0.1.0",
             "servers_configured": len(app.state.config.servers),
-            "auth_enabled": bool(getattr(app.state, "api_keys", [])),
+            "auth_enabled": env_keys or db_keys,
+            "storage_mode": app.state.config.storage.mode,
         }
 
     @app.get("/api/liveness", tags=["meta"])
@@ -384,6 +398,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             "version": "0.1.0",
             "storage": storage_detail,
             "auth_enabled": bool(getattr(app.state, "api_keys", [])),
+            "storage_mode": app.state.config.storage.mode,
         }
         if storage_ok:
             return JSONResponse(content=body, status_code=200)

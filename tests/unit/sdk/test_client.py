@@ -48,37 +48,32 @@ class TestLangSightClient:
 
     async def test_post_spans_fail_open_on_network_error(self) -> None:
         client = LangSightClient(url="http://localhost:8000")
-        with patch("langsight.sdk.client.httpx.AsyncClient") as MockHttp:
-            MockHttp.return_value.__aenter__ = AsyncMock(return_value=MockHttp.return_value)
-            MockHttp.return_value.__aexit__ = AsyncMock(return_value=None)
-            MockHttp.return_value.post = AsyncMock(side_effect=Exception("network error"))
-            # Should not raise — fail-open
-            await client._post_spans([_span()])
+        mock_http = MagicMock()
+        mock_http.is_closed = False
+        mock_http.post = AsyncMock(side_effect=Exception("network error"))
+        client._http = mock_http
+        # Should not raise — fail-open
+        await client._post_spans([_span()])
 
     async def test_post_spans_sends_json_payload(self) -> None:
         client = LangSightClient(url="http://localhost:8000")
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
-        with patch("langsight.sdk.client.httpx.AsyncClient") as MockHttp:
-            MockHttp.return_value.__aenter__ = AsyncMock(return_value=MockHttp.return_value)
-            MockHttp.return_value.__aexit__ = AsyncMock(return_value=None)
-            MockHttp.return_value.post = AsyncMock(return_value=mock_response)
-            await client._post_spans([_span()])
-        MockHttp.return_value.post.assert_called_once()
-        call_kwargs = MockHttp.return_value.post.call_args
+        mock_http = MagicMock()
+        mock_http.is_closed = False
+        mock_http.post = AsyncMock(return_value=mock_response)
+        client._http = mock_http
+        await client._post_spans([_span()])
+        mock_http.post.assert_called_once()
+        call_kwargs = mock_http.post.call_args
         assert "/api/traces/spans" in call_kwargs[0][0]
 
     async def test_api_key_added_to_headers(self) -> None:
         client = LangSightClient(url="http://localhost:8000", api_key="secret-key")
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        with patch("langsight.sdk.client.httpx.AsyncClient") as MockHttp:
-            MockHttp.return_value.__aenter__ = AsyncMock(return_value=MockHttp.return_value)
-            MockHttp.return_value.__aexit__ = AsyncMock(return_value=None)
-            MockHttp.return_value.post = AsyncMock(return_value=mock_response)
-            await client._post_spans([_span()])
-        headers = MockHttp.return_value.post.call_args[1]["headers"]
-        assert headers.get("X-API-Key") == "secret-key"
+        # _get_http creates a persistent client with headers set at init
+        http = await client._get_http()
+        assert http.headers.get("X-API-Key") == "secret-key"
+        await client.close()
 
 
 class TestMCPClientProxy:

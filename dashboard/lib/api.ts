@@ -113,12 +113,12 @@ export const revokeApiKey = (id: string) =>
 // ─── Sessions ─────────────────────────────────────────────────────────────────
 export const getSessions = (hours = 24, limit = 50) =>
   get<AgentSession[]>(`/agents/sessions?hours=${hours}&limit=${limit}`);
-export const getSessionTrace = (sessionId: string) =>
-  get<SessionTrace>(`/agents/sessions/${encodeURIComponent(sessionId)}`);
-export const compareSessions = (a: string, b: string) =>
-  get<SessionComparison>(`/agents/sessions/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
-export const replaySession = (sessionId: string, timeoutPerCall = 10, totalTimeout = 60) =>
-  post<ReplayResponse>(`/agents/sessions/${encodeURIComponent(sessionId)}/replay?timeout_per_call=${timeoutPerCall}&total_timeout=${totalTimeout}`);
+export const getSessionTrace = (sessionId: string, projectId?: string) =>
+  get<SessionTrace>(`/agents/sessions/${encodeURIComponent(sessionId)}${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""}`);
+export const compareSessions = (a: string, b: string, projectId?: string) =>
+  get<SessionComparison>(`/agents/sessions/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
+export const replaySession = (sessionId: string, timeoutPerCall = 10, totalTimeout = 60, projectId?: string) =>
+  post<ReplayResponse>(`/agents/sessions/${encodeURIComponent(sessionId)}/replay?timeout_per_call=${timeoutPerCall}&total_timeout=${totalTimeout}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
 
 // ─── Reliability / Anomalies (P5.4) ───────────────────────────────────────────
 export const getAnomalies = (currentHours = 1, zThreshold = 2.0) =>

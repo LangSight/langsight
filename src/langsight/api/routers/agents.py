@@ -137,6 +137,65 @@ async def list_sessions(
     ]
 
 
+# NOTE: /sessions/compare MUST be registered before /sessions/{session_id}
+# or FastAPI will match "compare" as a session_id value.
+@router.get(
+    "/sessions/compare",
+    response_model=SessionComparison,
+    summary="Compare two session traces side-by-side",
+    responses={
+        404: {"description": "One or both sessions not found"},
+        503: {"description": "Requires ClickHouse backend"},
+    },
+)
+async def compare_sessions(
+    a: str = Query(..., description="First session ID"),
+    b: str = Query(..., description="Second session ID"),
+    project_id: str | None = Depends(get_active_project_id),
+    storage: StorageBackend = Depends(get_storage),
+) -> SessionComparison:
+    """Return a side-by-side diff of two sessions.
+
+    Aligns spans by (server_name, tool_name) call order. Each diff entry
+    has status: 'matched' | 'diverged' | 'only_a' | 'only_b'.
+
+    Diverged = status changed OR latency difference >= 20%.
+    """
+    if not hasattr(storage, "compare_sessions"):
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Session comparison requires ClickHouse backend.",
+        )
+    if a == b:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Session IDs must be different.",
+        )
+
+    result = await storage.compare_sessions(a, b)
+
+    # Project isolation: if a project filter is active, both sessions must belong to it
+    if project_id:
+        spans_a_in_project = [s for s in result["spans_a"] if s.get("project_id") == project_id]
+        spans_b_in_project = [s for s in result["spans_b"] if s.get("project_id") == project_id]
+        if result["spans_a"] and not spans_a_in_project:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND, detail="Session not found."
+            )
+        if result["spans_b"] and not spans_b_in_project:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND, detail="Session not found."
+            )
+
+    if not result["spans_a"] and not result["spans_b"]:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Neither session was found.",
+        )
+
+    return SessionComparison(**result)
+
+
 @router.get(
     "/sessions/{session_id}",
     response_model=SessionTrace,
@@ -251,63 +310,6 @@ async def replay_session(
         ) from exc
 
     return ReplayResponse(**result.to_dict())
-
-
-@router.get(
-    "/sessions/compare",
-    response_model=SessionComparison,
-    summary="Compare two session traces side-by-side",
-    responses={
-        404: {"description": "One or both sessions not found"},
-        503: {"description": "Requires ClickHouse backend"},
-    },
-)
-async def compare_sessions(
-    a: str = Query(..., description="First session ID"),
-    b: str = Query(..., description="Second session ID"),
-    project_id: str | None = Depends(get_active_project_id),
-    storage: StorageBackend = Depends(get_storage),
-) -> SessionComparison:
-    """Return a side-by-side diff of two sessions.
-
-    Aligns spans by (server_name, tool_name) call order. Each diff entry
-    has status: 'matched' | 'diverged' | 'only_a' | 'only_b'.
-
-    Diverged = status changed OR latency difference >= 20%.
-    """
-    if not hasattr(storage, "compare_sessions"):
-        raise HTTPException(
-            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Session comparison requires ClickHouse backend.",
-        )
-    if a == b:
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="Session IDs must be different.",
-        )
-
-    result = await storage.compare_sessions(a, b)
-
-    # Project isolation: if a project filter is active, both sessions must belong to it
-    if project_id:
-        spans_a_in_project = [s for s in result["spans_a"] if s.get("project_id") == project_id]
-        spans_b_in_project = [s for s in result["spans_b"] if s.get("project_id") == project_id]
-        if result["spans_a"] and not spans_a_in_project:
-            raise HTTPException(
-                status_code=http_status.HTTP_404_NOT_FOUND, detail="Session not found."
-            )
-        if result["spans_b"] and not spans_b_in_project:
-            raise HTTPException(
-                status_code=http_status.HTTP_404_NOT_FOUND, detail="Session not found."
-            )
-
-    if not result["spans_a"] and not result["spans_b"]:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail="Neither session was found.",
-        )
-
-    return SessionComparison(**result)
 
 
 # ---------------------------------------------------------------------------

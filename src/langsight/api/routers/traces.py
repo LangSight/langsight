@@ -42,7 +42,7 @@ router = APIRouter(prefix="/traces", tags=["traces"])
     summary="Ingest tool call spans from the LangSight SDK",
     response_model=dict[str, Any],
 )
-@_limiter.limit("200/minute")
+@_limiter.limit("2000/minute")
 async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str, Any]:
     """Accept a batch of ToolCallSpans from the SDK.
 

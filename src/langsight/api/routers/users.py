@@ -257,8 +257,10 @@ async def accept_invite(
         created_at=datetime.now(UTC),
     )
 
-    await storage.create_user(user)
+    # Mark invite used FIRST to prevent concurrent double-accepts.
+    # Email UNIQUE constraint on users table is the final safety net.
     await storage.mark_invite_used(body.token)
+    await storage.create_user(user)
 
     client_ip = request.client.host if request.client else "unknown"
     logger.info("audit.user.account_created", email=user.email, role=user.role.value, client_ip=client_ip)
