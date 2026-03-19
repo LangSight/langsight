@@ -1,12 +1,19 @@
-"""Auto-seed demo data on first startup.
+"""Auto-seed comprehensive demo data on first startup.
 
-Creates a "Demo Project" with sample agent sessions so the dashboard
-has data to explore immediately after `docker compose up`. Only runs
-when no sessions exist yet (detected via get_agent_sessions).
+Populates every dashboard page so users see a realistic product experience
+immediately after ``docker compose up``:
 
-Skipped silently when:
-- Sessions already exist (re-start after first run)
-- Storage backend doesn't support span ingestion (postgres-only mode)
+- **Sessions page**: 30 agent sessions with multi-agent handoffs, errors, payloads
+- **Health page**: Health check history for 5 MCP servers (mix of UP/DEGRADED/DOWN)
+- **Security page**: Populated via live security scan findings
+- **Costs page**: Spans with model_id + token counts for cost attribution
+- **Overview page**: Anomaly data (derived from reliability queries over seeded spans)
+- **SLOs**: Two sample SLO definitions
+
+All demo data is scoped to the Sample Project via ``project_id``.
+
+Skipped when:
+- Sessions already exist (restart after first run)
 - LANGSIGHT_SKIP_DEMO_SEED=1 is set
 """
 
@@ -24,8 +31,6 @@ logger = structlog.get_logger()
 
 # ── Demo topology ─────────────────────────────────────────────────────────────
 
-_AGENTS = ["support-agent", "billing-agent", "data-analyst", "orchestrator"]
-
 _SERVERS: dict[str, list[str]] = {
     "postgres-mcp": ["query", "list_tables", "describe_table", "get_row_count"],
     "jira-mcp": ["get_issue", "create_issue", "search_issues"],
@@ -41,29 +46,70 @@ _AGENT_SERVERS: dict[str, list[str]] = {
     "data-analyst": ["postgres-mcp", "s3-mcp", "github-mcp"],
 }
 
-_NUM_SESSIONS = 25
-_MAX_CALLS = 8
+# Model IDs for cost attribution — matches seeded model_pricing
+_MODELS = [
+    ("claude-sonnet-4-6", 200, 800),
+    ("claude-haiku-4-5", 50, 150),
+    ("gpt-4o", 300, 1200),
+]
+
+_SAMPLE_INPUTS: dict[str, dict[str, Any]] = {
+    "query": {"sql": "SELECT id, name, status FROM orders WHERE created_at > '2026-03-01' LIMIT 50"},
+    "list_tables": {},
+    "describe_table": {"table_name": "orders"},
+    "get_row_count": {"table_name": "customers"},
+    "get_issue": {"issue_key": "PROJ-142"},
+    "create_issue": {"project": "PROJ", "summary": "Agent-detected anomaly in billing pipeline", "type": "Bug"},
+    "search_issues": {"jql": "assignee = currentUser() AND status = Open"},
+    "send_message": {"channel": "#ops-alerts", "text": "Billing pipeline recovered after 12m downtime"},
+    "list_channels": {},
+    "get_thread": {"channel": "#support", "ts": "1711234567.000100"},
+    "list_objects": {"bucket": "agent-artifacts", "prefix": "reports/2026-03/"},
+    "read_object": {"bucket": "agent-artifacts", "key": "reports/2026-03/daily-summary.json"},
+    "put_object": {"bucket": "agent-artifacts", "key": "reports/2026-03/anomaly-report.json"},
+    "get_pr": {"repo": "acme/backend", "number": 847},
+    "list_commits": {"repo": "acme/backend", "branch": "main", "limit": 10},
+    "create_comment": {"repo": "acme/backend", "issue": 847, "body": "Automated review: LGTM"},
+}
+
+_NUM_SESSIONS = 30
+_MAX_CALLS = 10
+
+# Health check profiles per server
+_HEALTH_PROFILES: dict[str, list[tuple[str, float | None, str | None]]] = {
+    # (status, latency_ms, error)
+    "postgres-mcp": [("up", 31, None)] * 20 + [("up", 45, None)] * 5 + [("degraded", 1240, None)] * 2,
+    "jira-mcp": [("up", 89, None)] * 15 + [("down", None, "Connection refused")] * 3 + [("up", 95, None)] * 5,
+    "slack-mcp": [("up", 72, None)] * 18 + [("degraded", 980, None)] * 4 + [("up", 65, None)] * 3,
+    "s3-mcp": [("up", 120, None)] * 22 + [("up", 150, None)] * 3,
+    "github-mcp": [("up", 55, None)] * 12 + [("down", None, "Rate limited (403)")] * 2 + [("up", 60, None)] * 8,
+}
 
 
 # ── Span generation ──────────────────────────────────────────────────────────
 
-def _generate_session(project_id: str) -> list[dict[str, Any]]:
-    """Generate one realistic agent session."""
-    agent = random.choice(_AGENTS)
+
+def _generate_session(project_id: str, idx: int) -> list[dict[str, Any]]:
+    """Generate one realistic agent session with payloads and cost data."""
+    agents = list(_AGENT_SERVERS.keys())
+    agent = agents[idx % len(agents)]
     servers = _AGENT_SERVERS[agent]
     session_id = f"demo-{uuid.uuid4().hex[:8]}"
     trace_id = f"trace-{uuid.uuid4().hex[:8]}"
-    base_time = datetime.now(UTC) - timedelta(hours=random.randint(1, 48))
+    # Spread sessions across the last 48 hours
+    base_time = datetime.now(UTC) - timedelta(hours=random.uniform(1, 48))
 
     spans: list[dict[str, Any]] = []
     elapsed = 0.0
     num_calls = random.randint(3, _MAX_CALLS)
 
-    has_handoff = agent == "orchestrator" and random.random() < 0.4
+    # Orchestrator gets handoffs ~50% of the time
+    has_handoff = agent == "orchestrator" and random.random() < 0.5
     handoff_id: str | None = None
     sub_agent: str | None = None
 
     for i in range(num_calls):
+        # Handoff span at the midpoint
         if has_handoff and i == num_calls // 2:
             sub_agent = random.choice(["billing-agent", "support-agent"])
             handoff_id = str(uuid.uuid4())
@@ -85,24 +131,39 @@ def _generate_session(project_id: str) -> list[dict[str, Any]]:
             elapsed += lat
             continue
 
+        # Regular tool call
         cur_agent = sub_agent if (handoff_id and sub_agent and i > num_calls // 2) else agent
         cur_servers = _AGENT_SERVERS.get(cur_agent, servers)
         server = random.choice(cur_servers)
         tool = random.choice(_SERVERS[server])
 
-        lat = max(5.0, random.gauss({"postgres-mcp": 35, "s3-mcp": 120}.get(server, 80), 25))
+        # Realistic latency per server type
+        base_lat = {"postgres-mcp": 35, "s3-mcp": 120, "github-mcp": 55}.get(server, 80)
+        lat = max(5.0, random.gauss(base_lat, base_lat * 0.4))
+
+        # Error distribution: 2% timeout, 5% error, 93% success
         roll = random.random()
         if roll < 0.02:
-            status, error, lat = "timeout", f"Tool '{tool}' timed out", 5000.0
+            status, error, lat = "timeout", f"Tool '{tool}' timed out after 5000ms", 5000.0
         elif roll < 0.07:
             status = "error"
             error = random.choice([
                 f"Connection refused: {server}",
                 f"Permission denied on {tool}",
                 "Invalid input: missing required field 'id'",
+                "Rate limited by upstream API",
+                f"Table 'orders' not found in {server}",
             ])
         else:
             status, error = "success", None
+
+        # Cost data — every 3rd span has LLM token usage
+        model_id, input_tokens, output_tokens = None, None, None
+        if i % 3 == 0:
+            model, avg_in, avg_out = random.choice(_MODELS)
+            model_id = model
+            input_tokens = int(random.gauss(avg_in, avg_in * 0.3))
+            output_tokens = int(random.gauss(avg_out, avg_out * 0.3))
 
         span: dict[str, Any] = {
             "span_id": str(uuid.uuid4()),
@@ -118,25 +179,93 @@ def _generate_session(project_id: str) -> list[dict[str, Any]]:
             "error": error,
             "agent_name": cur_agent,
             "project_id": project_id,
+            "input_args": _SAMPLE_INPUTS.get(tool),
+            "output_result": '{"rows": 42, "status": "ok"}' if status == "success" else None,
         }
+        if model_id:
+            span["model_id"] = model_id
+            span["input_tokens"] = max(10, input_tokens or 0)
+            span["output_tokens"] = max(10, output_tokens or 0)
         if handoff_id and cur_agent == sub_agent:
             span["parent_span_id"] = handoff_id
+
         spans.append(span)
-        elapsed += lat + random.uniform(5, 50)
+        elapsed += lat + random.uniform(10, 80)
 
     return spans
+
+
+# ── Health check generation ───────────────────────────────────────────────────
+
+
+def _generate_health_results() -> list[dict[str, Any]]:
+    """Generate 48 hours of health check history for all servers."""
+    results = []
+    now = datetime.now(UTC)
+
+    for server_name, profiles in _HEALTH_PROFILES.items():
+        tool_count = len(_SERVERS.get(server_name, []))
+        schema_hash = uuid.uuid4().hex[:16]
+
+        for i, (status, latency, error) in enumerate(profiles):
+            checked_at = now - timedelta(hours=48) + timedelta(hours=i * (48 / len(profiles)))
+            results.append({
+                "server_name": server_name,
+                "status": status,
+                "latency_ms": latency,
+                "tools_count": tool_count,
+                "schema_hash": schema_hash,
+                "checked_at": checked_at.isoformat(),
+                "error": error,
+            })
+
+    return results
+
+
+# ── SLO generation ────────────────────────────────────────────────────────────
+
+
+def _generate_slos() -> list[dict[str, Any]]:
+    """Generate sample SLO definitions."""
+    return [
+        {
+            "id": uuid.uuid4().hex,
+            "agent_name": "support-agent",
+            "metric": "success_rate",
+            "target": 95.0,
+            "window_hours": 24,
+        },
+        {
+            "id": uuid.uuid4().hex,
+            "agent_name": "orchestrator",
+            "metric": "success_rate",
+            "target": 99.0,
+            "window_hours": 24,
+        },
+        {
+            "id": uuid.uuid4().hex,
+            "agent_name": "billing-agent",
+            "metric": "latency_p99",
+            "target": 3000.0,
+            "window_hours": 24,
+        },
+    ]
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
 async def seed_demo_data(storage: Any, project_id: str) -> None:
-    """Seed demo sessions into the storage backend. Only runs on first startup."""
+    """Seed comprehensive demo data into the storage backend.
+
+    Populates sessions, health, SLOs — everything the dashboard needs.
+    Only runs on first startup (skips if sessions already exist).
+    """
     if os.environ.get("LANGSIGHT_SKIP_DEMO_SEED") == "1":
         logger.debug("demo_seed.skipped", reason="LANGSIGHT_SKIP_DEMO_SEED=1")
         return
 
-    # Check if sessions already exist — skip if so
+    # Check if sessions already exist — skip on restart
     if hasattr(storage, "get_agent_sessions"):
         try:
             existing = await storage.get_agent_sessions(hours=168, limit=1)
@@ -146,19 +275,108 @@ async def seed_demo_data(storage: Any, project_id: str) -> None:
         except Exception:  # noqa: BLE001
             pass
 
-    if not hasattr(storage, "save_spans"):
-        logger.debug("demo_seed.skipped", reason="storage lacks save_spans")
-        return
-
     random.seed(42)  # deterministic for consistent demo experience
-    total_spans = 0
-    for _ in range(_NUM_SESSIONS):
-        spans = _generate_session(project_id)
-        try:
-            await storage.save_spans(spans)
-            total_spans += len(spans)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("demo_seed.save_error", error=str(exc))
-            return
 
-    logger.info("demo_seed.complete", sessions=_NUM_SESSIONS, spans=total_spans, project_id=project_id)
+    # ── 1. Agent sessions with spans ──────────────────────────────────────
+    total_spans = 0
+    if hasattr(storage, "save_tool_call_spans"):
+        from langsight.sdk.models import ToolCallSpan
+
+        for idx in range(_NUM_SESSIONS):
+            raw_spans = _generate_session(project_id, idx)
+            models = []
+            for s in raw_spans:
+                started = datetime.fromisoformat(s["started_at"])
+                ended = datetime.fromisoformat(s["ended_at"])
+                models.append(ToolCallSpan(
+                    span_id=s["span_id"],
+                    parent_span_id=s.get("parent_span_id"),
+                    span_type=s.get("span_type", "tool_call"),
+                    trace_id=s.get("trace_id"),
+                    session_id=s.get("session_id"),
+                    server_name=s["server_name"],
+                    tool_name=s["tool_name"],
+                    started_at=started,
+                    ended_at=ended,
+                    latency_ms=s["latency_ms"],
+                    status=s["status"],
+                    error=s.get("error"),
+                    agent_name=s.get("agent_name"),
+                    project_id=s.get("project_id"),
+                    input_args=s.get("input_args"),
+                    output_result=s.get("output_result"),
+                    model_id=s.get("model_id"),
+                    input_tokens=s.get("input_tokens"),
+                    output_tokens=s.get("output_tokens"),
+                ))
+            try:
+                await storage.save_tool_call_spans(models)
+                total_spans += len(models)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("demo_seed.span_error", error=str(exc))
+                break
+
+        logger.info("demo_seed.spans", sessions=_NUM_SESSIONS, spans=total_spans)
+
+    # ── 2. Health check history ───────────────────────────────────────────
+    if hasattr(storage, "save_health_result"):
+        from langsight.models import HealthCheckResult, ServerStatus
+
+        health_results = _generate_health_results()
+        health_count = 0
+        for h in health_results:
+            try:
+                result = HealthCheckResult(
+                    server_name=h["server_name"],
+                    status=ServerStatus(h["status"]),
+                    latency_ms=h["latency_ms"],
+                    tools_count=h["tools_count"],
+                    schema_hash=h["schema_hash"],
+                    checked_at=datetime.fromisoformat(h["checked_at"]),
+                    error=h["error"],
+                )
+                await storage.save_health_result(result)
+                health_count += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("demo_seed.health_error", error=str(exc))
+                break
+
+        logger.info("demo_seed.health", count=health_count)
+
+    # ── 3. Schema snapshots (for drift detection) ─────────────────────────
+    if hasattr(storage, "save_schema_snapshot"):
+        for server_name in _SERVERS:
+            tool_count = len(_SERVERS[server_name])
+            schema_hash = uuid.uuid4().hex[:16]
+            try:
+                await storage.save_schema_snapshot(server_name, schema_hash, tool_count)
+            except Exception:  # noqa: BLE001
+                pass
+
+    # ── 4. SLO definitions ────────────────────────────────────────────────
+    if hasattr(storage, "create_slo"):
+        from langsight.models import AgentSLO, SLOMetric
+
+        for slo_data in _generate_slos():
+            try:
+                slo = AgentSLO(
+                    id=slo_data["id"],
+                    agent_name=slo_data["agent_name"],
+                    metric=SLOMetric(slo_data["metric"]),
+                    target=slo_data["target"],
+                    window_hours=slo_data["window_hours"],
+                    created_at=datetime.now(UTC),
+                )
+                await storage.create_slo(slo)
+            except Exception:  # noqa: BLE001
+                pass
+
+        logger.info("demo_seed.slos", count=len(_generate_slos()))
+
+    logger.info(
+        "demo_seed.complete",
+        project_id=project_id,
+        sessions=_NUM_SESSIONS,
+        spans=total_spans,
+        servers=len(_SERVERS),
+    )
