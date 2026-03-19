@@ -634,6 +634,8 @@ class PostgresBackend:
 
     async def list_audit_logs(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         """Return audit log entries most-recent-first."""
+        import json
+
         rows = await self._pool.fetch(
             "SELECT id, timestamp, event, user_id, ip, details FROM audit_logs ORDER BY id DESC LIMIT $1 OFFSET $2",
             limit,
@@ -648,7 +650,10 @@ class PostgresBackend:
                 "event": r["event"],
                 "user_id": r["user_id"],
                 "ip": r["ip"],
-                "details": r["details"] if isinstance(r["details"], dict) else {},
+                "details": (
+                    json.loads(r["details"]) if isinstance(r["details"], str)
+                    else r["details"] or {}
+                ),
             }
             for r in rows
         ]
