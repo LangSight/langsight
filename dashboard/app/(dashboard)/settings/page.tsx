@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import useSWR from "swr";
 import {
   Key, Plus, Trash2, Copy, Check, ExternalLink, Shield, Database,
@@ -1661,22 +1661,17 @@ function isValidSection(s: string): s is SettingsSection {
 }
 
 export default function SettingsPage() {
-  // Persist active section in URL hash — survives refresh, back/forward
-  const [active, setActiveState] = useState<SettingsSection>(() => {
-    if (typeof window !== "undefined") {
-      const hash = window.location.hash.replace("#", "");
-      if (isValidSection(hash)) return hash;
-    }
-    return "general";
-  });
+  const [active, setActiveState] = useState<SettingsSection>("general");
 
   function setActive(section: SettingsSection) {
     setActiveState(section);
     window.history.replaceState(null, "", `/settings#${section}`);
   }
 
-  // Sync from hash on mount (handles hard refresh)
-  useEffect(() => {
+  // useLayoutEffect runs synchronously before the browser paints —
+  // so the hash is read and state updated before the user sees anything,
+  // eliminating the "general → notifications" flicker on refresh.
+  useLayoutEffect(() => {
     const hash = window.location.hash.replace("#", "");
     if (isValidSection(hash)) setActiveState(hash);
   }, []);
