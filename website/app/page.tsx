@@ -285,8 +285,8 @@ function Hero() {
               style={{ color: "var(--muted)" }}
             >
               LangSight traces every tool call your AI agents make — MCP servers, HTTP APIs,
-              sub-agents, the full multi-agent tree. Deep health monitoring and CVE scanning
-              for MCP infrastructure built in.{" "}
+              sub-agents. For MCP servers, get health checks, schema drift alerts, and security
+              scanning built in.{" "}
               <strong style={{ color: "var(--text)" }}>Two lines to instrument. Self-host in 5 minutes.</strong>
             </p>
 
@@ -479,7 +479,7 @@ function HowItWorks() {
             className="font-bold tracking-tight"
             style={{ fontSize: "clamp(1.8rem, 3.5vw, 2.5rem)", fontFamily: "var(--font-geist-sans)" }}
           >
-            <span className="gradient-text">Zero to full observability</span>
+            <span className="gradient-text">Zero to traced</span>
             <br />
             <span className="gradient-indigo">in 5 minutes.</span>
           </h2>
@@ -865,7 +865,7 @@ function Integrations() {
             <p className="text-sm" style={{ color: "var(--muted)" }}>
               Langfuse traces the LLM reasoning layer (what the model decided). LangSight traces the action layer
               (what the agent called, in what order, what failed, what it cost). They answer different questions.
-              Use both together for complete observability.
+              Use both together for full-stack visibility.
             </p>
           </div>
           <a
@@ -1041,7 +1041,7 @@ function CTA() {
               <span className="gradient-indigo">Start in 5 minutes.</span>
             </h2>
             <p className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>
-              Full observability for your AI agents — free, open source, forever.
+              Action-layer traces for your AI agents — free, open source, forever.
             </p>
             <p className="text-base mb-8 max-w-md mx-auto" style={{ color: "var(--muted)" }}>
               Install in 30 seconds. Two lines to instrument. See exactly what your agents call,
