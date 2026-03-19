@@ -142,7 +142,7 @@ The quickstart script generates all secrets, writes `.env`, and runs `docker com
 
 ### 2. Open the dashboard
 
-Go to **http://localhost:3003** and log in with `admin@localhost` / `langsight-demo-2026`.
+Go to **http://localhost:3003** and log in with `admin@admin.com` / `admin`.
 
 A **Sample Project** with 25 demo agent sessions is pre-loaded so you can explore the sessions, traces, and cost views immediately. Create your own project in Settings when you're ready to trace real agents.
 

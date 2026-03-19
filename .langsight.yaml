@@ -1,0 +1,37 @@
+# LangSight configuration — demo setup
+# These servers match the seeded demo data in the Sample Project.
+# Health checks require real MCP servers to be running.
+servers:
+  - name: postgres-mcp
+    transport: stdio
+    command: echo
+    tags: [demo, database]
+
+  - name: jira-mcp
+    transport: stdio
+    command: echo
+    tags: [demo, devtools]
+
+  - name: slack-mcp
+    transport: stdio
+    command: echo
+    tags: [demo, communication]
+
+  - name: s3-mcp
+    transport: stdio
+    command: echo
+    tags: [demo, storage]
+
+  - name: github-mcp
+    transport: stdio
+    command: echo
+    tags: [demo, devtools]
+
+storage:
+  mode: dual
+
+costs:
+  rules:
+    - server: "*"
+      tool: "*"
+      cost_per_call: 0.001

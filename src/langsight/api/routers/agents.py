@@ -108,7 +108,7 @@ class ReplayResponse(BaseModel):
 async def list_sessions(
     hours: int = Query(default=24, ge=1, le=720, description="Look-back window in hours"),
     agent_name: str | None = Query(default=None, description="Filter by agent name"),
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(default=50, ge=1, le=1000),
     project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
 ) -> list[AgentSession]:

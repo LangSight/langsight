@@ -292,11 +292,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                 hint="Set LANGSIGHT_API_KEYS=<key1,key2> to enable authentication",
             )
 
-        # First-run bootstrap — create initial admin user and default project
+        # First-run bootstrap — create initial admin user and sample project
         await _seed_model_pricing(app.state.storage)
         admin_id = await _bootstrap_admin(app.state.storage)
-        if admin_id:
-            await _bootstrap_default_project(app.state.storage, admin_id)
 
         # Seed a "Sample Project" with demo agent sessions on first run
         await _bootstrap_sample_project(app.state.storage, admin_id or "system")

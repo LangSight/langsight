@@ -35,8 +35,8 @@ LANGSIGHT_API_KEYS=${API_KEY}
 AUTH_SECRET=${AUTH_SECRET}
 
 # Dashboard admin login
-LANGSIGHT_ADMIN_EMAIL=admin@localhost
-LANGSIGHT_ADMIN_PASSWORD=langsight-demo-2026
+LANGSIGHT_ADMIN_EMAIL=admin@admin.com
+LANGSIGHT_ADMIN_PASSWORD=admin
 
 # Database passwords
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -64,7 +64,7 @@ echo "────────────────────────�
 echo ""
 echo "  Dashboard:  http://localhost:3003"
 echo "  API:        http://localhost:8000/api/status"
-echo "  Login:      admin@localhost / langsight-demo-2026"
+echo "  Login:      admin@admin.com / admin"
 echo ""
 echo "  API Key:    $(grep LANGSIGHT_API_KEYS "$ENV_FILE" | cut -d= -f2)"
 echo ""
