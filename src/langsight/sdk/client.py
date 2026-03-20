@@ -21,6 +21,7 @@ from langsight.sdk.models import ToolCallSpan
 logger = structlog.get_logger()
 
 _SPANS_ENDPOINT = "/api/traces/spans"
+_TOOL_SCHEMA_ENDPOINT = "/api/servers/{server_name}/tools"
 _SEND_TIMEOUT = 3.0
 _BATCH_SIZE = 50  # flush when buffer reaches this many spans
 _FLUSH_INTERVAL = 1.0  # seconds between automatic flushes
@@ -199,6 +200,25 @@ class LangSightClient:
             # Fail-open: log but never raise — monitoring must not break the app
             logger.warning("sdk.send_failed", error=str(exc), count=len(spans))
 
+    async def record_tool_schemas(
+        self,
+        server_name: str,
+        tools: list[dict[str, object]],
+        project_id: str | None = None,
+    ) -> None:
+        """Fire-and-forget: POST observed tool schemas to the backend. Never raises."""
+        endpoint = _TOOL_SCHEMA_ENDPOINT.format(server_name=server_name)
+        payload: dict[str, object] = {"tools": tools}
+        if project_id:
+            payload["project_id"] = project_id
+        try:
+            http = await self._get_http()
+            response = await http.post(f"{self._url}{endpoint}", json=payload)
+            response.raise_for_status()
+            logger.debug("sdk.tool_schemas_sent", server=server_name, count=len(tools))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("sdk.tool_schemas_failed", server=server_name, error=str(exc))
+
 
 class MCPClientProxy:
     """Transparent proxy around an MCP client that records ToolCallSpans.
@@ -232,6 +252,33 @@ class MCPClientProxy:
     def __getattr__(self, name: str) -> object:
         """Forward all attribute access to the wrapped client."""
         return getattr(object.__getattribute__(self, "_client"), name)
+
+    async def list_tools(self) -> object:
+        """Intercept list_tools() to capture declared tool schemas, then forward."""
+        client = object.__getattribute__(self, "_client")
+        langsight = object.__getattribute__(self, "_langsight")
+        server_name = object.__getattribute__(self, "_server_name")
+        project_id = object.__getattribute__(self, "_project_id")
+
+        result = await client.list_tools()
+
+        # Extract tool schemas from MCP SDK response (fail-open)
+        try:
+            tools_list = getattr(result, "tools", None) or result
+            tools_payload = []
+            for t in tools_list:
+                tools_payload.append({
+                    "name": getattr(t, "name", str(t)),
+                    "description": getattr(t, "description", "") or "",
+                    "input_schema": getattr(t, "inputSchema", None) or getattr(t, "input_schema", None) or {},
+                })
+            asyncio.create_task(
+                langsight.record_tool_schemas(server_name, tools_payload, project_id)
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("sdk.list_tools_capture_failed", server=server_name, error=str(exc))
+
+        return result
 
     async def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> object:
         """Call a tool and record a ToolCallSpan regardless of outcome."""
