@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Shield, Scan, AlertTriangle, CheckCircle } from "lucide-react";
 import { triggerSecurityScan } from "@/lib/api";
@@ -60,6 +60,15 @@ function StatCard({
 export default function SecurityPage() {
   const [results, setResults] = useState<SecurityScanResult[] | null>(null);
   const [scanning, setScanning] = useState(false);
+  const didAutoScan = useRef(false);
+
+  // Auto-trigger first scan on page load
+  useEffect(() => {
+    if (!didAutoScan.current && !results && !scanning) {
+      didAutoScan.current = true;
+      runScan();
+    }
+  });
 
   async function runScan() {
     setScanning(true);
