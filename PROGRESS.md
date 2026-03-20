@@ -1,9 +1,30 @@
 # LangSight — Build Progress
 
-> Last updated: 2026-03-19 (SQLite removed, DualStorage, CIDR proxy trust, SDK auth fix, RBAC hardening, audit/alert persistence, dashboard UX)
+> Last updated: 2026-03-20 (session detail page, shared SVG lineage graph, agent topology, `/lineage` redirect, docs sync)
 > Maintained by: docs-keeper agent — update after every feature, architectural decision, or milestone
 
 **Project framing**: LangSight is complete observability for everything an AI agent calls — MCP servers, HTTP APIs, Python functions, and sub-agents. Agent-level instrumentation captures all tool types in one trace. MCP servers additionally receive proactive health checks, security scanning, schema drift detection, and alerting because the MCP protocol is standard and inspectable. Non-MCP tools (HTTP APIs, functions) are passively observed in traces only.
+
+---
+
+## v0.2.0 Dashboard UX Changes (2026-03-20)
+
+### Session debugging moved to a dedicated page
+
+- `/sessions/[id]` is now the primary session debugging surface
+- Two tabs:
+  - `Details` — timeline + interactive lineage graph + right-side detail panel
+  - `Trace` — nested span tree with inline payload and error expansion
+- Replay and session comparison are now initiated from the session detail page rather than the older sessions-table workflow
+
+### Shared lineage graph renderer
+
+- React Flow has been replaced with a shared raw SVG + `dagre` renderer in `dashboard/components/lineage-graph.tsx`
+- The same renderer now powers:
+  - session-level flow inspection
+  - per-agent topology on the Agents page
+  - fleet-wide topology in the Agents page modal
+- `/lineage` now redirects to `/agents`; topology exploration is consolidated under the Agents experience
 
 ---
 
@@ -136,8 +157,8 @@ A thorough code review identified a set of high-value observability features tha
 - ~~No confirmed dashboard UI that renders a session as a visual trace timeline/tree~~ — **built (P5.2, 2026-03-19)**: sessions page trace tree now shows inline payload panels per span; `SpanNode` API and TypeScript type include `input_json`/`output_json`
 - ~~No statistical baseline learning — alerts are purely threshold-based~~ — **built (P5.4, 2026-03-19)**: `AnomalyDetector` computes z-score per tool against 7-day ClickHouse baseline; `warning` at |z|>=2, `critical` at |z|>=3; minimum stddev guards prevent false positives; `GET /api/reliability/anomalies` endpoint; dashboard "Anomalies Detected" card with critical/warning breakdown
 - ~~No `AgentSLO` model, no SLO evaluator, no burn rate calculation~~ — **built (P5.5, 2026-03-19)**: `SLOMetric` StrEnum, `AgentSLO` and `SLOEvaluation` Pydantic models; `agent_slos` table in SQLite and PostgreSQL; `SLOEvaluator` evaluates session data; `success_rate` = clean/total sessions; `latency_p99` uses `max(duration_ms)` as conservative proxy; `/api/slos` CRUD; dashboard Overview "Agent SLOs" panel; CLI commands deferred
-- ~~No session comparison API endpoint or UI~~ — **built (P5.6, 2026-03-19)**: `compare_sessions()` on ClickHouse backend; `GET /api/agents/sessions/compare?a=&b=` endpoint; `CompareDrawer` in sessions page with colour-coded diff table (matched/diverged/only_a/only_b) and latency delta column; A/B selection via row click
-- ~~No playground replay~~ — **built (P5.7, 2026-03-19)**: `ReplayEngine` in `src/langsight/replay/engine.py`; `replay_of` field on `ToolCallSpan` and `mcp_tool_calls`; `POST /api/agents/sessions/{id}/replay` endpoint; Replay button in trace drawer auto-opens compare drawer on completion
+- ~~No session comparison API endpoint or UI~~ — **built (P5.6, 2026-03-19, refined 2026-03-20)**: `compare_sessions()` on ClickHouse backend; `GET /api/agents/sessions/compare?a=&b=` endpoint; comparison now runs from the dedicated `/sessions/[id]` page and renders an inline side-by-side diff table with matched/diverged/only-in-one-session states and latency deltas
+- ~~No playground replay~~ — **built (P5.7, 2026-03-19, refined 2026-03-20)**: `ReplayEngine` in `src/langsight/replay/engine.py`; `replay_of` field on `ToolCallSpan` and `mcp_tool_calls`; `POST /api/agents/sessions/{id}/replay` endpoint; Replay action now lives on the dedicated session detail page
 
 ### Implementation Order and Rationale
 
@@ -406,7 +427,7 @@ Phase 7 (Model-Based Costs)     ░░░░░░░░░░░░░░░░
 
 ## Phase 4 — 85% Complete (POST-0.1.0)
 
-**Note**: Marketing website (`website/`) and product dashboard (`dashboard/`) shipped post-0.1.0. Both are built. Website awaits Vercel deployment. Dashboard is live with demo auth only (P0.2 gap).
+**Note**: Marketing website (`website/`) and product dashboard (`dashboard/`) shipped post-0.1.0. Both are built. Website awaits Vercel deployment. Dashboard auth now runs through NextAuth + the authenticated proxy path; current follow-up work is UX/documentation alignment rather than demo-auth removal.
 
 ### Marketing Website (langsight.io)
 | Item | Status | Date | Notes |

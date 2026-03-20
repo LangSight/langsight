@@ -734,7 +734,7 @@ The MVP is "done" when all of the following are true:
 |------|-------------|--------|
 | P5.6.1 | API: `GET /api/agents/sessions/compare?a={session_id}&b={session_id}` — returns both session traces aligned by `(server_name, tool_name)` call order; `SessionComparison` response model with `session_a`, `session_b`, `spans_a`, `spans_b`, `diff`, `summary` | ✅ Done |
 | P5.6.2 | `_diff_spans()` helper on `ClickHouseBackend` — produces `matched`/`diverged`/`only_a`/`only_b` diff entries; `diverged` = status changed OR latency delta >= 20% | ✅ Done |
-| P5.6.3 | Dashboard: `CompareDrawer` + `DiffRow` components in sessions page — A/B row selection (blue/purple), Compare button, colour-coded diff table, latency delta column | ✅ Done |
+| P5.6.3 | Dashboard: comparison flow on the dedicated session detail page (`dashboard/app/(dashboard)/sessions/[id]/page.tsx`) — pick another session, render inline diff table with matched/diverged/only-in-one-session states and latency delta column | ✅ Done |
 
 **Requires**: P5.1
 
@@ -758,7 +758,7 @@ The MVP is "done" when all of the following are true:
 | P5.7.6 | Replay spans stored as a new session with `replay_of=original_span_id` | ✅ Done |
 | P5.7.7 | `ReplayResponse` Pydantic model and `POST /api/agents/sessions/{session_id}/replay?timeout_per_call=10&total_timeout=60` endpoint in `api/routers/agents.py`; returns `replay_session_id` | ✅ Done |
 | P5.7.8 | `ReplayResponse` TypeScript interface added to `dashboard/lib/types.ts`; `replaySession(sessionId, timeoutPerCall, totalTimeout)` function added to `dashboard/lib/api.ts` | ✅ Done |
-| P5.7.9 | `TraceDrawer` in `dashboard/app/(dashboard)/sessions/page.tsx` — `onReplay` callback prop + Replay button; spinner + "Replaying..." during flight; on success calls `onReplay(replaySessionId)` which auto-opens `CompareDrawer`; inline error message on failure | ✅ Done |
+| P5.7.9 | Session detail page (`dashboard/app/(dashboard)/sessions/[id]/page.tsx`) — Replay button in the page header; spinner + "Replaying..." during flight; on success the replayed session can be compared directly against the original | ✅ Done |
 
 **Requires**: P5.1 and P5.6
 
@@ -1864,7 +1864,7 @@ cp integrations/librechat/langsight-plugin.js /path/to/librechat/plugins/
 | AG.7 | Agent span recording: lifecycle spans for agent start/end events (not just tool calls) | 3h |
 | AG.8 | Handoff spans: explicit span type for agent-to-agent delegation; records parent agent, child agent, reason | 3h |
 | AG.9 | SDK: expose `parent_span_id` and `span_type` in `wrap()` so orchestrators can pass context to sub-agents | 3h |
-| AG.10 | SDK: `client.agent_session()` context manager that auto-generates session_id and sets trace_id for all spans within | 4h |
+| AG.10 | SDK ergonomics for session propagation | 4h |
 | AG.11 | ClickHouse `mv_agent_sessions` materialized view: pre-aggregate session-level metrics from span data (Phase 3 prereq) | 3h |
 | AG.12 | Tests: session grouping, parent_span_id tree reconstruction, handoff spans | 4h |
 
@@ -1907,7 +1907,7 @@ Task: "Resolve customer complaint #4821"
 - [ ] `langsight sessions` renders a Rich table with cost and failure count per session
 - [ ] `langsight sessions --id <id>` renders the multi-agent tree with tool names, latency, and status
 - [ ] Agent B's spans correctly reference Agent A's handoff span via `parent_span_id`
-- [ ] SDK `agent_session()` context manager propagates session_id to all nested `wrap()` calls
+- [ ] Session propagation ergonomics improved beyond explicit `wrap(..., session_id=..., trace_id=..., parent_span_id=...)` wiring
 
 ---
 
@@ -2001,7 +2001,7 @@ The current test-mcps/docker-compose.yml is for development only. Phase 3 ships 
 **Status summary**:
 - 4.1 Marketing website: COMPLETE ✅ — built at `website/`; Vercel deployment pending (manual step)
 - 4.2 Docs site: COMPLETE ✅ — 28 Mintlify pages including `sessions.mdx`; Mintlify deployment pending (manual step)
-- 4.3 Product dashboard: COMPLETE ✅ — built at `dashboard/`; demo auth only (P0.2 gap — see Security Hardening)
+- 4.3 Product dashboard: COMPLETE ✅ — built at `dashboard/`; authenticated via NextAuth + proxy, with recent session/topology UX consolidation shipped on 2026-03-20
 
 ```
 Phase 4 deliverables
@@ -2087,11 +2087,11 @@ Phase 4 deliverables
 
 ---
 
-#### 4.3 Product Dashboard (app.langsight.io) — COMPLETE ✅ (demo auth only — P0.2 gap)
+#### 4.3 Product Dashboard (app.langsight.io) — COMPLETE ✅
 
-**Status**: Built at `dashboard/`. All core pages implemented. Auth is demo-only (hardcoded users, any password accepted). Real auth (API keys or OIDC) is tracked as security hardening item S.3.
+**Status**: Built at `dashboard/`. Core authenticated dashboard is live behind the NextAuth + proxy architecture. Recent UX consolidation (2026-03-20) moved topology exploration under Agents and session debugging into the dedicated `/sessions/[id]` route.
 
-**Pages built**: Overview (`(dashboard)/page.tsx`), Agents (`agents/page.tsx`), Health (`health/page.tsx`), Sessions (`sessions/page.tsx`), Security (`security/page.tsx`), Costs (`costs/page.tsx`).
+**Pages built**: Overview (`(dashboard)/page.tsx`), Agents (`agents/page.tsx`), Health (`health/page.tsx`), Sessions (`sessions/page.tsx` + `sessions/[id]/page.tsx`), Security (`security/page.tsx`), Costs (`costs/page.tsx`), Settings (`settings/page.tsx`).
 
 **Tech**: Next.js 15 with App Router, shadcn/ui component library, recharts for time-series charts.
 

@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 from pydantic import BaseModel
 
-from langsight.api.dependencies import get_active_project_id, get_config, get_storage
+from langsight.api.dependencies import get_active_project_id, get_config, get_storage, require_admin
 from langsight.config import LangSightConfig
 from langsight.storage.base import StorageBackend
 
@@ -334,3 +334,107 @@ def _build_tree(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
             roots.append(span)
 
     return roots
+
+
+# ---------------------------------------------------------------------------
+# Agent metadata (catalog)
+# ---------------------------------------------------------------------------
+
+from typing import Literal
+
+
+class AgentMetadataUpdate(BaseModel):
+    description: str = ""
+    owner: str = ""
+    tags: list[str] = []
+    status: Literal["active", "deprecated", "experimental"] = "active"
+    runbook_url: str = ""
+
+
+class AgentMetadataResponse(BaseModel):
+    id: str
+    agent_name: str
+    description: str
+    owner: str
+    tags: list[str]
+    status: str
+    runbook_url: str
+    project_id: str | None
+    created_at: str
+    updated_at: str
+
+
+@router.get("/metadata", response_model=list[AgentMetadataResponse])
+async def list_agent_metadata(
+    storage: StorageBackend = Depends(get_storage),
+    project_id: str | None = Depends(get_active_project_id),
+) -> list[dict[str, Any]]:
+    """List all agent metadata for the project."""
+    rows = await storage.get_all_agent_metadata(project_id=project_id)
+    for r in rows:
+        r["created_at"] = str(r["created_at"])
+        r["updated_at"] = str(r["updated_at"])
+        if isinstance(r.get("tags"), str):
+            import json
+            r["tags"] = json.loads(r["tags"])
+    return rows
+
+
+@router.get("/metadata/{agent_name}", response_model=AgentMetadataResponse)
+async def get_agent_metadata(
+    agent_name: str,
+    storage: StorageBackend = Depends(get_storage),
+    project_id: str | None = Depends(get_active_project_id),
+) -> dict[str, Any]:
+    """Get metadata for one agent."""
+    row = await storage.get_agent_metadata(agent_name, project_id=project_id)
+    if not row:
+        raise HTTPException(status_code=404, detail=f"No metadata for agent '{agent_name}'")
+    row["created_at"] = str(row["created_at"])
+    row["updated_at"] = str(row["updated_at"])
+    if isinstance(row.get("tags"), str):
+        import json
+        row["tags"] = json.loads(row["tags"])
+    return row
+
+
+@router.put(
+    "/metadata/{agent_name}",
+    response_model=AgentMetadataResponse,
+    status_code=http_status.HTTP_200_OK,
+)
+async def upsert_agent_metadata(
+    agent_name: str,
+    body: AgentMetadataUpdate,
+    storage: StorageBackend = Depends(get_storage),
+    project_id: str | None = Depends(get_active_project_id),
+    _admin: None = Depends(require_admin),
+) -> dict[str, Any]:
+    """Create or update agent metadata."""
+    row = await storage.upsert_agent_metadata(
+        agent_name=agent_name,
+        description=body.description,
+        owner=body.owner,
+        tags=body.tags,
+        status=body.status,
+        runbook_url=body.runbook_url,
+        project_id=project_id,
+    )
+    row["created_at"] = str(row["created_at"])
+    row["updated_at"] = str(row["updated_at"])
+    if isinstance(row.get("tags"), str):
+        import json
+        row["tags"] = json.loads(row["tags"])
+    return row
+
+
+@router.delete("/metadata/{agent_name}", status_code=http_status.HTTP_204_NO_CONTENT)
+async def delete_agent_metadata(
+    agent_name: str,
+    storage: StorageBackend = Depends(get_storage),
+    _admin: None = Depends(require_admin),
+) -> None:
+    """Delete agent metadata."""
+    deleted = await storage.delete_agent_metadata(agent_name)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"No metadata for agent '{agent_name}'")

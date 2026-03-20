@@ -15,6 +15,17 @@ Data pipeline teams answer these questions with **lineage graphs** (dbt, Airflow
 
 Add an **Agent Action Lineage** feature: a DAG visualization of agents, MCP servers, and tools — built from aggregated span data, not hand-drawn config. Click any node to see metrics, errors, and drill into sessions.
 
+## Status Update (2026-03-20)
+
+The lineage feature has shipped, but the final implementation differs from the original proposal in a few important ways:
+
+- `GET /api/agents/lineage` is live and powers the dashboard topology views
+- There is no standalone `/api/agents/lineage/{node_id}/impact` endpoint yet
+- `/lineage` is no longer a standalone dashboard destination; it redirects to `/agents`
+- Topology exploration lives inside the Agents page (selected-agent topology + global topology modal)
+- The renderer is raw SVG + `dagre`, not React Flow
+- Tool/per-call expansion happens inside the shared renderer rather than via a separate tool-level page mode
+
 ---
 
 ## Data Model
@@ -235,122 +246,56 @@ Blast radius analysis: "What breaks if this node goes down?"
 
 ## Dashboard UI
 
-### Lineage page (`/lineage`)
+### Current dashboard UX
 
-New top-level nav item between "Sessions" and "Health".
+Lineage is now embedded in the **Agents** experience rather than a standalone page.
 
-**Layout:**
-```
-┌─────────────────────────────────────────────────────────┐
-│  Agent Action Lineage          [7d ▾] [project ▾]      │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│   ┌──────────┐        ┌──────────────┐                  │
-│   │orchestr- │───────►│ postgres-mcp │                  │
-│   │ator      │──┐     │  5 tools     │                  │
-│   └──────────┘  │     └──────────────┘                  │
-│        │        │                                       │
-│        │        │     ┌──────────────┐                  │
-│        │ handoff└────►│ jira-mcp     │                  │
-│        ▼              │  3 tools     │                  │
-│   ┌──────────┐        └──────────────┘                  │
-│   │billing-  │                                          │
-│   │agent     │───────►┌──────────────┐                  │
-│   └──────────┘        │ crm-mcp      │                  │
-│                       │  2 tools     │                  │
-│                       └──────────────┘                  │
-│                                                         │
-├─────────────────────────────────────────────────────────┤
-│  Selected: postgres-mcp                                 │
-│  Called by: orchestrator, support-agent                  │
-│  3,200 calls · 0.16% error rate · avg 31ms              │
-│  [View sessions →]  [Blast radius →]                    │
-└─────────────────────────────────────────────────────────┘
-```
+**Shipped surfaces:**
+- **Agents page, selected agent** — focused topology for one agent plus summary metrics
+- **Agents page, Topology modal** — fleet-wide graph of agents, MCP servers, and handoffs
+- **Session detail page (`/sessions/[id]`)** — per-session lineage using the same graph renderer
 
-**Interactions:**
-- Click node → detail panel slides in from bottom (metrics, recent errors, sessions link)
-- Click "Blast radius" → highlight all upstream agents that depend on this node
-- Edge thickness → proportional to call volume
-- Edge color → green (healthy), yellow (>1% errors), red (>5% errors)
-- Time window selector (1h, 24h, 7d, 30d)
-- Toggle: server level ↔ tool level (tool level expands servers into individual tools)
+**Current interactions:**
+- Click node → inline detail card / side panel with metrics
+- Click edge → inspect per-path call counts, errors, latency, tools, and tokens
+- Expand/collapse multi-caller servers
+- Expand an agent→server edge into individual tool/per-call nodes
+- Pan, zoom, search, minimap, and error-path highlighting
 
 ### Technology choice
 
-**React Flow** (`@xyflow/react`) — the standard for DAG rendering in React:
-- Built-in layout engines (dagre, elk)
-- Custom node/edge components
-- Pan, zoom, minimap out of the box
-- Used by n8n, Langflow, Windmill, Buildship
+**Raw SVG + `dagre`** via `dashboard/components/lineage-graph.tsx`
 
-Not D3 — too low-level for this use case. React Flow gives us interactive DAGs in ~200 lines.
+Why the implementation changed:
+- shared renderer across session and agent topology views
+- tighter control over custom node/edge behaviour
+- no React Flow runtime or dependency footprint
+- easier per-edge expansion into tool and call nodes within the same canvas
 
 ---
 
-## Implementation Plan
+## Implementation Status
 
-### Phase 1: Backend + API (1 day)
+### Shipped
 
-**Files:**
-
-| File | Change |
+| Area | Status |
 |------|--------|
-| `src/langsight/storage/clickhouse.py` | Add `get_lineage_graph()` and `get_lineage_impact()` methods |
-| `src/langsight/api/routers/lineage.py` | New router: `GET /api/agents/lineage`, `GET /api/agents/lineage/{node_id}/impact` |
-| `src/langsight/api/main.py` | Register lineage router |
-| `tests/unit/api/test_lineage_router.py` | Unit tests with mocked storage |
+| `src/langsight/storage/clickhouse.py` `get_lineage_graph()` | ✅ Shipped |
+| `src/langsight/api/routers/lineage.py` `GET /api/agents/lineage` | ✅ Shipped |
+| `dashboard/lib/api.ts` `getLineageGraph()` | ✅ Shipped |
+| `dashboard/lib/types.ts` lineage graph types | ✅ Shipped |
+| Shared SVG topology renderer | ✅ Shipped |
+| Agents page topology integration | ✅ Shipped |
+| Session detail page lineage integration | ✅ Shipped |
 
-**ClickHouse methods:**
-```python
-async def get_lineage_graph(
-    self,
-    hours: int = 168,
-    level: str = "server",  # "server" | "tool"
-    project_id: str | None = None,
-) -> dict[str, Any]:
-    """Return nodes + edges for the lineage DAG."""
-    # 1. Query agent→server edges
-    # 2. Query agent→agent handoff edges
-    # 3. Optionally query agent→tool edges (level="tool")
-    # 4. Query node-level metrics
-    # 5. Assemble {nodes, edges} response
-```
+### Deferred / not shipped
 
-### Phase 2: Dashboard page (1-2 days)
-
-**Files:**
-
-| File | Change |
+| Area | Status |
 |------|--------|
-| `dashboard/app/(dashboard)/lineage/page.tsx` | New page with React Flow graph |
-| `dashboard/components/lineage/` | `AgentNode.tsx`, `ServerNode.tsx`, `ToolNode.tsx`, `LineageEdge.tsx` |
-| `dashboard/lib/api.ts` | Add `getLineageGraph()`, `getLineageImpact()` |
-| `dashboard/lib/types.ts` | Add `LineageGraph`, `LineageNode`, `LineageEdge` types |
-| `dashboard/components/sidebar.tsx` | Add "Lineage" nav item |
-
-**Dependencies to add:**
-```bash
-cd dashboard && npm install @xyflow/react dagre @types/dagre
-```
-
-**Custom nodes (React Flow):**
-- `AgentNode` — blue card, shows agent name + call count + error rate sparkline
-- `ServerNode` — green card (healthy) / yellow (degraded) / red (down), shows server name + tool count
-- `ToolNode` — small pill inside server node (tool-level view only)
-
-**Layout:**
-- Use `dagre` for automatic left-to-right DAG layout
-- Agents on the left, servers on the right, handoff edges between agents
-- Edges: bezier curves, animated when data is flowing
-
-### Phase 3: Blast radius + polish (1 day)
-
-- Blast radius panel: click server → highlight all upstream agents in red
-- "What if this server goes down?" modal with impact summary
-- Edge click → show the specific tool calls between that agent and server
-- Link from lineage node → filtered sessions list
-- Link from health page → lineage view centered on that server
+| `GET /api/agents/lineage/{node_id}/impact` | Not shipped |
+| Dedicated `/lineage` page | Replaced by `/agents` topology experience |
+| Separate React Flow node/component tree | Replaced by shared SVG renderer |
+| Explicit blast-radius modal | Not shipped as a separate flow |
 
 ---
 
@@ -389,13 +334,12 @@ The marketing writes itself: "The first lineage graph for AI agent actions."
 
 ## Acceptance Criteria
 
-- [ ] `GET /api/agents/lineage` returns nodes + edges from real span data
+- [x] `GET /api/agents/lineage` returns nodes + edges from real span data
 - [ ] `GET /api/agents/lineage/{node_id}/impact` returns blast radius
-- [ ] Project scoping works (non-admin users see only their project's lineage)
-- [ ] Dashboard renders interactive DAG with React Flow
-- [ ] Click node → detail panel with metrics
-- [ ] Click "Blast radius" → highlights dependent agents
-- [ ] Edge thickness reflects call volume, color reflects error rate
-- [ ] Time window selector works (1h, 24h, 7d, 30d)
-- [ ] Empty state: "No agent sessions recorded yet. Instrument your first agent."
-- [ ] Tests: unit tests for router + ClickHouse query builder
+- [x] Project scoping works on the lineage graph response
+- [x] Dashboard renders an interactive DAG
+- [x] Click node → detail panel with metrics
+- [x] Edge thickness / labels reflect activity volume
+- [x] Empty state exists when no lineage data is present
+- [ ] Dedicated blast-radius interaction exists as a first-class flow
+- [ ] Tests: add explicit lineage router/query coverage if not already present

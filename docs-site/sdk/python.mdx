@@ -157,50 +157,53 @@ await langsight.send_span(ToolCallSpan.record(
 
 When Agent A delegates to Agent B, pass the `trace_id` and the parent agent's span ID so LangSight can reconstruct the full call tree.
 
-### Using the session context manager
+### Recommended pattern
 
 ```python
+from datetime import UTC, datetime
 from langsight.sdk import LangSightClient
+from langsight.sdk.models import ToolCallSpan
 
 client = LangSightClient(url="http://localhost:8000")
 
 async def orchestrator_agent():
-    # Opens a session — all wrap() calls within inherit trace_id + session_id
-    async with client.agent_session(agent_name="orchestrator") as session:
-        traced_jira = client.wrap(jira_session, server_name="jira-mcp")
-        await traced_jira.call_tool("get_issue", {"id": "TASK-42"})
+    session_id = "sess-f2a9b1"
+    trace_id = "trace-abc123"
 
-        # Pass session context to sub-agent
-        await research_agent(parent_session=session)
+    traced_jira = client.wrap(
+        jira_session,
+        server_name="jira-mcp",
+        agent_name="orchestrator",
+        session_id=session_id,
+        trace_id=trace_id,
+    )
+    await traced_jira.call_tool("get_issue", {"id": "TASK-42"})
 
-async def research_agent(parent_session):
-    # Sub-agent spans are linked to the parent session via parent_span_id
-    async with client.agent_session(
-        agent_name="research",
-        parent_span_id=parent_session.current_span_id,
-        trace_id=parent_session.trace_id,
-        session_id=parent_session.session_id,
-    ) as session:
-        traced_confluence = client.wrap(
-            confluence_session,
-            server_name="confluence-mcp",
-        )
-        await traced_confluence.call_tool("search", {"query": "returns policy"})
-```
+    handoff = ToolCallSpan.handoff_span(
+        from_agent="orchestrator",
+        to_agent="research-agent",
+        started_at=datetime.now(UTC),
+        session_id=session_id,
+        trace_id=trace_id,
+    )
+    await client.send_span(handoff)
 
-### Manual parent_span_id
+    await research_agent(
+        session_id=session_id,
+        trace_id=trace_id,
+        parent_span_id=handoff.span_id,
+    )
 
-If you are not using the session context manager, set `parent_span_id` explicitly:
-
-```python
-traced = client.wrap(
-    mcp_session,
-    server_name="confluence-mcp",
-    agent_name="research-agent",
-    session_id="sess-f2a9b1",
-    trace_id="trace-abc123",
-    parent_span_id="span-001",   # ID of the handoff span from the parent agent
-)
+async def research_agent(session_id: str, trace_id: str, parent_span_id: str):
+    traced_confluence = client.wrap(
+        confluence_session,
+        server_name="confluence-mcp",
+        agent_name="research-agent",
+        session_id=session_id,
+        trace_id=trace_id,
+        parent_span_id=parent_span_id,
+    )
+    await traced_confluence.call_tool("search", {"query": "returns policy"})
 ```
 
 ### How parent_span_id works

@@ -251,7 +251,7 @@ save_alert_config()         → Postgres
 
 **Design decisions**:
 - Two auth paths coexist (decided 2026-03-19 — Phase 9):
-  1. **Session headers from proxy** — dashboard users authenticate via NextAuth; the Next.js proxy injects `X-User-Id` + `X-User-Role` headers; FastAPI trusts these only from `127.0.0.1` / `::1`
+  1. **Session headers from proxy** — dashboard users authenticate via NextAuth; the Next.js proxy injects `X-User-Id` + `X-User-Role` headers; FastAPI trusts these only from `LANGSIGHT_TRUSTED_PROXY_CIDRS` (loopback by default, expanded to internal container CIDRs in Docker deployments)
   2. **X-API-Key header** — SDK and CLI direct access; no session required
 - JSON responses, standard pagination (offset/limit)
 - WebSocket endpoint for real-time health updates (dashboard use)
@@ -303,7 +303,7 @@ save_alert_config()         → Postgres
 |------|-----------|-----------|
 | `crewai.py` | CrewAI | `Crew(callbacks=[LangSightCrewAICallback(...)])` |
 | `pydantic_ai.py` | Pydantic AI | Wraps `Tool` objects at registration time |
-| `openai_agents.py` | OpenAI Agents SDK | Hooks into function call events |
+| `langchain.py` | LangChain / Langflow / LangGraph / LangServe | Callback-based span emission |
 
 All adapters share a common `IntegrationBase` that handles span serialization and HTTP dispatch. Fail-open behavior is enforced at the base class level.
 
@@ -322,7 +322,7 @@ All adapters share a common `IntegrationBase` that handles span serialization an
 
 **Replay → compare workflow**:
 ```
-User clicks Replay button in TraceDrawer
+User opens `/sessions/{id}` and clicks Replay
         │
         ▼
 POST /api/agents/sessions/{id}/replay
@@ -340,7 +340,7 @@ ReplayEngine.replay(session_id)
 Dashboard receives replay_session_id
         │
         ▼
-onReplay(replaySessionId) callback auto-opens CompareDrawer
+Session detail page starts compare flow against the replay session
   └── GET /api/agents/sessions/compare?a={original}&b={replay}
 ```
 
@@ -356,13 +356,24 @@ onReplay(replaySessionId) callback auto-opens CompareDrawer
 
 **Purpose**: Web UI for teams that prefer a visual interface over CLI.
 
-**Pages**: MCP Health, Tool Reliability, Security, Costs, Alerts, Settings
+**Pages**: Overview, Agents, Sessions, Health, Security, Costs, Settings
+
+**Dashboard interaction model** (changed from original: consolidated on 2026-03-20):
+- Sessions table links into a dedicated session detail route: `/sessions/[id]`
+- Session detail page has two tabs:
+  - `Details` — session timeline, lineage graph, right-side inspector
+  - `Trace` — nested span tree with inline payload and error expansion
+- Agent topology lives under the Agents page:
+  - per-agent topology for the selected agent
+  - fleet-wide topology modal powered by the same graph renderer
+- `/lineage` is retained only as a redirect to `/agents`
 
 **Design decisions**:
 - shadcn/ui component library (fast to build, consistent look)
 - Polls REST API (5s for health, 30s for metrics) — no complex real-time infra
 - Charts via recharts
 - No SSR needed — static SPA with API calls
+- Shared raw SVG + `dagre` lineage renderer (decided 2026-03-20): replaced the earlier standalone lineage implementation so the same graph component can power both session-level and fleet-level topology views.
 
 ---
 

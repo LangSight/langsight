@@ -9,6 +9,28 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (2026-03-20 — session detail + agent topology UX)
+
+- `dashboard/app/(dashboard)/sessions/[id]/page.tsx` — dedicated full-page session debugger. Session rows now drill into `/sessions/{id}` instead of relying on the older inline workflow interaction model.
+- Session detail page now has two working surfaces:
+  - `Details` tab — session timeline, interactive lineage graph, and a 70/30 split detail panel for selected agents, servers, edges, and individual tool calls
+  - `Trace` tab — nested span tree with inline payload/error expansion for tool and LLM spans
+- Session compare flow moved onto the session detail page: compare target is picked from recent sessions, then rendered inline as a side-by-side diff table.
+- Agents page gained topology exploration:
+  - per-agent topology tab using the shared lineage graph
+  - global topology modal for fleet-wide agent/server relationships
+
+### Changed (2026-03-20 — lineage navigation + rendering)
+
+- `/lineage` dashboard route now redirects to `/agents`; lineage exploration is consolidated under the Agents experience rather than a separate standalone page.
+- `dashboard/components/lineage-graph.tsx` replaced the React Flow-based implementation with a raw SVG + `dagre` renderer shared by session and agent topology views.
+- The lineage graph now supports expand/collapse for multi-caller servers and per-tool/per-call breakdowns directly inside the shared renderer.
+
+### Removed (2026-03-20 — React Flow dependency)
+
+- `@xyflow/react` removed from the dashboard package after the SVG lineage renderer shipped.
+- `dashboard/package-lock.json` and `dashboard/package.json` cleaned up to drop the unused React Flow dependency chain.
+
 ### Breaking (2026-03-19 — SQLite removed)
 
 - `mode: sqlite` in `.langsight.yaml` now raises `ConfigError` with migration guidance. Valid modes: `postgres` | `clickhouse` | `dual`. Migrate by switching to `mode: dual` and running `docker compose up -d`.

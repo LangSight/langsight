@@ -8,8 +8,8 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@langsight.io");
-  const [password, setPassword] = useState("demo");
+  const [email, setEmail] = useState("admin@admin.com");
+  const [password, setPassword] = useState("admin");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -143,7 +143,7 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="input-base"
-                placeholder="admin@langsight.io"
+                placeholder="admin@admin.com"
                 autoComplete="email"
               />
             </div>
@@ -201,7 +201,7 @@ export default function LoginPage() {
               Demo credentials
             </p>
             <p className="text-muted-foreground font-mono">
-              admin@langsight.io / demo
+              admin@admin.com / admin
             </p>
           </div>
 

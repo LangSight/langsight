@@ -373,6 +373,59 @@ async def seed_demo_data(storage: Any, project_id: str) -> None:
 
         logger.info("demo_seed.slos", count=len(_generate_slos()))
 
+    # ── 5. Agent metadata (catalog) ────────────────────────────────────────
+    if hasattr(storage, "upsert_agent_metadata"):
+        _AGENT_METADATA = [
+            {
+                "agent_name": "orchestrator",
+                "description": "Routes incoming customer support requests to specialist agents. Handles ticket classification, priority assignment, and multi-agent delegation.",
+                "owner": "Platform Team",
+                "tags": ["production", "customer-facing", "routing"],
+                "status": "active",
+                "runbook_url": "https://wiki.example.com/agents/orchestrator",
+            },
+            {
+                "agent_name": "support-agent",
+                "description": "Resolves customer issues by querying databases, creating Jira tickets, and sending Slack notifications. Handles escalation when issues are unresolvable.",
+                "owner": "Support Engineering",
+                "tags": ["production", "customer-facing", "tier-1"],
+                "status": "active",
+                "runbook_url": "https://wiki.example.com/agents/support-agent",
+            },
+            {
+                "agent_name": "billing-agent",
+                "description": "Processes billing inquiries, generates invoices, and reconciles payment records. Reads from S3 for archived data and Postgres for live accounts.",
+                "owner": "Billing Team",
+                "tags": ["production", "financial", "pii"],
+                "status": "active",
+                "runbook_url": "",
+            },
+            {
+                "agent_name": "data-analyst",
+                "description": "Performs ad-hoc data analysis across multiple sources. Queries Postgres, reads S3 objects, and pushes results to GitHub for review.",
+                "owner": "Data Engineering",
+                "tags": ["internal", "analytics", "experimental"],
+                "status": "experimental",
+                "runbook_url": "",
+            },
+        ]
+        meta_count = 0
+        for m in _AGENT_METADATA:
+            try:
+                await storage.upsert_agent_metadata(
+                    agent_name=m["agent_name"],
+                    description=m["description"],
+                    owner=m["owner"],
+                    tags=m["tags"],
+                    status=m["status"],
+                    runbook_url=m["runbook_url"],
+                    project_id=project_id,
+                )
+                meta_count += 1
+            except Exception:  # noqa: BLE001
+                pass
+        logger.info("demo_seed.agent_metadata", count=meta_count)
+
     logger.info(
         "demo_seed.complete",
         project_id=project_id,

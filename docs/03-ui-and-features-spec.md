@@ -1,8 +1,8 @@
 # LangSight: UI & Features Specification
 
-> **Version**: 1.1.0
-> **Date**: 2026-03-19
-> **Status**: Active — updated with dual-storage config schema, accept-invite page, NavProgress, loading skeleton, audit log persistence (2026-03-19)
+> **Version**: 1.2.0
+> **Date**: 2026-03-20
+> **Status**: Active — updated with dedicated session detail page, shared SVG lineage renderer, and agent topology consolidation (2026-03-20)
 
 ---
 
@@ -412,7 +412,7 @@ redact_payloads: false
 ## 4. Web Dashboard (Phase 3 — Overview)
 
 The dashboard is built on the same FastAPI REST API that powers the CLI.
-The current IA is agent-first: **Overview → Agents → Workflows → Tools & MCPs → Security → Costs**.
+The current IA is agent-first: **Overview → Agents → Sessions → Health → Security → Costs → Settings**.
 
 ### 4.1 Dashboard Home
 - **Agent/workflow summary cards**: Active workflows, healthy agents, tool/MCP backend status, cost snapshot
@@ -421,13 +421,16 @@ The current IA is agent-first: **Overview → Agents → Workflows → Tools & M
 
 ### 4.2 Agents Page
 - **Agent fleet view**: Per-agent session count, tool calls, failures, runtime, and cost
-- **Agent drill-down**: Touched tools/MCPs, recent workflows, operational summary
+- **Agent drill-down**: About, overview, topology, and recent sessions for the selected agent
+- **Topology modal**: Fleet-wide agent/server topology lives here; `/lineage` redirects into this experience
 
-### 4.3 Workflows Page
+### 4.3 Sessions Page
 - **Session table**: One row per workflow/session with agent, tool-call count, failures, duration, and touched backends
-- **Trace drawer**: Tree of `agent`, `handoff`, and `tool_call` spans for one workflow. Clicking a span row expands an inline panel showing formatted input arguments and return value; error details shown for failed spans. Payload visibility requires P5.1 payload capture to be active (`redact_payloads: false`, default).
-- **Session comparison**: Click one session row to select it as A (row highlighted blue); click a second row to select it as B (row highlighted purple); a Compare button appears. Clicking Compare opens a diff drawer that calls `GET /api/agents/sessions/compare?a=&b=` and renders a per-tool aligned diff table. Each diff row shows tool key, A status, A latency, B status, B latency, and latency delta percentage. Row colours: matched=green, diverged=yellow, only_a=blue, only_b=purple. Diverged = status changed OR latency delta >= 20%.
-- **Replay button** (P5.7): Replay button in trace drawer header — re-runs all `tool_call` spans in the session with their stored input args against live MCP servers. Shows spinner and "Replaying..." while in flight. On completion, calls `POST /api/agents/sessions/{id}/replay` and receives a `replay_session_id`; the compare drawer auto-opens between the original and replay sessions. Inline error message shown below drawer header on failure. Configurable per-call timeout (default 10s) and total session timeout (default 60s). Requires `redact_payloads: false` (default) so that `input_json` is present on spans.
+- **Dedicated session detail route**: Clicking a row opens `/sessions/[id]`
+- **Details tab**: Timeline + interactive lineage graph + right-side inspector for selected agent/server/edge/per-call nodes
+- **Trace tab**: Tree of `agent`, `handoff`, and `tool_call` spans. Clicking a span row expands inline payload/error content. Payload visibility requires P5.1 payload capture to be active (`redact_payloads: false`, default).
+- **Session comparison**: Compare is initiated from the session detail page. The user picks another recent session, then LangSight calls `GET /api/agents/sessions/compare?a=&b=` and renders a per-tool aligned diff table. Each diff row shows tool key, base status, base latency, compare status, compare latency, and latency delta percentage. Row colours: matched=green, diverged=yellow, only_a=blue, only_b=purple. Diverged = status changed OR latency delta >= 20%.
+- **Replay button** (P5.7): Replay lives in the session detail header — re-runs all `tool_call` spans in the session with their stored input args against live MCP servers. Shows spinner and "Replaying..." while in flight. On completion, calls `POST /api/agents/sessions/{id}/replay` and returns a replay session that can be compared directly with the original. Requires `redact_payloads: false` (default) so that `input_json` is present on spans.
 
 ### 4.4 Tools & MCPs Page
 - **Server list table**: Name, status badge, p99 latency, schema status, tools count, last check time

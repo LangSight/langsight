@@ -30,7 +30,7 @@ API keys are created in the dashboard under **Settings → API Keys**.
 
 The dashboard never calls FastAPI directly. All requests go through the Next.js proxy at `/api/proxy/*`, which reads the NextAuth session server-side and injects `X-User-Id` and `X-User-Role` headers.
 
-FastAPI trusts `X-User-Id` / `X-User-Role` **only from localhost** (`127.0.0.1` or `::1`). External clients that set these headers are ignored — the headers have no effect when the request does not originate from the proxy.
+FastAPI trusts `X-User-Id` / `X-User-Role` only from the configured proxy CIDRs in `LANGSIGHT_TRUSTED_PROXY_CIDRS`. By default this is loopback; Docker deployments typically also include internal container networks such as `172.16.0.0/12` and `10.0.0.0/8`.
 
 <Warning>
   Do not set `X-User-Id` or `X-User-Role` in your own API clients. These are internal proxy headers. Use `X-API-Key` for all SDK and CLI access.
@@ -100,6 +100,8 @@ Once the API is running:
 |--------|------|-------------|
 | `GET` | `/api/agents/sessions` | List agent sessions with aggregated cost, call count, failure count |
 | `GET` | `/api/agents/sessions/{session_id}` | Full span tree for one session with `parent_span_id` hierarchy |
+| `GET` | `/api/agents/sessions/compare?a=<id>&b=<id>` | Compare two session traces side-by-side |
+| `POST` | `/api/agents/sessions/{session_id}/replay` | Replay stored tool calls against live MCP servers (admin only) |
 
 **Session object**:
 
@@ -107,15 +109,29 @@ Once the API is running:
 {
   "session_id": "sess-f2a9b1",
   "agent_name": "orchestrator",
-  "started_at": "2026-03-17T14:02:31Z",
-  "ended_at": "2026-03-17T14:02:32Z",
+  "first_call_at": "2026-03-17T14:02:31Z",
+  "last_call_at": "2026-03-17T14:02:32Z",
   "duration_ms": 1482,
-  "tool_call_count": 5,
-  "failure_count": 1,
-  "cost_usd": 0.023,
-  "agents_involved": ["orchestrator", "research", "action"]
+  "tool_calls": 5,
+  "failed_calls": 1,
+  "servers_used": ["postgres-mcp", "slack-mcp"]
 }
 ```
+
+### Agent Topology
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/agents/lineage` | Aggregated lineage graph of agents, MCP servers, and handoffs |
+
+### Agent Metadata
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/agents/metadata` | List agent catalog metadata for the active project |
+| `GET` | `/api/agents/metadata/{agent_name}` | Read metadata for one agent |
+| `PUT` | `/api/agents/metadata/{agent_name}` | Create or update metadata for one agent |
+| `DELETE` | `/api/agents/metadata/{agent_name}` | Delete metadata for one agent |
 
 ### Projects
 

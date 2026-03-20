@@ -92,12 +92,12 @@ Returns a JSON array of session objects:
   {
     "session_id": "a3f1c2b0-1e4d-4a8f-8c9d-7b2e5f0d1a6",
     "agent_name": "research-agent",
-    "total_calls": 24,
+    "first_call_at": "2026-03-17T09:14:02Z",
+    "last_call_at": "2026-03-17T09:14:16Z",
+    "tool_calls": 24,
     "failed_calls": 1,
     "duration_ms": 14200,
-    "servers": ["jira-mcp", "confluence-mcp", "slack-mcp"],
-    "started_at": "2026-03-17T09:14:02Z",
-    "ended_at": "2026-03-17T09:14:16Z"
+    "servers_used": ["jira-mcp", "confluence-mcp", "slack-mcp"]
   }
 ]
 ```
@@ -109,16 +109,19 @@ For a single session with `--id --json`, the response includes the full span tre
 Sessions are recorded by the LangSight SDK or any OTLP-instrumented framework:
 
 ```python
-from langsight import LangSightClient, agent_session
+from langsight.sdk import LangSightClient
 
-client = LangSightClient()
-
-async with agent_session(client, agent_name="research-agent") as session:
-    mcp = await client.wrap(your_mcp_client)
-    result = await mcp.call_tool("jira-mcp", "search_issues", {...})
+client = LangSightClient(url="http://localhost:8000")
+mcp = client.wrap(
+    your_mcp_client,
+    server_name="jira-mcp",
+    agent_name="research-agent",
+    session_id="sess-f2a9b1",
+)
+result = await mcp.call_tool("search_issues", {"query": "refund policy"})
 ```
 
-See the [SDK quickstart](/quickstart) and [multi-agent tracing](/sdk/multi-agent) for full setup instructions.
+See the [SDK quickstart](/quickstart) and the [Python SDK guide](/sdk/python) for full setup instructions.
 
 ## Storage backend
 
@@ -132,10 +135,12 @@ Start the full stack with `docker compose up -d` (default `mode: dual`).
 
 ## Dashboard features
 
-The `langsight sessions` CLI shows a summary. For full session debugging, open the dashboard (port 3003):
+The `langsight sessions` CLI shows a summary. For full session debugging, open the dashboard (port `3003`):
 
-- **Trace tree** — click any span to see formatted input/output payloads inline
-- **Compare** — select two sessions (A/B) and click Compare for a side-by-side diff
-- **Replay** — click Replay in the trace drawer to re-execute tool calls against live MCP servers
+- **Session detail page** — click any row in the Sessions table to open `/sessions/<id>`
+- **Details tab** — timeline + interactive lineage graph + node/edge inspector
+- **Trace tab** — nested span tree with inline payloads and LLM prompt/completion panels
+- **Compare** — open a session, then compare it with another recent session
+- **Replay** — replay tool calls from the session detail page against live MCP servers
 
 See [Session Replay](/session-replay) for details.

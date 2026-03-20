@@ -146,6 +146,11 @@ Go to **http://localhost:3003** and log in with `admin@admin.com` / `admin`.
 
 A **Sample Project** with 25 demo agent sessions is pre-loaded so you can explore the sessions, traces, and cost views immediately. Create your own project in Settings when you're ready to trace real agents.
 
+Useful dashboard paths once you log in:
+- **Sessions** — click any row to open the dedicated session debugger at `/sessions/<id>`
+- **Agents** — inspect per-agent summaries and the shared topology view
+- **Settings** — create API keys, manage projects, and configure notifications
+
 ### 3. Trace your own agents
 
 ```bash
