@@ -12,6 +12,7 @@ import {
 import {
   ReactFlow,
   Background,
+  Handle,
   useNodesState,
   useEdgesState,
   type Node,
@@ -36,6 +37,7 @@ function SessionLineageNode({ data }: { data: { label: string; nodeType: string;
       className="rounded-xl px-3.5 py-2.5 flex items-center gap-2.5 shadow-sm"
       style={{ background: "hsl(var(--card))", border: `2px solid ${data.hasError ? "rgba(239,68,68,0.4)" : "rgba(16,185,129,0.4)"}`, minWidth: 150 }}
     >
+      <Handle type="target" position={Position.Left} style={{ background: color, width: 8, height: 8, border: "2px solid hsl(var(--card))" }} />
       <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
         {isAgent ? <Bot size={13} style={{ color }} /> : <Server size={13} style={{ color }} />}
       </div>
@@ -43,6 +45,7 @@ function SessionLineageNode({ data }: { data: { label: string; nodeType: string;
         <p className="text-[11px] font-bold text-foreground leading-tight">{data.label}</p>
         <p className="text-[9px]" style={{ color }}>{isAgent ? "Agent" : "MCP Server"}</p>
       </div>
+      <Handle type="source" position={Position.Right} style={{ background: color, width: 8, height: 8, border: "2px solid hsl(var(--card))" }} />
     </div>
   );
 }

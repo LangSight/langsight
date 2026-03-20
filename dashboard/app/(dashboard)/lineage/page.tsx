@@ -6,6 +6,7 @@ import {
   ReactFlow,
   Background,
   Controls,
+  Handle,
   useNodesState,
   useEdgesState,
   type Node,
@@ -100,7 +101,8 @@ function LineageNodeComponent({ data }: { data: { label: string; nodeType: strin
         minWidth: 180,
       }}
     >
-      {/* Status dot */}
+      <Handle type="target" position={Position.Left} style={{ background: cfg.color, width: 8, height: 8, border: "2px solid hsl(var(--card))" }} />
+      {/* Status icon */}
       <div
         className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
         style={{ background: cfg.bg }}
@@ -115,6 +117,7 @@ function LineageNodeComponent({ data }: { data: { label: string; nodeType: strin
           {isAgent ? "Agent" : "MCP Server"} · {cfg.label}
         </p>
       </div>
+      <Handle type="source" position={Position.Right} style={{ background: cfg.color, width: 8, height: 8, border: "2px solid hsl(var(--card))" }} />
     </div>
   );
 }
