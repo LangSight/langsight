@@ -175,6 +175,61 @@ _DDL_STATEMENTS = [
     """
     CREATE INDEX IF NOT EXISTS idx_audit_logs_time ON audit_logs (timestamp DESC)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS agent_metadata (
+        id          TEXT        PRIMARY KEY,
+        agent_name  TEXT        NOT NULL UNIQUE,
+        description TEXT        NOT NULL DEFAULT '',
+        owner       TEXT        NOT NULL DEFAULT '',
+        tags        JSONB       NOT NULL DEFAULT '[]',
+        status      TEXT        NOT NULL DEFAULT 'active',
+        runbook_url TEXT        NOT NULL DEFAULT '',
+        project_id  TEXT        REFERENCES projects(id),
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_agent_metadata_name ON agent_metadata(agent_name)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_agent_metadata_project ON agent_metadata(project_id)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS server_metadata (
+        id          TEXT        PRIMARY KEY,
+        server_name TEXT        NOT NULL UNIQUE,
+        description TEXT        NOT NULL DEFAULT '',
+        owner       TEXT        NOT NULL DEFAULT '',
+        tags        JSONB       NOT NULL DEFAULT '[]',
+        transport   TEXT        NOT NULL DEFAULT '',
+        runbook_url TEXT        NOT NULL DEFAULT '',
+        project_id  TEXT        REFERENCES projects(id),
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_server_metadata_name ON server_metadata(server_name)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_server_metadata_project ON server_metadata(project_id)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS server_tools (
+        id           TEXT        PRIMARY KEY,
+        server_name  TEXT        NOT NULL,
+        tool_name    TEXT        NOT NULL,
+        description  TEXT        NOT NULL DEFAULT '',
+        input_schema JSONB       NOT NULL DEFAULT '{}',
+        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(server_name, tool_name)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_server_tools_server ON server_tools(server_name)
+    """,
 ]
 
 
@@ -711,6 +766,135 @@ class PostgresBackend:
         """Return total number of audit log entries."""
         row = await self._pool.fetchrow("SELECT COUNT(*) AS n FROM audit_logs")
         return int(row["n"]) if row else 0
+
+    # ---------------------------------------------------------------------------
+    # Agent metadata (catalog)
+    # ---------------------------------------------------------------------------
+
+    async def get_all_agent_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]:
+        if project_id:
+            rows = await self._pool.fetch(
+                "SELECT * FROM agent_metadata WHERE project_id = $1 ORDER BY agent_name",
+                project_id,
+            )
+        else:
+            rows = await self._pool.fetch("SELECT * FROM agent_metadata ORDER BY agent_name")
+        return [dict(r) for r in rows]
+
+    async def get_agent_metadata(self, agent_name: str, project_id: str | None = None) -> dict[str, Any] | None:
+        if project_id:
+            row = await self._pool.fetchrow(
+                "SELECT * FROM agent_metadata WHERE agent_name = $1 AND project_id = $2",
+                agent_name, project_id,
+            )
+        else:
+            row = await self._pool.fetchrow(
+                "SELECT * FROM agent_metadata WHERE agent_name = $1", agent_name,
+            )
+        return dict(row) if row else None
+
+    async def upsert_agent_metadata(
+        self, agent_name: str, description: str, owner: str,
+        tags: list[str], status: str, runbook_url: str,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        import uuid, json
+        from datetime import datetime, timezone
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO agent_metadata (id, agent_name, description, owner, tags, status, runbook_url, project_id, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $9)
+            ON CONFLICT (agent_name) DO UPDATE SET
+                description = EXCLUDED.description,
+                owner = EXCLUDED.owner,
+                tags = EXCLUDED.tags,
+                status = EXCLUDED.status,
+                runbook_url = EXCLUDED.runbook_url,
+                updated_at = EXCLUDED.updated_at
+            RETURNING *
+            """,
+            uuid.uuid4().hex, agent_name, description, owner,
+            json.dumps(tags), status, runbook_url, project_id,
+            datetime.now(timezone.utc),
+        )
+        return dict(row) if row else {}
+
+    async def delete_agent_metadata(self, agent_name: str) -> bool:
+        result: str = await self._pool.execute(
+            "DELETE FROM agent_metadata WHERE agent_name = $1", agent_name,
+        )
+        return result.endswith("1")
+
+    # Server metadata (catalog)
+    async def get_all_server_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]:
+        if project_id:
+            rows = await self._pool.fetch("SELECT * FROM server_metadata WHERE project_id = $1 ORDER BY server_name", project_id)
+        else:
+            rows = await self._pool.fetch("SELECT * FROM server_metadata ORDER BY server_name")
+        return [dict(r) for r in rows]
+
+    async def get_server_metadata(self, server_name: str, project_id: str | None = None) -> dict[str, Any] | None:
+        if project_id:
+            row = await self._pool.fetchrow("SELECT * FROM server_metadata WHERE server_name = $1 AND project_id = $2", server_name, project_id)
+        else:
+            row = await self._pool.fetchrow("SELECT * FROM server_metadata WHERE server_name = $1", server_name)
+        return dict(row) if row else None
+
+    async def upsert_server_metadata(self, *, server_name: str, description: str = "", owner: str = "", tags: list[str] | None = None, transport: str = "", runbook_url: str = "", project_id: str | None = None) -> dict[str, Any]:
+        from datetime import datetime, timezone
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO server_metadata (id, server_name, description, owner, tags, transport, runbook_url, project_id, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $9)
+            ON CONFLICT (server_name) DO UPDATE SET
+                description = EXCLUDED.description,
+                owner = EXCLUDED.owner,
+                tags = EXCLUDED.tags,
+                transport = EXCLUDED.transport,
+                runbook_url = EXCLUDED.runbook_url,
+                updated_at = EXCLUDED.updated_at
+            RETURNING *
+            """,
+            uuid.uuid4().hex, server_name, description, owner,
+            json.dumps(tags or []), transport, runbook_url, project_id,
+            datetime.now(timezone.utc),
+        )
+        return dict(row) if row else {}
+
+    async def delete_server_metadata(self, server_name: str) -> bool:
+        result: str = await self._pool.execute("DELETE FROM server_metadata WHERE server_name = $1", server_name)
+        return result.endswith("1")
+
+    # Server tools (captured from list_tools() SDK interception)
+    async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]]) -> None:
+        """Upsert a batch of tools for a server. Called from SDK list_tools() interception."""
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        for tool in tools:
+            await self._pool.execute(
+                """
+                INSERT INTO server_tools (id, server_name, tool_name, description, input_schema, first_seen_at, last_seen_at)
+                VALUES ($1, $2, $3, $4, $5::jsonb, $6, $6)
+                ON CONFLICT (server_name, tool_name) DO UPDATE SET
+                    description = EXCLUDED.description,
+                    input_schema = EXCLUDED.input_schema,
+                    last_seen_at = EXCLUDED.last_seen_at
+                """,
+                uuid.uuid4().hex,
+                server_name,
+                str(tool.get("name", "")),
+                str(tool.get("description", "")),
+                json.dumps(tool.get("input_schema") or {}),
+                now,
+            )
+
+    async def get_server_tools(self, server_name: str) -> list[dict[str, object]]:
+        """Get all declared tools for a server."""
+        rows = await self._pool.fetch(
+            "SELECT * FROM server_tools WHERE server_name = $1 ORDER BY tool_name",
+            server_name,
+        )
+        return [dict(r) for r in rows]
 
     async def close(self) -> None:
         """Close the connection pool."""

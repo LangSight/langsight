@@ -55,6 +55,18 @@ async function post<T>(path: string, body?: object): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+async function put<T>(path: string, body?: object): Promise<T> {
+  const r = await fetch(`${BASE}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+  if (r.status === 401) throw new Error("401 Unauthorized");
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json() as Promise<T>;
+}
+
 async function patch<T>(path: string, body?: object): Promise<T> {
   const r = await fetch(`${BASE}${path}`, {
     method: "PATCH",
@@ -191,3 +203,16 @@ export const getAuditLogs = (limit = 50, offset = 0) =>
 export const getSLOStatus = () => get<SLOStatus[]>("/slos/status");
 export const listSLOs = () => get<SLOStatus[]>("/slos");
 export const deleteSLO = (id: string) => del(`/slos/${encodeURIComponent(id)}`);
+
+// ── Agent Metadata (Catalog) ─────────────────────────────────────────────────
+import type { AgentMetadata, ServerMetadata } from "./types";
+export const listAgentMetadata = () => get<AgentMetadata[]>("/agents/metadata");
+export const getAgentMetadata = (name: string) => get<AgentMetadata>(`/agents/metadata/${encodeURIComponent(name)}`);
+export const upsertAgentMetadata = (name: string, body: { description?: string; owner?: string; tags?: string[]; status?: string; runbook_url?: string }) =>
+  put<AgentMetadata>(`/agents/metadata/${encodeURIComponent(name)}`, body);
+export const deleteAgentMetadata = (name: string) => del(`/agents/metadata/${encodeURIComponent(name)}`);
+
+// ── Server Metadata (Catalog) ─────────────────────────────────────────────────
+export const listServerMetadata = () => get<ServerMetadata[]>("/servers/metadata");
+export const upsertServerMetadata = (name: string, body: { description?: string; owner?: string; tags?: string[]; transport?: string; runbook_url?: string }) =>
+  put<ServerMetadata>(`/servers/metadata/${encodeURIComponent(name)}`, body);

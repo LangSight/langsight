@@ -295,6 +295,40 @@ class DualStorage:
     ) -> dict[str, Any]:
         return await self._analytics.get_lineage_graph(hours=hours, project_id=project_id)
 
+    # Agent metadata → Postgres
+
+    async def get_all_agent_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]:
+        return await self._meta.get_all_agent_metadata(project_id=project_id)
+
+    async def get_agent_metadata(self, agent_name: str, project_id: str | None = None) -> dict[str, Any] | None:
+        return await self._meta.get_agent_metadata(agent_name, project_id=project_id)
+
+    async def upsert_agent_metadata(self, agent_name: str, description: str, owner: str, tags: list[str], status: str, runbook_url: str, project_id: str | None = None) -> dict[str, Any]:
+        return await self._meta.upsert_agent_metadata(agent_name, description, owner, tags, status, runbook_url, project_id)
+
+    async def delete_agent_metadata(self, agent_name: str) -> bool:
+        return await self._meta.delete_agent_metadata(agent_name)
+
+    # Server metadata → Postgres
+
+    async def get_all_server_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]:
+        return await self._meta.get_all_server_metadata(project_id=project_id)
+
+    async def get_server_metadata(self, server_name: str, project_id: str | None = None) -> dict[str, Any] | None:
+        return await self._meta.get_server_metadata(server_name, project_id=project_id)
+
+    async def upsert_server_metadata(self, *, server_name: str, description: str = "", owner: str = "", tags: list[str] | None = None, transport: str = "", runbook_url: str = "", project_id: str | None = None) -> dict[str, Any]:
+        return await self._meta.upsert_server_metadata(server_name=server_name, description=description, owner=owner, tags=tags, transport=transport, runbook_url=runbook_url, project_id=project_id)
+
+    async def delete_server_metadata(self, server_name: str) -> bool:
+        return await self._meta.delete_server_metadata(server_name)
+
+    async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]]) -> None:
+        return await self._meta.upsert_server_tools(server_name, tools)
+
+    async def get_server_tools(self, server_name: str) -> list[dict[str, object]]:
+        return await self._meta.get_server_tools(server_name)
+
     # ── ClickHouse extension methods ──────────────────────────────────────────
     # Methods not in the base StorageBackend protocol but used by API routers
     # via hasattr/getattr (e.g. get_session_trace, compare_sessions,

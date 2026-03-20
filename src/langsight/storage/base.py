@@ -242,6 +242,56 @@ class StorageBackend(Protocol):
         """Return total number of audit log entries."""
         ...
 
+    # -- Agent metadata (catalog) --
+
+    async def get_all_agent_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]:
+        """List all agent metadata records."""
+        ...
+
+    async def get_agent_metadata(self, agent_name: str, project_id: str | None = None) -> dict[str, Any] | None:
+        """Get metadata for one agent by name."""
+        ...
+
+    async def upsert_agent_metadata(
+        self, agent_name: str, description: str, owner: str,
+        tags: list[str], status: str, runbook_url: str,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create or update agent metadata."""
+        ...
+
+    async def delete_agent_metadata(self, agent_name: str) -> bool:
+        """Delete agent metadata."""
+        ...
+
+    async def get_all_server_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]:
+        """List all server metadata records."""
+        ...
+
+    async def get_server_metadata(self, server_name: str, project_id: str | None = None) -> dict[str, Any] | None:
+        """Get metadata for one server by name."""
+        ...
+
+    async def upsert_server_metadata(
+        self, *, server_name: str, description: str = "", owner: str = "",
+        tags: list[str] | None = None, transport: str = "", runbook_url: str = "",
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create or update server metadata."""
+        ...
+
+    async def delete_server_metadata(self, server_name: str) -> bool:
+        """Delete server metadata."""
+        ...
+
+    async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]]) -> None:
+        """Upsert declared tools for a server (from SDK list_tools() interception)."""
+        ...
+
+    async def get_server_tools(self, server_name: str) -> list[dict[str, object]]:
+        """Get all declared tools for a server."""
+        ...
+
     async def close(self) -> None:
         """Release any resources held by the backend (connections, file handles)."""
         ...

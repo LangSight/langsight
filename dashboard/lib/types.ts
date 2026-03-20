@@ -250,6 +250,49 @@ export interface LineageGraph {
   edges: LineageEdge[];
 }
 
+// ─── Agent Metadata (Catalog) ────────────────────────────────────────────────
+
+export interface AgentMetadata {
+  id: string;
+  agent_name: string;
+  description: string;
+  owner: string;
+  tags: string[];
+  status: "active" | "deprecated" | "experimental";
+  runbook_url: string;
+  project_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ToolReliability {
+  server_name: string;
+  tool_name: string;
+  window_hours: number;
+  total_calls: number;
+  success_calls: number;
+  error_calls: number;
+  timeout_calls: number;
+  success_rate_pct: number;
+  error_rate_pct: number;
+  avg_latency_ms: number;
+  max_latency_ms: number;
+  is_degraded: boolean;
+}
+
+export interface ServerMetadata {
+  id: string;
+  server_name: string;
+  description: string;
+  owner: string;
+  tags: string[];
+  transport: string;
+  runbook_url: string;
+  project_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── Costs ───────────────────────────────────────────────────────────────────
 
 export interface CostsBreakdownResponse {
@@ -265,4 +308,25 @@ export interface CostsBreakdownResponse {
   by_tool: CostBreakdownEntry[];
   by_agent: AgentCostBreakdownEntry[];
   by_session: SessionCostBreakdownEntry[];
+}
+
+// ─── Session lineage (per-path attribution) ──────────────────────────────────
+
+/** Metrics scoped to a specific agent → server path in a session. */
+export interface PathMetrics {
+  callCount: number;
+  errorCount: number;
+  avgLatencyMs: number;
+  maxLatencyMs: number;
+  tools: string[];
+  inputTokens: number;
+  outputTokens: number;
+  models: string[];
+}
+
+/** Which agents call a given server, with per-path metrics. */
+export interface ServerCallerInfo {
+  agentId: string;
+  agentLabel: string;
+  metrics: PathMetrics;
 }

@@ -24,6 +24,7 @@ from langsight.api.routers import (
     projects,
     reliability,
     security,
+    servers,
     slos,
     traces,
     users,
@@ -370,6 +371,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     app.include_router(auth.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(alerts_config.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(agents.router, prefix="/api", dependencies=_auth_dep)
+    app.include_router(servers.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(lineage.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(costs.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(health.router, prefix="/api", dependencies=_auth_dep)
