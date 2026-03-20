@@ -1,25 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import useSWR from "swr";
-import {
-  ReactFlow,
-  Background,
-  Controls,
-  Handle,
-  useNodesState,
-  useEdgesState,
-  type Node,
-  type Edge,
-  Position,
-  MarkerType,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import dagre from "dagre";
 import { Bot, Server, AlertTriangle, Activity, ArrowRight, ArrowLeft, Zap, Clock, Hash, Users } from "lucide-react";
 import { fetcher } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn } from "@/lib/utils";
+import { LineageGraph as LineageGraphComponent, type GraphNode, type GraphEdge } from "@/components/lineage-graph";
 
 /* ── Types ─────────────────────────────────────────────────── */
 interface LineageNode {
@@ -48,9 +35,6 @@ const WINDOWS = [
   { label: "30d", hours: 24 * 30 },
 ];
 
-const NODE_W = 200;
-const NODE_H = 70;
-
 /* ── Status helper ─────────────────────────────────────────── */
 function getNodeStatus(m: Record<string, number>): "healthy" | "degraded" | "error" {
   if (!m.total_calls || m.total_calls === 0) return "healthy";
@@ -65,64 +49,6 @@ const STATUS_CONFIG = {
   degraded: { color: "#f59e0b", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.4)", label: "Degraded" },
   error:    { color: "#ef4444", bg: "rgba(239,68,68,0.12)",  border: "rgba(239,68,68,0.4)",  label: "Error" },
 };
-
-/* ── Dagre layout ──────────────────────────────────────────── */
-function layoutGraph(nodes: Node[], edges: Edge[]) {
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "LR", nodesep: 50, ranksep: 100 });
-  nodes.forEach((n) => g.setNode(n.id, { width: NODE_W, height: NODE_H }));
-  edges.forEach((e) => g.setEdge(e.source, e.target));
-  dagre.layout(g);
-  return {
-    nodes: nodes.map((n) => {
-      const p = g.node(n.id);
-      return { ...n, position: { x: p.x - NODE_W / 2, y: p.y - NODE_H / 2 }, sourcePosition: Position.Right, targetPosition: Position.Left };
-    }),
-    edges,
-  };
-}
-
-/* ── Graph node ────────────────────────────────────────────── */
-function LineageNodeComponent({ data }: { data: { label: string; nodeType: string; metrics: Record<string, number>; selected: boolean } }) {
-  const status = getNodeStatus(data.metrics);
-  const cfg = STATUS_CONFIG[status];
-  const isAgent = data.nodeType === "agent";
-
-  return (
-    <div
-      className={cn(
-        "rounded-2xl px-4 py-3 flex items-center gap-3 transition-all cursor-pointer",
-        data.selected ? "ring-2 ring-primary shadow-lg" : "hover:shadow-md hover:-translate-y-0.5",
-      )}
-      style={{
-        background: "hsl(var(--card))",
-        border: `2px solid ${cfg.border}`,
-        minWidth: 180,
-      }}
-    >
-      <Handle type="target" position={Position.Left} style={{ background: cfg.color, width: 8, height: 8, border: "2px solid hsl(var(--card))" }} />
-      {/* Status icon */}
-      <div
-        className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-        style={{ background: cfg.bg }}
-      >
-        {isAgent
-          ? <Bot size={16} style={{ color: cfg.color }} />
-          : <Server size={16} style={{ color: cfg.color }} />}
-      </div>
-      <div className="min-w-0">
-        <p className="text-[12px] font-bold text-foreground leading-tight truncate">{data.label}</p>
-        <p className="text-[10px] mt-0.5" style={{ color: cfg.color }}>
-          {isAgent ? "Agent" : "MCP Server"} · {cfg.label}
-        </p>
-      </div>
-      <Handle type="source" position={Position.Right} style={{ background: cfg.color, width: 8, height: 8, border: "2px solid hsl(var(--card))" }} />
-    </div>
-  );
-}
-
-const nodeTypes = { agent: LineageNodeComponent, server: LineageNodeComponent };
 
 /* ── Right panel ───────────────────────────────────────────── */
 function DetailPanel({ node, allEdges }: { node: LineageNode; allEdges: LineageEdge[] }) {
@@ -281,45 +207,27 @@ export default function LineagePage() {
     { refreshInterval: 60_000 }
   );
 
-  const { rfNodes, rfEdges } = useMemo(() => {
-    if (!graph || graph.nodes.length === 0) return { rfNodes: [] as Node[], rfEdges: [] as Edge[] };
-
-    const nodes: Node[] = graph.nodes.map((n) => ({
+  const graphNodes = useMemo<GraphNode[]>(() => {
+    if (!graph) return [];
+    return graph.nodes.map((n) => ({
       id: n.id,
       type: n.type,
-      position: { x: 0, y: 0 },
-      data: { label: n.label, nodeType: n.type, metrics: n.metrics, selected: selectedNode?.id === n.id },
+      label: n.label,
+      hasError: (n.metrics.error_count ?? 0) > 0,
+      callCount: n.metrics.total_calls ?? 0,
+      meta: Object.fromEntries(
+        Object.entries(n.metrics).map(([k, v]) => [k, v]),
+      ),
     }));
+  }, [graph]);
 
-    const edges: Edge[] = graph.edges.map((e, i) => {
-      const vol = e.metrics.call_count ?? e.metrics.handoff_count ?? 1;
-      return {
-        id: `e-${i}`,
-        source: e.source,
-        target: e.target,
-        type: "smoothstep",
-        animated: e.type === "handoff",
-        style: {
-          stroke: e.type === "handoff" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.25)",
-          strokeWidth: Math.min(4, 1 + Math.log10(Math.max(1, vol))),
-        },
-        markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10, color: e.type === "handoff" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.25)" },
-      };
-    });
-
-    const laid = layoutGraph(nodes, edges);
-    return { rfNodes: laid.nodes, rfEdges: laid.edges };
-  }, [graph, selectedNode]);
-
-  const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(rfEdges);
-
-  useEffect(() => {
-    if (rfNodes.length > 0) { setNodes(rfNodes); setEdges(rfEdges); }
-  }, [rfNodes, rfEdges, setNodes, setEdges]);
-
-  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    setSelectedNode(graph?.nodes.find((n) => n.id === node.id) ?? null);
+  const graphEdges = useMemo<GraphEdge[]>(() => {
+    if (!graph) return [];
+    return graph.edges.map((e) => ({
+      source: e.source,
+      target: e.target,
+      type: e.type,
+    }));
   }, [graph]);
 
   return (
@@ -368,23 +276,15 @@ export default function LineagePage() {
               </p>
             </div>
           ) : (
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onNodeClick={onNodeClick}
-              onPaneClick={() => setSelectedNode(null)}
-              nodeTypes={nodeTypes}
-              fitView
-              minZoom={0.3}
-              maxZoom={2}
-              proOptions={{ hideAttribution: true }}
-              style={{ background: "transparent" }}
-            >
-              <Background gap={24} size={0.8} color="hsl(var(--muted-foreground) / 0.08)" />
-              <Controls showInteractive={false} style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "0.75rem" }} />
-            </ReactFlow>
+            <LineageGraphComponent
+              nodes={graphNodes}
+              edges={graphEdges}
+              selectedId={selectedNode?.id ?? null}
+              onSelect={(id) => {
+                setSelectedNode(id ? graph?.nodes.find((n) => n.id === id) ?? null : null);
+              }}
+              className="h-full"
+            />
           )}
         </div>
 

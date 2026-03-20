@@ -9,81 +9,20 @@ import {
   ChevronRight, ChevronDown, GitBranch, Clock, Zap, AlertCircle,
   Search, GitCompare, Play, ArrowLeft, Columns2, Bot, Server,
 } from "lucide-react";
-import {
-  ReactFlow,
-  Background,
-  Handle,
-  useNodesState,
-  useEdgesState,
-  type Node,
-  type Edge,
-  Position,
-  MarkerType,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import dagre from "dagre";
+import { LineageGraph, type GraphNode, type GraphEdge } from "@/components/lineage-graph";
 import { fetcher, getSessionTrace, compareSessions, replaySession } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatDuration, CALL_STATUS_COLOR, SPAN_TYPE_ICON } from "@/lib/utils";
 import type { AgentSession, SessionTrace, SpanNode, SessionComparison, DiffEntry } from "@/lib/types";
 
-/* ── Session lineage graph ──────────────────────────────────── */
+/* ── Build session graph from trace spans ──────────────────── */
 
-const EDGE_COLOR = "#94a3b8"; // slate-400 — neutral gray for all edges
-const EDGE_HOVER = "#6366f1"; // indigo for handoffs
-const NODE_W = 220;
-const NODE_H = 64;
-
-function SessionLineageNode({ data }: { data: { label: string; nodeType: string; hasError: boolean; callCount: number; selected: boolean } }) {
-  const isAgent = data.nodeType === "agent";
-  return (
-    <div
-      className={cn(
-        "rounded-2xl px-4 py-3 flex items-center gap-3 transition-all",
-        data.selected ? "ring-2 ring-primary/50 shadow-lg" : "shadow-md hover:shadow-lg",
-      )}
-      style={{
-        background: "hsl(var(--card))",
-        border: "1px solid hsl(var(--border))",
-        width: NODE_W,
-      }}
-    >
-      <Handle type="target" position={Position.Left} style={{ background: EDGE_COLOR, width: 6, height: 6, border: "none" }} />
-      <div
-        className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-        style={{ background: isAgent ? "hsl(var(--primary) / 0.1)" : "rgba(99,102,241,0.06)" }}
-      >
-        {isAgent
-          ? <Bot size={16} style={{ color: "hsl(var(--primary))" }} />
-          : <Server size={16} className="text-muted-foreground" />}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <p className="text-[12px] font-bold text-foreground leading-tight truncate">{data.label}</p>
-          {data.hasError
-            ? <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title="Has errors" />
-            : <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" title="All OK" />}
-        </div>
-        <p className="text-[10px] text-muted-foreground mt-0.5">
-          {isAgent ? "Agent" : "MCP Server"}{data.callCount > 0 ? ` · ${data.callCount} calls` : ""}
-        </p>
-      </div>
-      <Handle type="source" position={Position.Right} style={{ background: EDGE_COLOR, width: 6, height: 6, border: "none" }} />
-    </div>
-  );
-}
-
-const sessionNodeTypes = { agent: SessionLineageNode, server: SessionLineageNode };
-
-function SessionLineage({ trace, selectedNode, onNodeClick }: {
-  trace: SessionTrace;
-  selectedNode: string | null;
-  onNodeClick: (id: string | null) => void;
-}) {
-  const { graphNodes, graphEdges } = useMemo(() => {
+function useSessionGraph(trace: SessionTrace | null) {
+  return useMemo(() => {
+    if (!trace) return { nodes: [] as GraphNode[], edges: [] as GraphEdge[] };
     const agents = new Set<string>();
     const servers = new Set<string>();
-    const edgeMap = new Map<string, { from: string; to: string; type: string; hasError: boolean; count: number }>();
+    const edgeMap = new Map<string, { source: string; target: string; type: "calls" | "handoff"; count: number }>();
     const agentErrors = new Set<string>();
     const serverErrors = new Set<string>();
     const nodeCalls = new Map<string, number>();
@@ -91,111 +30,42 @@ function SessionLineage({ trace, selectedNode, onNodeClick }: {
     for (const span of trace.spans_flat) {
       const agent = span.agent_name;
       const server = span.server_name;
-      const spanType = span.span_type;
       const failed = span.status !== "success";
-
       if (agent) agents.add(agent);
       if (failed && agent) agentErrors.add(agent);
 
-      if (spanType === "handoff" && agent && span.tool_name) {
+      if (span.span_type === "handoff" && agent && span.tool_name) {
         const target = span.tool_name.replace(/^->\s*/, "").replace(/^→\s*/, "");
         if (target) {
           agents.add(target);
-          edgeMap.set(`${agent}→${target}`, { from: `agent:${agent}`, to: `agent:${target}`, type: "handoff", hasError: false, count: 1 });
+          edgeMap.set(`${agent}→h→${target}`, { source: `agent:${agent}`, target: `agent:${target}`, type: "handoff", count: 1 });
         }
-      } else if (spanType === "tool_call" && agent && server) {
+      } else if (span.span_type === "tool_call" && agent && server) {
         servers.add(server);
         if (failed) serverErrors.add(server);
         const key = `${agent}→${server}`;
         const existing = edgeMap.get(key);
-        edgeMap.set(key, {
-          from: `agent:${agent}`, to: `server:${server}`, type: "calls",
-          hasError: (existing?.hasError || failed),
-          count: (existing?.count ?? 0) + 1,
-        });
-        // Track calls per node
+        edgeMap.set(key, { source: `agent:${agent}`, target: `server:${server}`, type: "calls", count: (existing?.count ?? 0) + 1 });
         nodeCalls.set(`agent:${agent}`, (nodeCalls.get(`agent:${agent}`) ?? 0) + 1);
         nodeCalls.set(`server:${server}`, (nodeCalls.get(`server:${server}`) ?? 0) + 1);
       }
     }
 
-    const nodes: Node[] = [
-      ...[...agents].map((a) => ({
-        id: `agent:${a}`, type: "agent", position: { x: 0, y: 0 },
-        data: { label: a, nodeType: "agent", hasError: agentErrors.has(a), callCount: nodeCalls.get(`agent:${a}`) ?? 0, selected: selectedNode === `agent:${a}` },
-      })),
-      ...[...servers].map((s) => ({
-        id: `server:${s}`, type: "server", position: { x: 0, y: 0 },
-        data: { label: s, nodeType: "server", hasError: serverErrors.has(s), callCount: nodeCalls.get(`server:${s}`) ?? 0, selected: selectedNode === `server:${s}` },
-      })),
+    const nodes: GraphNode[] = [
+      ...[...agents].map((a) => ({ id: `agent:${a}`, type: "agent" as const, label: a, hasError: agentErrors.has(a), callCount: nodeCalls.get(`agent:${a}`) ?? 0 })),
+      ...[...servers].map((s) => ({ id: `server:${s}`, type: "server" as const, label: s, hasError: serverErrors.has(s), callCount: nodeCalls.get(`server:${s}`) ?? 0 })),
     ];
-
-    const flowEdges: Edge[] = [...edgeMap.values()].map((e, i) => ({
-      id: `se-${i}`,
-      source: e.from,
-      target: e.to,
-      type: "smoothstep",
-      animated: e.type === "handoff",
-      style: {
-        stroke: e.type === "handoff" ? EDGE_HOVER : EDGE_COLOR,
-        strokeWidth: 2,
-      },
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        width: 12,
-        height: 12,
-        color: e.type === "handoff" ? EDGE_HOVER : EDGE_COLOR,
-      },
+    const edges: GraphEdge[] = [...edgeMap.values()].map((e) => ({
+      source: e.source, target: e.target, type: e.type,
       label: e.count > 1 ? `${e.count}×` : undefined,
-      labelStyle: { fontSize: 9, fill: "#94a3b8", fontWeight: 600 },
-      labelBgStyle: { fill: "hsl(var(--card))", fillOpacity: 0.95 },
-      labelBgPadding: [4, 6] as [number, number],
-      labelBgBorderRadius: 6,
     }));
-
-    // Dagre layout — generous spacing
-    const g = new dagre.graphlib.Graph();
-    g.setDefaultEdgeLabel(() => ({}));
-    g.setGraph({ rankdir: "LR", nodesep: 60, ranksep: 140 });
-    nodes.forEach((n) => g.setNode(n.id, { width: NODE_W, height: NODE_H }));
-    flowEdges.forEach((e) => g.setEdge(e.source, e.target));
-    dagre.layout(g);
-
-    const laid = nodes.map((n) => {
-      const p = g.node(n.id);
-      return { ...n, position: { x: p.x - NODE_W / 2, y: p.y - NODE_H / 2 }, sourcePosition: Position.Right, targetPosition: Position.Left };
-    });
-
-    return { graphNodes: laid, graphEdges: flowEdges };
-  }, [trace, selectedNode]);
-
-  const [nodes, , onNodesChange] = useNodesState(graphNodes);
-  const [edges, , onEdgesChange] = useEdgesState(graphEdges);
-
-  if (graphNodes.length === 0) return <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No graph data</div>;
-
-  return (
-    <div className="h-full w-full">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeClick={(_, node) => onNodeClick(node.id)}
-        onPaneClick={() => onNodeClick(null)}
-        nodeTypes={sessionNodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.3 }}
-        minZoom={0.4}
-        maxZoom={1.5}
-        proOptions={{ hideAttribution: true }}
-        style={{ background: "transparent" }}
-      >
-        <Background gap={20} size={0.6} color="hsl(var(--muted-foreground) / 0.05)" />
-      </ReactFlow>
-    </div>
-  );
+    return { nodes, edges };
+  }, [trace]);
 }
+
+/* Old React Flow components removed — using shared SVG LineageGraph component */
+
+/* React Flow SessionLineage removed — now using SVG LineageGraph component */
 
 /* ── Right panel: node detail for session ──────────────────── */
 
@@ -761,6 +631,7 @@ export default function SessionDetailPage() {
   /* Tabs */
   const [activeTab, setActiveTab] = useState<"details" | "trace">("details");
   const [selectedGraphNode, setSelectedGraphNode] = useState<string | null>(null);
+  const sessionGraph = useSessionGraph(trace);
 
   /* Compare */
   const [comparePicking, setComparePicking] = useState(false);
@@ -927,10 +798,12 @@ export default function SessionDetailPage() {
             ) : !trace ? (
               <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No data</div>
             ) : (
-              <SessionLineage
-                trace={trace}
-                selectedNode={selectedGraphNode}
-                onNodeClick={setSelectedGraphNode}
+              <LineageGraph
+                nodes={sessionGraph.nodes}
+                edges={sessionGraph.edges}
+                selectedId={selectedGraphNode}
+                onSelect={setSelectedGraphNode}
+                className="h-full"
               />
             )}
           </div>
