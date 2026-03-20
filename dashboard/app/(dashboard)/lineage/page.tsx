@@ -17,6 +17,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
 import { Bot, Server, AlertTriangle, Activity } from "lucide-react";
+import { fetcher } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn } from "@/lib/utils";
 
@@ -263,11 +264,7 @@ export default function LineagePage() {
   const projectParam = activeProject ? `&project_id=${activeProject.id}` : "";
   const { data: graph, isLoading, error } = useSWR<LineageGraph>(
     `/api/agents/lineage?hours=${hours}${projectParam}`,
-    async (url: string) => {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Failed to load lineage");
-      return res.json();
-    },
+    fetcher,
     { refreshInterval: 60_000 }
   );
 
