@@ -74,64 +74,63 @@ function layoutGraph(nodes: Node[], edges: Edge[]): { nodes: Node[]; edges: Edge
   return { nodes: laid, edges };
 }
 
-/* ── Custom node: Agent ────────────────────────────────────── */
+/* ── Custom node: Agent (clean card style) ─────────────────── */
 function AgentNode({ data }: { data: { label: string; metrics: Record<string, number>; selected: boolean } }) {
-  const m = data.metrics;
-  const errorRate = m.total_calls > 0 ? (m.error_count / m.total_calls) * 100 : 0;
   return (
     <div
       className={cn(
-        "rounded-xl border-2 p-4 min-w-[200px] transition-all",
-        data.selected ? "border-primary shadow-lg shadow-primary/20" : "border-indigo-500/30",
+        "rounded-2xl px-5 py-4 min-w-[180px] flex items-center gap-3.5 transition-all",
+        data.selected
+          ? "shadow-xl ring-2 ring-primary/40"
+          : "shadow-md hover:shadow-lg hover:-translate-y-0.5",
       )}
-      style={{ background: "hsl(var(--card))" }}
+      style={{
+        background: "hsl(var(--card))",
+        border: "1px solid hsl(var(--border))",
+      }}
     >
-      <div className="flex items-center gap-2 mb-2">
-        <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "hsl(var(--primary) / 0.15)" }}>
-          <Bot size={14} style={{ color: "hsl(var(--primary))" }} />
-        </div>
-        <span className="text-sm font-semibold text-foreground">{data.label}</span>
+      <div
+        className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+        style={{ background: "hsl(var(--primary) / 0.1)" }}
+      >
+        <Bot size={18} style={{ color: "hsl(var(--primary))" }} />
       </div>
-      <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-        <span>{m.sessions ?? 0} sessions</span>
-        <span>{m.total_calls ?? 0} calls</span>
-        {errorRate > 0 && (
-          <span className="text-red-400 font-semibold">{errorRate.toFixed(1)}% err</span>
-        )}
+      <div>
+        <p className="text-[13px] font-bold text-foreground leading-tight">{data.label}</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">Agent</p>
       </div>
     </div>
   );
 }
 
-/* ── Custom node: Server ───────────────────────────────────── */
+/* ── Custom node: Server (clean card style) ────────────────── */
 function ServerNode({ data }: { data: { label: string; metrics: Record<string, number>; selected: boolean } }) {
   const m = data.metrics;
   const errorRate = m.total_calls > 0 ? (m.error_count / m.total_calls) * 100 : 0;
-  const isHealthy = errorRate < 1;
+  const isHealthy = errorRate < 5;
+  const accent = isHealthy ? "#10b981" : "#f59e0b";
   return (
     <div
       className={cn(
-        "rounded-xl border-2 p-4 min-w-[200px] transition-all",
-        data.selected ? "border-primary shadow-lg shadow-primary/20"
-          : isHealthy ? "border-emerald-500/30" : "border-yellow-500/30",
+        "rounded-2xl px-5 py-4 min-w-[180px] flex items-center gap-3.5 transition-all",
+        data.selected
+          ? "shadow-xl ring-2 ring-primary/40"
+          : "shadow-md hover:shadow-lg hover:-translate-y-0.5",
       )}
-      style={{ background: "hsl(var(--card))" }}
+      style={{
+        background: "hsl(var(--card))",
+        border: "1px solid hsl(var(--border))",
+      }}
     >
-      <div className="flex items-center gap-2 mb-2">
-        <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center"
-          style={{ background: isHealthy ? "rgba(16,185,129,0.15)" : "rgba(234,179,8,0.15)" }}
-        >
-          <Server size={14} style={{ color: isHealthy ? "#10b981" : "#eab308" }} />
-        </div>
-        <span className="text-sm font-semibold text-foreground">{data.label}</span>
+      <div
+        className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+        style={{ background: `${accent}15` }}
+      >
+        <Server size={18} style={{ color: accent }} />
       </div>
-      <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-        <span>{m.total_calls ?? 0} calls</span>
-        <span>{Math.round(m.avg_latency_ms ?? 0)}ms avg</span>
-        {errorRate > 0 && (
-          <span className="text-red-400 font-semibold">{errorRate.toFixed(1)}% err</span>
-        )}
+      <div>
+        <p className="text-[13px] font-bold text-foreground leading-tight">{data.label}</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">MCP Server</p>
       </div>
     </div>
   );
@@ -139,42 +138,40 @@ function ServerNode({ data }: { data: { label: string; metrics: Record<string, n
 
 const nodeTypes = { agent: AgentNode, server: ServerNode };
 
-/* ── Detail panel ──────────────────────────────────────────── */
+/* ── Detail panel (bottom card) ─────────────────────────────── */
 function DetailPanel({ node, onClose }: { node: LineageNode; onClose: () => void }) {
   const m = node.metrics;
+  const isAgent = node.type === "agent";
+  const accent = isAgent ? "hsl(var(--primary))" : "#10b981";
   return (
     <div
-      className="absolute bottom-4 left-4 right-4 rounded-xl border p-5 z-10 shadow-xl"
+      className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[480px] rounded-2xl border p-5 z-10 shadow-2xl"
       style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
     >
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          {node.type === "agent"
-            ? <Bot size={16} style={{ color: "hsl(var(--primary))" }} />
-            : <Server size={16} style={{ color: "#10b981" }} />}
-          <span className="font-semibold text-foreground">{node.label}</span>
-          <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{
-            background: node.type === "agent" ? "hsl(var(--primary) / 0.1)" : "rgba(16,185,129,0.1)",
-            color: node.type === "agent" ? "hsl(var(--primary))" : "#10b981",
-          }}>
-            {node.type}
-          </span>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${accent}15` }}>
+            {isAgent ? <Bot size={16} style={{ color: accent }} /> : <Server size={16} style={{ color: accent }} />}
+          </div>
+          <div>
+            <p className="text-sm font-bold text-foreground">{node.label}</p>
+            <p className="text-[11px] text-muted-foreground">{isAgent ? "Agent" : "MCP Server"}</p>
+          </div>
         </div>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-          <AlertTriangle size={0} className="hidden" />
+        <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
           ✕
         </button>
       </div>
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-4 gap-3">
         {[
-          { label: "Total Calls", value: m.total_calls?.toLocaleString() ?? "0" },
+          { label: "Calls", value: m.total_calls?.toLocaleString() ?? "0" },
           { label: "Errors", value: m.error_count?.toLocaleString() ?? "0" },
           { label: "Avg Latency", value: `${Math.round(m.avg_latency_ms ?? 0)}ms` },
-          { label: "Sessions", value: m.sessions?.toLocaleString() ?? m.called_by_agents?.toString() ?? "—" },
+          { label: isAgent ? "Sessions" : "Agents", value: (m.sessions ?? m.called_by_agents ?? 0).toLocaleString() },
         ].map((stat) => (
-          <div key={stat.label}>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{stat.label}</p>
-            <p className="text-lg font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{stat.value}</p>
+          <div key={stat.label} className="rounded-xl p-2.5" style={{ background: "hsl(var(--muted))" }}>
+            <p className="text-[10px] text-muted-foreground font-medium mb-0.5">{stat.label}</p>
+            <p className="text-base font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{stat.value}</p>
           </div>
         ))}
       </div>
@@ -214,18 +211,18 @@ export default function LineagePage() {
       id: `e-${i}`,
       source: e.source,
       target: e.target,
-      type: "default",
+      type: "smoothstep",
       animated: e.type === "handoff",
       style: {
-        stroke: e.type === "handoff" ? "hsl(var(--primary))" : "hsl(var(--border))",
-        strokeWidth: Math.min(4, 1 + Math.log10(Math.max(1, e.metrics.call_count ?? e.metrics.handoff_count ?? 1))),
+        stroke: e.type === "handoff" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.3)",
+        strokeWidth: e.type === "handoff" ? 2 : 1.5,
       },
-      label: e.type === "handoff"
-        ? `${e.metrics.handoff_count ?? 0} handoffs`
-        : `${e.metrics.call_count ?? 0} calls`,
-      labelStyle: { fontSize: 10, fill: "hsl(var(--muted-foreground))" },
-      labelBgStyle: { fill: "hsl(var(--background))", fillOpacity: 0.8 },
-      markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        width: 10,
+        height: 10,
+        color: e.type === "handoff" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.3)",
+      },
     }));
 
     const laid = layoutGraph(nodes, edges);
@@ -323,7 +320,7 @@ export default function LineagePage() {
               proOptions={{ hideAttribution: true }}
               style={{ background: "transparent" }}
             >
-              <Background gap={20} size={1} color="hsl(var(--border))" />
+              <Background gap={24} size={0.8} color="hsl(var(--muted-foreground) / 0.1)" />
               <Controls
                 showInteractive={false}
                 style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "0.75rem" }}
