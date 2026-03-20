@@ -6,7 +6,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   useNodesState,
   useEdgesState,
   type Node,
@@ -16,12 +15,12 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
-import { Bot, Server, AlertTriangle, Activity } from "lucide-react";
+import { Bot, Server, AlertTriangle, Activity, ArrowRight, ArrowLeft, Zap, Clock, Hash, Users } from "lucide-react";
 import { fetcher } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn } from "@/lib/utils";
 
-/* ── Types (matches backend) ───────────────────────────────── */
+/* ── Types ─────────────────────────────────────────────────── */
 interface LineageNode {
   id: string;
   type: "agent" | "server";
@@ -42,216 +41,227 @@ interface LineageGraph {
 
 /* ── Constants ─────────────────────────────────────────────── */
 const WINDOWS = [
-  { label: "1h",  hours: 1 },
+  { label: "1h", hours: 1 },
   { label: "24h", hours: 24 },
-  { label: "7d",  hours: 24 * 7 },
+  { label: "7d", hours: 24 * 7 },
   { label: "30d", hours: 24 * 30 },
 ];
 
-const NODE_WIDTH = 220;
-const NODE_HEIGHT = 100;
+const NODE_W = 200;
+const NODE_H = 70;
+
+/* ── Status helper ─────────────────────────────────────────── */
+function getNodeStatus(m: Record<string, number>): "healthy" | "degraded" | "error" {
+  if (!m.total_calls || m.total_calls === 0) return "healthy";
+  const errRate = (m.error_count ?? 0) / m.total_calls;
+  if (errRate >= 0.1) return "error";
+  if (errRate >= 0.02) return "degraded";
+  return "healthy";
+}
+
+const STATUS_CONFIG = {
+  healthy:  { color: "#10b981", bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.4)", label: "Healthy" },
+  degraded: { color: "#f59e0b", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.4)", label: "Degraded" },
+  error:    { color: "#ef4444", bg: "rgba(239,68,68,0.12)",  border: "rgba(239,68,68,0.4)",  label: "Error" },
+};
 
 /* ── Dagre layout ──────────────────────────────────────────── */
-function layoutGraph(nodes: Node[], edges: Edge[]): { nodes: Node[]; edges: Edge[] } {
+function layoutGraph(nodes: Node[], edges: Edge[]) {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "LR", nodesep: 60, ranksep: 120 });
-
-  nodes.forEach((n) => g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT }));
+  g.setGraph({ rankdir: "LR", nodesep: 50, ranksep: 100 });
+  nodes.forEach((n) => g.setNode(n.id, { width: NODE_W, height: NODE_H }));
   edges.forEach((e) => g.setEdge(e.source, e.target));
-
   dagre.layout(g);
-
-  const laid = nodes.map((n) => {
-    const pos = g.node(n.id);
-    return {
-      ...n,
-      position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
-      sourcePosition: Position.Right,
-      targetPosition: Position.Left,
-    };
-  });
-
-  return { nodes: laid, edges };
+  return {
+    nodes: nodes.map((n) => {
+      const p = g.node(n.id);
+      return { ...n, position: { x: p.x - NODE_W / 2, y: p.y - NODE_H / 2 }, sourcePosition: Position.Right, targetPosition: Position.Left };
+    }),
+    edges,
+  };
 }
 
-/* ── Custom node: Agent (clean card style) ─────────────────── */
-function AgentNode({ data }: { data: { label: string; metrics: Record<string, number>; selected: boolean } }) {
+/* ── Graph node ────────────────────────────────────────────── */
+function LineageNodeComponent({ data }: { data: { label: string; nodeType: string; metrics: Record<string, number>; selected: boolean } }) {
+  const status = getNodeStatus(data.metrics);
+  const cfg = STATUS_CONFIG[status];
+  const isAgent = data.nodeType === "agent";
+
   return (
     <div
       className={cn(
-        "rounded-2xl px-5 py-4 min-w-[180px] flex items-center gap-3.5 transition-all",
-        data.selected
-          ? "shadow-xl ring-2 ring-primary/40"
-          : "shadow-md hover:shadow-lg hover:-translate-y-0.5",
+        "rounded-2xl px-4 py-3 flex items-center gap-3 transition-all cursor-pointer",
+        data.selected ? "ring-2 ring-primary shadow-lg" : "hover:shadow-md hover:-translate-y-0.5",
       )}
       style={{
         background: "hsl(var(--card))",
-        border: "1px solid hsl(var(--border))",
+        border: `2px solid ${cfg.border}`,
+        minWidth: 180,
       }}
     >
+      {/* Status dot */}
       <div
-        className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-        style={{ background: "hsl(var(--primary) / 0.1)" }}
+        className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+        style={{ background: cfg.bg }}
       >
-        <Bot size={18} style={{ color: "hsl(var(--primary))" }} />
+        {isAgent
+          ? <Bot size={16} style={{ color: cfg.color }} />
+          : <Server size={16} style={{ color: cfg.color }} />}
       </div>
-      <div>
-        <p className="text-[13px] font-bold text-foreground leading-tight">{data.label}</p>
-        <p className="text-[11px] text-muted-foreground mt-0.5">Agent</p>
+      <div className="min-w-0">
+        <p className="text-[12px] font-bold text-foreground leading-tight truncate">{data.label}</p>
+        <p className="text-[10px] mt-0.5" style={{ color: cfg.color }}>
+          {isAgent ? "Agent" : "MCP Server"} · {cfg.label}
+        </p>
       </div>
     </div>
   );
 }
 
-/* ── Custom node: Server (clean card style) ────────────────── */
-function ServerNode({ data }: { data: { label: string; metrics: Record<string, number>; selected: boolean } }) {
-  const m = data.metrics;
-  const errorRate = m.total_calls > 0 ? (m.error_count / m.total_calls) * 100 : 0;
-  const isHealthy = errorRate < 5;
-  const accent = isHealthy ? "#10b981" : "#f59e0b";
-  return (
-    <div
-      className={cn(
-        "rounded-2xl px-5 py-4 min-w-[180px] flex items-center gap-3.5 transition-all",
-        data.selected
-          ? "shadow-xl ring-2 ring-primary/40"
-          : "shadow-md hover:shadow-lg hover:-translate-y-0.5",
-      )}
-      style={{
-        background: "hsl(var(--card))",
-        border: "1px solid hsl(var(--border))",
-      }}
-    >
-      <div
-        className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-        style={{ background: `${accent}15` }}
-      >
-        <Server size={18} style={{ color: accent }} />
-      </div>
-      <div>
-        <p className="text-[13px] font-bold text-foreground leading-tight">{data.label}</p>
-        <p className="text-[11px] text-muted-foreground mt-0.5">MCP Server</p>
-      </div>
-    </div>
-  );
-}
+const nodeTypes = { agent: LineageNodeComponent, server: LineageNodeComponent };
 
-const nodeTypes = { agent: AgentNode, server: ServerNode };
-
-/* ── Right slide-over drawer ────────────────────────────────── */
-function DetailDrawer({ node, edges, onClose }: {
-  node: LineageNode;
-  edges: LineageEdge[];
-  onClose: () => void;
-}) {
+/* ── Right panel ───────────────────────────────────────────── */
+function DetailPanel({ node, allEdges }: { node: LineageNode; allEdges: LineageEdge[] }) {
   const m = node.metrics;
   const isAgent = node.type === "agent";
-  const accent = isAgent ? "hsl(var(--primary))" : "#10b981";
+  const status = getNodeStatus(m);
+  const cfg = STATUS_CONFIG[status];
+  const errorRate = m.total_calls > 0 ? ((m.error_count ?? 0) / m.total_calls * 100) : 0;
 
-  // Find connected edges
-  const connectedEdges = edges.filter(
-    (e) => e.source === node.id || e.target === node.id
-  );
+  const inbound = allEdges.filter((e) => e.target === node.id);
+  const outbound = allEdges.filter((e) => e.source === node.id);
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 z-10"
-        onClick={onClose}
-        style={{ background: "transparent" }}
-      />
-      {/* Drawer */}
-      <div
-        className="absolute top-0 right-0 h-full w-[340px] z-20 border-l shadow-2xl overflow-y-auto"
-        style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-      >
-        {/* Header */}
-        <div className="sticky top-0 z-10 px-5 py-4 border-b" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${accent}15` }}>
-                {isAgent ? <Bot size={18} style={{ color: accent }} /> : <Server size={18} style={{ color: accent }} />}
-              </div>
-              <div>
-                <p className="text-sm font-bold text-foreground">{node.label}</p>
-                <p className="text-[11px] text-muted-foreground">{isAgent ? "Agent" : "MCP Server"}</p>
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              ✕
-            </button>
+    <div className="h-full overflow-y-auto">
+      {/* Header */}
+      <div className="px-5 py-5 border-b" style={{ borderColor: "hsl(var(--border))" }}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: cfg.bg }}>
+            {isAgent ? <Bot size={20} style={{ color: cfg.color }} /> : <Server size={20} style={{ color: cfg.color }} />}
           </div>
-        </div>
-
-        {/* Metrics */}
-        <div className="px-5 py-4">
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Metrics</p>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { label: "Total Calls", value: m.total_calls?.toLocaleString() ?? "0" },
-              { label: "Errors", value: m.error_count?.toLocaleString() ?? "0" },
-              { label: "Avg Latency", value: `${Math.round(m.avg_latency_ms ?? 0)}ms` },
-              { label: isAgent ? "Sessions" : "Used by", value: (m.sessions ?? m.called_by_agents ?? 0).toLocaleString() },
-            ].map((stat) => (
-              <div key={stat.label} className="rounded-xl p-3" style={{ background: "hsl(var(--muted))" }}>
-                <p className="text-[10px] text-muted-foreground font-medium mb-0.5">{stat.label}</p>
-                <p className="text-lg font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{stat.value}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Connections */}
-        {connectedEdges.length > 0 && (
-          <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Connections</p>
-            <div className="space-y-2">
-              {connectedEdges.map((e, i) => {
-                const isOutgoing = e.source === node.id;
-                const otherNode = isOutgoing ? e.target : e.source;
-                const otherLabel = otherNode.replace(/^(agent|server):/, "");
-                const otherType = otherNode.startsWith("agent:") ? "Agent" : "MCP Server";
-                const volume = e.metrics.call_count ?? e.metrics.handoff_count ?? 0;
-                return (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 rounded-lg p-2.5"
-                    style={{ background: "hsl(var(--muted))" }}
-                  >
-                    <span className="text-[11px] text-muted-foreground w-6 text-center">
-                      {isOutgoing ? "→" : "←"}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-semibold text-foreground truncate">{otherLabel}</p>
-                      <p className="text-[10px] text-muted-foreground">{otherType} · {e.type === "handoff" ? "handoff" : `${volume} calls`}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Blast radius hint */}
-        {!isAgent && (
-          <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">Blast Radius</p>
-            <p className="text-[12px] text-muted-foreground">
-              If <strong className="text-foreground">{node.label}</strong> goes down,{" "}
-              <strong className="text-foreground">
-                {connectedEdges.filter((e) => e.target === node.id).length} agent{connectedEdges.filter((e) => e.target === node.id).length !== 1 ? "s" : ""}
-              </strong>{" "}
-              will be affected.
+          <div>
+            <p className="text-base font-bold text-foreground">{node.label}</p>
+            <p className="text-[11px]" style={{ color: cfg.color }}>
+              {isAgent ? "Agent" : "MCP Server"} · {cfg.label}
             </p>
           </div>
-        )}
+        </div>
+        {/* Status bar */}
+        <div className="flex items-center gap-2">
+          <span
+            className="text-[10px] font-bold px-2.5 py-1 rounded-full"
+            style={{ background: cfg.bg, color: cfg.color }}
+          >
+            {cfg.label.toUpperCase()}
+          </span>
+          <span className="text-[11px] text-muted-foreground">
+            {errorRate.toFixed(1)}% error rate
+          </span>
+        </div>
       </div>
-    </>
+
+      {/* Metrics grid */}
+      <div className="px-5 py-4">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Metrics</p>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { icon: <Hash size={12} />, label: "Total Calls", value: (m.total_calls ?? 0).toLocaleString() },
+            { icon: <AlertTriangle size={12} />, label: "Errors", value: (m.error_count ?? 0).toLocaleString() },
+            { icon: <Clock size={12} />, label: "Avg Latency", value: `${Math.round(m.avg_latency_ms ?? 0)}ms` },
+            { icon: <Users size={12} />, label: isAgent ? "Sessions" : "Used by agents", value: (m.sessions ?? m.called_by_agents ?? 0).toLocaleString() },
+          ].map((s) => (
+            <div key={s.label} className="rounded-xl p-3 flex items-start gap-2.5" style={{ background: "hsl(var(--muted))" }}>
+              <span className="text-muted-foreground mt-0.5">{s.icon}</span>
+              <div>
+                <p className="text-[10px] text-muted-foreground">{s.label}</p>
+                <p className="text-sm font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{s.value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Inbound connections */}
+      {inbound.length > 0 && (
+        <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3 flex items-center gap-1.5">
+            <ArrowLeft size={10} /> Input — called by
+          </p>
+          <div className="space-y-1.5">
+            {inbound.map((e, i) => {
+              const label = e.source.replace(/^(agent|server):/, "");
+              const vol = e.metrics.call_count ?? e.metrics.handoff_count ?? 0;
+              return (
+                <div key={i} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: "hsl(var(--muted))" }}>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full" style={{ background: e.source.startsWith("agent:") ? "hsl(var(--primary))" : "#10b981" }} />
+                    <span className="text-[12px] font-medium text-foreground">{label}</span>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground font-mono">{vol} {e.type === "handoff" ? "handoffs" : "calls"}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Outbound connections */}
+      {outbound.length > 0 && (
+        <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3 flex items-center gap-1.5">
+            <ArrowRight size={10} /> Output — calls to
+          </p>
+          <div className="space-y-1.5">
+            {outbound.map((e, i) => {
+              const label = e.target.replace(/^(agent|server):/, "");
+              const vol = e.metrics.call_count ?? e.metrics.handoff_count ?? 0;
+              return (
+                <div key={i} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: "hsl(var(--muted))" }}>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full" style={{ background: e.target.startsWith("agent:") ? "hsl(var(--primary))" : "#10b981" }} />
+                    <span className="text-[12px] font-medium text-foreground">{label}</span>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground font-mono">{vol} {e.type === "handoff" ? "handoffs" : "calls"}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Blast radius (servers only) */}
+      {!isAgent && inbound.length > 0 && (
+        <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-1.5">
+            <Zap size={10} /> Blast Radius
+          </p>
+          <div className="rounded-xl p-3" style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)" }}>
+            <p className="text-[12px] text-foreground">
+              If <strong>{node.label}</strong> goes down, <strong className="text-red-400">{inbound.length} agent{inbound.length !== 1 ? "s" : ""}</strong> will be affected:
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {inbound.map((e) => e.source.replace(/^agent:/, "")).join(", ")}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Empty right panel ─────────────────────────────────────── */
+function EmptyDetail() {
+  return (
+    <div className="h-full flex flex-col items-center justify-center px-6 text-center">
+      <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4" style={{ background: "hsl(var(--muted))" }}>
+        <Activity size={20} className="text-muted-foreground" />
+      </div>
+      <p className="text-sm font-semibold text-foreground mb-1">Select a node</p>
+      <p className="text-[12px] text-muted-foreground max-w-[200px]">
+        Click any agent or server in the graph to see its details, connections, and blast radius.
+      </p>
+    </div>
   );
 }
 
@@ -268,34 +278,31 @@ export default function LineagePage() {
     { refreshInterval: 60_000 }
   );
 
-  // Convert backend graph to React Flow nodes/edges
   const { rfNodes, rfEdges } = useMemo(() => {
-    if (!graph || graph.nodes.length === 0) return { rfNodes: [], rfEdges: [] };
+    if (!graph || graph.nodes.length === 0) return { rfNodes: [] as Node[], rfEdges: [] as Edge[] };
 
     const nodes: Node[] = graph.nodes.map((n) => ({
       id: n.id,
       type: n.type,
       position: { x: 0, y: 0 },
-      data: { label: n.label, metrics: n.metrics, selected: selectedNode?.id === n.id },
+      data: { label: n.label, nodeType: n.type, metrics: n.metrics, selected: selectedNode?.id === n.id },
     }));
 
-    const edges: Edge[] = graph.edges.map((e, i) => ({
-      id: `e-${i}`,
-      source: e.source,
-      target: e.target,
-      type: "smoothstep",
-      animated: e.type === "handoff",
-      style: {
-        stroke: e.type === "handoff" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.3)",
-        strokeWidth: e.type === "handoff" ? 2 : 1.5,
-      },
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        width: 10,
-        height: 10,
-        color: e.type === "handoff" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.3)",
-      },
-    }));
+    const edges: Edge[] = graph.edges.map((e, i) => {
+      const vol = e.metrics.call_count ?? e.metrics.handoff_count ?? 1;
+      return {
+        id: `e-${i}`,
+        source: e.source,
+        target: e.target,
+        type: "smoothstep",
+        animated: e.type === "handoff",
+        style: {
+          stroke: e.type === "handoff" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.25)",
+          strokeWidth: Math.min(4, 1 + Math.log10(Math.max(1, vol))),
+        },
+        markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10, color: e.type === "handoff" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.25)" },
+      };
+    });
 
     const laid = layoutGraph(nodes, edges);
     return { rfNodes: laid.nodes, rfEdges: laid.edges };
@@ -305,41 +312,29 @@ export default function LineagePage() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(rfEdges);
 
   useEffect(() => {
-    if (rfNodes.length > 0) {
-      setNodes(rfNodes);
-      setEdges(rfEdges);
-    }
+    if (rfNodes.length > 0) { setNodes(rfNodes); setEdges(rfEdges); }
   }, [rfNodes, rfEdges, setNodes, setEdges]);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    const orig = graph?.nodes.find((n) => n.id === node.id);
-    setSelectedNode(orig ?? null);
+    setSelectedNode(graph?.nodes.find((n) => n.id === node.id) ?? null);
   }, [graph]);
 
   return (
-    <div className="space-y-4 page-in">
+    <div className="page-in" style={{ height: "calc(100vh - 4rem)" }}>
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4 px-1 pb-3">
         <div>
           <h1 className="text-xl font-bold text-foreground">Agent Lineage</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Dependency graph of agents, MCP servers, and tool calls — built from observed traces
+            Dependency graph — built from observed traces
           </p>
         </div>
-        <div
-          className="flex rounded-lg border p-0.5"
-          style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-        >
+        <div className="flex rounded-lg border p-0.5" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
           {WINDOWS.map((w) => (
             <button
               key={w.hours}
               onClick={() => setHours(w.hours)}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                w.hours === hours
-                  ? "bg-primary text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
+              className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-all", w.hours === hours ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground")}
             >
               {w.label}
             </button>
@@ -347,38 +342,29 @@ export default function LineagePage() {
         </div>
       </div>
 
-      {/* Graph */}
-      <div
-        className="rounded-xl border relative"
-        style={{
-          background: "hsl(var(--card))",
-          borderColor: "hsl(var(--border))",
-          height: "calc(100vh - 12rem)",
-        }}
-      >
-        {isLoading ? (
-          <div className="flex items-center justify-center h-full">
-            <Activity size={20} className="animate-spin text-muted-foreground" />
-            <span className="ml-2 text-sm text-muted-foreground">Loading lineage graph...</span>
-          </div>
-        ) : error ? (
-          <div className="flex items-center justify-center h-full">
-            <AlertTriangle size={18} className="text-yellow-500 mr-2" />
-            <span className="text-sm text-muted-foreground">Could not load lineage data</span>
-          </div>
-        ) : !graph || graph.nodes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: "hsl(var(--muted))" }}>
-              <Activity size={24} className="text-muted-foreground" />
+      {/* 70/30 split */}
+      <div className="flex gap-0 rounded-xl border overflow-hidden" style={{ height: "calc(100% - 3.5rem)", background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+        {/* Left: Graph (70%) */}
+        <div className="flex-[7] relative">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <Activity size={20} className="animate-spin text-muted-foreground" />
+              <span className="ml-2 text-sm text-muted-foreground">Loading...</span>
             </div>
-            <p className="text-sm font-semibold text-foreground">No lineage data yet</p>
-            <p className="text-xs text-muted-foreground max-w-sm text-center">
-              Instrument your agents with the LangSight SDK to see the dependency graph.
-              The lineage is built automatically from observed traces.
-            </p>
-          </div>
-        ) : (
-          <>
+          ) : error ? (
+            <div className="flex items-center justify-center h-full">
+              <AlertTriangle size={18} className="text-yellow-500 mr-2" />
+              <span className="text-sm text-muted-foreground">Could not load lineage data</span>
+            </div>
+          ) : !graph || graph.nodes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-3">
+              <Activity size={24} className="text-muted-foreground" />
+              <p className="text-sm font-semibold text-foreground">No lineage data yet</p>
+              <p className="text-xs text-muted-foreground max-w-xs text-center">
+                Instrument your agents with the LangSight SDK. The graph builds automatically from traces.
+              </p>
+            </div>
+          ) : (
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -393,46 +379,24 @@ export default function LineagePage() {
               proOptions={{ hideAttribution: true }}
               style={{ background: "transparent" }}
             >
-              <Background gap={24} size={0.8} color="hsl(var(--muted-foreground) / 0.1)" />
-              <Controls
-                showInteractive={false}
-                style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "0.75rem" }}
-              />
-              <MiniMap
-                nodeColor={(n) => n.type === "agent" ? "hsl(var(--primary))" : "#10b981"}
-                maskColor="hsl(var(--background) / 0.8)"
-                style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "0.75rem" }}
-              />
+              <Background gap={24} size={0.8} color="hsl(var(--muted-foreground) / 0.08)" />
+              <Controls showInteractive={false} style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "0.75rem" }} />
             </ReactFlow>
-            {selectedNode && (
-              <DetailDrawer
-                node={selectedNode}
-                edges={graph?.edges ?? []}
-                onClose={() => setSelectedNode(null)}
-              />
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Legend */}
-      {graph && graph.nodes.length > 0 && (
-        <div className="flex items-center gap-6 text-[11px] text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded border-2 border-indigo-500/50" /> Agent
-          </span>
-          <span className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded border-2 border-emerald-500/50" /> MCP Server
-          </span>
-          <span className="flex items-center gap-1.5">
-            <div className="w-6 h-0.5 bg-indigo-500 rounded" /> Handoff (animated)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <div className="w-6 h-0.5 rounded" style={{ background: "hsl(var(--border))" }} /> Tool calls
-          </span>
-          <span className="ml-auto">Edge thickness = call volume · Click a node for details</span>
+          )}
         </div>
-      )}
+
+        {/* Right: Detail (30%) */}
+        <div
+          className="flex-[3] border-l"
+          style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--background))" }}
+        >
+          {selectedNode ? (
+            <DetailPanel node={selectedNode} allEdges={graph?.edges ?? []} />
+          ) : (
+            <EmptyDetail />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
