@@ -228,7 +228,8 @@ export default function LineagePage() {
       markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
     }));
 
-    return layoutGraph(nodes, edges);
+    const laid = layoutGraph(nodes, edges);
+    return { rfNodes: laid.nodes, rfEdges: laid.edges };
   }, [graph, selectedNode]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
