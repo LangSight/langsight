@@ -841,6 +841,8 @@ class PostgresBackend:
         return dict(row) if row else None
 
     async def upsert_server_metadata(self, *, server_name: str, description: str = "", owner: str = "", tags: list[str] | None = None, transport: str = "", runbook_url: str = "", project_id: str | None = None) -> dict[str, Any]:
+        import uuid
+        import json
         from datetime import datetime, timezone
         row = await self._pool.fetchrow(
             """
@@ -868,6 +870,8 @@ class PostgresBackend:
     # Server tools (captured from list_tools() SDK interception)
     async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]]) -> None:
         """Upsert a batch of tools for a server. Called from SDK list_tools() interception."""
+        import uuid
+        import json
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc)
         for tool in tools:
