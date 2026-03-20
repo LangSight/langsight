@@ -138,44 +138,119 @@ function ServerNode({ data }: { data: { label: string; metrics: Record<string, n
 
 const nodeTypes = { agent: AgentNode, server: ServerNode };
 
-/* ── Detail panel (bottom card) ─────────────────────────────── */
-function DetailPanel({ node, onClose }: { node: LineageNode; onClose: () => void }) {
+/* ── Right slide-over drawer ────────────────────────────────── */
+function DetailDrawer({ node, edges, onClose }: {
+  node: LineageNode;
+  edges: LineageEdge[];
+  onClose: () => void;
+}) {
   const m = node.metrics;
   const isAgent = node.type === "agent";
   const accent = isAgent ? "hsl(var(--primary))" : "#10b981";
+
+  // Find connected edges
+  const connectedEdges = edges.filter(
+    (e) => e.source === node.id || e.target === node.id
+  );
+
   return (
-    <div
-      className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[480px] rounded-2xl border p-5 z-10 shadow-2xl"
-      style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${accent}15` }}>
-            {isAgent ? <Bot size={16} style={{ color: accent }} /> : <Server size={16} style={{ color: accent }} />}
-          </div>
-          <div>
-            <p className="text-sm font-bold text-foreground">{node.label}</p>
-            <p className="text-[11px] text-muted-foreground">{isAgent ? "Agent" : "MCP Server"}</p>
+    <>
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 z-10"
+        onClick={onClose}
+        style={{ background: "transparent" }}
+      />
+      {/* Drawer */}
+      <div
+        className="absolute top-0 right-0 h-full w-[340px] z-20 border-l shadow-2xl overflow-y-auto"
+        style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
+      >
+        {/* Header */}
+        <div className="sticky top-0 z-10 px-5 py-4 border-b" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${accent}15` }}>
+                {isAgent ? <Bot size={18} style={{ color: accent }} /> : <Server size={18} style={{ color: accent }} />}
+              </div>
+              <div>
+                <p className="text-sm font-bold text-foreground">{node.label}</p>
+                <p className="text-[11px] text-muted-foreground">{isAgent ? "Agent" : "MCP Server"}</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              ✕
+            </button>
           </div>
         </div>
-        <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-          ✕
-        </button>
-      </div>
-      <div className="grid grid-cols-4 gap-3">
-        {[
-          { label: "Calls", value: m.total_calls?.toLocaleString() ?? "0" },
-          { label: "Errors", value: m.error_count?.toLocaleString() ?? "0" },
-          { label: "Avg Latency", value: `${Math.round(m.avg_latency_ms ?? 0)}ms` },
-          { label: isAgent ? "Sessions" : "Agents", value: (m.sessions ?? m.called_by_agents ?? 0).toLocaleString() },
-        ].map((stat) => (
-          <div key={stat.label} className="rounded-xl p-2.5" style={{ background: "hsl(var(--muted))" }}>
-            <p className="text-[10px] text-muted-foreground font-medium mb-0.5">{stat.label}</p>
-            <p className="text-base font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{stat.value}</p>
+
+        {/* Metrics */}
+        <div className="px-5 py-4">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Metrics</p>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: "Total Calls", value: m.total_calls?.toLocaleString() ?? "0" },
+              { label: "Errors", value: m.error_count?.toLocaleString() ?? "0" },
+              { label: "Avg Latency", value: `${Math.round(m.avg_latency_ms ?? 0)}ms` },
+              { label: isAgent ? "Sessions" : "Used by", value: (m.sessions ?? m.called_by_agents ?? 0).toLocaleString() },
+            ].map((stat) => (
+              <div key={stat.label} className="rounded-xl p-3" style={{ background: "hsl(var(--muted))" }}>
+                <p className="text-[10px] text-muted-foreground font-medium mb-0.5">{stat.label}</p>
+                <p className="text-lg font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{stat.value}</p>
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
+
+        {/* Connections */}
+        {connectedEdges.length > 0 && (
+          <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Connections</p>
+            <div className="space-y-2">
+              {connectedEdges.map((e, i) => {
+                const isOutgoing = e.source === node.id;
+                const otherNode = isOutgoing ? e.target : e.source;
+                const otherLabel = otherNode.replace(/^(agent|server):/, "");
+                const otherType = otherNode.startsWith("agent:") ? "Agent" : "MCP Server";
+                const volume = e.metrics.call_count ?? e.metrics.handoff_count ?? 0;
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 rounded-lg p-2.5"
+                    style={{ background: "hsl(var(--muted))" }}
+                  >
+                    <span className="text-[11px] text-muted-foreground w-6 text-center">
+                      {isOutgoing ? "→" : "←"}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-semibold text-foreground truncate">{otherLabel}</p>
+                      <p className="text-[10px] text-muted-foreground">{otherType} · {e.type === "handoff" ? "handoff" : `${volume} calls`}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Blast radius hint */}
+        {!isAgent && (
+          <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">Blast Radius</p>
+            <p className="text-[12px] text-muted-foreground">
+              If <strong className="text-foreground">{node.label}</strong> goes down,{" "}
+              <strong className="text-foreground">
+                {connectedEdges.filter((e) => e.target === node.id).length} agent{connectedEdges.filter((e) => e.target === node.id).length !== 1 ? "s" : ""}
+              </strong>{" "}
+              will be affected.
+            </p>
+          </div>
+        )}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -313,6 +388,7 @@ export default function LineagePage() {
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}
+              onPaneClick={() => setSelectedNode(null)}
               nodeTypes={nodeTypes}
               fitView
               minZoom={0.3}
@@ -332,7 +408,11 @@ export default function LineagePage() {
               />
             </ReactFlow>
             {selectedNode && (
-              <DetailPanel node={selectedNode} onClose={() => setSelectedNode(null)} />
+              <DetailDrawer
+                node={selectedNode}
+                edges={graph?.edges ?? []}
+                onClose={() => setSelectedNode(null)}
+              />
             )}
           </>
         )}
