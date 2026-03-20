@@ -260,8 +260,8 @@ class StorageBackend(Protocol):
         """Create or update agent metadata."""
         ...
 
-    async def delete_agent_metadata(self, agent_name: str) -> bool:
-        """Delete agent metadata."""
+    async def delete_agent_metadata(self, agent_name: str, project_id: str | None = None) -> bool:
+        """Delete agent metadata scoped to project."""
         ...
 
     async def get_all_server_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]:
@@ -280,16 +280,16 @@ class StorageBackend(Protocol):
         """Create or update server metadata."""
         ...
 
-    async def delete_server_metadata(self, server_name: str) -> bool:
-        """Delete server metadata."""
+    async def delete_server_metadata(self, server_name: str, project_id: str | None = None) -> bool:
+        """Delete server metadata scoped to project."""
         ...
 
     async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]], project_id: str | None = None) -> None:
         """Upsert declared tools for a server (from SDK list_tools() interception)."""
         ...
 
-    async def get_server_tools(self, server_name: str) -> list[dict[str, object]]:
-        """Get all declared tools for a server."""
+    async def get_server_tools(self, server_name: str, project_id: str | None = None) -> list[dict[str, object]]:
+        """Get all declared tools for a server, scoped to project."""
         ...
 
     async def close(self) -> None:

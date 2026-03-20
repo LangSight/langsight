@@ -25,7 +25,6 @@ from httpx import ASGITransport, AsyncClient
 from langsight.api.main import create_app
 from langsight.config import load_config
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -335,7 +334,7 @@ class TestDeleteServerMetadata:
 
         await c.delete("/api/servers/metadata/to-be-deleted")
 
-        mock_storage.delete_server_metadata.assert_called_once_with("to-be-deleted")
+        mock_storage.delete_server_metadata.assert_called_once_with("to-be-deleted", project_id=None)
 
 
 # ---------------------------------------------------------------------------
@@ -465,7 +464,7 @@ class TestGetToolSchemas:
 
         await c.get("/api/servers/target-server/tools")
 
-        mock_storage.get_server_tools.assert_called_once_with("target-server")
+        mock_storage.get_server_tools.assert_called_once_with("target-server", project_id=None)
 
     async def test_get_tool_schemas_response_shape(self, client) -> None:
         """Each tool in the response has the required fields."""

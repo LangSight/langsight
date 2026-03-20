@@ -140,7 +140,6 @@ class TestUpsertServerMetadataUpdatesExisting:
 class TestGetAllServerMetadataByProject:
     async def test_get_all_server_metadata_by_project(self, pg) -> None:
         """get_all_server_metadata with project_id returns only that project's servers."""
-        from datetime import UTC, datetime
         from langsight.models import Project
 
         # Create two distinct projects

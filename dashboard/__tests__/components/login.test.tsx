@@ -41,7 +41,7 @@ describe("LoginPage — layout", () => {
   it("pre-fills email with demo credential", () => {
     renderLogin();
     const emailInput = screen.getByLabelText("Email") as HTMLInputElement;
-    expect(emailInput.value).toBe("admin@langsight.io");
+    expect(emailInput.value).toBe("admin@admin.com");
   });
 
   it("shows demo credentials hint", () => {
@@ -103,7 +103,7 @@ describe("LoginPage — successful sign in", () => {
       expect(mockSignIn).toHaveBeenCalledWith(
         "credentials",
         expect.objectContaining({
-          email: "admin@langsight.io",
+          email: "admin@admin.com",
           redirect: false,
         })
       );

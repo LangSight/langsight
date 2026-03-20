@@ -15,8 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from langsight.sdk.client import LangSightClient, MCPClientProxy
-
+from langsight.sdk.client import LangSightClient
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -304,7 +303,7 @@ class TestListToolsFailOpenOnBackendUnreachable:
             langsight_client,
             "record_tool_schemas",
             new_callable=AsyncMock,
-            side_effect=asyncio.TimeoutError("timeout"),
+            side_effect=TimeoutError("timeout"),
         ):
             proxy = langsight_client.wrap(mock_mcp, server_name="pg")
             result = await proxy.list_tools()

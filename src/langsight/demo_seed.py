@@ -76,13 +76,20 @@ _NUM_SESSIONS = 30
 _MAX_CALLS = 10
 
 # Health check profiles per server
-_HEALTH_PROFILES: dict[str, list[tuple[str, float | None, str | None]]] = {
+_HealthRow = tuple[str, float | None, str | None]
+
+
+def _h(status: str, latency: float | None = None, error: str | None = None) -> _HealthRow:
+    return (status, latency, error)
+
+
+_HEALTH_PROFILES: dict[str, list[_HealthRow]] = {
     # (status, latency_ms, error)
-    "postgres-mcp": [("up", 31, None)] * 20 + [("up", 45, None)] * 5 + [("degraded", 1240, None)] * 2,
-    "jira-mcp": [("up", 89, None)] * 15 + [("down", None, "Connection refused")] * 3 + [("up", 95, None)] * 5,
-    "slack-mcp": [("up", 72, None)] * 18 + [("degraded", 980, None)] * 4 + [("up", 65, None)] * 3,
-    "s3-mcp": [("up", 120, None)] * 22 + [("up", 150, None)] * 3,
-    "github-mcp": [("up", 55, None)] * 12 + [("down", None, "Rate limited (403)")] * 2 + [("up", 60, None)] * 8,
+    "postgres-mcp": [_h("up", 31.0)] * 20 + [_h("up", 45.0)] * 5 + [_h("degraded", 1240.0)] * 2,
+    "jira-mcp": [_h("up", 89.0)] * 15 + [_h("down", error="Connection refused")] * 3 + [_h("up", 95.0)] * 5,
+    "slack-mcp": [_h("up", 72.0)] * 18 + [_h("degraded", 980.0)] * 4 + [_h("up", 65.0)] * 3,
+    "s3-mcp": [_h("up", 120.0)] * 22 + [_h("up", 150.0)] * 3,
+    "github-mcp": [_h("up", 55.0)] * 12 + [_h("down", error="Rate limited (403)")] * 2 + [_h("up", 60.0)] * 8,
 }
 
 

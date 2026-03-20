@@ -7,7 +7,7 @@ GET /api/agents/sessions/{session_id} — full span tree for one session
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
@@ -340,8 +340,6 @@ def _build_tree(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
 # Agent metadata (catalog)
 # ---------------------------------------------------------------------------
 
-from typing import Literal
-
 
 class AgentMetadataUpdate(BaseModel):
     description: str = ""
@@ -432,9 +430,10 @@ async def upsert_agent_metadata(
 async def delete_agent_metadata(
     agent_name: str,
     storage: StorageBackend = Depends(get_storage),
+    project_id: str | None = Depends(get_active_project_id),
     _admin: None = Depends(require_admin),
 ) -> None:
-    """Delete agent metadata."""
-    deleted = await storage.delete_agent_metadata(agent_name)
+    """Delete agent metadata scoped to the active project."""
+    deleted = await storage.delete_agent_metadata(agent_name, project_id=project_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"No metadata for agent '{agent_name}'")

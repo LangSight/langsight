@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from starlette import status as http_status
 from pydantic import BaseModel
+from starlette import status as http_status
 
-from langsight.api.dependencies import get_storage, get_active_project_id, require_admin
+from langsight.api.dependencies import get_active_project_id, get_storage, require_admin
 from langsight.storage.base import StorageBackend
 
 router = APIRouter(prefix="/servers", tags=["servers"])
@@ -88,9 +88,11 @@ async def upsert_server_metadata(
 async def delete_server_metadata(
     server_name: str,
     storage: StorageBackend = Depends(get_storage),
+    project_id: str | None = Depends(get_active_project_id),
     _admin: None = Depends(require_admin),
 ) -> None:
-    deleted = await storage.delete_server_metadata(server_name)
+    """Delete server metadata scoped to the active project."""
+    deleted = await storage.delete_server_metadata(server_name, project_id=project_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"No metadata for server '{server_name}'")
 
@@ -116,14 +118,15 @@ async def record_tool_schemas(
     server_name: str,
     body: ToolSchemaPayload,
     storage: StorageBackend = Depends(get_storage),
+    project_id: str | None = Depends(get_active_project_id),
 ) -> dict[str, int]:
     """Called by the SDK whenever list_tools() is invoked.
     Upserts tool names, descriptions and input schemas for the server.
-    No auth required — SDK sends this fire-and-forget on every agent run.
+    project_id comes from the authenticated request context, not the body.
     """
     if not body.tools:
         return {"upserted": 0}
-    await storage.upsert_server_tools(server_name, body.tools, project_id=body.project_id)
+    await storage.upsert_server_tools(server_name, body.tools, project_id=project_id)
     return {"upserted": len(body.tools)}
 
 
@@ -131,13 +134,14 @@ async def record_tool_schemas(
 async def get_tool_schemas(
     server_name: str,
     storage: StorageBackend = Depends(get_storage),
+    project_id: str | None = Depends(get_active_project_id),
 ) -> list[dict[str, Any]]:
-    """Return declared tools for a server (captured from SDK list_tools() calls)."""
-    rows = await storage.get_server_tools(server_name)
+    """Return declared tools for a server scoped to the active project."""
+    rows = await storage.get_server_tools(server_name, project_id=project_id)
     for r in rows:
         r["first_seen_at"] = str(r["first_seen_at"])
         r["last_seen_at"] = str(r["last_seen_at"])
         if isinstance(r.get("input_schema"), str):
-            r["input_schema"] = json.loads(r["input_schema"])
+            r["input_schema"] = json.loads(str(r["input_schema"]))
         r.setdefault("server_name", server_name)
     return rows

@@ -33,7 +33,6 @@ from tests.security.conftest import (
     _active_key_record,
     _make_request,
     _make_storage,
-    _member_record,
 )
 
 pytestmark = pytest.mark.security
@@ -121,6 +120,7 @@ class TestAdminWriteEnforcement:
     ) -> None:
         """Viewer-role session user attempting PUT /servers/metadata → 403."""
         from fastapi import HTTPException
+
         from langsight.api.dependencies import require_admin
 
         storage = _server_storage(active_db_keys=[_active_key_record(role="viewer")])
@@ -141,6 +141,7 @@ class TestAdminWriteEnforcement:
     ) -> None:
         """Member-role session user attempting PUT /servers/metadata → 403."""
         from fastapi import HTTPException
+
         from langsight.api.dependencies import require_admin
 
         storage = _server_storage(active_db_keys=[_active_key_record(role="viewer")])
@@ -171,6 +172,7 @@ class TestAdminWriteEnforcement:
     async def test_upsert_server_metadata_viewer_api_key_gets_403(self) -> None:
         """Viewer-role DB API key → require_admin raises 403."""
         from fastapi import HTTPException
+
         from langsight.api.dependencies import require_admin
 
         viewer_key = "viewer-secret"
@@ -194,6 +196,7 @@ class TestAdminWriteEnforcement:
     ) -> None:
         """Viewer-role session user attempting DELETE /servers/metadata → 403."""
         from fastapi import HTTPException
+
         from langsight.api.dependencies import require_admin
 
         storage = _server_storage(active_db_keys=[_active_key_record(role="viewer")])
@@ -222,6 +225,7 @@ class TestAdminWriteEnforcement:
     async def test_delete_server_metadata_viewer_api_key_gets_403(self) -> None:
         """Viewer DB API key → require_admin raises 403 before DELETE reaches storage."""
         from fastapi import HTTPException
+
         from langsight.api.dependencies import require_admin
 
         viewer_key = "viewer-secret"
@@ -286,7 +290,7 @@ class TestAdminWriteEnforcement:
             headers={"X-API-Key": "test-api-key"},
         )
         assert response.status_code == 204
-        mock_storage.delete_server_metadata.assert_called_once_with("postgres-mcp")
+        mock_storage.delete_server_metadata.assert_called_once_with("postgres-mcp", project_id=None)
 
     async def test_spoofed_admin_header_from_external_ip_blocked_by_require_admin(
         self,
@@ -304,6 +308,7 @@ class TestAdminWriteEnforcement:
         The dependency test lets us control the client IP precisely.
         """
         from fastapi import HTTPException
+
         from langsight.api.dependencies import require_admin
 
         # Auth is enabled (one active DB key)
@@ -627,6 +632,7 @@ class TestProjectIsolationOnReads:
         queried, preventing a data dump of all servers across all projects.
         """
         from fastapi import HTTPException
+
         from langsight.api.dependencies import get_active_project_id
 
         storage = _server_storage(active_db_keys=[_active_key_record(role="viewer")])
@@ -648,6 +654,7 @@ class TestProjectIsolationOnReads:
     ) -> None:
         """User not in project B cannot query project B's server metadata — 404."""
         from fastapi import HTTPException
+
         from langsight.api.dependencies import get_active_project_id
 
         storage = _server_storage(
@@ -670,6 +677,7 @@ class TestProjectIsolationOnReads:
     ) -> None:
         """Membership in project A must NOT grant access to project B's servers."""
         from fastapi import HTTPException
+
         from langsight.api.dependencies import get_active_project_id
 
         storage = _server_storage(active_db_keys=[_active_key_record(role="viewer")])
@@ -707,6 +715,7 @@ class TestProjectIsolationOnReads:
     ) -> None:
         """Membership check DB error must deny access — not silently allow through."""
         from fastapi import HTTPException
+
         from langsight.api.dependencies import get_active_project_id
 
         storage = _server_storage(

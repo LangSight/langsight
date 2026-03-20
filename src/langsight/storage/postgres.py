@@ -513,6 +513,10 @@ class PostgresBackend:
         return result != "UPDATE 0"
 
     async def delete_project(self, project_id: str) -> bool:
+        # Cascade: delete all project-scoped metadata before deleting the project row
+        await self._pool.execute("DELETE FROM agent_metadata WHERE project_id = $1", project_id)
+        await self._pool.execute("DELETE FROM server_metadata WHERE project_id = $1", project_id)
+        await self._pool.execute("DELETE FROM server_tools WHERE project_id = $1", project_id)
         await self._pool.execute("DELETE FROM project_members WHERE project_id = $1", project_id)
         result: str = await self._pool.execute("DELETE FROM projects WHERE id = $1", project_id)
         return result != "DELETE 0"
@@ -826,8 +830,9 @@ class PostgresBackend:
         tags: list[str], status: str, runbook_url: str,
         project_id: str | None = None,
     ) -> dict[str, Any]:
-        import uuid, json
-        from datetime import datetime, timezone
+        import json
+        import uuid
+        from datetime import datetime
         row = await self._pool.fetchrow(
             """
             INSERT INTO agent_metadata (id, agent_name, description, owner, tags, status, runbook_url, project_id, created_at, updated_at)
@@ -843,14 +848,19 @@ class PostgresBackend:
             """,
             uuid.uuid4().hex, agent_name, description, owner,
             json.dumps(tags), status, runbook_url, project_id,
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
         )
         return dict(row) if row else {}
 
-    async def delete_agent_metadata(self, agent_name: str) -> bool:
-        result: str = await self._pool.execute(
-            "DELETE FROM agent_metadata WHERE agent_name = $1", agent_name,
-        )
+    async def delete_agent_metadata(self, agent_name: str, project_id: str | None = None) -> bool:
+        if project_id:
+            result: str = await self._pool.execute(
+                "DELETE FROM agent_metadata WHERE agent_name = $1 AND project_id = $2", agent_name, project_id,
+            )
+        else:
+            result = await self._pool.execute(
+                "DELETE FROM agent_metadata WHERE agent_name = $1 AND project_id IS NULL", agent_name,
+            )
         return result.endswith("1")
 
     # Server metadata (catalog)
@@ -869,9 +879,9 @@ class PostgresBackend:
         return dict(row) if row else None
 
     async def upsert_server_metadata(self, *, server_name: str, description: str = "", owner: str = "", tags: list[str] | None = None, transport: str = "", runbook_url: str = "", project_id: str | None = None) -> dict[str, Any]:
-        import uuid
         import json
-        from datetime import datetime, timezone
+        import uuid
+        from datetime import datetime
         row = await self._pool.fetchrow(
             """
             INSERT INTO server_metadata (id, server_name, description, owner, tags, transport, runbook_url, project_id, created_at, updated_at)
@@ -887,21 +897,28 @@ class PostgresBackend:
             """,
             uuid.uuid4().hex, server_name, description, owner,
             json.dumps(tags or []), transport, runbook_url, project_id,
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
         )
         return dict(row) if row else {}
 
-    async def delete_server_metadata(self, server_name: str) -> bool:
-        result: str = await self._pool.execute("DELETE FROM server_metadata WHERE server_name = $1", server_name)
+    async def delete_server_metadata(self, server_name: str, project_id: str | None = None) -> bool:
+        if project_id:
+            result: str = await self._pool.execute(
+                "DELETE FROM server_metadata WHERE server_name = $1 AND project_id = $2", server_name, project_id,
+            )
+        else:
+            result = await self._pool.execute(
+                "DELETE FROM server_metadata WHERE server_name = $1 AND project_id IS NULL", server_name,
+            )
         return result.endswith("1")
 
     # Server tools (captured from list_tools() SDK interception)
     async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]], project_id: str | None = None) -> None:
         """Upsert a batch of tools for a server. Called from SDK list_tools() interception."""
-        import uuid
         import json
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
+        import uuid
+        from datetime import datetime
+        now = datetime.now(UTC)
         for tool in tools:
             await self._pool.execute(
                 """
@@ -921,12 +938,18 @@ class PostgresBackend:
                 now,
             )
 
-    async def get_server_tools(self, server_name: str) -> list[dict[str, object]]:
-        """Get all declared tools for a server."""
-        rows = await self._pool.fetch(
-            "SELECT * FROM server_tools WHERE server_name = $1 ORDER BY tool_name",
-            server_name,
-        )
+    async def get_server_tools(self, server_name: str, project_id: str | None = None) -> list[dict[str, object]]:
+        """Get all declared tools for a server, scoped to project."""
+        if project_id:
+            rows = await self._pool.fetch(
+                "SELECT * FROM server_tools WHERE server_name = $1 AND project_id = $2 ORDER BY tool_name",
+                server_name, project_id,
+            )
+        else:
+            rows = await self._pool.fetch(
+                "SELECT * FROM server_tools WHERE server_name = $1 AND project_id IS NULL ORDER BY tool_name",
+                server_name,
+            )
         return [dict(r) for r in rows]
 
     async def close(self) -> None:
