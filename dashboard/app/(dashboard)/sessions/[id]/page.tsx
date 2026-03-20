@@ -96,18 +96,18 @@ function SessionLineage({ trace, selectedNode, onNodeClick }: {
       })),
     ];
 
-    const flowEdges: Edge[] = [...edges.values()].map((e, i) => ({
-      id: `se-${i}`, source: e.from, target: e.to, type: "smoothstep",
-      animated: e.type === "handoff",
-      style: {
-        stroke: e.type === "handoff" ? "hsl(var(--primary))" : (e.hasError ? "rgba(239,68,68,0.5)" : "rgba(16,185,129,0.4)"),
-        strokeWidth: e.type === "handoff" ? 2 : 1.5,
-      },
-      markerEnd: {
-        type: MarkerType.ArrowClosed, width: 8, height: 8,
-        color: e.type === "handoff" ? "hsl(var(--primary))" : (e.hasError ? "rgba(239,68,68,0.5)" : "rgba(16,185,129,0.4)"),
-      },
-    }));
+    const flowEdges: Edge[] = [...edges.values()].map((e, i) => {
+      const color = e.type === "handoff" ? "#6366f1" : e.hasError ? "#ef4444" : "#10b981";
+      return {
+        id: `se-${i}`, source: e.from, target: e.to, type: "smoothstep",
+        animated: e.type === "handoff",
+        style: { stroke: color, strokeWidth: 2.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color },
+        label: e.type === "handoff" ? "handoff" : undefined,
+        labelStyle: { fontSize: 9, fill: "#888" },
+        labelBgStyle: { fill: "hsl(var(--card))", fillOpacity: 0.9 },
+      };
+    });
 
     // Dagre layout
     const g = new dagre.graphlib.Graph();
@@ -167,6 +167,9 @@ function SessionNodeDetail({ nodeId, trace }: { nodeId: string; trace: SessionTr
   const avgLatency = totalCalls > 0 ? spans.reduce((sum: number, s: SpanNode) => sum + (s.latency_ms ?? 0), 0) / totalCalls : 0;
   const tools = [...new Set(spans.map((s: SpanNode) => s.tool_name))];
   const errorRate = totalCalls > 0 ? (errors / totalCalls) * 100 : 0;
+  const totalInputTokens = spans.reduce((s: number, sp: SpanNode) => s + (sp.input_tokens ?? 0), 0);
+  const totalOutputTokens = spans.reduce((s: number, sp: SpanNode) => s + (sp.output_tokens ?? 0), 0);
+  const models = [...new Set(spans.map((s: SpanNode) => s.model_id).filter(Boolean))];
   const statusColor = errorRate >= 10 ? "#ef4444" : errorRate >= 2 ? "#f59e0b" : "#10b981";
   const statusLabel = errorRate >= 10 ? "Error" : errorRate >= 2 ? "Degraded" : "Healthy";
 
@@ -224,19 +227,73 @@ function SessionNodeDetail({ nodeId, trace }: { nodeId: string; trace: SessionTr
         </div>
       )}
 
-      {/* Spans list */}
-      <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Span History</p>
-        <div className="space-y-1">
-          {spans.map((s: SpanNode, i: number) => (
-            <div key={i} className="flex items-center justify-between rounded-lg px-3 py-2 text-[11px]" style={{ background: "hsl(var(--muted))" }}>
-              <div className="flex items-center gap-2">
-                <span className={s.status === "success" ? "text-green-400" : "text-red-400"}>
-                  {s.status === "success" ? "✓" : "✗"}
-                </span>
-                <span className="text-foreground font-medium">{s.tool_name}</span>
+      {/* Token usage */}
+      {totalInputTokens > 0 && (
+        <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Token Usage</p>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: "Input Tokens", value: totalInputTokens.toLocaleString() },
+              { label: "Output Tokens", value: totalOutputTokens.toLocaleString() },
+              { label: "Total Tokens", value: (totalInputTokens + totalOutputTokens).toLocaleString() },
+              { label: "Models", value: models.join(", ") || "—" },
+            ].map((s) => (
+              <div key={s.label} className="rounded-xl p-3" style={{ background: "hsl(var(--muted))" }}>
+                <p className="text-[10px] text-muted-foreground">{s.label}</p>
+                <p className="text-sm font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{s.value}</p>
               </div>
-              <span className="text-muted-foreground font-mono">{Math.round(s.latency_ms ?? 0)}ms</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Span details */}
+      <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Span Details</p>
+        <div className="space-y-2">
+          {spans.map((s: SpanNode, i: number) => (
+            <div key={i} className="rounded-xl overflow-hidden" style={{ border: "1px solid hsl(var(--border))" }}>
+              <div className="flex items-center justify-between px-3 py-2.5" style={{ background: "hsl(var(--muted))" }}>
+                <div className="flex items-center gap-2">
+                  <span className={s.status === "success" ? "text-green-500" : "text-red-500"}>
+                    {s.status === "success" ? "✓" : "✗"}
+                  </span>
+                  <span className="text-[12px] font-semibold text-foreground">{s.tool_name}</span>
+                </div>
+                <span className="text-[11px] text-muted-foreground font-mono">{Math.round(s.latency_ms ?? 0)}ms</span>
+              </div>
+              {/* Error */}
+              {s.error && (
+                <div className="px-3 py-2 text-[11px]" style={{ background: "rgba(239,68,68,0.05)", color: "#ef4444" }}>
+                  {s.error}
+                </div>
+              )}
+              {/* Input */}
+              {s.input_json && (
+                <div className="px-3 py-2 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1">Input</p>
+                  <pre className="text-[10px] text-foreground whitespace-pre-wrap break-all max-h-24 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)" }}>
+                    {(() => { try { return JSON.stringify(JSON.parse(s.input_json), null, 2); } catch { return s.input_json; } })()}
+                  </pre>
+                </div>
+              )}
+              {/* Output */}
+              {s.output_json && (
+                <div className="px-3 py-2 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1">Output</p>
+                  <pre className="text-[10px] text-foreground whitespace-pre-wrap break-all max-h-24 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)" }}>
+                    {(() => { try { return JSON.stringify(JSON.parse(s.output_json), null, 2); } catch { return s.output_json; } })()}
+                  </pre>
+                </div>
+              )}
+              {/* Tokens */}
+              {(s.input_tokens || s.output_tokens) && (
+                <div className="px-3 py-2 border-t flex items-center gap-4 text-[10px] text-muted-foreground" style={{ borderColor: "hsl(var(--border))" }}>
+                  {s.model_id && <span>Model: <strong className="text-foreground">{s.model_id}</strong></span>}
+                  {s.input_tokens && <span>In: <strong className="text-foreground">{s.input_tokens}</strong></span>}
+                  {s.output_tokens && <span>Out: <strong className="text-foreground">{s.output_tokens}</strong></span>}
+                </div>
+              )}
             </div>
           ))}
         </div>
