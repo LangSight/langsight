@@ -7,12 +7,243 @@ import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import {
   ChevronRight, ChevronDown, GitBranch, Clock, Zap, AlertCircle,
-  Search, GitCompare, Play, ArrowLeft, Columns2,
+  Search, GitCompare, Play, ArrowLeft, Columns2, Bot, Server,
 } from "lucide-react";
+import {
+  ReactFlow,
+  Background,
+  useNodesState,
+  useEdgesState,
+  type Node,
+  type Edge,
+  Position,
+  MarkerType,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import dagre from "dagre";
 import { fetcher, getSessionTrace, compareSessions, replaySession } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatDuration, CALL_STATUS_COLOR, SPAN_TYPE_ICON } from "@/lib/utils";
 import type { AgentSession, SessionTrace, SpanNode, SessionComparison, DiffEntry } from "@/lib/types";
+
+/* ── Session lineage graph ──────────────────────────────────── */
+
+function SessionLineageNode({ data }: { data: { label: string; nodeType: string; hasError: boolean } }) {
+  const isAgent = data.nodeType === "agent";
+  const color = data.hasError ? "#ef4444" : "#10b981";
+  return (
+    <div
+      className="rounded-xl px-3.5 py-2.5 flex items-center gap-2.5 shadow-sm"
+      style={{ background: "hsl(var(--card))", border: `2px solid ${data.hasError ? "rgba(239,68,68,0.4)" : "rgba(16,185,129,0.4)"}`, minWidth: 150 }}
+    >
+      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
+        {isAgent ? <Bot size={13} style={{ color }} /> : <Server size={13} style={{ color }} />}
+      </div>
+      <div>
+        <p className="text-[11px] font-bold text-foreground leading-tight">{data.label}</p>
+        <p className="text-[9px]" style={{ color }}>{isAgent ? "Agent" : "MCP Server"}</p>
+      </div>
+    </div>
+  );
+}
+
+const sessionNodeTypes = { agent: SessionLineageNode, server: SessionLineageNode };
+
+function SessionLineage({ trace, selectedNode, onNodeClick }: {
+  trace: SessionTrace;
+  selectedNode: string | null;
+  onNodeClick: (id: string | null) => void;
+}) {
+  const { graphNodes, graphEdges } = useMemo(() => {
+    const agents = new Set<string>();
+    const servers = new Set<string>();
+    const edges = new Map<string, { from: string; to: string; type: string; hasError: boolean }>();
+    const agentErrors = new Set<string>();
+    const serverErrors = new Set<string>();
+
+    for (const span of trace.spans_flat) {
+      const agent = span.agent_name;
+      const server = span.server_name;
+      const spanType = span.span_type;
+      const failed = span.status !== "success";
+
+      if (agent) agents.add(agent);
+      if (failed && agent) agentErrors.add(agent);
+
+      if (spanType === "handoff" && agent && span.tool_name) {
+        const target = span.tool_name.replace(/^->\s*/, "").replace(/^→\s*/, "");
+        if (target) {
+          agents.add(target);
+          edges.set(`${agent}→${target}`, { from: `agent:${agent}`, to: `agent:${target}`, type: "handoff", hasError: false });
+        }
+      } else if (spanType === "tool_call" && agent && server) {
+        servers.add(server);
+        if (failed) serverErrors.add(server);
+        const key = `${agent}→${server}`;
+        const existing = edges.get(key);
+        edges.set(key, { from: `agent:${agent}`, to: `server:${server}`, type: "calls", hasError: (existing?.hasError || failed) });
+      }
+    }
+
+    const nodes: Node[] = [
+      ...[...agents].map((a) => ({
+        id: `agent:${a}`, type: "agent", position: { x: 0, y: 0 },
+        data: { label: a, nodeType: "agent", hasError: agentErrors.has(a) },
+      })),
+      ...[...servers].map((s) => ({
+        id: `server:${s}`, type: "server", position: { x: 0, y: 0 },
+        data: { label: s, nodeType: "server", hasError: serverErrors.has(s) },
+      })),
+    ];
+
+    const flowEdges: Edge[] = [...edges.values()].map((e, i) => ({
+      id: `se-${i}`, source: e.from, target: e.to, type: "smoothstep",
+      animated: e.type === "handoff",
+      style: {
+        stroke: e.type === "handoff" ? "hsl(var(--primary))" : (e.hasError ? "rgba(239,68,68,0.5)" : "rgba(16,185,129,0.4)"),
+        strokeWidth: e.type === "handoff" ? 2 : 1.5,
+      },
+      markerEnd: {
+        type: MarkerType.ArrowClosed, width: 8, height: 8,
+        color: e.type === "handoff" ? "hsl(var(--primary))" : (e.hasError ? "rgba(239,68,68,0.5)" : "rgba(16,185,129,0.4)"),
+      },
+    }));
+
+    // Dagre layout
+    const g = new dagre.graphlib.Graph();
+    g.setDefaultEdgeLabel(() => ({}));
+    g.setGraph({ rankdir: "LR", nodesep: 40, ranksep: 80 });
+    nodes.forEach((n) => g.setNode(n.id, { width: 160, height: 50 }));
+    flowEdges.forEach((e) => g.setEdge(e.source, e.target));
+    dagre.layout(g);
+
+    const laid = nodes.map((n) => {
+      const p = g.node(n.id);
+      return { ...n, position: { x: p.x - 80, y: p.y - 25 }, sourcePosition: Position.Right, targetPosition: Position.Left };
+    });
+
+    return { graphNodes: laid, graphEdges: flowEdges };
+  }, [trace]);
+
+  const [nodes, , onNodesChange] = useNodesState(graphNodes);
+  const [edges, , onEdgesChange] = useEdgesState(graphEdges);
+
+  if (graphNodes.length === 0) return <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No graph data</div>;
+
+  return (
+    <div className="h-full w-full">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeClick={(_, node) => onNodeClick(node.id)}
+        onPaneClick={() => onNodeClick(null)}
+        nodeTypes={sessionNodeTypes}
+        fitView
+        minZoom={0.5}
+        maxZoom={2}
+        proOptions={{ hideAttribution: true }}
+        style={{ background: "transparent" }}
+      >
+        <Background gap={24} size={0.8} color="hsl(var(--muted-foreground) / 0.06)" />
+      </ReactFlow>
+    </div>
+  );
+}
+
+/* ── Right panel: node detail for session ──────────────────── */
+function SessionNodeDetail({ nodeId, trace }: { nodeId: string; trace: SessionTrace }) {
+  const isAgent = nodeId.startsWith("agent:");
+  const name = nodeId.replace(/^(agent|server):/, "");
+
+  // Filter spans for this node
+  const spans = trace.spans_flat.filter((s: SpanNode) =>
+    isAgent ? s.agent_name === name : (s.server_name === name && s.span_type === "tool_call")
+  );
+
+  const totalCalls = spans.length;
+  const errors = spans.filter((s: SpanNode) => s.status !== "success").length;
+  const avgLatency = totalCalls > 0 ? spans.reduce((sum: number, s: SpanNode) => sum + (s.latency_ms ?? 0), 0) / totalCalls : 0;
+  const tools = [...new Set(spans.map((s: SpanNode) => s.tool_name))];
+  const errorRate = totalCalls > 0 ? (errors / totalCalls) * 100 : 0;
+  const statusColor = errorRate >= 10 ? "#ef4444" : errorRate >= 2 ? "#f59e0b" : "#10b981";
+  const statusLabel = errorRate >= 10 ? "Error" : errorRate >= 2 ? "Degraded" : "Healthy";
+
+  return (
+    <div className="h-full overflow-y-auto">
+      {/* Header */}
+      <div className="px-5 py-5 border-b" style={{ borderColor: "hsl(var(--border))" }}>
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${statusColor}15` }}>
+            {isAgent ? <Bot size={18} style={{ color: statusColor }} /> : <Server size={18} style={{ color: statusColor }} />}
+          </div>
+          <div>
+            <p className="text-sm font-bold text-foreground">{name}</p>
+            <p className="text-[11px]" style={{ color: statusColor }}>{isAgent ? "Agent" : "MCP Server"} · {statusLabel}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Metrics */}
+      <div className="px-5 py-4">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Session Metrics</p>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { label: "Calls", value: totalCalls.toString() },
+            { label: "Errors", value: errors.toString() },
+            { label: "Avg Latency", value: `${Math.round(avgLatency)}ms` },
+            { label: "Error Rate", value: `${errorRate.toFixed(1)}%` },
+          ].map((s) => (
+            <div key={s.label} className="rounded-xl p-3" style={{ background: "hsl(var(--muted))" }}>
+              <p className="text-[10px] text-muted-foreground">{s.label}</p>
+              <p className="text-sm font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tools called */}
+      {!isAgent && tools.length > 0 && (
+        <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Tools Called</p>
+          <div className="space-y-1.5">
+            {tools.map((tool) => {
+              const toolSpans = spans.filter((s: SpanNode) => s.tool_name === tool);
+              const toolErrors = toolSpans.filter((s: SpanNode) => s.status !== "success").length;
+              return (
+                <div key={tool} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: "hsl(var(--muted))" }}>
+                  <span className="text-[12px] font-medium text-foreground">{tool}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {toolSpans.length}x {toolErrors > 0 && <span className="text-red-400 ml-1">({toolErrors} err)</span>}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Spans list */}
+      <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Span History</p>
+        <div className="space-y-1">
+          {spans.map((s: SpanNode, i: number) => (
+            <div key={i} className="flex items-center justify-between rounded-lg px-3 py-2 text-[11px]" style={{ background: "hsl(var(--muted))" }}>
+              <div className="flex items-center gap-2">
+                <span className={s.status === "success" ? "text-green-400" : "text-red-400"}>
+                  {s.status === "success" ? "✓" : "✗"}
+                </span>
+                <span className="text-foreground font-medium">{s.tool_name}</span>
+              </div>
+              <span className="text-muted-foreground font-mono">{Math.round(s.latency_ms ?? 0)}ms</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ── Payload panel ──────────────────────────────────────────── */
 function PayloadPanel({ label, json }: { label: string; json: string | null }) {
@@ -409,6 +640,10 @@ export default function SessionDetailPage() {
   const [replaying, setReplaying] = useState(false);
   const [replayError, setReplayError] = useState<string | null>(null);
 
+  /* Tabs */
+  const [activeTab, setActiveTab] = useState<"details" | "trace">("details");
+  const [selectedGraphNode, setSelectedGraphNode] = useState<string | null>(null);
+
   /* Compare */
   const [comparePicking, setComparePicking] = useState(false);
   const [compareWith, setCompareWith] = useState<string | null>(null);
@@ -536,70 +771,132 @@ export default function SessionDetailPage() {
         </div>
       )}
 
-      {/* ── Trace tree ─────────────────────────────────────────── */}
-      <div
-        className="flex-1 rounded-xl border overflow-hidden flex flex-col min-h-0"
-        style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-      >
-        <div className="flex-1 overflow-y-auto overflow-x-auto">
-          {loading ? (
-            <div className="p-10 flex items-center justify-center">
-              <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent spin" />
-            </div>
-          ) : error ? (
-            <div className="p-8 text-center text-sm" style={{ color: "hsl(var(--danger))" }}>
-              <AlertCircle size={20} className="mx-auto mb-2" />
-              {error}
-            </div>
-          ) : !trace || trace.root_spans.length === 0 ? (
-            <p className="p-8 text-center text-sm text-muted-foreground">No spans found</p>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr
-                  className="sticky top-0 z-10"
-                  style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card-raised))" }}
-                >
-                  {["Span", "Agent", "Status", "Latency", "Error"].map((h) => (
-                    <th
-                      key={h}
-                      className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {trace.root_spans.map((span) => (
-                  <SpanRow key={span.span_id} span={span} depth={0} />
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+      {/* ── Tab bar ────────────────────────────────────────────── */}
+      <div className="flex-shrink-0 flex items-center gap-1 mb-3 border-b" style={{ borderColor: "hsl(var(--border))" }}>
+        {([
+          { key: "details", label: "Details", count: trace ? `${new Set(trace.spans_flat.map((s: SpanNode) => s.agent_name).filter(Boolean)).size} agents · ${new Set(trace.spans_flat.filter((s: SpanNode) => s.span_type === "tool_call").map((s: SpanNode) => s.server_name)).size} servers` : undefined },
+          { key: "trace", label: "Trace", count: trace ? `${trace.total_spans} spans` : undefined },
+        ] as const).map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={cn(
+              "px-4 py-2.5 text-[13px] font-medium border-b-2 -mb-px transition-colors",
+              activeTab === tab.key
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {tab.label}
+            {tab.count && (
+              <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "hsl(var(--muted))" }}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
-      {/* ── Compare picker (shown below trace when active) ───── */}
-      {comparePicking && !compareWith && sessions && (
-        <ComparePicker
-          sessions={sessions}
-          selectedId={sessionId}
-          onPick={(id) => { setCompareWith(id); setComparePicking(false); }}
-          onCancel={() => setComparePicking(false)}
-        />
+      {/* ── Details tab — session lineage graph ─────────────────── */}
+      {activeTab === "details" && (
+        <div className="flex-1 flex gap-0 rounded-xl border overflow-hidden min-h-0" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+          {/* Graph (70%) */}
+          <div className="flex-[7] relative">
+            {loading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent spin" />
+              </div>
+            ) : !trace ? (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No data</div>
+            ) : (
+              <SessionLineage
+                trace={trace}
+                selectedNode={selectedGraphNode}
+                onNodeClick={setSelectedGraphNode}
+              />
+            )}
+          </div>
+          {/* Right panel (30%) */}
+          <div className="flex-[3] border-l overflow-y-auto" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--background))" }}>
+            {selectedGraphNode && trace ? (
+              <SessionNodeDetail nodeId={selectedGraphNode} trace={trace} />
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center px-5 text-center">
+                <GitBranch size={20} className="text-muted-foreground mb-3" />
+                <p className="text-sm font-semibold text-foreground mb-1">Session flow</p>
+                <p className="text-[11px] text-muted-foreground">Click any agent or server node to see its details for this session.</p>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
-      {/* ── Compare diff (shown below trace) ─────────────────── */}
-      {compareWith && (
-        <CompareDetail
-          idA={sessionId}
-          idB={compareWith}
-          sessionA={session}
-          sessionB={compareSession}
-          onBack={() => { setCompareWith(null); setComparePicking(false); }}
-          projectId={projectId}
-        />
+      {/* ── Trace tab — span tree ──────────────────────────────── */}
+      {activeTab === "trace" && (
+        <>
+          <div
+            className="flex-1 rounded-xl border overflow-hidden flex flex-col min-h-0"
+            style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
+          >
+            <div className="flex-1 overflow-y-auto overflow-x-auto">
+              {loading ? (
+                <div className="p-10 flex items-center justify-center">
+                  <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent spin" />
+                </div>
+              ) : error ? (
+                <div className="p-8 text-center text-sm" style={{ color: "hsl(var(--danger))" }}>
+                  <AlertCircle size={20} className="mx-auto mb-2" />
+                  {error}
+                </div>
+              ) : !trace || trace.root_spans.length === 0 ? (
+                <p className="p-8 text-center text-sm text-muted-foreground">No spans found</p>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr
+                      className="sticky top-0 z-10"
+                      style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card-raised))" }}
+                    >
+                      {["Span", "Agent", "Status", "Latency", "Error"].map((h) => (
+                        <th
+                          key={h}
+                          className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide"
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trace.root_spans.map((span) => (
+                      <SpanRow key={span.span_id} span={span} depth={0} />
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          {/* Compare picker */}
+          {comparePicking && !compareWith && sessions && (
+            <ComparePicker
+              sessions={sessions}
+              selectedId={sessionId}
+              onPick={(id) => { setCompareWith(id); setComparePicking(false); }}
+              onCancel={() => setComparePicking(false)}
+            />
+          )}
+          {compareWith && (
+            <CompareDetail
+              idA={sessionId}
+              idB={compareWith}
+              sessionA={session}
+              sessionB={compareSession}
+              onBack={() => { setCompareWith(null); setComparePicking(false); }}
+              projectId={projectId}
+            />
+          )}
+        </>
       )}
     </div>
   );
