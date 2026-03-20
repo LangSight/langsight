@@ -225,6 +225,30 @@ export interface ModelPricingEntry {
   is_active: boolean;
 }
 
+// ─── Lineage (agent action DAG) ──────────────────────────────────────────────
+
+export interface LineageNode {
+  id: string;
+  type: "agent" | "server";
+  label: string;
+  metrics: Record<string, number>;
+}
+
+export interface LineageEdge {
+  source: string;
+  target: string;
+  type: "calls" | "handoff";
+  metrics: Record<string, number>;
+}
+
+export interface LineageGraph {
+  window_hours: number;
+  nodes: LineageNode[];
+  edges: LineageEdge[];
+}
+
+// ─── Costs ───────────────────────────────────────────────────────────────────
+
 export interface CostsBreakdownResponse {
   storage_mode: string;
   supports_costs: boolean;

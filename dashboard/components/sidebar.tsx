@@ -9,7 +9,7 @@ import useSWR from "swr";
 import {
   LayoutDashboard, Activity, Shield, GitBranch, DollarSign, Bot,
   LogOut, Sun, Moon, Settings, Folder, ChevronDown, Plus, Check,
-  Zap, ChevronRight,
+  Zap, ChevronRight, Network,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ const PRIMARY_NAV = [
   { href: "/sessions", label: "Sessions",     icon: GitBranch,       color: "#8b5cf6" },
   { href: "/agents",   label: "Agents",       icon: Bot,             color: "#06b6d4" },
   { href: "/costs",    label: "Costs",        icon: DollarSign,      color: "#10b981" },
+  { href: "/lineage",  label: "Lineage",      icon: Network,         color: "#f97316" },
 ];
 
 const INFRA_NAV = [

@@ -769,6 +769,227 @@ class ClickHouseBackend:
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
     # ---------------------------------------------------------------------------
+    # Agent action lineage — DAG of agents, servers, and their relationships
+    # ---------------------------------------------------------------------------
+
+    async def get_lineage_graph(
+        self,
+        hours: int = 168,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Return nodes and edges for the agent action lineage DAG.
+
+        Builds the graph from actual span data in mcp_tool_calls:
+          - Agent-to-server edges from tool_call spans
+          - Agent-to-agent edges from handoff spans
+          - Node metrics derived from edge aggregations
+
+        Args:
+            hours: Look-back window (default 168 = 7 days).
+            project_id: Optional project scope filter.
+
+        Returns a dict with keys: window_hours, nodes, edges.
+        """
+        import asyncio
+
+        agent_server_edges, handoff_edges = await asyncio.gather(
+            self._lineage_agent_server_edges(hours, project_id),
+            self._lineage_handoff_edges(hours, project_id),
+        )
+
+        # ── Assemble unique nodes from edges ──────────────────────────────────
+        agent_metrics: dict[str, dict[str, Any]] = {}
+        server_metrics: dict[str, dict[str, Any]] = {}
+
+        for edge in agent_server_edges:
+            agent = edge["agent_name"]
+            server = edge["server_name"]
+
+            # Accumulate agent metrics
+            if agent not in agent_metrics:
+                agent_metrics[agent] = {
+                    "total_calls": 0,
+                    "error_count": 0,
+                    "avg_latency_ms": 0.0,
+                    "sessions": 0,
+                    "_latency_sum": 0.0,
+                    "_call_count_for_avg": 0,
+                }
+            am = agent_metrics[agent]
+            am["total_calls"] += edge["call_count"]
+            am["error_count"] += edge["error_count"]
+            am["_latency_sum"] += edge["avg_latency_ms"] * edge["call_count"]
+            am["_call_count_for_avg"] += edge["call_count"]
+            am["sessions"] = max(am["sessions"], edge["session_count"])
+
+            # Accumulate server metrics
+            if server not in server_metrics:
+                server_metrics[server] = {
+                    "total_calls": 0,
+                    "error_count": 0,
+                    "avg_latency_ms": 0.0,
+                    "_latency_sum": 0.0,
+                    "_call_count_for_avg": 0,
+                }
+            sm = server_metrics[server]
+            sm["total_calls"] += edge["call_count"]
+            sm["error_count"] += edge["error_count"]
+            sm["_latency_sum"] += edge["avg_latency_ms"] * edge["call_count"]
+            sm["_call_count_for_avg"] += edge["call_count"]
+
+        # Agents that only appear as handoff targets (no tool_call spans of their own)
+        for edge in handoff_edges:
+            for agent in (edge["from_agent"], edge["to_agent"]):
+                if agent and agent not in agent_metrics:
+                    agent_metrics[agent] = {
+                        "total_calls": 0,
+                        "error_count": 0,
+                        "avg_latency_ms": 0.0,
+                        "sessions": 0,
+                        "_latency_sum": 0.0,
+                        "_call_count_for_avg": 0,
+                    }
+
+        # Finalize weighted-average latency
+        for am in agent_metrics.values():
+            if am["_call_count_for_avg"] > 0:
+                am["avg_latency_ms"] = round(am["_latency_sum"] / am["_call_count_for_avg"], 2)
+            del am["_latency_sum"]
+            del am["_call_count_for_avg"]
+
+        for sm in server_metrics.values():
+            if sm["_call_count_for_avg"] > 0:
+                sm["avg_latency_ms"] = round(sm["_latency_sum"] / sm["_call_count_for_avg"], 2)
+            del sm["_latency_sum"]
+            del sm["_call_count_for_avg"]
+
+        # ── Build node list ───────────────────────────────────────────────────
+        nodes: list[dict[str, Any]] = []
+        for name, metrics in agent_metrics.items():
+            nodes.append(
+                {
+                    "id": f"agent:{name}",
+                    "type": "agent",
+                    "label": name,
+                    "metrics": metrics,
+                }
+            )
+        for name, metrics in server_metrics.items():
+            nodes.append(
+                {
+                    "id": f"server:{name}",
+                    "type": "server",
+                    "label": name,
+                    "metrics": metrics,
+                }
+            )
+
+        # ── Build edge list ───────────────────────────────────────────────────
+        edges: list[dict[str, Any]] = []
+        for edge in agent_server_edges:
+            edges.append(
+                {
+                    "source": f"agent:{edge['agent_name']}",
+                    "target": f"server:{edge['server_name']}",
+                    "type": "calls",
+                    "metrics": {
+                        "call_count": edge["call_count"],
+                        "error_count": edge["error_count"],
+                        "avg_latency_ms": round(edge["avg_latency_ms"], 2),
+                        "session_count": edge["session_count"],
+                    },
+                }
+            )
+        for edge in handoff_edges:
+            edges.append(
+                {
+                    "source": f"agent:{edge['from_agent']}",
+                    "target": f"agent:{edge['to_agent']}",
+                    "type": "handoff",
+                    "metrics": {
+                        "handoff_count": edge["handoff_count"],
+                        "session_count": edge["session_count"],
+                    },
+                }
+            )
+
+        return {
+            "window_hours": hours,
+            "nodes": nodes,
+            "edges": edges,
+        }
+
+    async def _lineage_agent_server_edges(
+        self,
+        hours: int,
+        project_id: str | None,
+    ) -> list[dict[str, Any]]:
+        """Query agent-to-server edges from tool_call spans."""
+        where = (
+            "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR"
+            " AND agent_name != ''"
+            " AND span_type = 'tool_call'"
+        )
+        params: dict[str, Any] = {"hours": hours}
+        if project_id:
+            where += " AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+
+        result = await self._client.query(
+            f"""
+            SELECT
+                agent_name,
+                server_name,
+                count()                      AS call_count,
+                countIf(status != 'success') AS error_count,
+                avg(latency_ms)              AS avg_latency_ms,
+                uniq(session_id)             AS session_count
+            FROM mcp_tool_calls
+            {where}
+            GROUP BY agent_name, server_name
+            ORDER BY call_count DESC
+            """,
+            parameters=params,
+        )
+
+        cols = ["agent_name", "server_name", "call_count", "error_count", "avg_latency_ms", "session_count"]
+        return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+    async def _lineage_handoff_edges(
+        self,
+        hours: int,
+        project_id: str | None,
+    ) -> list[dict[str, Any]]:
+        """Query agent-to-agent handoff edges."""
+        where = (
+            "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR"
+            " AND span_type = 'handoff'"
+            " AND agent_name != ''"
+        )
+        params: dict[str, Any] = {"hours": hours}
+        if project_id:
+            where += " AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+
+        result = await self._client.query(
+            f"""
+            SELECT
+                agent_name                       AS from_agent,
+                replaceOne(tool_name, '\u2192 ', '') AS to_agent,
+                count()                          AS handoff_count,
+                uniq(session_id)                 AS session_count
+            FROM mcp_tool_calls
+            {where}
+            GROUP BY agent_name, tool_name
+            ORDER BY handoff_count DESC
+            """,
+            parameters=params,
+        )
+
+        cols = ["from_agent", "to_agent", "handoff_count", "session_count"]
+        return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+    # ---------------------------------------------------------------------------
     # Context manager
     # ---------------------------------------------------------------------------
 

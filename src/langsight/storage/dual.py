@@ -286,11 +286,21 @@ class DualStorage:
     async def count_audit_logs(self) -> int:
         return await self._meta.count_audit_logs()
 
+    # Lineage graph → ClickHouse
+
+    async def get_lineage_graph(
+        self,
+        hours: int = 168,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._analytics.get_lineage_graph(hours=hours, project_id=project_id)
+
     # ── ClickHouse extension methods ──────────────────────────────────────────
     # Methods not in the base StorageBackend protocol but used by API routers
     # via hasattr/getattr (e.g. get_session_trace, compare_sessions,
     # get_cost_call_counts, get_tool_reliability, get_baseline_stats,
-    # get_agent_sessions). Delegated transparently to the analytics backend.
+    # get_agent_sessions, get_lineage_graph). Delegated transparently to the
+    # analytics backend.
 
     def __getattr__(self, name: str) -> Any:
         """Forward any unresolved attribute to the analytics (ClickHouse) backend."""

@@ -8,6 +8,7 @@ import type {
   DashboardUser,
   HealthResult,
   InviteResponse,
+  LineageGraph,
   ModelPricingEntry,
   ProjectMember,
   ProjectResponse,
@@ -119,6 +120,10 @@ export const compareSessions = (a: string, b: string, projectId?: string) =>
   get<SessionComparison>(`/agents/sessions/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
 export const replaySession = (sessionId: string, timeoutPerCall = 10, totalTimeout = 60, projectId?: string) =>
   post<ReplayResponse>(`/agents/sessions/${encodeURIComponent(sessionId)}/replay?timeout_per_call=${timeoutPerCall}&total_timeout=${totalTimeout}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
+
+// ─── Lineage (agent action DAG) ──────────────────────────────────────────────
+export const getLineageGraph = (hours = 168, projectId?: string) =>
+  get<LineageGraph>(`/agents/lineage?hours=${hours}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
 
 // ─── Reliability / Anomalies (P5.4) ───────────────────────────────────────────
 export const getAnomalies = (currentHours = 1, zThreshold = 2.0) =>
