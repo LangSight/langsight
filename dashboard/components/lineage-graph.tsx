@@ -3,13 +3,14 @@
 /**
  * SVG-based lineage graph — raw SVG + dagre layout.
  *
- * Inspired by DataHub's Visx-based lineage renderer.
- * No React Flow — full pixel control over nodes, edges, and arrows.
+ * Features: node drag, pan/zoom, edge click/hover, node hover preview,
+ * search with highlight, zoom slider, minimap, error path toggle,
+ * expand/collapse, keyboard shortcuts, glass-morphism nodes, edge flow animation.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dagre from "dagre";
-import { Bot, Server } from "lucide-react";
+import { Bot, Server, Search, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /* ── Types ─────────────────────────────────────────────────── */
@@ -20,6 +21,14 @@ export interface GraphNode {
   hasError: boolean;
   callCount?: number;
   meta?: Record<string, string | number>;
+  errorCount?: number;
+  avgLatencyMs?: number;
+  groupId?: string;
+  splitLabel?: string;
+  isCollapsible?: boolean;
+  collapsedCount?: number;
+  expandableEdgeId?: string;
+  toolNames?: string[];
 }
 
 export interface GraphEdge {
@@ -27,283 +36,469 @@ export interface GraphEdge {
   target: string;
   type: "calls" | "handoff";
   label?: string;
+  edgeId?: string;
+  errorCount?: number;
+  avgLatencyMs?: number;
 }
 
-/* ── Constants ─────────────────────────────────────────────── */
-const NODE_W = 220;
-const NODE_H = 60;
-const RANK_SEP = 160; // horizontal space between layers
-const NODE_SEP = 50;  // vertical space between nodes
-const HANDLE_R = 4;   // connection point radius
-const ARROW_SIZE = 8;
-const EDGE_COLOR = "#94a3b8";       // slate-400
-const EDGE_HANDOFF = "#6366f1";     // indigo-500
-const EDGE_WIDTH = 1.8;
-const PADDING = 40;
+export type GraphSelection =
+  | { type: "node"; id: string }
+  | { type: "edge"; edgeId: string; source: string; target: string }
+  | null;
 
-/* ── Bezier path ───────────────────────────────────────────── */
-function bezierPath(x1: number, y1: number, x2: number, y2: number): string {
-  const midX = (x1 + x2) / 2;
-  return `M ${x1},${y1} C ${midX},${y1} ${midX},${y2} ${x2},${y2}`;
+/* ── Constants ─────────────────────────────────────────────── */
+const NODE_W = 250;
+const DEFAULT_NODE_H = 60;
+const TOOL_EXPAND_ROW_H = 18;
+const RANK_SEP = 180;
+const NODE_SEP = 56;
+const HANDLE_R = 5;
+const ARROW_SIZE = 7;
+const PADDING = 60;
+const MINIMAP_W = 150;
+const MINIMAP_H = 90;
+
+/* ── Colors ────────────────────────────────────────────────── */
+const C_EDGE = "rgba(148,163,184,0.55)";
+const C_HANDOFF = "rgba(99,102,241,0.7)";
+const C_SELECTED = "#818cf8";
+
+/* ── Path helpers ──────────────────────────────────────────── */
+function bezier(x1: number, y1: number, x2: number, y2: number) {
+  const mx = (x1 + x2) / 2;
+  return `M ${x1},${y1} C ${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+}
+function selfLoop(x: number, y: number, w: number, h: number) {
+  const sx = x + w, sy = y + h * 0.3, ey = y + h * 0.7, b = 80;
+  return `M ${sx},${sy} C ${sx + b},${sy - b * 0.6} ${sx + b},${ey + b * 0.6} ${sx},${ey}`;
 }
 
 /* ── Layout ────────────────────────────────────────────────── */
-function layoutNodes(nodes: GraphNode[], edges: GraphEdge[]) {
+function nodeH(n: GraphNode, base: number) {
+  return n.expandableEdgeId && n.toolNames && n.toolNames.length >= 2 ? base + TOOL_EXPAND_ROW_H : base;
+}
+
+function layout(nodes: GraphNode[], edges: GraphEdge[], baseH: number) {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: "LR", nodesep: NODE_SEP, ranksep: RANK_SEP });
-
-  nodes.forEach((n) => g.setNode(n.id, { width: NODE_W, height: NODE_H }));
-  edges.forEach((e) => g.setEdge(e.source, e.target));
+  const heights = new Map<string, number>();
+  nodes.forEach((n) => { const h = nodeH(n, baseH); heights.set(n.id, h); g.setNode(n.id, { width: NODE_W, height: h }); });
+  edges.forEach((e) => { if (e.source !== e.target) g.setEdge(e.source, e.target); });
   dagre.layout(g);
-
-  const positions = new Map<string, { x: number; y: number }>();
-  nodes.forEach((n) => {
-    const pos = g.node(n.id);
-    positions.set(n.id, { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 });
-  });
-
-  // Compute bounds
+  const pos = new Map<string, { x: number; y: number }>();
+  nodes.forEach((n) => { const p = g.node(n.id); const h = heights.get(n.id)!; if (p) pos.set(n.id, { x: p.x - NODE_W / 2, y: p.y - h / 2 }); });
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  positions.forEach(({ x, y }) => {
-    minX = Math.min(minX, x);
-    minY = Math.min(minY, y);
-    maxX = Math.max(maxX, x + NODE_W);
-    maxY = Math.max(maxY, y + NODE_H);
-  });
+  pos.forEach(({ x, y }, id) => { const h = heights.get(id)!; minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x + NODE_W); maxY = Math.max(maxY, y + h); });
+  return { pos, heights, offX: -minX + PADDING, offY: -minY + PADDING, w: maxX - minX + PADDING * 2, h: maxY - minY + PADDING * 2 };
+}
 
-  return {
-    positions,
-    width: maxX - minX + PADDING * 2,
-    height: maxY - minY + PADDING * 2,
-    offsetX: -minX + PADDING,
-    offsetY: -minY + PADDING,
-  };
+function backEdgeSet(edges: GraphEdge[]) {
+  const fwd = new Set<string>(), back = new Set<string>();
+  for (const e of edges) { const k = `${e.source}→${e.target}`, r = `${e.target}→${e.source}`; if (fwd.has(r)) back.add(k); else fwd.add(k); }
+  return back;
 }
 
 /* ── Component ─────────────────────────────────────────────── */
 export function LineageGraph({
-  nodes,
-  edges,
-  selectedId,
-  onSelect,
-  className,
+  nodes, edges,
+  selectedId, onSelect,
+  selection, onSelectionChange,
+  expandedGroups, onToggleGroup,
+  expandedEdges, onToggleEdge,
+  onExpandAll, onCollapseAll,
+  nodeHeight, className,
 }: {
   nodes: GraphNode[];
   edges: GraphEdge[];
-  selectedId: string | null;
-  onSelect: (id: string | null) => void;
+  selectedId?: string | null;
+  onSelect?: (id: string | null) => void;
+  selection?: GraphSelection;
+  onSelectionChange?: (sel: GraphSelection) => void;
+  expandedGroups?: Set<string>;
+  onToggleGroup?: (groupId: string) => void;
+  expandedEdges?: Set<string>;
+  onToggleEdge?: (edgeId: string) => void;
+  onExpandAll?: () => void;
+  onCollapseAll?: () => void;
+  nodeHeight?: number;
   className?: string;
 }) {
+  const baseH = nodeHeight ?? DEFAULT_NODE_H;
+  const sel: GraphSelection = selection ?? (selectedId ? { type: "node", id: selectedId } : null);
+  const doSelect = useCallback((s: GraphSelection) => { if (onSelectionChange) onSelectionChange(s); else onSelect?.(s?.type === "node" ? s.id : null); }, [onSelectionChange, onSelect]);
+
   const containerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  /* ── State ── */
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [dragging, setDragging] = useState(false);
+  const [panning, setPanning] = useState(false);
+  const [dragNodeId, setDragNodeId] = useState<string | null>(null);
+  const [nodeOffsets, setNodeOffsets] = useState<Map<string, { dx: number; dy: number }>>(new Map());
   const lastMouse = useRef({ x: 0, y: 0 });
 
-  const layout = useMemo(() => layoutNodes(nodes, edges), [nodes, edges]);
+  const [hoveredEdge, setHoveredEdge] = useState<{ edge: GraphEdge; x: number; y: number } | null>(null);
+  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
 
-  // Pan handlers
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    setDragging(true);
-    lastMouse.current = { x: e.clientX, y: e.clientY };
+  const [searchQ, setSearchQ] = useState("");
+  const [showErrors, setShowErrors] = useState(false);
+  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
+
+  /* ── Layout ── */
+  const base = useMemo(() => layout(nodes, edges, baseH), [nodes, edges, baseH]);
+  const backs = useMemo(() => backEdgeSet(edges), [edges]);
+
+  // Effective positions = dagre + user drag offsets
+  const positions = useMemo(() => {
+    const r = new Map<string, { x: number; y: number }>();
+    for (const [id, p] of base.pos) { const o = nodeOffsets.get(id); r.set(id, o ? { x: p.x + o.dx, y: p.y + o.dy } : p); }
+    return r;
+  }, [base.pos, nodeOffsets]);
+
+  // Reset offsets when node count changes (expand/collapse)
+  const prevLen = useRef(nodes.length);
+  if (nodes.length !== prevLen.current) { prevLen.current = nodes.length; if (nodeOffsets.size > 0) setNodeOffsets(new Map()); }
+
+  /* ── Search ── */
+  const matchIds = useMemo(() => {
+    if (!searchQ.trim()) return null;
+    const q = searchQ.toLowerCase();
+    return new Set(nodes.filter((n) => n.label.toLowerCase().includes(q) || (n.splitLabel ?? "").toLowerCase().includes(q)).map((n) => n.id));
+  }, [nodes, searchQ]);
+
+  /* ── Error path ── */
+  const errorIds = useMemo(() => {
+    if (!showErrors) return null;
+    const nids = new Set(nodes.filter((n) => n.hasError || (n.errorCount ?? 0) > 0).map((n) => n.id));
+    const ekeys = new Set<string>();
+    for (const e of edges) {
+      if ((e.errorCount ?? 0) > 0 || nids.has(e.source) || nids.has(e.target)) {
+        ekeys.add(`${e.source}→${e.target}`); nids.add(e.source); nids.add(e.target);
+      }
+    }
+    return { n: nids, e: ekeys };
+  }, [showErrors, nodes, edges]);
+
+  /* ── Minimap ── */
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver(([e]) => setContainerSize({ w: e.contentRect.width, h: e.contentRect.height }));
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
   }, []);
 
-  const onMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!dragging) return;
-    const dx = e.clientX - lastMouse.current.x;
-    const dy = e.clientY - lastMouse.current.y;
+  const minimap = useMemo(() => {
+    if (positions.size === 0) return null;
+    let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+    for (const [id, p] of positions) { const h = base.heights.get(id) ?? baseH; mnx = Math.min(mnx, p.x); mny = Math.min(mny, p.y); mxx = Math.max(mxx, p.x + NODE_W); mxy = Math.max(mxy, p.y + h); }
+    const gw = mxx - mnx + PADDING * 2, gh = mxy - mny + PADDING * 2;
+    return { mnx: mnx - PADDING, mny: mny - PADDING, gw, gh, s: Math.min(MINIMAP_W / gw, MINIMAP_H / gh) };
+  }, [positions, base.heights, baseH]);
+
+  /* ── Keyboard shortcuts ── */
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (document.activeElement?.tagName ?? "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      switch (e.key) {
+        case "Escape": doSelect(null); setSearchQ(""); setShowErrors(false); break;
+        case "+": case "=": e.preventDefault(); setZoom((z) => Math.min(2.5, z * 1.15)); break;
+        case "-": e.preventDefault(); setZoom((z) => Math.max(0.25, z * 0.85)); break;
+        case "f": e.preventDefault(); setZoom(1); setPan({ x: 0, y: 0 }); setNodeOffsets(new Map()); break;
+        case "/": e.preventDefault(); searchRef.current?.focus(); break;
+        case "e": e.preventDefault(); setShowErrors((v) => !v); break;
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [doSelect]);
+
+  /* ── Mouse handlers ── */
+  const onBgDown = useCallback((e: React.MouseEvent) => { if (e.button === 0) { setPanning(true); lastMouse.current = { x: e.clientX, y: e.clientY }; } }, []);
+  const onMove = useCallback((e: React.MouseEvent) => {
+    const dx = e.clientX - lastMouse.current.x, dy = e.clientY - lastMouse.current.y;
     lastMouse.current = { x: e.clientX, y: e.clientY };
-    setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
-  }, [dragging]);
+    if (dragNodeId) setNodeOffsets((p) => { const n = new Map(p); const ex = n.get(dragNodeId) ?? { dx: 0, dy: 0 }; n.set(dragNodeId, { dx: ex.dx + dx / zoom, dy: ex.dy + dy / zoom }); return n; });
+    else if (panning) setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
+  }, [dragNodeId, panning, zoom]);
+  const onUp = useCallback(() => { setPanning(false); setDragNodeId(null); }, []);
+  const onWheel = useCallback((e: React.WheelEvent) => { e.preventDefault(); setZoom((z) => Math.max(0.25, Math.min(2.5, z * (e.deltaY > 0 ? 0.92 : 1.08)))); }, []);
+  const onNodeDown = useCallback((e: React.MouseEvent, id: string) => { e.stopPropagation(); if (e.button === 0) { setDragNodeId(id); lastMouse.current = { x: e.clientX, y: e.clientY }; } }, []);
 
-  const onMouseUp = useCallback(() => setDragging(false), []);
-
-  // Zoom handler
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setZoom((z) => Math.max(0.3, Math.min(2, z * delta)));
-  }, []);
-
-  if (nodes.length === 0) {
-    return (
-      <div className={cn("flex items-center justify-center text-sm text-muted-foreground", className)}>
-        No lineage data
-      </div>
-    );
+  /* ── Opacity helpers ── */
+  function nodeOpacity(id: string, hasError: boolean) {
+    let o = 1;
+    if (matchIds !== null && !matchIds.has(id)) o *= 0.25;
+    if (errorIds !== null && !errorIds.n.has(id)) o *= 0.12;
+    return o;
+  }
+  function edgeOpacity(src: string, tgt: string, isBack: boolean, isSel: boolean) {
+    let o = isBack && !isSel ? 0.4 : 1;
+    if (matchIds !== null && !(matchIds.has(src) && matchIds.has(tgt))) o *= 0.12;
+    if (errorIds !== null && !errorIds.e.has(`${src}→${tgt}`)) o *= 0.12;
+    return o;
   }
 
+  if (nodes.length === 0) return <div className={cn("flex items-center justify-center text-sm text-muted-foreground", className)}>No lineage data</div>;
+
   return (
-    <div
-      ref={containerRef}
-      className={cn("relative overflow-hidden cursor-grab active:cursor-grabbing", className)}
-      onMouseDown={onMouseDown}
-      onMouseMove={onMouseMove}
-      onMouseUp={onMouseUp}
-      onMouseLeave={onMouseUp}
-      onWheel={onWheel}
-      onClick={(e) => { if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === "svg") onSelect(null); }}
+    <div ref={containerRef} className={cn("relative overflow-hidden select-none", className)}
+      style={{ cursor: dragNodeId ? "grabbing" : panning ? "grabbing" : "grab" }}
+      onMouseDown={onBgDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onWheel={onWheel}
+      onClick={(e) => { if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === "svg") doSelect(null); }}
     >
-      <svg
-        width="100%"
-        height="100%"
-        style={{ position: "absolute", top: 0, left: 0 }}
-      >
+      <svg width="100%" height="100%" style={{ position: "absolute", top: 0, left: 0 }}>
         <defs>
-          {/* Arrow marker — gray */}
-          <marker
-            id="arrow-gray"
-            viewBox={`0 0 ${ARROW_SIZE} ${ARROW_SIZE}`}
-            refX={ARROW_SIZE}
-            refY={ARROW_SIZE / 2}
-            markerWidth={ARROW_SIZE}
-            markerHeight={ARROW_SIZE}
-            orient="auto-start-reverse"
-          >
-            <path d={`M 0 0 L ${ARROW_SIZE} ${ARROW_SIZE / 2} L 0 ${ARROW_SIZE} Z`} fill={EDGE_COLOR} />
-          </marker>
-          {/* Arrow marker — indigo (handoffs) */}
-          <marker
-            id="arrow-indigo"
-            viewBox={`0 0 ${ARROW_SIZE} ${ARROW_SIZE}`}
-            refX={ARROW_SIZE}
-            refY={ARROW_SIZE / 2}
-            markerWidth={ARROW_SIZE}
-            markerHeight={ARROW_SIZE}
-            orient="auto-start-reverse"
-          >
-            <path d={`M 0 0 L ${ARROW_SIZE} ${ARROW_SIZE / 2} L 0 ${ARROW_SIZE} Z`} fill={EDGE_HANDOFF} />
-          </marker>
+          {[{ id: "arrow-gray", fill: "rgba(148,163,184,0.7)" }, { id: "arrow-indigo", fill: "rgba(99,102,241,0.85)" }, { id: "arrow-sel", fill: C_SELECTED }].map(({ id, fill }) => (
+            <marker key={id} id={id} viewBox={`0 0 ${ARROW_SIZE} ${ARROW_SIZE}`} refX={ARROW_SIZE} refY={ARROW_SIZE / 2} markerWidth={ARROW_SIZE} markerHeight={ARROW_SIZE} orient="auto-start-reverse">
+              <path d={`M 0 0 L ${ARROW_SIZE} ${ARROW_SIZE / 2} L 0 ${ARROW_SIZE} Z`} fill={fill} />
+            </marker>
+          ))}
+          <filter id="glow-pri" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="6" result="b" /><feFlood floodColor="#6366f1" floodOpacity="0.3" /><feComposite in2="b" operator="in" /><feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+          <filter id="glow-err" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5" result="b" /><feFlood floodColor="#ef4444" floodOpacity="0.25" /><feComposite in2="b" operator="in" /><feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+          <filter id="glow-search" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5" result="b" /><feFlood floodColor="#f59e0b" floodOpacity="0.35" /><feComposite in2="b" operator="in" /><feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge></filter>
         </defs>
 
-        <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-          <g transform={`translate(${layout.offsetX}, ${layout.offsetY})`}>
-            {/* Edges */}
+        <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
+          <g transform={`translate(${base.offX},${base.offY})`}>
+            {/* ── Edges ── */}
             {edges.map((edge, i) => {
-              const srcPos = layout.positions.get(edge.source);
-              const tgtPos = layout.positions.get(edge.target);
-              if (!srcPos || !tgtPos) return null;
-
-              const x1 = srcPos.x + NODE_W;
-              const y1 = srcPos.y + NODE_H / 2;
-              const x2 = tgtPos.x;
-              const y2 = tgtPos.y + NODE_H / 2;
-              const isHandoff = edge.type === "handoff";
-              const color = isHandoff ? EDGE_HANDOFF : EDGE_COLOR;
-
+              const sp = positions.get(edge.source), tp = positions.get(edge.target);
+              if (!sp || !tp) return null;
+              const self = edge.source === edge.target, ho = edge.type === "handoff";
+              const eid = edge.edgeId ?? `${edge.source}→${edge.target}`;
+              const isSel = sel?.type === "edge" && sel.source === edge.source && sel.target === edge.target;
+              const isBack = backs.has(`${edge.source}→${edge.target}`);
+              const hasErr = (edge.errorCount ?? 0) > 0;
+              const color = isSel ? C_SELECTED : hasErr ? "rgba(239,68,68,0.5)" : ho ? C_HANDOFF : C_EDGE;
+              const w = isSel ? 2.5 : 1.5;
+              const op = edgeOpacity(edge.source, edge.target, isBack, isSel);
+              const sH = base.heights.get(edge.source) ?? baseH, tH = base.heights.get(edge.target) ?? baseH;
+              let d: string, lx: number, ly: number;
+              if (self) { d = selfLoop(sp.x, sp.y, NODE_W, sH); lx = sp.x + NODE_W + 45; ly = sp.y + sH / 2; }
+              else { const x1 = sp.x + NODE_W, y1 = sp.y + sH / 2, x2 = tp.x, y2 = tp.y + tH / 2; d = bezier(x1, y1, x2, y2); lx = (x1 + x2) / 2; ly = (y1 + y2) / 2 - 10; }
+              const mk = isSel ? "url(#arrow-sel)" : ho ? "url(#arrow-indigo)" : "url(#arrow-gray)";
               return (
-                <g key={`edge-${i}`}>
-                  <path
-                    d={bezierPath(x1, y1, x2, y2)}
-                    fill="none"
-                    stroke={color}
-                    strokeWidth={EDGE_WIDTH}
-                    strokeDasharray={isHandoff ? "6,4" : "none"}
-                    markerEnd={isHandoff ? "url(#arrow-indigo)" : "url(#arrow-gray)"}
-                    className="transition-opacity"
-                  />
-                  {/* Edge label */}
-                  {edge.label && (
-                    <text
-                      x={(x1 + x2) / 2}
-                      y={(y1 + y2) / 2 - 8}
-                      textAnchor="middle"
-                      fill="#94a3b8"
-                      fontSize={9}
-                      fontWeight={600}
-                    >
-                      {edge.label}
-                    </text>
-                  )}
-                  {/* Source handle dot */}
-                  <circle cx={x1} cy={y1} r={HANDLE_R} fill={color} />
-                  {/* Target handle dot */}
-                  <circle cx={x2} cy={y2} r={HANDLE_R} fill={color} />
+                <g key={`e-${i}`} opacity={op}>
+                  <path d={d} fill="none" stroke="transparent" strokeWidth={16} className="cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); doSelect({ type: "edge", edgeId: eid, source: edge.source, target: edge.target }); }}
+                    onMouseEnter={(e) => setHoveredEdge({ edge, x: e.clientX, y: e.clientY })} onMouseLeave={() => setHoveredEdge(null)} />
+                  <path d={d} fill="none" stroke={color} strokeWidth={w} strokeDasharray={ho ? "6,4" : isBack ? "4,3" : "none"} markerEnd={mk} className="pointer-events-none" style={{ transition: "stroke 0.2s" }} />
+                  {!isBack && !self && <path d={d} fill="none" stroke={isSel ? "rgba(129,140,248,0.4)" : "rgba(148,163,184,0.12)"} strokeWidth={isSel ? 4 : 2} strokeDasharray="4,12" className="pointer-events-none edge-flow-anim" />}
+                  {edge.label && (() => {
+                    const canExpandEdge = edge.edgeId && onToggleEdge;
+                    const isEdgeExp = edge.edgeId ? expandedEdges?.has(edge.edgeId) : false;
+                    const tgtNode = nodes.find((n) => n.id === edge.target);
+                    const hasMultiTools = tgtNode?.toolNames && tgtNode.toolNames.length >= 2;
+                    // Also check for group expand on target node
+                    const tgtCollapsible = tgtNode?.isCollapsible && tgtNode?.collapsedCount != null && onToggleGroup;
+                    const tgtGid = tgtNode?.groupId ?? tgtNode?.id ?? "";
+                    const tgtGroupExp = expandedGroups?.has(tgtGid);
+                    // Show per-tool button if edge has multi tools
+                    const showToolBtn = canExpandEdge && hasMultiTools;
+                    // Show group button if target is collapsible and NOT yet expanded
+                    const showGroupBtn = tgtCollapsible && !tgtGroupExp;
+                    // Show either tool or group button (prioritize group)
+                    const showBtn = showGroupBtn || showToolBtn;
+                    const btnX = lx + 22;
+                    return (
+                      <g>
+                        {/* Label pill */}
+                        <rect x={lx - 16} y={ly - 9} width={32} height={16} rx={5} fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth={0.5} opacity={0.9} className="pointer-events-none" />
+                        <text x={lx} y={ly + 2} textAnchor="middle" fill={isSel ? C_SELECTED : "hsl(var(--muted-foreground))"} fontSize={8} fontWeight={600} fontFamily="var(--font-geist-mono)" className="pointer-events-none">{edge.label}</text>
+                        {/* Circular expand/collapse button */}
+                        {showBtn && (
+                          <g className="cursor-pointer" onClick={(e) => {
+                            e.stopPropagation();
+                            if (showGroupBtn) onToggleGroup!(tgtGid);
+                            else if (showToolBtn) onToggleEdge!(edge.edgeId!);
+                          }}>
+                            <circle cx={btnX} cy={ly} r={9} fill="hsl(var(--primary))" opacity={0.9} />
+                            <text x={btnX} y={ly + 3.5} textAnchor="middle" fill="white" fontSize={11} fontWeight={700}>+</text>
+                          </g>
+                        )}
+                        {/* Collapse button — on edges to split nodes */}
+                        {!showBtn && tgtNode?.splitLabel && tgtNode?.groupId && expandedGroups?.has(tgtNode.groupId) && onToggleGroup && (
+                          <g className="cursor-pointer" onClick={(e) => { e.stopPropagation(); onToggleGroup!(tgtNode.groupId!); }}>
+                            <circle cx={btnX} cy={ly} r={9} fill="hsl(var(--muted))" stroke="hsl(var(--border))" strokeWidth={0.5} />
+                            <text x={btnX} y={ly + 3.5} textAnchor="middle" fill="hsl(var(--muted-foreground))" fontSize={11} fontWeight={700}>{"\u2212"}</text>
+                          </g>
+                        )}
+                        {/* Per-tool collapse — on edges where tools are expanded */}
+                        {!showBtn && !tgtNode?.splitLabel && isEdgeExp && canExpandEdge && (
+                          <g className="cursor-pointer" onClick={(e) => { e.stopPropagation(); onToggleEdge!(edge.edgeId!); }}>
+                            <circle cx={btnX} cy={ly} r={9} fill="hsl(var(--muted))" stroke="hsl(var(--border))" strokeWidth={0.5} />
+                            <text x={btnX} y={ly + 3.5} textAnchor="middle" fill="hsl(var(--muted-foreground))" fontSize={11} fontWeight={700}>{"\u2212"}</text>
+                          </g>
+                        )}
+                      </g>
+                    );
+                  })()}
+                  {/* Collapse button on label-less edges (single-call per-tool splits) */}
+                  {!edge.label && edge.edgeId && expandedEdges?.has(edge.edgeId) && onToggleEdge && !self && (() => {
+                    return (
+                      <g className="cursor-pointer" onClick={(e) => { e.stopPropagation(); onToggleEdge!(edge.edgeId!); }}>
+                        <circle cx={lx} cy={ly} r={9} fill="hsl(var(--muted))" stroke="hsl(var(--border))" strokeWidth={0.5} />
+                        <text x={lx} y={ly + 3.5} textAnchor="middle" fill="hsl(var(--muted-foreground))" fontSize={11} fontWeight={700}>{"\u2212"}</text>
+                      </g>
+                    );
+                  })()}
+                  {!self && (() => { const x1 = sp.x + NODE_W, y1 = sp.y + sH / 2, x2 = tp.x, y2 = tp.y + tH / 2; return <><circle cx={x1} cy={y1} r={HANDLE_R} fill={color} opacity={0.6} className="pointer-events-none" /><circle cx={x2} cy={y2} r={HANDLE_R} fill={color} opacity={0.6} className="pointer-events-none" /></>; })()}
                 </g>
               );
             })}
 
-            {/* Nodes */}
+            {/* ── Nodes ── */}
             {nodes.map((node) => {
-              const pos = layout.positions.get(node.id);
-              if (!pos) return null;
-              const isSelected = selectedId === node.id;
+              const p = positions.get(node.id);
+              if (!p) return null;
+              const h = base.heights.get(node.id) ?? baseH;
+              const isSel = sel?.type === "node" && sel.id === node.id;
+              const isHov = hoveredNode === node.id;
               const isAgent = node.type === "agent";
+              const hasMet = node.errorCount != null || node.avgLatencyMs != null || (node.callCount != null && node.callCount > 0);
+              const errRate = (node.callCount && node.errorCount) ? node.errorCount / node.callCount : 0;
+              const op = nodeOpacity(node.id, node.hasError);
+              const searchMatch = matchIds !== null && matchIds.has(node.id);
+              const glow = searchMatch ? "url(#glow-search)" : isSel ? "url(#glow-pri)" : node.hasError && !isSel ? "url(#glow-err)" : undefined;
+              const canExpTool = node.expandableEdgeId && node.toolNames && node.toolNames.length >= 2;
+              const isToolExp = node.expandableEdgeId ? expandedEdges?.has(node.expandableEdgeId) : false;
 
               return (
-                <foreignObject
-                  key={node.id}
-                  x={pos.x}
-                  y={pos.y}
-                  width={NODE_W}
-                  height={NODE_H}
-                  className="cursor-pointer"
-                  onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}
-                >
-                  <div
-                    className={cn(
-                      "w-full h-full rounded-2xl px-4 flex items-center gap-3 transition-all",
-                      isSelected ? "ring-2 ring-primary/50 shadow-lg" : "shadow-md hover:shadow-lg",
-                    )}
-                    style={{
-                      background: "hsl(var(--card))",
-                      border: isSelected ? "1.5px solid hsl(var(--primary))" : "1px solid hsl(var(--border))",
-                    }}
+                <g key={node.id} filter={glow} opacity={op} style={{ transition: "opacity 0.3s, filter 0.3s" }}>
+                  <foreignObject x={p.x} y={p.y} width={NODE_W} height={h}
+                    style={{ cursor: dragNodeId === node.id ? "grabbing" : "pointer" }}
+                    onMouseDown={(e) => onNodeDown(e, node.id)}
+                    onClick={(e) => { e.stopPropagation(); if (!dragNodeId) doSelect({ type: "node", id: node.id }); }}
+                    onMouseEnter={() => setHoveredNode(node.id)}
+                    onMouseLeave={() => setHoveredNode(null)}
                   >
-                    <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ background: isAgent ? "hsl(var(--primary) / 0.08)" : "rgba(100,116,139,0.08)" }}
+                    <div className="w-full h-full rounded-xl px-3.5 flex flex-col justify-center"
+                      style={{
+                        background: isSel ? "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.04) 100%)" : "hsl(var(--card))",
+                        border: isSel ? "1.5px solid hsl(var(--primary) / 0.6)" : node.hasError ? "1px solid rgba(239,68,68,0.25)" : "1px solid hsl(var(--border))",
+                        boxShadow: isSel ? "0 0 20px rgba(99,102,241,0.15), 0 4px 12px rgba(0,0,0,0.15)" : isHov ? "0 8px 24px rgba(0,0,0,0.18), 0 0 0 1px hsl(var(--primary) / 0.15)" : "0 2px 8px rgba(0,0,0,0.1)",
+                        transition: "box-shadow 0.2s ease, border-color 0.2s ease",
+                        backdropFilter: "blur(8px)",
+                      }}
                     >
-                      {isAgent
-                        ? <Bot size={15} style={{ color: "hsl(var(--primary))" }} />
-                        : <Server size={15} className="text-muted-foreground" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[12px] font-bold text-foreground truncate">{node.label}</span>
-                        <span className={cn("w-2 h-2 rounded-full flex-shrink-0", node.hasError ? "bg-red-500" : "bg-emerald-500")} />
+                      {/* Row 1 */}
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ background: isAgent ? "linear-gradient(135deg, hsl(var(--primary) / 0.12), hsl(var(--primary) / 0.06))" : "linear-gradient(135deg, rgba(100,116,139,0.12), rgba(100,116,139,0.05))", border: isAgent ? "1px solid hsl(var(--primary) / 0.15)" : "1px solid rgba(100,116,139,0.12)" }}>
+                          {isAgent ? <Bot size={13} style={{ color: "hsl(var(--primary))" }} /> : <Server size={13} className="text-muted-foreground" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-bold text-foreground truncate">{node.label}</span>
+                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: node.hasError ? "#ef4444" : "#10b981", boxShadow: node.hasError ? "0 0 6px rgba(239,68,68,0.4)" : "0 0 4px rgba(16,185,129,0.3)" }} />
+                          </div>
+                          <span className="text-[9px] text-muted-foreground block truncate" style={{ marginTop: 1 }}>
+                            {isAgent ? "Agent" : "MCP Server"}{node.splitLabel ? ` \u00b7 ${node.splitLabel}` : ""}
+                          </span>
+                        </div>
+                        {/* No node-level expand/collapse — handled on edges */}
                       </div>
-                      <span className="text-[10px] text-muted-foreground">
-                        {isAgent ? "Agent" : "MCP Server"}
-                        {node.callCount ? ` · ${node.callCount} calls` : ""}
-                      </span>
+                      {/* Row 2: metrics */}
+                      {hasMet && (
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          {node.callCount != null && node.callCount > 0 && <span className="text-[8px] px-1.5 py-[2px] rounded-md" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)", border: "0.5px solid hsl(var(--border))" }}>{node.callCount} calls</span>}
+                          {node.errorCount != null && node.errorCount > 0 && <span className="text-[8px] px-1.5 py-[2px] rounded-md" style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", fontFamily: "var(--font-geist-mono)", border: "0.5px solid rgba(239,68,68,0.15)" }}>{node.errorCount} err</span>}
+                          {node.avgLatencyMs != null && <span className="text-[8px] px-1.5 py-[2px] rounded-md" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)", border: "0.5px solid hsl(var(--border))" }}>{Math.round(node.avgLatencyMs)}ms</span>}
+                          {errRate > 0 && <div className="flex-1 h-[3px] rounded-full overflow-hidden ml-1" style={{ background: "hsl(var(--muted))", minWidth: 20, maxWidth: 40 }}><div className="h-full rounded-full" style={{ width: `${Math.min(100, errRate * 100)}%`, background: errRate > 0.5 ? "#ef4444" : errRate > 0.1 ? "#f59e0b" : "#10b981" }} /></div>}
+                        </div>
+                      )}
+                      {/* Row 3: tool expand */}
+                      {canExpTool && !isToolExp && (
+                        <button className="flex items-center gap-1 mt-1 w-full text-left" style={{ fontSize: 8, color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}
+                          onClick={(e) => { e.stopPropagation(); onToggleEdge?.(node.expandableEdgeId!); }}>
+                          <span style={{ fontSize: 7 }}>{"\u25BE"}</span>
+                          <span>{node.toolNames!.length} tools</span>
+                          <span className="text-muted-foreground truncate" style={{ fontSize: 7 }}>{node.toolNames!.slice(0, 2).join(", ")}{node.toolNames!.length > 2 ? "..." : ""}</span>
+                        </button>
+                      )}
+                      {canExpTool && isToolExp && (
+                        <button className="flex items-center gap-1 mt-1" style={{ fontSize: 8, color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}
+                          onClick={(e) => { e.stopPropagation(); onToggleEdge?.(node.expandableEdgeId!); }}>
+                          <span style={{ fontSize: 7 }}>{"\u25B4"}</span><span>collapse tools</span>
+                        </button>
+                      )}
                     </div>
-                  </div>
-                </foreignObject>
+                  </foreignObject>
+                </g>
               );
             })}
           </g>
         </g>
       </svg>
 
-      {/* Zoom controls */}
-      <div
-        className="absolute bottom-3 left-3 flex flex-col gap-1 rounded-lg overflow-hidden"
-        style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
-      >
-        <button
-          onClick={() => setZoom((z) => Math.min(2, z * 1.2))}
-          className="px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-        >
-          +
+      {/* ── Toolbar ── */}
+      <div className="graph-toolbar absolute top-3 left-3 right-3 flex items-center gap-2 z-10" style={{ pointerEvents: "none" }}>
+        {/* Search */}
+        <div className="relative flex-shrink-0" style={{ pointerEvents: "auto", width: 200 }}>
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input ref={searchRef} type="text" value={searchQ} onChange={(e) => setSearchQ(e.target.value)}
+            placeholder="Search nodes... (/)" className="input-base pl-8 pr-2 h-[30px] text-[12px]"
+            onMouseDown={(e) => e.stopPropagation()} />
+        </div>
+        {matchIds !== null && <span className="text-[10px] text-muted-foreground flex-shrink-0" style={{ pointerEvents: "auto" }}>{matchIds.size} of {nodes.length}</span>}
+
+        {/* Expand / Collapse all */}
+        {onExpandAll && onCollapseAll && (
+          <div className="flex items-center gap-1 flex-shrink-0" style={{ pointerEvents: "auto" }}>
+            <button onClick={() => onExpandAll()} className="px-2 h-[26px] rounded text-[9px] text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} onMouseDown={(e) => e.stopPropagation()}>Expand all</button>
+            <button onClick={() => onCollapseAll()} className="px-2 h-[26px] rounded text-[9px] text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} onMouseDown={(e) => e.stopPropagation()}>Collapse all</button>
+          </div>
+        )}
+
+        {/* Error toggle */}
+        <button onClick={() => setShowErrors((v) => !v)}
+          className={cn("h-[26px] px-2 rounded text-[9px] flex items-center gap-1 transition-colors flex-shrink-0", showErrors ? "text-red-400" : "text-muted-foreground hover:text-foreground hover:bg-accent/60")}
+          style={{ pointerEvents: "auto", background: showErrors ? "rgba(239,68,68,0.08)" : "hsl(var(--card))", border: showErrors ? "1px solid rgba(239,68,68,0.2)" : "1px solid hsl(var(--border))" }}
+          onMouseDown={(e) => e.stopPropagation()}>
+          <AlertCircle size={10} />Failures
         </button>
-        <button
-          onClick={() => setZoom((z) => Math.max(0.3, z * 0.8))}
-          className="px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border-t"
-          style={{ borderColor: "hsl(var(--border))" }}
-        >
-          −
-        </button>
-        <button
-          onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
-          className="px-2.5 py-1.5 text-[9px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border-t"
-          style={{ borderColor: "hsl(var(--border))" }}
-        >
-          fit
-        </button>
+
+        {/* Zoom — right side */}
+        <div className="flex items-center gap-2 ml-auto flex-shrink-0" style={{ pointerEvents: "auto" }}>
+          <button onClick={() => setZoom((z) => Math.max(0.25, z * 0.8))} className="w-6 h-6 rounded flex items-center justify-center text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} onMouseDown={(e) => e.stopPropagation()}>{"\u2212"}</button>
+          <input type="range" min={25} max={250} value={Math.round(zoom * 100)} onChange={(e) => setZoom(Number(e.target.value) / 100)} className="w-20 h-1 cursor-pointer" onMouseDown={(e) => e.stopPropagation()} />
+          <span className="text-[10px] text-muted-foreground w-8 text-center" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(zoom * 100)}%</span>
+          <button onClick={() => setZoom((z) => Math.min(2.5, z * 1.2))} className="w-6 h-6 rounded flex items-center justify-center text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} onMouseDown={(e) => e.stopPropagation()}>+</button>
+          <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setNodeOffsets(new Map()); }} className="px-2 h-6 rounded text-[9px] text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} onMouseDown={(e) => e.stopPropagation()}>Fit</button>
+        </div>
       </div>
+
+      {/* ── Edge tooltip ── */}
+      {hoveredEdge && (
+        <div className="fixed z-50 rounded-lg px-3 py-2.5 shadow-xl pointer-events-none" style={{ left: hoveredEdge.x + 14, top: hoveredEdge.y - 14, background: "hsl(var(--card-raised))", border: "1px solid hsl(var(--border))", backdropFilter: "blur(12px)", minWidth: 160, animation: "fadeIn 0.12s ease" }}>
+          <p className="text-[11px] font-semibold text-foreground mb-1">{hoveredEdge.edge.source.replace(/^(agent|server):/, "")}<span className="text-muted-foreground mx-1">{"\u2192"}</span>{hoveredEdge.edge.target.replace(/^(agent|server):/, "")}</p>
+          <div className="flex items-center gap-3 text-[10px]">
+            <span className="text-muted-foreground">{hoveredEdge.edge.label ?? "1 call"}</span>
+            {hoveredEdge.edge.errorCount != null && hoveredEdge.edge.errorCount > 0 && <span style={{ color: "#ef4444" }}>{hoveredEdge.edge.errorCount} err</span>}
+            {hoveredEdge.edge.avgLatencyMs != null && <span className="text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(hoveredEdge.edge.avgLatencyMs)}ms</span>}
+          </div>
+        </div>
+      )}
+
+      {/* ── Minimap ── */}
+      {minimap && containerSize.w > 0 && (
+        <div className="absolute bottom-3 right-3 rounded-lg overflow-hidden z-10"
+          style={{ width: MINIMAP_W, height: MINIMAP_H, background: "hsl(var(--card) / 0.9)", border: "1px solid hsl(var(--border))", backdropFilter: "blur(8px)", boxShadow: "0 2px 8px rgba(0,0,0,0.12)", cursor: "pointer" }}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const gx = (e.clientX - rect.left) / minimap.s + minimap.mnx, gy = (e.clientY - rect.top) / minimap.s + minimap.mny;
+            setPan({ x: -(gx + base.offX) * zoom + containerSize.w / 2, y: -(gy + base.offY) * zoom + containerSize.h / 2 });
+          }}>
+          <svg width={MINIMAP_W} height={MINIMAP_H}>
+            {nodes.map((n) => { const p = positions.get(n.id); if (!p || !minimap) return null; const nh = base.heights.get(n.id) ?? baseH; return <rect key={n.id} x={(p.x + base.offX - minimap.mnx) * minimap.s} y={(p.y + base.offY - minimap.mny) * minimap.s} width={NODE_W * minimap.s} height={nh * minimap.s} rx={1} fill={n.hasError ? "#ef4444" : n.type === "agent" ? "hsl(var(--primary))" : "rgba(148,163,184,0.6)"} opacity={0.8} />; })}
+            {(() => { const vx = (-pan.x / zoom - base.offX - minimap.mnx) * minimap.s, vy = (-pan.y / zoom - base.offY - minimap.mny) * minimap.s, vw = (containerSize.w / zoom) * minimap.s, vh = (containerSize.h / zoom) * minimap.s; return <rect x={vx} y={vy} width={vw} height={vh} fill="hsl(var(--primary) / 0.1)" stroke="hsl(var(--primary))" strokeWidth={1} rx={2} />; })()}
+          </svg>
+        </div>
+      )}
     </div>
   );
 }

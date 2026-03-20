@@ -2,70 +2,272 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import {
   ChevronRight, ChevronDown, GitBranch, Clock, Zap, AlertCircle,
   Search, GitCompare, Play, ArrowLeft, Columns2, Bot, Server,
 } from "lucide-react";
-import { LineageGraph, type GraphNode, type GraphEdge } from "@/components/lineage-graph";
+import { LineageGraph, type GraphNode, type GraphEdge, type GraphSelection } from "@/components/lineage-graph";
+import { PayloadSlideout } from "@/components/payload-slideout";
+import { SessionTimeline } from "@/components/session-timeline";
 import { fetcher, getSessionTrace, compareSessions, replaySession } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatDuration, CALL_STATUS_COLOR, SPAN_TYPE_ICON } from "@/lib/utils";
-import type { AgentSession, SessionTrace, SpanNode, SessionComparison, DiffEntry } from "@/lib/types";
+import type { AgentSession, SessionTrace, SpanNode, SessionComparison, DiffEntry, PathMetrics, ServerCallerInfo } from "@/lib/types";
 
-/* ── Build session graph from trace spans ──────────────────── */
+/* ── Build session graph from trace spans (with per-path attribution) ── */
 
-function useSessionGraph(trace: SessionTrace | null) {
+interface SessionGraphResult {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  serverCallers: Map<string, ServerCallerInfo[]>;
+  edgeMetrics: Map<string, PathMetrics>;
+  edgeSpans: Map<string, SpanNode[]>;
+}
+
+function useSessionGraph(
+  trace: SessionTrace | null,
+  expandedGroups: Set<string>,
+  expandedEdges: Set<string>,
+): SessionGraphResult {
   return useMemo(() => {
-    if (!trace) return { nodes: [] as GraphNode[], edges: [] as GraphEdge[] };
+    const empty: SessionGraphResult = {
+      nodes: [], edges: [],
+      serverCallers: new Map(), edgeMetrics: new Map(), edgeSpans: new Map(),
+    };
+    if (!trace) return empty;
+
+    // Step 1: collect per-path spans
+    const pathData = new Map<string, { agentName: string; serverName: string; spans: SpanNode[] }>();
     const agents = new Set<string>();
     const servers = new Set<string>();
-    const edgeMap = new Map<string, { source: string; target: string; type: "calls" | "handoff"; count: number }>();
+    const handoffs: { source: string; target: string; count: number }[] = [];
+    const handoffMap = new Map<string, number>();
     const agentErrors = new Set<string>();
-    const serverErrors = new Set<string>();
-    const nodeCalls = new Map<string, number>();
 
     for (const span of trace.spans_flat) {
-      const agent = span.agent_name;
-      const server = span.server_name;
-      const failed = span.status !== "success";
-      if (agent) agents.add(agent);
-      if (failed && agent) agentErrors.add(agent);
+      const agent = span.agent_name ?? "unknown";
+      if (span.agent_name) agents.add(agent);
 
-      if (span.span_type === "handoff" && agent && span.tool_name) {
+      if (span.span_type === "handoff" && span.tool_name) {
         const target = span.tool_name.replace(/^->\s*/, "").replace(/^→\s*/, "");
         if (target) {
           agents.add(target);
-          edgeMap.set(`${agent}→h→${target}`, { source: `agent:${agent}`, target: `agent:${target}`, type: "handoff", count: 1 });
+          const hKey = `${agent}→${target}`;
+          handoffMap.set(hKey, (handoffMap.get(hKey) ?? 0) + 1);
         }
-      } else if (span.span_type === "tool_call" && agent && server) {
+      } else if (span.span_type === "tool_call" && span.server_name) {
+        const server = span.server_name;
         servers.add(server);
-        if (failed) serverErrors.add(server);
-        const key = `${agent}→${server}`;
-        const existing = edgeMap.get(key);
-        edgeMap.set(key, { source: `agent:${agent}`, target: `server:${server}`, type: "calls", count: (existing?.count ?? 0) + 1 });
-        nodeCalls.set(`agent:${agent}`, (nodeCalls.get(`agent:${agent}`) ?? 0) + 1);
-        nodeCalls.set(`server:${server}`, (nodeCalls.get(`server:${server}`) ?? 0) + 1);
+        if (span.status !== "success") agentErrors.add(agent);
+        const pathKey = `agent:${agent}→server:${server}`;
+        if (!pathData.has(pathKey)) {
+          pathData.set(pathKey, { agentName: agent, serverName: server, spans: [] });
+        }
+        pathData.get(pathKey)!.spans.push(span);
       }
     }
 
-    const nodes: GraphNode[] = [
-      ...[...agents].map((a) => ({ id: `agent:${a}`, type: "agent" as const, label: a, hasError: agentErrors.has(a), callCount: nodeCalls.get(`agent:${a}`) ?? 0 })),
-      ...[...servers].map((s) => ({ id: `server:${s}`, type: "server" as const, label: s, hasError: serverErrors.has(s), callCount: nodeCalls.get(`server:${s}`) ?? 0 })),
-    ];
-    const edges: GraphEdge[] = [...edgeMap.values()].map((e) => ({
-      source: e.source, target: e.target, type: e.type,
-      label: e.count > 1 ? `${e.count}×` : undefined,
-    }));
-    return { nodes, edges };
-  }, [trace]);
+    for (const [key, count] of handoffMap) {
+      const [src, tgt] = key.split("→");
+      handoffs.push({ source: src, target: tgt, count });
+    }
+
+    // Step 2: compute per-path metrics
+    const edgeMetrics = new Map<string, PathMetrics>();
+    const edgeSpans = new Map<string, SpanNode[]>();
+
+    for (const [pathKey, data] of pathData) {
+      const spans = data.spans;
+      const callCount = spans.length;
+      const errorCount = spans.filter((s) => s.status !== "success").length;
+      const avgLatencyMs = callCount > 0
+        ? spans.reduce((sum, s) => sum + (s.latency_ms ?? 0), 0) / callCount : 0;
+      const maxLatencyMs = spans.reduce((max, s) => Math.max(max, s.latency_ms ?? 0), 0);
+      const tools = [...new Set(spans.map((s) => s.tool_name))];
+      const inputTokens = spans.reduce((s, sp) => s + (sp.input_tokens ?? 0), 0);
+      const outputTokens = spans.reduce((s, sp) => s + (sp.output_tokens ?? 0), 0);
+      const models = [...new Set(spans.map((s) => s.model_id).filter(Boolean))] as string[];
+
+      edgeMetrics.set(pathKey, { callCount, errorCount, avgLatencyMs, maxLatencyMs, tools, inputTokens, outputTokens, models });
+      edgeSpans.set(pathKey, spans);
+    }
+
+    // Step 3: build serverCallers map
+    const serverCallers = new Map<string, ServerCallerInfo[]>();
+    for (const server of servers) {
+      const callers: ServerCallerInfo[] = [];
+      for (const [pathKey, data] of pathData) {
+        if (data.serverName === server) {
+          callers.push({
+            agentId: `agent:${data.agentName}`,
+            agentLabel: data.agentName,
+            metrics: edgeMetrics.get(pathKey)!,
+          });
+        }
+      }
+      serverCallers.set(server, callers);
+    }
+
+    // Step 4: build nodes + edges
+    const nodes: GraphNode[] = [];
+    const graphEdges: GraphEdge[] = [];
+
+    // Agent nodes
+    for (const agent of agents) {
+      const agentToolSpans = trace.spans_flat.filter(
+        (s) => s.agent_name === agent && s.span_type === "tool_call",
+      );
+      const callCount = agentToolSpans.length;
+      const errorCount = agentToolSpans.filter((s) => s.status !== "success").length;
+      const avgLatencyMs = callCount > 0
+        ? agentToolSpans.reduce((sum, s) => sum + (s.latency_ms ?? 0), 0) / callCount : 0;
+
+      nodes.push({
+        id: `agent:${agent}`, type: "agent", label: agent,
+        hasError: agentErrors.has(agent),
+        callCount, errorCount, avgLatencyMs,
+      });
+    }
+
+    // Helper: create one node per individual call for an edge
+    function addToolSplitNodes(
+      sourceId: string, server: string, agentLabel: string,
+      pathKey: string, spans: SpanNode[],
+    ) {
+      for (let i = 0; i < spans.length; i++) {
+        const s = spans[i];
+        const tool = s.tool_name;
+        const callNodeId = `server:${server}::call:${s.span_id ?? `${tool}-${i}`}`;
+        const latency = s.latency_ms ?? 0;
+        const hasErr = s.status !== "success";
+
+        nodes.push({
+          id: callNodeId, type: "server", label: tool,
+          hasError: hasErr,
+          callCount: 1, errorCount: hasErr ? 1 : 0, avgLatencyMs: latency,
+          groupId: pathKey,
+          splitLabel: server,
+        });
+
+        const callPathKey = `${sourceId}→${callNodeId}`;
+        edgeMetrics.set(callPathKey, {
+          callCount: 1, errorCount: hasErr ? 1 : 0, avgLatencyMs: latency,
+          maxLatencyMs: latency,
+          tools: [tool],
+          inputTokens: s.input_tokens ?? 0,
+          outputTokens: s.output_tokens ?? 0,
+          models: s.model_id ? [s.model_id] : [],
+        });
+        edgeSpans.set(callPathKey, [s]);
+
+        graphEdges.push({
+          source: sourceId, target: callNodeId, type: "calls",
+          edgeId: pathKey, errorCount: hasErr ? 1 : 0, avgLatencyMs: latency,
+        });
+      }
+    }
+
+    // Server nodes — with per-agent and per-tool expansion
+    for (const server of servers) {
+      const callers = serverCallers.get(server) ?? [];
+      const isMultiCaller = callers.length >= 2;
+      const isAgentExpanded = expandedGroups.has(`server:${server}`);
+
+      if (!isMultiCaller || !isAgentExpanded) {
+        // Collapsed or single-caller — ALWAYS add the server node
+        const allSpans = [...pathData.entries()]
+          .filter(([, d]) => d.serverName === server)
+          .flatMap(([, d]) => d.spans);
+        const callCount = allSpans.length;
+        const errorCount = allSpans.filter((s) => s.status !== "success").length;
+        const avgLatencyMs = callCount > 0
+          ? allSpans.reduce((sum, s) => sum + (s.latency_ms ?? 0), 0) / callCount : 0;
+
+        const singleCaller = callers.length === 1 ? callers[0] : null;
+        const singlePathKey = singleCaller ? `${singleCaller.agentId}→server:${server}` : null;
+        const singlePm = singlePathKey ? edgeMetrics.get(singlePathKey) : null;
+
+        nodes.push({
+          id: `server:${server}`, type: "server", label: server,
+          hasError: errorCount > 0,
+          callCount, errorCount, avgLatencyMs,
+          isCollapsible: isMultiCaller,
+          collapsedCount: isMultiCaller ? callers.length : undefined,
+          expandableEdgeId: singlePathKey && singlePm && singlePm.tools.length >= 2 ? singlePathKey : undefined,
+          toolNames: singlePm && singlePm.tools.length >= 2 ? singlePm.tools : undefined,
+        });
+
+        // Agent → server edge (always present)
+        for (const caller of callers) {
+          const pathKey = `${caller.agentId}→server:${server}`;
+          const pm = edgeMetrics.get(pathKey);
+          const isEdgeExpanded = expandedEdges.has(pathKey);
+          const hasMultipleTools = pm && pm.tools.length >= 2;
+
+          graphEdges.push({
+            source: caller.agentId, target: `server:${server}`, type: "calls",
+            label: pm && pm.callCount > 1 ? `${pm.callCount}×` : undefined,
+            edgeId: pathKey, errorCount: pm?.errorCount, avgLatencyMs: pm?.avgLatencyMs,
+          });
+
+          // Per-tool expansion: tool nodes fan out FROM the server node
+          if (isEdgeExpanded && hasMultipleTools) {
+            addToolSplitNodes(`server:${server}`, server, caller.agentLabel, pathKey, edgeSpans.get(pathKey) ?? []);
+          }
+        }
+      } else {
+        // Expanded per-agent: one split node per caller
+        let firstSplitId: string | null = null;
+        for (const caller of callers) {
+          const pathKey = `${caller.agentId}→server:${server}`;
+          const pm = edgeMetrics.get(pathKey)!;
+          const isEdgeExpanded = expandedEdges.has(pathKey);
+          const hasMultipleTools = pm.tools.length >= 2;
+
+          if (isEdgeExpanded && hasMultipleTools) {
+            addToolSplitNodes(caller.agentId, server, caller.agentLabel, pathKey, edgeSpans.get(pathKey) ?? []);
+          } else {
+            const splitId = `server:${server}::via:${caller.agentLabel}`;
+            if (!firstSplitId) firstSplitId = splitId;
+
+            nodes.push({
+              id: splitId, type: "server", label: server,
+              hasError: pm.errorCount > 0,
+              callCount: pm.callCount, errorCount: pm.errorCount, avgLatencyMs: pm.avgLatencyMs,
+              groupId: `server:${server}`,
+              splitLabel: `via ${caller.agentLabel}`,
+              isCollapsible: splitId === firstSplitId,
+              collapsedCount: splitId === firstSplitId ? callers.length : undefined,
+              expandableEdgeId: hasMultipleTools ? pathKey : undefined,
+              toolNames: hasMultipleTools ? pm.tools : undefined,
+            });
+
+            graphEdges.push({
+              source: caller.agentId, target: splitId, type: "calls",
+              label: pm.callCount > 1 ? `${pm.callCount}×` : undefined,
+              edgeId: pathKey, errorCount: pm.errorCount, avgLatencyMs: pm.avgLatencyMs,
+            });
+          }
+        }
+      }
+    }
+
+    // Handoff edges
+    for (const h of handoffs) {
+      graphEdges.push({
+        source: `agent:${h.source}`, target: `agent:${h.target}`, type: "handoff",
+        edgeId: `agent:${h.source}→h→agent:${h.target}`,
+        label: h.count > 1 ? `${h.count} handoffs` : undefined,
+      });
+    }
+
+    return { nodes, edges: graphEdges, serverCallers, edgeMetrics, edgeSpans };
+  }, [trace, expandedGroups, expandedEdges]);
 }
-
-/* Old React Flow components removed — using shared SVG LineageGraph component */
-
-/* React Flow SessionLineage removed — now using SVG LineageGraph component */
 
 /* ── Right panel: node detail for session ──────────────────── */
 
@@ -82,13 +284,19 @@ function MetricTile({ label, value, mono = true }: { label: string; value: strin
   );
 }
 
-function SessionNodeDetail({ nodeId, trace }: { nodeId: string; trace: SessionTrace }) {
+function SessionNodeDetail({ nodeId, trace, serverCallers }: { nodeId: string; trace: SessionTrace; serverCallers: Map<string, ServerCallerInfo[]> }) {
   const isAgent = nodeId.startsWith("agent:");
-  const name = nodeId.replace(/^(agent|server):/, "");
+  const isPerCall = nodeId.includes("::call:");
+  const name = nodeId.replace(/^(agent|server):/, "").replace(/::call:.*$/, "");
 
-  const spans = trace.spans_flat.filter((s: SpanNode) =>
-    isAgent ? s.agent_name === name : (s.server_name === name && s.span_type === "tool_call")
-  );
+  // For per-call nodes, find the exact span by span_id
+  const callSpanId = isPerCall ? nodeId.replace(/^.*::call:/, "") : null;
+
+  const spans = isPerCall
+    ? trace.spans_flat.filter((s: SpanNode) => s.span_id === callSpanId)
+    : trace.spans_flat.filter((s: SpanNode) =>
+        isAgent ? s.agent_name === name : (s.server_name === name && s.span_type === "tool_call")
+      );
 
   const totalCalls = spans.length;
   const errors = spans.filter((s: SpanNode) => s.status !== "success").length;
@@ -109,14 +317,22 @@ function SessionNodeDetail({ nodeId, trace }: { nodeId: string; trace: SessionTr
             {isAgent ? <Bot size={18} style={{ color: "hsl(var(--primary))" }} /> : <Server size={18} className="text-muted-foreground" />}
           </div>
           <div className="min-w-0">
-            <p className="text-[14px] font-bold text-foreground truncate">{name}</p>
+            <p className="text-[14px] font-bold text-foreground truncate">{isPerCall && spans[0] ? spans[0].tool_name : name}</p>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-[11px] text-muted-foreground">{isAgent ? "Agent" : "MCP Server"}</span>
+              <span className="text-[11px] text-muted-foreground">{isPerCall ? `${name} · Tool Call` : isAgent ? "Agent" : "MCP Server"}</span>
               <span className={cn("w-1.5 h-1.5 rounded-full", errors > 0 ? "bg-red-500" : "bg-emerald-500")} />
               <span className="text-[11px]" style={{ color: errors > 0 ? "#ef4444" : "#10b981" }}>
                 {errors > 0 ? `${errors} error${errors > 1 ? "s" : ""}` : "All OK"}
               </span>
             </div>
+            {!isPerCall && (
+              <Link
+                href={isAgent ? `/agents` : `/servers`}
+                className="mt-1 inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
+              >
+                View in {isAgent ? "Agent" : "Server"} Catalog →
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -164,6 +380,70 @@ function SessionNodeDetail({ nodeId, trace }: { nodeId: string; trace: SessionTr
         </div>
       )}
 
+      {/* Per-agent breakdown (server nodes called by 2+ agents) */}
+      {!isAgent && (() => {
+        const callers = serverCallers.get(name) ?? [];
+        if (callers.length < 2) return null;
+        return (
+          <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+            <SectionLabel>By Agent ({callers.length})</SectionLabel>
+            <div className="space-y-1.5">
+              {callers.map((caller) => (
+                <div key={caller.agentId} className="rounded-lg px-3 py-2.5" style={{ background: "hsl(var(--muted))" }}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <Bot size={11} style={{ color: "hsl(var(--primary))" }} />
+                      <span className="text-[12px] font-medium text-foreground">{caller.agentLabel}</span>
+                    </div>
+                    {caller.metrics.errorCount > 0 && (
+                      <span className="text-[10px]" style={{ color: "#ef4444" }}>{caller.metrics.errorCount} errors</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                    <span style={{ fontFamily: "var(--font-geist-mono)" }}>{caller.metrics.callCount} calls</span>
+                    <span style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(caller.metrics.avgLatencyMs)}ms avg</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Per-server breakdown (agent nodes calling 2+ servers) */}
+      {isAgent && (() => {
+        const serverBreakdown: { server: string; metrics: PathMetrics }[] = [];
+        for (const [server, callers] of serverCallers) {
+          const match = callers.find((c) => c.agentLabel === name);
+          if (match) serverBreakdown.push({ server, metrics: match.metrics });
+        }
+        if (serverBreakdown.length < 2) return null;
+        return (
+          <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+            <SectionLabel>By Server ({serverBreakdown.length})</SectionLabel>
+            <div className="space-y-1.5">
+              {serverBreakdown.map(({ server, metrics }) => (
+                <div key={server} className="rounded-lg px-3 py-2.5" style={{ background: "hsl(var(--muted))" }}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <Server size={11} className="text-muted-foreground" />
+                      <span className="text-[12px] font-medium text-foreground">{server}</span>
+                    </div>
+                    {metrics.errorCount > 0 && (
+                      <span className="text-[10px]" style={{ color: "#ef4444" }}>{metrics.errorCount} errors</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                    <span style={{ fontFamily: "var(--font-geist-mono)" }}>{metrics.callCount} calls</span>
+                    <span style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(metrics.avgLatencyMs)}ms avg</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Token usage */}
       {totalInputTokens > 0 && (
         <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
@@ -176,6 +456,202 @@ function SessionNodeDetail({ nodeId, trace }: { nodeId: string; trace: SessionTr
             <div className="mt-2 rounded-lg px-3 py-2 flex items-center gap-2" style={{ background: "hsl(var(--muted))" }}>
               <span className="text-[10px] text-muted-foreground">Model</span>
               {models.map((m) => (
+                <code key={m} className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}>{m}</code>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Per-call detail: show input/output prominently */}
+      {isPerCall && spans[0] && (
+        <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+          {spans[0].input_json && (
+            <div className="mb-3">
+              <SectionLabel>Input</SectionLabel>
+              <pre className="text-[11px] text-foreground rounded-lg p-3 whitespace-pre-wrap break-all max-h-48 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
+                {(() => { try { return JSON.stringify(JSON.parse(spans[0].input_json!), null, 2); } catch { return spans[0].input_json; } })()}
+              </pre>
+            </div>
+          )}
+          {spans[0].output_json && (
+            <div className="mb-3">
+              <SectionLabel>Output</SectionLabel>
+              <pre className="text-[11px] text-foreground rounded-lg p-3 whitespace-pre-wrap break-all max-h-48 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
+                {(() => { try { return JSON.stringify(JSON.parse(spans[0].output_json!), null, 2); } catch { return spans[0].output_json; } })()}
+              </pre>
+            </div>
+          )}
+          {spans[0].error && (
+            <div className="mb-3">
+              <SectionLabel>Error</SectionLabel>
+              <div className="rounded-lg px-3 py-2.5 text-[11px]" style={{ background: "rgba(239,68,68,0.06)", color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{spans[0].error}</div>
+            </div>
+          )}
+          {(spans[0].input_tokens || spans[0].output_tokens) && (
+            <div>
+              <SectionLabel>Tokens</SectionLabel>
+              <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+                {spans[0].model_id && <span>Model: <code className="text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{spans[0].model_id}</code></span>}
+                {spans[0].input_tokens != null && <span>In: <strong className="text-foreground">{spans[0].input_tokens}</strong></span>}
+                {spans[0].output_tokens != null && <span>Out: <strong className="text-foreground">{spans[0].output_tokens}</strong></span>}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Span timeline — hidden for per-call nodes (already showing the single span above) */}
+      {!isPerCall && (
+        <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+          <SectionLabel>Calls ({spans.length})</SectionLabel>
+          <div className="space-y-1.5">
+            {spans.map((s: SpanNode, i: number) => (
+              <details key={i} className="group rounded-lg overflow-hidden" style={{ border: "1px solid hsl(var(--border))" }}>
+                <summary className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-accent/30 transition-colors list-none">
+                  <div className="flex items-center gap-2">
+                    <span className={cn("w-1.5 h-1.5 rounded-full", s.status === "success" ? "bg-emerald-500" : "bg-red-500")} />
+                    <span className="text-[12px] font-medium text-foreground">{s.tool_name}</span>
+                    {s.error && <span className="text-[10px] text-red-400">error</span>}
+                  </div>
+                  <span className="text-[11px] text-muted-foreground font-mono" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(s.latency_ms ?? 0)}ms</span>
+                </summary>
+                <div className="px-3 pb-3 space-y-2" style={{ borderTop: "1px solid hsl(var(--border))" }}>
+                  {s.error && (
+                    <div className="mt-2 rounded-lg px-3 py-2 text-[11px]" style={{ background: "rgba(239,68,68,0.05)", color: "#ef4444" }}>{s.error}</div>
+                  )}
+                  {s.input_json && (
+                    <div className="mt-2">
+                      <p className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1">Input</p>
+                      <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-32 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))" }}>
+                        {(() => { try { return JSON.stringify(JSON.parse(s.input_json), null, 2); } catch { return s.input_json; } })()}
+                      </pre>
+                    </div>
+                  )}
+                  {s.output_json && (
+                    <div>
+                      <p className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1">Output</p>
+                      <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-32 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))" }}>
+                        {(() => { try { return JSON.stringify(JSON.parse(s.output_json), null, 2); } catch { return s.output_json; } })()}
+                      </pre>
+                    </div>
+                  )}
+                  {(s.input_tokens || s.output_tokens) && (
+                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-1">
+                      {s.model_id && <span>Model: <code className="text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{s.model_id}</code></span>}
+                      {s.input_tokens != null && <span>In: <strong className="text-foreground">{s.input_tokens}</strong></span>}
+                      {s.output_tokens != null && <span>Out: <strong className="text-foreground">{s.output_tokens}</strong></span>}
+                    </div>
+                  )}
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Edge detail panel ─────────────────────────────────────── */
+
+function SessionEdgeDetail({
+  source, target, metrics, spans,
+}: {
+  source: string;
+  target: string;
+  metrics: PathMetrics | null;
+  spans: SpanNode[];
+}) {
+  const sourceName = source.replace(/^(agent|server):/, "");
+  const targetName = target.replace(/^(agent|server):/, "");
+
+  if (!metrics) {
+    return (
+      <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+        No data for this edge
+      </div>
+    );
+  }
+
+  const errorRate = metrics.callCount > 0 ? (metrics.errorCount / metrics.callCount) * 100 : 0;
+
+  return (
+    <div className="h-full overflow-y-auto">
+      {/* Header */}
+      <div className="px-5 pt-5 pb-4 border-b" style={{ borderColor: "hsl(var(--border))" }}>
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "hsl(var(--primary) / 0.08)" }}>
+            <Bot size={14} style={{ color: "hsl(var(--primary))" }} />
+          </div>
+          <span className="text-[12px] font-bold text-foreground">{sourceName}</span>
+          <span className="text-[11px] text-muted-foreground">{"\u2192"}</span>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(100,116,139,0.08)" }}>
+            <Server size={14} className="text-muted-foreground" />
+          </div>
+          <span className="text-[12px] font-bold text-foreground">{targetName}</span>
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-1.5">
+          Edge — {metrics.callCount} call{metrics.callCount !== 1 ? "s" : ""} on this path
+        </p>
+      </div>
+
+      {/* Metrics */}
+      <div className="px-5 py-4">
+        <SectionLabel>Path Metrics</SectionLabel>
+        <div className="grid grid-cols-2 gap-2">
+          <MetricTile label="Calls" value={metrics.callCount.toLocaleString()} />
+          <MetricTile label="Errors" value={metrics.errorCount.toLocaleString()} />
+          <MetricTile label="Avg Latency" value={`${Math.round(metrics.avgLatencyMs)}ms`} />
+          <MetricTile label="Max Latency" value={`${Math.round(metrics.maxLatencyMs)}ms`} />
+        </div>
+        {errorRate > 0 && (
+          <div className="mt-2 rounded-lg px-3 py-2 flex items-center justify-between" style={{ background: "rgba(239,68,68,0.06)" }}>
+            <span className="text-[11px] text-muted-foreground">Error Rate</span>
+            <span className="text-[12px] font-bold" style={{ color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{errorRate.toFixed(1)}%</span>
+          </div>
+        )}
+      </div>
+
+      {/* Tools on this path */}
+      {metrics.tools.length > 0 && (
+        <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+          <SectionLabel>Tools ({metrics.tools.length})</SectionLabel>
+          <div className="space-y-1">
+            {metrics.tools.map((tool) => {
+              const toolSpans = spans.filter((s) => s.tool_name === tool);
+              const toolErrors = toolSpans.filter((s) => s.status !== "success").length;
+              const toolAvgMs = toolSpans.length > 0
+                ? toolSpans.reduce((s, sp) => s + (sp.latency_ms ?? 0), 0) / toolSpans.length : 0;
+              return (
+                <div key={tool} className="flex items-center justify-between rounded-lg px-3 py-2.5" style={{ background: "hsl(var(--muted))" }}>
+                  <div className="flex items-center gap-2">
+                    <span className={cn("w-1.5 h-1.5 rounded-full", toolErrors > 0 ? "bg-red-500" : "bg-emerald-500")} />
+                    <span className="text-[12px] font-medium text-foreground">{tool}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                    <span style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(toolAvgMs)}ms</span>
+                    <span>{toolSpans.length}×</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Token usage */}
+      {metrics.inputTokens > 0 && (
+        <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+          <SectionLabel>Token Usage</SectionLabel>
+          <div className="grid grid-cols-2 gap-2">
+            <MetricTile label="Input" value={metrics.inputTokens.toLocaleString()} />
+            <MetricTile label="Output" value={metrics.outputTokens.toLocaleString()} />
+          </div>
+          {metrics.models.length > 0 && (
+            <div className="mt-2 rounded-lg px-3 py-2 flex items-center gap-2" style={{ background: "hsl(var(--muted))" }}>
+              <span className="text-[10px] text-muted-foreground">Model</span>
+              {metrics.models.map((m) => (
                 <code key={m} className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}>{m}</code>
               ))}
             </div>
@@ -215,13 +691,6 @@ function SessionNodeDetail({ nodeId, trace }: { nodeId: string; trace: SessionTr
                     <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-32 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))" }}>
                       {(() => { try { return JSON.stringify(JSON.parse(s.output_json), null, 2); } catch { return s.output_json; } })()}
                     </pre>
-                  </div>
-                )}
-                {(s.input_tokens || s.output_tokens) && (
-                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-1">
-                    {s.model_id && <span>Model: <code className="text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{s.model_id}</code></span>}
-                    {s.input_tokens != null && <span>In: <strong className="text-foreground">{s.input_tokens}</strong></span>}
-                    {s.output_tokens != null && <span>Out: <strong className="text-foreground">{s.output_tokens}</strong></span>}
                   </div>
                 )}
               </div>
@@ -630,8 +1099,71 @@ export default function SessionDetailPage() {
 
   /* Tabs */
   const [activeTab, setActiveTab] = useState<"details" | "trace">("details");
-  const [selectedGraphNode, setSelectedGraphNode] = useState<string | null>(null);
-  const sessionGraph = useSessionGraph(trace);
+
+  /* Graph selection + expand/collapse */
+  const [selection, setSelection] = useState<GraphSelection>(null);
+  // Auto-expand all multi-caller servers on first load
+  const autoExpandedRef = useRef(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [expandedEdges, setExpandedEdges] = useState<Set<string>>(new Set());
+
+  const handleToggleGroup = useCallback((groupId: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+    setSelection(null);
+  }, []);
+
+  const handleToggleEdge = useCallback((edgeId: string) => {
+    setExpandedEdges((prev) => {
+      const next = new Set(prev);
+      if (next.has(edgeId)) next.delete(edgeId);
+      else next.add(edgeId);
+      console.log("[toggle-edge]", edgeId, "→ expanded:", [...next]);
+      return next;
+    });
+    setSelection(null);
+  }, []);
+  // Auto-expand multi-caller servers when trace first loads
+  useEffect(() => {
+    if (!trace || autoExpandedRef.current) return;
+    autoExpandedRef.current = true;
+    const callerCount = new Map<string, Set<string>>();
+    for (const span of trace.spans_flat) {
+      if (span.span_type === "tool_call" && span.agent_name && span.server_name) {
+        if (!callerCount.has(span.server_name)) callerCount.set(span.server_name, new Set());
+        callerCount.get(span.server_name)!.add(span.agent_name);
+      }
+    }
+    const toExpand = new Set<string>();
+    for (const [server, agents] of callerCount) {
+      if (agents.size >= 2) toExpand.add(`server:${server}`);
+    }
+    if (toExpand.size > 0) setExpandedGroups(toExpand);
+  }, [trace]);
+
+  const sessionGraph = useSessionGraph(trace, expandedGroups, expandedEdges);
+
+  const handleExpandAll = useCallback(() => {
+    const groups = new Set<string>();
+    for (const n of sessionGraph.nodes) if (n.isCollapsible) groups.add(n.groupId ?? n.id);
+    setExpandedGroups(groups);
+    const edgeIds = new Set<string>();
+    for (const [pk, pm] of sessionGraph.edgeMetrics) if (pm.tools.length >= 2) edgeIds.add(pk);
+    setExpandedEdges(edgeIds);
+  }, [sessionGraph]);
+
+  const handleCollapseAll = useCallback(() => {
+    setExpandedGroups(new Set());
+    setExpandedEdges(new Set());
+    setSelection(null);
+  }, []);
+
+  /* Payload slideout */
+  const [payloadSlideout, setPayloadSlideout] = useState<{ title: string; tabs: { label: string; json: string | null }[] } | null>(null);
 
   /* Compare */
   const [comparePicking, setComparePicking] = useState(false);
@@ -790,32 +1322,63 @@ export default function SessionDetailPage() {
       {activeTab === "details" && (
         <div className="flex-1 flex gap-0 rounded-xl border overflow-hidden min-h-0" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
           {/* Graph (70%) */}
-          <div className="flex-[7] relative">
-            {loading ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent spin" />
+          <div className="flex-[7] flex flex-col">
+            {/* Timeline bar */}
+            {trace && trace.duration_ms && (
+              <div className="flex-shrink-0 px-3 pt-2">
+                <SessionTimeline
+                  spans={trace.spans_flat}
+                  sessionDurationMs={trace.duration_ms}
+                  onSelectNode={(nodeId) => setSelection({ type: "node", id: nodeId })}
+                />
               </div>
-            ) : !trace ? (
-              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No data</div>
-            ) : (
-              <LineageGraph
-                nodes={sessionGraph.nodes}
-                edges={sessionGraph.edges}
-                selectedId={selectedGraphNode}
-                onSelect={setSelectedGraphNode}
-                className="h-full"
-              />
             )}
+            {/* Graph */}
+            <div className="flex-1 relative min-h-0">
+              {loading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent spin" />
+                </div>
+              ) : !trace ? (
+                <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No data</div>
+              ) : (
+                <LineageGraph
+                  nodes={sessionGraph.nodes}
+                  edges={sessionGraph.edges}
+                  selection={selection}
+                  onSelectionChange={setSelection}
+                  expandedGroups={expandedGroups}
+                  onToggleGroup={handleToggleGroup}
+                  expandedEdges={expandedEdges}
+                  onToggleEdge={handleToggleEdge}
+                  onExpandAll={handleExpandAll}
+                  onCollapseAll={handleCollapseAll}
+                  nodeHeight={76}
+                  className="h-full"
+                />
+              )}
+            </div>
           </div>
           {/* Right panel (30%) */}
           <div className="flex-[3] border-l overflow-y-auto" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--background))" }}>
-            {selectedGraphNode && trace ? (
-              <SessionNodeDetail nodeId={selectedGraphNode} trace={trace} />
+            {selection?.type === "node" && trace ? (
+              <SessionNodeDetail
+                nodeId={selection.id}
+                trace={trace}
+                serverCallers={sessionGraph.serverCallers}
+              />
+            ) : selection?.type === "edge" && trace ? (
+              <SessionEdgeDetail
+                source={selection.source}
+                target={selection.target}
+                metrics={sessionGraph.edgeMetrics.get(`${selection.source}→${selection.target}`) ?? null}
+                spans={sessionGraph.edgeSpans.get(`${selection.source}→${selection.target}`) ?? []}
+              />
             ) : (
               <div className="h-full flex flex-col items-center justify-center px-5 text-center">
                 <GitBranch size={20} className="text-muted-foreground mb-3" />
                 <p className="text-sm font-semibold text-foreground mb-1">Session flow</p>
-                <p className="text-[11px] text-muted-foreground">Click any agent or server node to see its details for this session.</p>
+                <p className="text-[11px] text-muted-foreground">Click any agent, server, or edge to see its details for this session.</p>
               </div>
             )}
           </div>
@@ -888,6 +1451,16 @@ export default function SessionDetailPage() {
             />
           )}
         </>
+      )}
+
+      {/* ── Payload slideout ── */}
+      {payloadSlideout && (
+        <PayloadSlideout
+          open={true}
+          onClose={() => setPayloadSlideout(null)}
+          title={payloadSlideout.title}
+          tabs={payloadSlideout.tabs}
+        />
       )}
     </div>
   );

@@ -468,3 +468,37 @@ body {
   top: 0;
   z-index: 10;
 }
+
+/* Lineage graph — edge flow animation */
+@keyframes edgeFlow {
+  to { stroke-dashoffset: -16; }
+}
+.edge-flow-anim {
+  animation: edgeFlow 1.5s linear infinite;
+}
+
+/* Lineage graph — zoom slider */
+.graph-toolbar input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  background: hsl(var(--border));
+  border-radius: 2px;
+  outline: none;
+}
+.graph-toolbar input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  cursor: pointer;
+  border: 2px solid hsl(var(--card));
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+/* Payload slideout */
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
