@@ -83,6 +83,8 @@ function ProjectSwitcher() {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "admin";
   const { data: projects } = useSWR<ProjectResponse[]>("/api/projects", fetcher, {
     refreshInterval: 60_000,
   });
@@ -135,18 +137,21 @@ function ProjectSwitcher() {
               border: "1px solid hsl(var(--sidebar-border))",
             }}
           >
-            <button
-              onClick={() => { setActiveProject(null); setOpen(false); }}
-              className="flex items-center gap-2 w-full px-3 py-2 text-[12px] transition-colors"
-              style={{ color: "hsl(var(--sidebar-fg))" }}
-              onMouseEnter={e => (e.currentTarget.style.background = "hsl(var(--sidebar-accent))")}
-              onMouseLeave={e => (e.currentTarget.style.background = "")}
-            >
-              <span className="w-3 flex-shrink-0">
-                {!activeProject && <Check size={11} style={{ color: "hsl(var(--primary))" }} />}
-              </span>
-              All Projects
-            </button>
+            {/* "All Projects" only for admins — non-admins always need a project scoped */}
+            {isAdmin && (
+              <button
+                onClick={() => { setActiveProject(null); setOpen(false); }}
+                className="flex items-center gap-2 w-full px-3 py-2 text-[12px] transition-colors"
+                style={{ color: "hsl(var(--sidebar-fg))" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "hsl(var(--sidebar-accent))")}
+                onMouseLeave={e => (e.currentTarget.style.background = "")}
+              >
+                <span className="w-3 flex-shrink-0">
+                  {!activeProject && <Check size={11} style={{ color: "hsl(var(--primary))" }} />}
+                </span>
+                All Projects
+              </button>
+            )}
 
             {projects && projects.length > 0 && (
               <div className="my-1" style={{ borderTop: "1px solid hsl(var(--sidebar-border))" }} />

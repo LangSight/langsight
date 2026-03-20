@@ -24,6 +24,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { useSession } from "next-auth/react";
 import type { ProjectResponse } from "./types";
 
 interface ProjectContextValue {
@@ -45,19 +46,47 @@ const STORAGE_KEY = "langsight_active_project";
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [activeProject, setActiveProjectState] = useState<ProjectResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { data: session } = useSession();
 
-  // Restore from localStorage on mount
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "admin";
+
+  // Restore from localStorage, then auto-select first project for non-admins
   useEffect(() => {
+    if (!session) return; // wait until session is known
+
+    let restored: ProjectResponse | null = null;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        setActiveProjectState(JSON.parse(stored) as ProjectResponse);
-      }
+      if (stored) restored = JSON.parse(stored) as ProjectResponse;
     } catch {
-      // Ignore parse errors — treat as no project stored
+      // Ignore parse errors
     }
-    setIsLoading(false);
-  }, []);
+
+    if (restored) {
+      setActiveProjectState(restored);
+      setIsLoading(false);
+      return;
+    }
+
+    // Non-admins without a stored project must have one selected —
+    // otherwise every API call returns 400 (missing project_id).
+    // Auto-select the first visible project.
+    if (!isAdmin) {
+      fetch("/api/proxy/projects")
+        .then((r) => r.json() as Promise<ProjectResponse[]>)
+        .then((projects) => {
+          if (Array.isArray(projects) && projects.length > 0) {
+            const first = projects[0];
+            setActiveProjectState(first);
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(first)); } catch { /**/ }
+          }
+        })
+        .catch(() => { /* fail open — user can select manually */ })
+        .finally(() => setIsLoading(false));
+    } else {
+      setIsLoading(false);
+    }
+  }, [session, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setActiveProject = useCallback((p: ProjectResponse | null) => {
     setActiveProjectState(p);
