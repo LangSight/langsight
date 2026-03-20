@@ -284,7 +284,7 @@ class StorageBackend(Protocol):
         """Delete server metadata."""
         ...
 
-    async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]]) -> None:
+    async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]], project_id: str | None = None) -> None:
         """Upsert declared tools for a server (from SDK list_tools() interception)."""
         ...
 

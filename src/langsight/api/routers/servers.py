@@ -123,7 +123,7 @@ async def record_tool_schemas(
     """
     if not body.tools:
         return {"upserted": 0}
-    await storage.upsert_server_tools(server_name, body.tools)
+    await storage.upsert_server_tools(server_name, body.tools, project_id=body.project_id)
     return {"upserted": len(body.tools)}
 
 

@@ -323,8 +323,8 @@ class DualStorage:
     async def delete_server_metadata(self, server_name: str) -> bool:
         return await self._meta.delete_server_metadata(server_name)
 
-    async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]]) -> None:
-        return await self._meta.upsert_server_tools(server_name, tools)
+    async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]], project_id: str | None = None) -> None:
+        return await self._meta.upsert_server_tools(server_name, tools, project_id=project_id)
 
     async def get_server_tools(self, server_name: str) -> list[dict[str, object]]:
         return await self._meta.get_server_tools(server_name)

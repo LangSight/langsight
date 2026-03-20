@@ -357,7 +357,7 @@ export default function ServersPage() {
 
   // Consumers from lineage
   const consumers = useMemo(() => {
-    if (!selected || !lineage) return [] as string[];
+    if (!selected || !lineage) return [] as { agent: string; calls: number; errors: number }[];
     const id = `server:${selected.server_name}`;
     return lineage.edges.filter((e) => e.target === id && e.type === "calls").map((e) => ({ agent: e.source.replace("agent:", ""), calls: e.metrics.call_count ?? 0, errors: e.metrics.error_count ?? 0 }));
   }, [selected, lineage]);

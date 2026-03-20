@@ -178,7 +178,7 @@ _DDL_STATEMENTS = [
     """
     CREATE TABLE IF NOT EXISTS agent_metadata (
         id          TEXT        PRIMARY KEY,
-        agent_name  TEXT        NOT NULL UNIQUE,
+        agent_name  TEXT        NOT NULL,
         description TEXT        NOT NULL DEFAULT '',
         owner       TEXT        NOT NULL DEFAULT '',
         tags        JSONB       NOT NULL DEFAULT '[]',
@@ -186,7 +186,8 @@ _DDL_STATEMENTS = [
         runbook_url TEXT        NOT NULL DEFAULT '',
         project_id  TEXT        REFERENCES projects(id),
         created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(agent_name, project_id)
     )
     """,
     """
@@ -198,7 +199,7 @@ _DDL_STATEMENTS = [
     """
     CREATE TABLE IF NOT EXISTS server_metadata (
         id          TEXT        PRIMARY KEY,
-        server_name TEXT        NOT NULL UNIQUE,
+        server_name TEXT        NOT NULL,
         description TEXT        NOT NULL DEFAULT '',
         owner       TEXT        NOT NULL DEFAULT '',
         tags        JSONB       NOT NULL DEFAULT '[]',
@@ -206,7 +207,8 @@ _DDL_STATEMENTS = [
         runbook_url TEXT        NOT NULL DEFAULT '',
         project_id  TEXT        REFERENCES projects(id),
         created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(server_name, project_id)
     )
     """,
     """
@@ -215,6 +217,31 @@ _DDL_STATEMENTS = [
     """
     CREATE INDEX IF NOT EXISTS idx_server_metadata_project ON server_metadata(project_id)
     """,
+    # Migration: drop old single-column unique constraints and replace with
+    # compound (name, project_id) constraints for proper project isolation.
+    # These are no-ops if the columns were never UNIQUE or already migrated.
+    """
+    DO $$ BEGIN
+        ALTER TABLE agent_metadata DROP CONSTRAINT IF EXISTS agent_metadata_agent_name_key;
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'agent_metadata_agent_name_project_id_key'
+        ) THEN
+            ALTER TABLE agent_metadata ADD CONSTRAINT agent_metadata_agent_name_project_id_key
+                UNIQUE (agent_name, project_id);
+        END IF;
+    END $$
+    """,
+    """
+    DO $$ BEGIN
+        ALTER TABLE server_metadata DROP CONSTRAINT IF EXISTS server_metadata_server_name_key;
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'server_metadata_server_name_project_id_key'
+        ) THEN
+            ALTER TABLE server_metadata ADD CONSTRAINT server_metadata_server_name_project_id_key
+                UNIQUE (server_name, project_id);
+        END IF;
+    END $$
+    """,
     """
     CREATE TABLE IF NOT EXISTS server_tools (
         id           TEXT        PRIMARY KEY,
@@ -222,9 +249,10 @@ _DDL_STATEMENTS = [
         tool_name    TEXT        NOT NULL,
         description  TEXT        NOT NULL DEFAULT '',
         input_schema JSONB       NOT NULL DEFAULT '{}',
+        project_id   TEXT        REFERENCES projects(id),
         first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        UNIQUE(server_name, tool_name)
+        UNIQUE(server_name, tool_name, project_id)
     )
     """,
     """
@@ -804,7 +832,7 @@ class PostgresBackend:
             """
             INSERT INTO agent_metadata (id, agent_name, description, owner, tags, status, runbook_url, project_id, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $9)
-            ON CONFLICT (agent_name) DO UPDATE SET
+            ON CONFLICT (agent_name, project_id) DO UPDATE SET
                 description = EXCLUDED.description,
                 owner = EXCLUDED.owner,
                 tags = EXCLUDED.tags,
@@ -848,7 +876,7 @@ class PostgresBackend:
             """
             INSERT INTO server_metadata (id, server_name, description, owner, tags, transport, runbook_url, project_id, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $9)
-            ON CONFLICT (server_name) DO UPDATE SET
+            ON CONFLICT (server_name, project_id) DO UPDATE SET
                 description = EXCLUDED.description,
                 owner = EXCLUDED.owner,
                 tags = EXCLUDED.tags,
@@ -868,7 +896,7 @@ class PostgresBackend:
         return result.endswith("1")
 
     # Server tools (captured from list_tools() SDK interception)
-    async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]]) -> None:
+    async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]], project_id: str | None = None) -> None:
         """Upsert a batch of tools for a server. Called from SDK list_tools() interception."""
         import uuid
         import json
@@ -877,9 +905,9 @@ class PostgresBackend:
         for tool in tools:
             await self._pool.execute(
                 """
-                INSERT INTO server_tools (id, server_name, tool_name, description, input_schema, first_seen_at, last_seen_at)
-                VALUES ($1, $2, $3, $4, $5::jsonb, $6, $6)
-                ON CONFLICT (server_name, tool_name) DO UPDATE SET
+                INSERT INTO server_tools (id, server_name, tool_name, description, input_schema, project_id, first_seen_at, last_seen_at)
+                VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $7)
+                ON CONFLICT (server_name, tool_name, project_id) DO UPDATE SET
                     description = EXCLUDED.description,
                     input_schema = EXCLUDED.input_schema,
                     last_seen_at = EXCLUDED.last_seen_at
@@ -889,6 +917,7 @@ class PostgresBackend:
                 str(tool.get("name", "")),
                 str(tool.get("description", "")),
                 json.dumps(tool.get("input_schema") or {}),
+                project_id,
                 now,
             )
 

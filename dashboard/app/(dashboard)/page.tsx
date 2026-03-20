@@ -130,7 +130,7 @@ function SessionRow({ session }: { session: AgentSession }) {
   const failed = session.failed_calls > 0;
   return (
     <Link
-      href={`/sessions?id=${session.session_id}`}
+      href={`/sessions/${session.session_id}`}
       className="flex items-center justify-between px-5 py-3 hover:bg-accent/50 transition-colors group"
     >
       <div className="flex items-center gap-3 min-w-0">
