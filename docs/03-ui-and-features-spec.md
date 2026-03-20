@@ -1,8 +1,8 @@
 # LangSight: UI & Features Specification
 
-> **Version**: 1.2.0
+> **Version**: 1.3.0
 > **Date**: 2026-03-20
-> **Status**: Active — updated with dedicated session detail page, shared SVG lineage renderer, and agent topology consolidation (2026-03-20)
+> **Status**: Active — updated with session detail graph toolbar/minimap/timeline/slideout, agents catalog 3-state layout, MCP Servers catalog at /servers, and SDK auto tool-schema capture (2026-03-20)
 
 ---
 
@@ -419,23 +419,121 @@ The current IA is agent-first: **Overview → Agents → Sessions → Health →
 - **Active alerts**: List of currently firing alerts with severity badges
 - **Workflow + infrastructure split**: Agent workflows are primary; MCP/tool infrastructure is secondary drill-down
 
-### 4.2 Agents Page
-- **Agent fleet view**: Per-agent session count, tool calls, failures, runtime, and cost
-- **Agent drill-down**: About, overview, topology, and recent sessions for the selected agent
-- **Topology modal**: Fleet-wide agent/server topology lives here; `/lineage` redirects into this experience
+### 4.2 Agents Page (Adaptive 3-State Layout)
+
+The Agents page renders in one of three states depending on what is selected:
+
+**State 1 — No agent selected (full-width table)**
+- Full-width sortable table with columns: Agent, Status, Sessions, Error Rate, Tool Calls, Cost, Last Active
+- Sortable on all columns; sort direction persists during the session
+- Needs Attention banner above the table when any agent has `status != healthy`
+- Status filter bar: All / Healthy / Degraded / Failing with live counts
+- Search box filters by agent name
+
+**State 2 — Agent selected (280px sidebar + detail panel)**
+- Left sidebar groups all agents; active agent is highlighted
+- Detail panel shows 4 tabs:
+  - **About**: Editable description, owner, tags, status (active/deprecated/experimental), runbook URL — writes to `PUT /api/agents/metadata/{name}` on blur
+  - **Overview**: Stat tiles (sessions, error rate, avg duration, total cost), recent sessions list with links to `/sessions/{id}`
+  - **Topology**: Per-agent subgraph using the shared SVG `lineage-graph` renderer scoped to the selected agent's edges; sidebar collapses to 56px icon rail to maximize graph area (see State 3)
+  - **Sessions**: Paginated list of recent sessions for this agent
+
+**State 3 — Topology tab active (icon-rail sidebar + full-width graph)**
+- Left sidebar collapses to 56px showing only agent status dots
+- The shared `LineageGraph` component fills the remaining width
+- Fleet-wide topology is available as a modal overlay from the graph toolbar
+
+**Fleet topology modal**: Accessible from the graph toolbar in States 2 and 3; shows the full agent/server DAG for all agents in the selected project.
+
+**Backend**: Editable metadata persisted to the `agent_metadata` PostgreSQL table via `GET /api/agents/metadata` and `PUT /api/agents/metadata/{name}`.
 
 ### 4.3 Sessions Page
-- **Session table**: One row per workflow/session with agent, tool-call count, failures, duration, and touched backends
-- **Dedicated session detail route**: Clicking a row opens `/sessions/[id]`
-- **Details tab**: Timeline + interactive lineage graph + right-side inspector for selected agent/server/edge/per-call nodes
-- **Trace tab**: Tree of `agent`, `handoff`, and `tool_call` spans. Clicking a span row expands inline payload/error content. Payload visibility requires P5.1 payload capture to be active (`redact_payloads: false`, default).
-- **Session comparison**: Compare is initiated from the session detail page. The user picks another recent session, then LangSight calls `GET /api/agents/sessions/compare?a=&b=` and renders a per-tool aligned diff table. Each diff row shows tool key, base status, base latency, compare status, compare latency, and latency delta percentage. Row colours: matched=green, diverged=yellow, only_a=blue, only_b=purple. Diverged = status changed OR latency delta >= 20%.
-- **Replay button** (P5.7): Replay lives in the session detail header — re-runs all `tool_call` spans in the session with their stored input args against live MCP servers. Shows spinner and "Replaying..." while in flight. On completion, calls `POST /api/agents/sessions/{id}/replay` and returns a replay session that can be compared directly with the original. Requires `redact_payloads: false` (default) so that `input_json` is present on spans.
 
-### 4.4 Tools & MCPs Page
-- **Server list table**: Name, status badge, p99 latency, schema status, tools count, last check time
-- **Click server → detail view**: Latency time-series chart, availability history, schema changelog, tool list with per-tool latency
-- **Filters**: By status, transport type, tag
+**Session table**: One row per workflow/session with agent, tool-call count, failures, duration, and touched backends.
+
+**Dedicated session detail route**: Clicking a row opens `/sessions/[id]`.
+
+#### 4.3.1 Details tab — Lineage Graph (redesigned 2026-03-20)
+
+The Details tab is the visual debugging surface. It has three sub-regions stacked vertically:
+
+**Timeline bar** (above the graph):
+- Colored horizontal segments across the full session duration — one segment per `tool_call` span
+- Colors: green = success, red = error, yellow = timeout/other
+- Click a segment to select the corresponding node in the graph
+- Tooltip on hover shows tool name, status, and latency
+
+**Graph toolbar** (overlaid on graph, top-left):
+- Search bar — highlights matching nodes; non-matching nodes dimmed. Keyboard shortcut: `/` to focus
+- Zoom slider — range 25–250%; `+`/`-` keys increment by 10%
+- Expand All / Collapse All buttons — controls server node expansion state globally
+- Failures toggle — isolates the error chain, dims non-failing nodes. Keyboard shortcut: `e`
+- Fit view button — fits all nodes into viewport. Keyboard shortcut: `f`
+- `Esc` clears selection
+
+**Lineage graph** (shared SVG + dagre renderer):
+- Agent nodes and server nodes connected by directed edges with call counts
+- Per-tool expansion: each edge between an agent and a server shows a circular `+` button with call count (e.g. `5×`). Clicking it splits the server node into per-tool sub-nodes, one per distinct tool called
+- "View in Agent/Server Catalog →" links visible in node detail panel, navigating to `/agents` or `/servers` with the node pre-selected
+- Keyboard shortcut: `Esc` = deselect node
+
+**Minimap** (bottom-right corner):
+- 150×90px overview of the full graph with a viewport rectangle overlay
+- Dragging the viewport rectangle inside the minimap pans the main graph
+- Always visible when graph has more than a few nodes
+
+**Right-side inspector panel** (70/30 split — graph 70%, panel 30%):
+- Populated when a node, edge, or per-tool sub-node is selected
+- Shows call counts, error rate, avg/p99 latency, tool list, and token usage for the selected element
+- "View in Catalog" link appears for agent and server nodes
+
+**PayloadSlideout** (full-width slide-over panel):
+- Opens when a payload cell in the inspector is clicked
+- Displays JSON with line numbers
+- Controls: copy button, word wrap toggle, tab selector (Input / Output / Prompt / Completion)
+- `Esc` closes the panel
+
+#### 4.3.2 Trace tab
+
+Tree of `agent`, `handoff`, and `tool_call` spans. Clicking a span row expands inline payload/error content. Payload visibility requires P5.1 payload capture to be active (`redact_payloads: false`, default).
+
+#### 4.3.3 Session comparison
+
+Compare is initiated from the session detail page. The user picks another recent session, then LangSight calls `GET /api/agents/sessions/compare?a=&b=` and renders a per-tool aligned diff table. Each diff row shows tool key, base status, base latency, compare status, compare latency, and latency delta percentage. Row colours: matched=green, diverged=yellow, only_a=blue, only_b=purple. Diverged = status changed OR latency delta >= 20%.
+
+#### 4.3.4 Replay button (P5.7)
+
+Replay lives in the session detail header — re-runs all `tool_call` spans in the session with their stored input args against live MCP servers. Shows spinner and "Replaying..." while in flight. On completion, calls `POST /api/agents/sessions/{id}/replay` and returns a replay session that can be compared directly with the original. Requires `redact_payloads: false` (default) so that `input_json` is present on spans.
+
+### 4.4 MCP Servers Catalog — `/servers`
+
+New page added 2026-03-20. Uses the same adaptive 3-state layout as the Agents page.
+
+**State 1 — No server selected (full-width table)**
+- Columns: Server name, Owner, Tags, Status, Latency (sparkline trend), Uptime, Tools count, Last Checked
+- Sortable on all columns
+- Needs Attention banner when any server is `down` or `degraded`
+- Status filter bar: All / Down / Degraded / Up with live counts
+- Run Check button triggers `POST /api/health/check`
+
+**State 2 — Server selected (280px sidebar + detail panel)**
+- Detail panel has 4 tabs:
+  - **About**: Editable description, owner, tags, transport type, runbook URL, last error — writes to `PUT /api/servers/metadata/{name}` on blur
+  - **Tools**: All declared tools with name, description, input schema summary, and reliability metrics (total calls, errors, p99 latency, success rate). Populated automatically via SDK tool-schema capture (see Section 5 below). Tools that exist but were never called appear with 0 calls and their description.
+  - **Health**: Uptime percentage, latency trend chart (Recharts AreaChart), last 15 health checks table (timestamp, status, latency, tools count, error)
+  - **Consumers**: Which agents call this server, derived from lineage graph data
+
+**Backend schema** (added to `postgres.py` DDL, idempotent):
+- `server_metadata` table: `id`, `server_name` (UNIQUE), `description`, `owner`, `tags` (JSONB), `transport`, `runbook_url`, `project_id` (FK → projects), `created_at`, `updated_at`
+- `server_tools` table: `id`, `server_name`, `tool_name` (UNIQUE per server), `description`, `input_schema` (JSONB), `first_seen_at`, `last_seen_at`
+
+**API endpoints** (added):
+- `GET /api/servers/metadata` — list all server metadata records
+- `PUT /api/servers/metadata/{name}` — upsert metadata for a server
+- `GET /api/servers/{name}/tools` — list declared tools for a server
+- `PUT /api/servers/{name}/tools` — bulk-upsert tool declarations (used by SDK auto-capture)
+
+**Sidebar navigation**: "MCP Servers" entry added between Agents and Costs in the primary nav (`href="/servers"`, `Server` icon, indigo accent).
 
 ### 4.5 Tool Reliability Page
 - **Metrics table**: Tool name, success rate (with sparkline), p50/p95/p99 latency, error rate, call volume
@@ -524,7 +622,18 @@ The `audit_logs` table is append-only. The UI shows the last 50 events; full his
 
 ---
 
-## 5. Feature Summary by Phase
+## 5. SDK — Automatic Tool Schema Capture (added 2026-03-20)
+
+When the LangSight SDK wraps an MCP client via `MCPClientProxy`, every call to `list_tools()` is intercepted. On each interception, the tool names, descriptions, and input schemas are fire-and-forget posted to `PUT /api/servers/{server_name}/tools`.
+
+This means:
+- The **Tools** tab in the MCP Servers catalog populates automatically as agents run — no health checker or manual registration is required.
+- Tools that exist in a server's schema but were never called by an instrumented agent appear with `0 calls` alongside their description (schema is known, call metrics are not).
+- Fail-open: if the LangSight backend is unreachable, `list_tools()` still returns normally to the agent.
+
+---
+
+## 6. Feature Summary by Phase
 
 ### Phase 1 — MVP (Weeks 1-5)
 | Feature | Interface | Description |
@@ -557,7 +666,7 @@ The `audit_logs` table is append-only. The UI shows the last 50 events; full his
 
 ---
 
-## 6. Slack Alert Format
+## 7. Slack Alert Format
 
 ```
 🔴 AgentGuard Alert — MCP Server Down

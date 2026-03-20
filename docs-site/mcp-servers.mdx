@@ -1,0 +1,121 @@
+---
+title: "MCP Servers"
+description: "Browse every MCP server your agents call — declared tools, health history, reliability metrics, and editable catalog metadata"
+---
+
+## Overview
+
+The **MCP Servers** page at `/servers` is a catalog of every MCP server that LangSight has observed or health-checked. It uses the same adaptive three-state layout as the [Agents](/agents) page.
+
+---
+
+## Three-state layout
+
+### State 1 — No server selected
+
+A full-width sortable table with columns:
+
+| Column | Description |
+|---|---|
+| Server | Server name (from `server_name` field in spans) |
+| Owner | Editable in the detail panel |
+| Tags | Editable in the detail panel |
+| Status | Current health status from the most recent health check |
+| Latency | Current p99 latency with a sparkline trend |
+| Uptime | Uptime percentage across the last 20 health checks |
+| Tools | Number of declared tools known for this server |
+| Checked | Time since last health check |
+
+A **Needs Attention** banner appears above the table when any server is `down` or `degraded`. Click a server in the banner or in the table to open the detail panel.
+
+### State 2 — Server selected
+
+A 280px left sidebar lists all servers with status dots. The right panel shows the selected server's details in four tabs.
+
+### State 3 — (no full-width mode for servers)
+
+The MCP Servers catalog does not have a full-width topology mode. The Topology view for server-to-agent relationships is available from the [Agents](/agents) catalog.
+
+---
+
+## Detail panel tabs
+
+### About
+
+Editable metadata stored in the `server_metadata` table:
+
+| Field | Description |
+|---|---|
+| Description | Free-text description of what this server does |
+| Owner | Team or person responsible for this server |
+| Tags | Labels for filtering and grouping (e.g. `production`, `data`) |
+| Transport | Transport type: `stdio`, `sse`, or `streamable_http` |
+| Runbook URL | Link to operational runbook |
+
+All edits save on blur via `PUT /api/servers/metadata/{name}`.
+
+### Tools
+
+A table of every tool declared by this server. The Tools tab is populated automatically — no manual registration is needed.
+
+| Column | Description |
+|---|---|
+| Tool name | Name as returned by `tools/list` |
+| Description | Tool description from the MCP schema |
+| Total calls | Number of times this tool was called by instrumented agents |
+| Errors | Number of failed calls |
+| p99 latency | 99th percentile latency across recorded calls |
+| Success rate | Percentage of successful calls |
+
+Tools that exist in the server's schema but have not yet been called by an instrumented agent appear with `0 calls` and their description from the schema.
+
+<Note>
+  The Tools tab populates through the SDK's automatic tool-schema capture. Every time an instrumented agent calls `list_tools()` on an MCP client, LangSight records the tool names, descriptions, and input schemas. See [SDK — Automatic Tool Schema Capture](#sdk-automatic-tool-schema-capture) below.
+</Note>
+
+### Health
+
+- Uptime percentage across the last 20 health checks
+- Latency trend chart (last 20 checks)
+- Table of the last 15 health checks: timestamp, status, latency, tools count, error message
+
+### Consumers
+
+Which agents have called this server, derived from the lineage graph. Shows agent name, total calls from this agent to this server, and a link to the Agents catalog entry.
+
+---
+
+## SDK — Automatic Tool Schema Capture
+
+When the LangSight SDK wraps an MCP client via `MCPClientProxy`, it intercepts every call to `list_tools()`. On each call, the tool names, descriptions, and input schemas are fire-and-forget posted to the backend. The MCP client continues normally even if the backend is unreachable.
+
+This means:
+
+- The Tools tab populates the first time an instrumented agent runs — no health checker required.
+- Tools that are declared by the server but never called still appear in the Tools tab (with 0 calls) because their schema was captured on `list_tools()`.
+
+```python
+from langsight import LangSightClient
+
+client = LangSightClient(
+    url="http://localhost:8000",
+    project_id="production",
+)
+
+# The SDK wraps your MCP clients automatically.
+# list_tools() calls are intercepted and tool schemas posted to LangSight.
+async with client.mcp_session("postgres-mcp") as session:
+    tools = await session.list_tools()  # schema captured here
+    result = await session.call_tool("query", {"sql": "SELECT 1"})
+```
+
+---
+
+## API reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/servers/metadata` | List all server metadata records |
+| `PUT` | `/api/servers/metadata/{name}` | Upsert metadata for a server (description, owner, tags, transport, runbook_url) |
+| `GET` | `/api/servers/{name}/tools` | List declared tools for a server |
+| `PUT` | `/api/servers/{name}/tools` | Bulk-upsert tool declarations (used by SDK; also callable directly) |

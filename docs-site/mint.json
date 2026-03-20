@@ -89,6 +89,7 @@
       "group": "Observability Features",
       "pages": [
         "session-replay",
+        "mcp-servers",
         "costs-model-pricing",
         "slos",
         "anomaly-detection"

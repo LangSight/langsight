@@ -9,6 +9,28 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (2026-03-20 — session detail graph toolbar, MCP Servers catalog, agents catalog, SDK tool-schema capture)
+
+- Session detail lineage graph: graph toolbar with search bar (highlights/dims nodes), zoom slider (25-250%), Expand All / Collapse All buttons, and Failures toggle that isolates the error chain
+- Session detail lineage graph: minimap (150×90px, bottom-right) showing full graph with draggable viewport rectangle
+- Session detail lineage graph: timeline bar above graph — one colored segment per `tool_call` span (green/red/yellow); click to select the node in the graph
+- Session detail lineage graph: `PayloadSlideout` component — full-width slide-over panel with JSON line numbers, copy button, word wrap toggle, tab selector (Input/Output/Prompt/Completion), Esc to close
+- Session detail lineage graph: per-tool edge expansion — circular `+` button on edges with call count (e.g. `5×`) splits the server node into per-tool sub-nodes
+- Session detail lineage graph: "View in Agent/Server Catalog →" link in node detail panels navigates to `/agents` or `/servers` with the node pre-selected
+- Keyboard shortcuts on session detail graph: `/` focus search, `f` fit view, `e` toggle error highlight, `+`/`-` zoom, `Esc` deselect
+- Agents catalog: 3-state adaptive layout — State 1 (full-width sortable table with Needs Attention banner), State 2 (280px grouped sidebar + detail panel), State 3 (56px icon-rail + full-width topology graph when Topology tab is active)
+- Agents catalog: editable metadata fields (description, owner, tags, status, runbook URL) on the About tab; writes to `PUT /api/agents/metadata/{name}` on blur
+- MCP Servers catalog at `/servers`: same 3-state adaptive layout as Agents; "MCP Servers" added to sidebar primary nav between Agents and Costs
+- MCP Servers catalog detail panel — 4 tabs: About (editable metadata), Tools (declared tools with reliability metrics), Health (uptime%, trend chart, last 15 checks), Consumers (agents that call this server from lineage data)
+- PostgreSQL tables `server_metadata` and `server_tools` added to DDL; both idempotent on schema init
+- New API endpoints: `GET /api/servers/metadata`, `PUT /api/servers/metadata/{name}`, `GET /api/servers/{name}/tools`, `PUT /api/servers/{name}/tools`
+- SDK `MCPClientProxy.list_tools()` intercepted — tool names, descriptions, and input schemas fire-and-forget posted to `PUT /api/servers/{server_name}/tools` on every call; fail-open (MCP client returns normally if backend is unreachable)
+- `dashboard/components/payload-slideout.tsx` — new reusable component
+- `dashboard/components/session-timeline.tsx` — new reusable component
+- `dashboard/components/agent-topology.tsx` — new component wrapping `LineageGraph` scoped to a single agent's edges
+- `dashboard/components/editable-field.tsx` — new reusable `EditableText`, `EditableTextarea`, `EditableTags`, `EditableUrl` components
+- `dashboard/app/(dashboard)/servers/page.tsx` — new page at `/servers`
+
 ### Added (2026-03-20 — session detail + agent topology UX)
 
 - `dashboard/app/(dashboard)/sessions/[id]/page.tsx` — dedicated full-page session debugger. Session rows now drill into `/sessions/{id}` instead of relying on the older inline workflow interaction model.

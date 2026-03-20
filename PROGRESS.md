@@ -1,6 +1,6 @@
 # LangSight — Build Progress
 
-> Last updated: 2026-03-20 (session detail page, shared SVG lineage graph, agent topology, `/lineage` redirect, docs sync)
+> Last updated: 2026-03-20 (session detail graph toolbar/minimap/timeline/slideout, agents catalog 3-state layout, MCP Servers catalog at /servers, SDK auto tool-schema capture, docs sync)
 > Maintained by: docs-keeper agent — update after every feature, architectural decision, or milestone
 
 **Project framing**: LangSight is complete observability for everything an AI agent calls — MCP servers, HTTP APIs, Python functions, and sub-agents. Agent-level instrumentation captures all tool types in one trace. MCP servers additionally receive proactive health checks, security scanning, schema drift detection, and alerting because the MCP protocol is standard and inspectable. Non-MCP tools (HTTP APIs, functions) are passively observed in traces only.
@@ -8,6 +8,38 @@
 ---
 
 ## v0.2.0 Dashboard UX Changes (2026-03-20)
+
+### Session detail — graph toolbar, minimap, timeline, PayloadSlideout (2026-03-20)
+
+- Graph toolbar (top-left overlay): search bar with node highlight/dim, zoom slider (25-250%), Expand All / Collapse All, Failures toggle. Keyboard shortcuts: `/` search, `f` fit, `e` error, `+`/`-` zoom, `Esc` deselect.
+- Minimap (150×90px, bottom-right): full-graph overview with draggable viewport rectangle.
+- Timeline bar (above graph): one colored segment per `tool_call` span; click to select node.
+- `PayloadSlideout` component: full-width slide-over with JSON + line numbers, copy, word wrap toggle, tab selector, Esc to close.
+- Per-tool edge expansion: circular `+` button on edges with call count (e.g. `5×`) — splits server node into per-tool sub-nodes.
+- "View in Catalog" links from node detail panels navigate to `/agents` or `/servers`.
+
+### MCP Servers catalog at `/servers` (2026-03-20)
+
+- New page using the same adaptive 3-state layout as Agents.
+- Detail panel: About (editable), Tools (declared tools from SDK auto-capture + reliability metrics), Health (uptime%, trend chart, last 15 checks), Consumers (from lineage).
+- "MCP Servers" added to sidebar primary nav between Agents and Costs.
+- New PostgreSQL tables: `server_metadata` (editable catalog data), `server_tools` (declared tool schemas).
+- New API: `GET/PUT /api/servers/metadata`, `GET/PUT /api/servers/{name}/tools`.
+
+### Agents catalog — 3-state adaptive layout (2026-03-20)
+
+- State 1 (no agent selected): full-width sortable table with Needs Attention banner.
+- State 2 (agent selected): 280px sidebar + detail panel (About / Overview / Topology / Sessions tabs).
+- State 3 (Topology tab active): sidebar collapses to 56px icon rail, graph fills full width.
+- Editable metadata fields (description, owner, tags, status, runbook URL) on the About tab.
+- New component: `dashboard/components/editable-field.tsx` — `EditableText`, `EditableTextarea`, `EditableTags`, `EditableUrl`.
+- New component: `dashboard/components/agent-topology.tsx` — `LineageGraph` scoped to a single agent.
+
+### SDK automatic tool schema capture (2026-03-20)
+
+- `MCPClientProxy.list_tools()` intercepted; tool names, descriptions, and input schemas fire-and-forget posted to `PUT /api/servers/{server_name}/tools` on every call.
+- Fail-open: `list_tools()` returns normally even if the backend is unreachable.
+- Tools tab in the MCP Servers catalog now populates automatically without needing the health checker to run.
 
 ### Session debugging moved to a dedicated page
 

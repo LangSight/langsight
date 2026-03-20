@@ -1,11 +1,11 @@
 # LangSight: Implementation Plan
 
-> **Version**: 1.5.0
-> **Date**: 2026-03-19
+> **Version**: 1.6.0
+> **Date**: 2026-03-20
 > **Status**: Active — Phase 1-3 COMPLETE (alpha). Phase 5 COMPLETE. Phase 6 (Project-Level RBAC) planned. Phase 7 (Model-Based Cost Tracking) planned. Pre-Production Security Hardening phase added. Release 0.1.0 is an alpha release.
 > **Author**: Engineering
 >
-> **Change from 1.4**: Phase 7 (Model-Based Cost Tracking) section added (2026-03-19). Covers `model_pricing` table with 16 seed models, token fields on `ToolCallSpan`, token-based cost engine, CRUD API for pricing management, Settings dashboard pricing table, and Costs page token breakdown. Original Phase 7 (Dashboard + Polish) renumbered to Phase 8 with a note that its core content shipped in Phase 4.
+> **Change from 1.5**: Phase 11 (Dashboard UX — Catalogs + Session Graph Toolbar) added (2026-03-20). Covers session detail graph toolbar/minimap/timeline/PayloadSlideout, agents catalog 3-state adaptive layout with editable metadata, new MCP Servers catalog at /servers with Tools/Health/Consumers tabs, and SDK automatic tool-schema capture via `MCPClientProxy.list_tools()` interception. `server_metadata` and `server_tools` PostgreSQL tables added.
 
 ---
 
@@ -20,7 +20,7 @@
 
 ---
 
-## Current Progress Summary (as of 2026-03-19)
+## Current Progress Summary (as of 2026-03-20)
 
 ```
 Phase 1 (CLI MVP)               ████████████████ 100% — COMPLETE ✅
@@ -35,9 +35,18 @@ Phase 7 (Model-Based Costs)     ████████████████
 Phase 8 (Dashboard Redesign)    ████████████████ 100% — COMPLETE ✅ 2026-03-19
 Phase 9 (Production Auth)       ████████████████ 100% — COMPLETE ✅ 2026-03-19
 Phase 10 (Multi-tenancy)        ████████████████ 100% — COMPLETE ✅ 2026-03-19
+Phase 11 (Catalogs + Graph UX)  ████████████████ 100% — COMPLETE ✅ 2026-03-20
 ```
 
 **Shipped metrics (v0.2.0)**: 694 unit tests, 77% coverage (threshold 75%), ruff `All checks passed`, mypy `Success: no issues found in 68 source files`. Full dashboard redesign with Geist fonts + deep dark sidebar, marketing website with /security and /pricing pages, projects management UI.
+
+**Phase 11 changes (shipped 2026-03-20)**:
+- Session detail page: graph toolbar (search, zoom slider 25-250%, expand/collapse, failures toggle), minimap (150×90px, draggable viewport), timeline bar (colored segments per tool call, click to select node), PayloadSlideout component (full-width slide-over, line numbers, copy, word wrap, Esc to close), per-tool edge expansion (circular `+` button with call count), "View in Catalog" links from node panels. Keyboard shortcuts: `/` search, `f` fit, `e` error toggle, `+`/`-` zoom, `Esc` deselect.
+- Agents catalog: 3-state adaptive layout — State 1 (full-width sortable table + Needs Attention banner), State 2 (280px sidebar + detail panel with About/Overview/Topology/Sessions tabs), State 3 (56px icon rail + full-width topology graph). Editable metadata (description, owner, tags, status, runbook URL) persisted via `agent_metadata` table.
+- MCP Servers catalog at `/servers`: same 3-state layout; detail panel has About/Tools/Health/Consumers tabs; "MCP Servers" added to sidebar primary nav between Agents and Costs.
+- New PostgreSQL tables: `server_metadata`, `server_tools`.
+- New API endpoints: `GET/PUT /api/servers/metadata`, `GET/PUT /api/servers/{name}/tools`.
+- SDK: `MCPClientProxy.list_tools()` intercepted — tool schemas fire-and-forget posted to backend; Tools tab populates automatically without health checker.
 
 **Infrastructure changes (2026-03-19)**:
 - SQLite removed — `DualStorage` (Postgres + ClickHouse) is the only production topology; `factory.py` raises `ConfigError` on unknown/sqlite mode

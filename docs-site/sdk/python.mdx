@@ -72,13 +72,22 @@ asyncio.run(main())
 
 ## How it works
 
-The `wrap()` method returns `MCPClientProxy` — a transparent proxy that:
+The `wrap()` method returns `MCPClientProxy` — a transparent proxy that intercepts two methods:
+
+**`call_tool()`**:
 1. Calls the original `call_tool()` method
 2. Records start time, end time, and latency
 3. Sends a `ToolCallSpan` to `POST /api/traces/spans` **asynchronously** (fire-and-forget)
 4. Returns the original result unchanged
 
-**Fail-open**: if LangSight is unreachable, the tool call still succeeds and the error is logged. Your agents are never blocked by monitoring.
+**`list_tools()`**:
+1. Calls the original `list_tools()` method
+2. Posts the returned tool names, descriptions, and input schemas to `PUT /api/servers/{server_name}/tools` **asynchronously** (fire-and-forget)
+3. Returns the original result unchanged
+
+This means the **Tools tab** in the MCP Servers catalog populates automatically the first time an instrumented agent runs — no health checker or manual registration is needed. Tools declared in the server schema but never called appear with `0 calls` and their description.
+
+**Fail-open**: if LangSight is unreachable, both `call_tool()` and `list_tools()` still succeed and the error is logged. Your agents are never blocked by monitoring.
 
 ## Span metadata
 

@@ -58,6 +58,12 @@ Total: 680ms | 7 calls | 1 failure | $0.011
   <Card title="Side-by-Side Comparison" icon="columns">
     Compare two sessions directly — same agent, different runs. Spot where one succeeded and the other failed, or measure the impact of a prompt change on tool call patterns.
   </Card>
+  <Card title="MCP Server Catalog" icon="server">
+    Every MCP server your agents call gets a catalog entry — declared tools with descriptions and reliability metrics, health history, and editable metadata (owner, tags, runbook URL). Tool schemas populate automatically via SDK interception of `list_tools()`.
+  </Card>
+  <Card title="Agent Catalog" icon="robot">
+    Browse all agents in a sortable table with error rates and cost totals. Click any agent for a per-agent topology view, session history, and editable metadata. The three-state layout scales from 4 to 100+ agents.
+  </Card>
   <Card title="Projects" icon="folder">
     Group observability data by product, environment, or team. Multi-user with an invite system and admin/viewer roles per project.
   </Card>
