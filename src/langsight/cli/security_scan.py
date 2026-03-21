@@ -10,10 +10,10 @@ import click
 from rich.console import Console
 from rich.table import Table
 
+from langsight.cli._storage import try_open_storage
 from langsight.config import load_config
 from langsight.security.models import ScanResult, Severity
 from langsight.security.scanner import SecurityScanner
-from langsight.storage.factory import open_storage
 
 console = Console()
 err_console = Console(stderr=True)
@@ -59,9 +59,13 @@ def security_scan(config_path: Path | None, output_json: bool, ci: bool) -> None
         sys.exit(1)
 
     async def _run() -> list[ScanResult]:
-        async with await open_storage(config.storage) as storage:
+        storage = await try_open_storage(config)
+        try:
             scanner = SecurityScanner(storage=storage)
             return await scanner.scan_many(config.servers)
+        finally:
+            if storage:
+                await storage.close()
 
     results = asyncio.run(_run())
 

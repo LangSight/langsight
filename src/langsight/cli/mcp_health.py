@@ -9,10 +9,10 @@ import click
 from rich.console import Console
 from rich.table import Table
 
+from langsight.cli._storage import try_open_storage
 from langsight.config import load_config
 from langsight.health.checker import HealthChecker
 from langsight.models import HealthCheckResult, ServerStatus
-from langsight.storage.factory import open_storage
 
 console = Console()
 err_console = Console(stderr=True)
@@ -50,9 +50,13 @@ def mcp_health(config_path: Path | None, output_json: bool) -> None:
         sys.exit(1)
 
     async def _run() -> list[HealthCheckResult]:
-        async with await open_storage(config.storage) as storage:
+        storage = await try_open_storage(config)
+        try:
             checker = HealthChecker(storage=storage)
             return await checker.check_many(config.servers)
+        finally:
+            if storage:
+                await storage.close()
 
     results = asyncio.run(_run())
 

@@ -22,10 +22,10 @@ from rich.table import Table
 from langsight.alerts import slack as slack_module
 from langsight.alerts import webhook as webhook_module
 from langsight.alerts.engine import AlertEngine
+from langsight.cli._storage import try_open_storage
 from langsight.config import LangSightConfig, Settings, load_config
 from langsight.health.checker import HealthChecker
 from langsight.models import HealthCheckResult, ServerStatus
-from langsight.storage.factory import open_storage
 
 logger = structlog.get_logger()
 console = Console()
@@ -98,7 +98,8 @@ async def _monitor_loop(
         latency_spike_multiplier=config.alerts.latency_spike_multiplier,
     )
 
-    async with await open_storage(config.storage) as storage:
+    storage = await try_open_storage(config)
+    try:
         checker = HealthChecker(storage=storage)
         cycle = 0
 
@@ -118,6 +119,9 @@ async def _monitor_loop(
                 break
 
             await asyncio.sleep(interval)
+    finally:
+        if storage:
+            await storage.close()
 
 
 async def _deliver_alerts(alerts, config, settings: Settings) -> None:  # type: ignore[no-untyped-def]
