@@ -30,15 +30,23 @@ import type {
  */
 const BASE = "/api/proxy";
 
+/** Default timeout for API requests (ms). */
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+/** Create an AbortSignal that fires after `ms` milliseconds. */
+function timeoutSignal(ms: number = DEFAULT_TIMEOUT_MS): AbortSignal {
+  return AbortSignal.timeout(ms);
+}
+
 async function get<T>(path: string): Promise<T> {
-  const r = await fetch(`${BASE}${path}`, { cache: "no-store" });
+  const r = await fetch(`${BASE}${path}`, { cache: "no-store", signal: timeoutSignal() });
   if (r.status === 401) throw new Error("401 Unauthorized");
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
   return r.json() as Promise<T>;
 }
 
 async function del(path: string): Promise<void> {
-  const r = await fetch(`${BASE}${path}`, { method: "DELETE", cache: "no-store" });
+  const r = await fetch(`${BASE}${path}`, { method: "DELETE", cache: "no-store", signal: timeoutSignal() });
   if (r.status === 401) throw new Error("401 Unauthorized");
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
 }
@@ -49,6 +57,7 @@ async function post<T>(path: string, body?: object): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
+    signal: timeoutSignal(),
   });
   if (r.status === 401) throw new Error("401 Unauthorized");
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
@@ -61,6 +70,7 @@ async function put<T>(path: string, body?: object): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
+    signal: timeoutSignal(),
   });
   if (r.status === 401) throw new Error("401 Unauthorized");
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
@@ -73,6 +83,7 @@ async function patch<T>(path: string, body?: object): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
+    signal: timeoutSignal(),
   });
   if (r.status === 401) throw new Error("401 Unauthorized");
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
@@ -83,7 +94,7 @@ async function patch<T>(path: string, body?: object): Promise<T> {
 export const fetcher = (url: string) => {
   // Rewrite /api/* → /api/proxy/* for SWR keys that use the old BASE
   const proxyUrl = url.startsWith("/api/proxy") ? url : url.replace(/^\/api\//, "/api/proxy/");
-  return fetch(proxyUrl, { cache: "no-store" }).then((r) => {
+  return fetch(proxyUrl, { cache: "no-store", signal: timeoutSignal() }).then((r) => {
     if (r.status === 401) throw new Error("401 Unauthorized");
     if (!r.ok) throw new Error(`${r.status}`);
     return r.json();

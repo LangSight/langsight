@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,7 @@ from langsight.config import Settings, load_config
 from langsight.storage.factory import open_storage
 
 logger = structlog.get_logger()
+_VERSION = _pkg_version("langsight")
 
 
 _MODEL_PRICING_SEED: list[tuple[str, str, str, float, float, float, str]] = [
@@ -319,7 +321,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             "Open-source agent observability platform. "
             "Trace every tool call, monitor MCP health, detect security vulnerabilities."
         ),
-        version="0.1.0",
+        version=_VERSION,
         lifespan=lifespan,
         docs_url="/docs",
         redoc_url="/redoc",
@@ -413,7 +415,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                     db_keys = True  # fail-closed
         return {
             "status": "ok",
-            "version": "0.1.0",
+            "version": _VERSION,
             "servers_configured": len(app.state.config.servers),
             "auth_enabled": env_keys or db_keys,
             "storage_mode": app.state.config.storage.mode,
@@ -460,7 +462,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
         body: dict[str, Any] = {
             "status": "ready" if storage_ok else "not_ready",
-            "version": "0.1.0",
+            "version": _VERSION,
             "storage": storage_detail,
             "auth_enabled": bool(getattr(app.state, "api_keys", [])),
             "storage_mode": app.state.config.storage.mode,

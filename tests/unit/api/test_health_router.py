@@ -75,7 +75,7 @@ class TestApiStatus:
         c, _ = client
         data = (await c.get("/api/status")).json()
         assert data["status"] == "ok"
-        assert data["version"] == "0.1.0"
+        assert data["version"] == "0.2.0"
         assert data["servers_configured"] == 2
 
 

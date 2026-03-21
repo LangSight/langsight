@@ -23,6 +23,8 @@ from typing import Any
 
 import structlog
 
+from langsight.api.metrics import SSE_EVENTS_DROPPED
+
 logger = structlog.get_logger()
 
 # Hard limit on connected clients to prevent resource exhaustion
@@ -50,12 +52,14 @@ class SSEBroadcaster:
             try:
                 queue.put_nowait(payload)
             except asyncio.QueueFull:
-                # Client is too slow — drop oldest event
+                # Client is too slow — drop oldest event to make room
                 try:
                     queue.get_nowait()
                     queue.put_nowait(payload)
                 except (asyncio.QueueEmpty, asyncio.QueueFull):
                     pass
+                SSE_EVENTS_DROPPED.inc()
+                logger.debug("sse.event_dropped", event_type=event_type, clients=len(self._clients))
 
     async def subscribe(self) -> AsyncGenerator[str, None]:
         """Subscribe to the event stream. Yields SSE-formatted strings."""

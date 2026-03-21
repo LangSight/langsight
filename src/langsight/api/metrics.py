@@ -61,6 +61,11 @@ ACTIVE_SSE = Gauge(
     "Number of active SSE (live feed) connections",
 )
 
+SSE_EVENTS_DROPPED = Counter(
+    "langsight_sse_events_dropped_total",
+    "SSE events dropped because client buffer was full",
+)
+
 HEALTH_CHECKS = Counter(
     "langsight_health_checks_total",
     "Total health checks performed",
