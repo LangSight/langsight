@@ -14,7 +14,7 @@ from langsight.cli.sessions import sessions
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="langsight")
+@click.version_option(version="0.2.0", prog_name="langsight")
 def cli() -> None:
     """LangSight — agent observability and security platform.
 

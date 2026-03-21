@@ -335,27 +335,15 @@ export default function ServersPage() {
   const [activeTab, setActiveTab] = useState<DetailTab>("about");
   const [checking, setChecking] = useState(false);
 
-  const { data: servers, isLoading, mutate } = useSWR<HealthResult[]>("/api/health/servers", fetcher, { refreshInterval: 30_000 });
+  const { data: servers, isLoading, mutate } = useSWR<HealthResult[]>(`/api/health/servers${pq ? `?${pq.slice(1)}` : ""}`, fetcher, { refreshInterval: 30_000 });
   const { data: metadata, mutate: mutateMetadata } = useSWR<ServerMetadata[]>(`/api/servers/metadata${pq}`, () => listServerMetadata(pid), { refreshInterval: 60_000 });
-  const { data: lineage } = useSWR<LineageGraph>("/api/agents/lineage?hours=24", fetcher, { refreshInterval: 60_000 });
-  const { data: toolReliability } = useSWR<ToolReliability[]>("/api/reliability/tools?hours=24", fetcher, { refreshInterval: 60_000 });
+  const { data: lineage } = useSWR<LineageGraph>(`/api/agents/lineage?hours=24${pid ? `&project_id=${encodeURIComponent(pid)}` : ""}`, fetcher, { refreshInterval: 60_000 });
+  const { data: toolReliability } = useSWR<ToolReliability[]>(`/api/reliability/tools?hours=24${pid ? `&project_id=${encodeURIComponent(pid)}` : ""}`, fetcher, { refreshInterval: 60_000 });
   const { data: declaredTools } = useSWR<{ tool_name: string; description: string; input_schema: Record<string, unknown> }[]>(
     selectedServer ? `/api/servers/${encodeURIComponent(selectedServer)}/tools${pq}` : null,
     fetcher,
     { refreshInterval: 60_000 },
   );
-  const [historyCache, setHistoryCache] = useState<Map<string, HealthResult[]>>(new Map());
-
-  // Preload history
-  useEffect(() => {
-    if (!servers) return;
-    for (const s of servers) {
-      if (!historyCache.has(s.server_name)) {
-        getServerHistory(s.server_name, 30).then((h) => setHistoryCache((p) => new Map(p).set(s.server_name, h))).catch(() => {});
-      }
-    }
-  }, [servers]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const metaByName = useMemo(() => { const m = new Map<string, ServerMetadata>(); for (const meta of metadata ?? []) m.set(meta.server_name, meta); return m; }, [metadata]);
   const selected = useMemo(() => servers?.find((s) => s.server_name === selectedServer) ?? null, [servers, selectedServer]);
 
@@ -404,7 +392,7 @@ export default function ServersPage() {
           {/* State 1: Full-width table */}
           {!selectedServer && (
             <div className="flex-1 min-h-0">
-              <ServerTable servers={servers} metaByName={metaByName} historyCache={historyCache} onSelect={selectServer} onRunCheck={runCheck} checking={checking} />
+              <ServerTable servers={servers} metaByName={metaByName} historyCache={new Map()} onSelect={selectServer} onRunCheck={runCheck} checking={checking} />
             </div>
           )}
 

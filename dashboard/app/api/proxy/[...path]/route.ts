@@ -51,6 +51,11 @@ async function proxyRequest(
   if (userRole)     headers["X-User-Role"] = userRole;
   if (BACKEND_API_KEY) headers["X-API-Key"] = BACKEND_API_KEY;
 
+  // Forward real client IP so the API rate limiter sees individual users,
+  // not the dashboard container IP (which would share one bucket for all users)
+  const clientIp = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? req.ip;
+  if (clientIp) headers["X-Forwarded-For"] = clientIp;
+
   // Forward request body for POST / PATCH / PUT
   let body: string | undefined;
   if (["POST", "PUT", "PATCH"].includes(req.method)) {

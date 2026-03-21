@@ -113,7 +113,7 @@ class AnthropicToolTracer(BaseIntegration):
                     agent_name=self._agent_name,
                     session_id=self._session_id,
                     trace_id=self._trace_id,
-                    input_args=tool_input if isinstance(tool_input, dict) else None,
+                    input_args=None if self._redact else (tool_input if isinstance(tool_input, dict) else None),
                     model_id=model,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
@@ -170,8 +170,8 @@ class AnthropicToolTracer(BaseIntegration):
                     agent_name=self._agent_name,
                     session_id=self._session_id,
                     trace_id=self._trace_id,
-                    input_args=tool_input,
-                    output_result=output,
+                    input_args=None if self._redact else tool_input,
+                    output_result=None if self._redact else output,
                 )
                 await self._client.send_span(span)
             except Exception:  # noqa: BLE001

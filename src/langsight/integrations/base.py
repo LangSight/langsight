@@ -36,6 +36,7 @@ class BaseIntegration:
         self._server_name = server_name
         self._agent_name = agent_name
         self._session_id = session_id
+        self._redact = getattr(client, "_redact_payloads", False)
 
     async def _record(
         self,
