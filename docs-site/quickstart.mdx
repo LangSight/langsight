@@ -12,14 +12,32 @@ CLI and the dashboard.
 ## Prerequisites
 
 - Python 3.11+
-- Docker (for the server) — or skip Docker and use [SQLite local mode](#option-b--local-mode-no-docker)
+- Docker (for the dashboard and history) — or skip Docker entirely for CLI-only use
 
 ---
 
-## 1. Start the server
+## 1. Try it (no Docker needed)
+
+The CLI works immediately with zero config — no server, no database:
+
+```bash
+pip install langsight           # or: uv tool install langsight
+langsight init                  # discovers MCP servers from Claude/Cursor/VS Code
+langsight mcp-health            # instant health check results
+langsight security-scan         # OWASP + CVE scan findings
+```
+
+Results are displayed in the terminal. No persistence, no Docker, no setup.
+
+<Note>
+  Want history, traces, and the dashboard? Continue to step 2.
+  Otherwise, you're done — the CLI is fully functional without a server.
+</Note>
+
+## 2. Start the server (for dashboard + history)
 
 <Tabs>
-  <Tab title="Docker (recommended)">
+  <Tab title="Docker Compose">
     ```bash
     git clone https://github.com/sumankalyan123/langsight && cd langsight
     ./scripts/quickstart.sh      # generates secrets, writes .env, starts everything
@@ -28,18 +46,9 @@ CLI and the dashboard.
     This starts Postgres, ClickHouse, the API (port 8000), and the dashboard (port 3003).
     Open **http://localhost:3003** to see the dashboard.
   </Tab>
-  <Tab title="Local mode (no Docker)">
-    ```bash
-    pip install langsight        # or: uv tool install langsight
-    langsight serve              # starts API on port 8000 with SQLite
-    ```
-
-    Local mode stores everything in `~/.langsight/data.db`. No Postgres or
-    ClickHouse needed. Perfect for trying things out.
-  </Tab>
 </Tabs>
 
-## 2. Instrument your agent
+## 3. Instrument your agent
 
 Add 3 lines to your existing agent code. LangSight wraps your MCP client
 and captures every `call_tool()` automatically — fire-and-forget, fail-open.
@@ -107,7 +116,7 @@ result = await traced.call_tool("query", {"sql": "SELECT 1"})
   </Tab>
 </Tabs>
 
-## 3. See your first trace
+## 4. See your first trace
 
 Run your agent, then check results:
 
@@ -148,7 +157,7 @@ Run your agent, then check results:
   </Tab>
 </Tabs>
 
-## 4. What's next
+## 5. What's next
 
 You now have full traces of every tool call. Here's what LangSight does beyond tracing:
 
