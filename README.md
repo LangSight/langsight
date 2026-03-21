@@ -7,7 +7,7 @@ Trace what your agents called. Find what broke, what's expensive, and what's uns
 [![PyPI](https://img.shields.io/pypi/v/langsight)](https://pypi.org/project/langsight/)
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL%201.1-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
-[![CI](https://github.com/sumankalyan123/langsight/actions/workflows/ci.yml/badge.svg)](https://github.com/sumankalyan123/langsight/actions/workflows/ci.yml)
+[![CI](https://github.com/LangSight/langsight/actions/workflows/ci.yml/badge.svg)](https://github.com/LangSight/langsight/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-mintlify-green)](https://lngsight.mintlify.app)
 
 > **Not another prompt, eval, or simulation platform.**
@@ -142,7 +142,7 @@ MCP servers get proactive health checks and security scanning because the MCP pr
 ### 1. Clone and start
 
 ```bash
-git clone https://github.com/sumankalyan123/langsight.git
+git clone https://github.com/LangSight/langsight.git
 cd langsight
 ./scripts/quickstart.sh
 ```
@@ -331,7 +331,7 @@ uv run mypy src/ && uv run ruff check src/
 
 ## Security
 
-LangSight monitors MCP security — it must itself be secure. If you discover a vulnerability, please report it via [GitHub Security Advisories](https://github.com/sumankalyan123/langsight/security/advisories).
+LangSight monitors MCP security — it must itself be secure. If you discover a vulnerability, please report it via [GitHub Security Advisories](https://github.com/LangSight/langsight/security/advisories).
 
 ---
 

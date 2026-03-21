@@ -74,7 +74,7 @@ function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
             { label: "Security", href: "/security" },
             { label: "Pricing", href: "/pricing" },
             { label: "Docs", href: "https://lngsight.mintlify.app" },
-            { label: "GitHub", href: "https://github.com/sumankalyan123/langsight" },
+            { label: "GitHub", href: "https://github.com/LangSight/langsight" },
           ].map((l) => (
             <a key={l.label} href={l.href}
               className="px-3 py-1.5 rounded-md text-sm transition-colors"
@@ -233,7 +233,7 @@ export default function PricingPage() {
                 Get started free →
               </a>
               <a
-                href="https://github.com/sumankalyan123/langsight"
+                href="https://github.com/LangSight/langsight"
                 className="text-sm font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all hover:-translate-y-px"
                 style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }}
               >
@@ -392,7 +392,7 @@ export default function PricingPage() {
                   <p style={{ color: "var(--muted)" }}>
                     Leave a GitHub star and we&apos;ll announce via releases.
                     <a
-                      href="https://github.com/sumankalyan123/langsight"
+                      href="https://github.com/LangSight/langsight"
                       className="ml-1 underline"
                       style={{ color: "var(--indigo)" }}
                     >
@@ -533,7 +533,7 @@ export default function PricingPage() {
                 Quickstart guide →
               </a>
               <a
-                href="https://github.com/sumankalyan123/langsight"
+                href="https://github.com/LangSight/langsight"
                 className="text-sm font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all hover:-translate-y-px"
                 style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }}
               >
@@ -550,7 +550,7 @@ export default function PricingPage() {
         <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <Logo />
           <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm">
-            {[["Home", "/"], ["Security", "/security"], ["Docs", "https://lngsight.mintlify.app"], ["GitHub", "https://github.com/sumankalyan123/langsight"]].map(([l, h]) => (
+            {[["Home", "/"], ["Security", "/security"], ["Docs", "https://lngsight.mintlify.app"], ["GitHub", "https://github.com/LangSight/langsight"]].map(([l, h]) => (
               <a key={l} href={h} className="transition-colors" style={{ color: "var(--muted)" }}
                 onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
                 onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted)")}>

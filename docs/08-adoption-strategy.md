@@ -81,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: sumankalyan123/langsight-scan@v1
+      - uses: LangSight/langsight-scan@v1
         with:
           fail-on: high        # fail the build on HIGH+ findings
           config: .langsight.yaml

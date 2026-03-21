@@ -285,7 +285,7 @@ Phase 7 (Model-Based Costs)     ░░░░░░░░░░░░░░░░
 ### Infrastructure & Tooling
 | Item | Status | Date | Notes |
 |------|--------|------|-------|
-| GitHub repo | ✅ Done | 2026-03-16 | github.com/sumankalyan123/langsight |
+| GitHub repo | ✅ Done | 2026-03-16 | github.com/LangSight/langsight |
 | README.md | ✅ Done | 2026-03-16 | Full feature overview, architecture, CLI reference, roadmap |
 | CLAUDE.md | ✅ Done | 2026-03-16 | Engineering standards, agent workflow, testing mandate |
 | Product docs (5 files) | ✅ Done | 2026-03-16 | spec, architecture, UI/features, impl plan, risk assessment |

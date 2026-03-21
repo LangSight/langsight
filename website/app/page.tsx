@@ -122,7 +122,7 @@ function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
     { label: "Security", href: "/security" },
     { label: "Pricing", href: "/pricing" },
     { label: "Docs", href: "https://lngsight.mintlify.app" },
-    { label: "GitHub", href: "https://github.com/sumankalyan123/langsight" },
+    { label: "GitHub", href: "https://github.com/LangSight/langsight" },
   ];
 
   return (
@@ -961,7 +961,7 @@ function CTA() {
                 Start self-hosting →
               </a>
               <a
-                href="https://github.com/sumankalyan123/langsight"
+                href="https://github.com/LangSight/langsight"
                 className="text-base font-semibold px-7 py-3 rounded-lg flex items-center gap-2 transition-all hover:-translate-y-px"
                 style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }}
               >
@@ -995,9 +995,9 @@ function CTA() {
 function Footer() {
   const links = [
     { label: "Docs", href: "https://lngsight.mintlify.app" },
-    { label: "GitHub", href: "https://github.com/sumankalyan123/langsight" },
+    { label: "GitHub", href: "https://github.com/LangSight/langsight" },
     { label: "PyPI", href: "https://pypi.org/project/langsight/" },
-    { label: "Changelog", href: "https://github.com/sumankalyan123/langsight/blob/main/CHANGELOG.md" },
+    { label: "Changelog", href: "https://github.com/LangSight/langsight/blob/main/CHANGELOG.md" },
     { label: "Security", href: "/security" },
     { label: "Pricing", href: "/pricing" },
   ];

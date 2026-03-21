@@ -8,7 +8,7 @@ LangSight monitors MCP security — it must itself be secure. We take security v
 
 Instead, please report vulnerabilities through one of these channels:
 
-1. **GitHub Security Advisories** (preferred): [Create a security advisory](https://github.com/sumankalyan123/langsight/security/advisories/new)
+1. **GitHub Security Advisories** (preferred): [Create a security advisory](https://github.com/LangSight/langsight/security/advisories/new)
 2. **Email**: security@langsight.dev (if the above is not available)
 
 ### What to include

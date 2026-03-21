@@ -5,7 +5,7 @@ Thanks for your interest in contributing! This guide covers everything you need.
 ## Quick Start
 
 ```bash
-git clone https://github.com/sumankalyan123/langsight
+git clone https://github.com/LangSight/langsight
 cd langsight
 uv sync --dev          # install all dependencies
 uv run pytest          # run tests (957 should pass)
