@@ -27,6 +27,8 @@ class StorageConfig(BaseModel):
     # "dual" = Postgres (metadata: users/projects/API keys/SLOs) +
     #          ClickHouse (analytics: spans/health/costs/reliability)
     postgres_url: str | None = None  # required for mode="postgres" or "dual"
+    pg_pool_min: int = 2   # asyncpg pool min connections
+    pg_pool_max: int = 20  # asyncpg pool max connections (was hardcoded 10)
     clickhouse_url: str = "http://localhost:8123"  # mode="clickhouse"
     clickhouse_database: str = "langsight"  # mode="clickhouse"
     clickhouse_username: str = "default"  # mode="clickhouse"

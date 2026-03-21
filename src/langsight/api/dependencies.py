@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import inspect
 import ipaddress
+import time
 
 import structlog
 from fastapi import Depends, HTTPException, Request, Security, status
@@ -15,6 +16,38 @@ from langsight.models import ApiKeyRole, Project, ProjectRole
 from langsight.storage.base import StorageBackend
 
 logger = structlog.get_logger()
+
+# ---------------------------------------------------------------------------
+# Cached auth-enabled check — avoids querying list_api_keys() on every request
+# ---------------------------------------------------------------------------
+_HAS_DB_KEYS_CACHE: tuple[bool, float] = (False, 0.0)  # (value, expires_at)
+_HAS_DB_KEYS_TTL = 30.0  # seconds
+
+
+async def _has_db_keys(storage: StorageBackend) -> bool:
+    """Check if any active API keys exist in the DB. Cached for 30 seconds."""
+    global _HAS_DB_KEYS_CACHE  # noqa: PLW0603
+    value, expires_at = _HAS_DB_KEYS_CACHE
+    if time.monotonic() < expires_at:
+        return value
+
+    list_fn = getattr(storage, "list_api_keys", None)
+    if list_fn is None or not inspect.iscoroutinefunction(list_fn):
+        return False
+    try:
+        db_keys = await list_fn()
+        result = any(not k.is_revoked for k in db_keys)
+    except Exception:  # noqa: BLE001
+        # DB error: conservatively treat as auth-enabled (fail-closed)
+        result = True
+    _HAS_DB_KEYS_CACHE = (result, time.monotonic() + _HAS_DB_KEYS_TTL)
+    return result
+
+
+def invalidate_api_key_cache() -> None:
+    """Call after creating/revoking an API key to bust the cache immediately."""
+    global _HAS_DB_KEYS_CACHE  # noqa: PLW0603
+    _HAS_DB_KEYS_CACHE = (False, 0.0)
 
 # Header scheme — clients send:  X-API-Key: <key>
 # SDK clients may send:          Authorization: Bearer <key>
@@ -160,18 +193,9 @@ async def verify_api_key(
     env_keys: list[str] = getattr(request.app.state, "api_keys", [])
     storage: StorageBackend = request.app.state.storage
 
-    # Check if any API keys are configured at all
+    # Check if any API keys are configured at all (cached — avoids DB query per request)
     has_env_keys = bool(env_keys)
-    has_db_keys = False
-    list_fn = getattr(storage, "list_api_keys", None)
-    if list_fn is not None and inspect.iscoroutinefunction(list_fn):
-        try:
-            db_keys = await list_fn()
-            has_db_keys = any(not k.is_revoked for k in db_keys)
-        except Exception:  # noqa: BLE001
-            # DB error: conservatively treat as auth-enabled (fail-closed).
-            # A Postgres outage must never become an authorisation bypass.
-            has_db_keys = True
+    has_db_keys = await _has_db_keys(storage)
 
     if not has_env_keys and not has_db_keys:
         # Auth fully disabled — local dev mode (no keys configured at all)
@@ -383,18 +407,9 @@ async def get_active_project_id(
 
     is_admin = is_session_admin or is_env_key_admin
 
-    # ── Determine whether auth is enabled ────────────────────────────────────
+    # ── Determine whether auth is enabled (cached) ──────────────────────────
     has_env_keys = bool(env_keys)
-    has_db_keys = False
-    list_fn = getattr(storage, "list_api_keys", None)
-    if list_fn is not None and inspect.iscoroutinefunction(list_fn):
-        try:
-            db_keys = await list_fn()
-            has_db_keys = any(not k.is_revoked for k in db_keys)
-        except Exception:  # noqa: BLE001
-            # DB error: conservatively treat as auth-enabled (fail-closed).
-            # A Postgres outage must never become an authorisation bypass.
-            has_db_keys = True
+    has_db_keys = await _has_db_keys(storage)
     auth_enabled = has_env_keys or has_db_keys
 
     # ── Handle missing project_id ─────────────────────────────────────────────
@@ -472,16 +487,7 @@ async def require_admin(
 
     # Auth disabled — allow everything
     has_env_keys = bool(env_keys)
-    has_db_keys = False
-    list_fn = getattr(storage, "list_api_keys", None)
-    if list_fn is not None and inspect.iscoroutinefunction(list_fn):
-        try:
-            db_keys = await list_fn()
-            has_db_keys = any(not k.is_revoked for k in db_keys)
-        except Exception:  # noqa: BLE001
-            # DB error: conservatively treat as auth-enabled (fail-closed).
-            # A Postgres outage must never become an authorisation bypass.
-            has_db_keys = True
+    has_db_keys = await _has_db_keys(storage)
 
     if not has_env_keys and not has_db_keys:
         return  # auth disabled

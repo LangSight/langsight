@@ -9,6 +9,14 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _clear_api_key_cache() -> None:
+    """Clear the auth API key cache before each test."""
+    from langsight.api.dependencies import invalidate_api_key_cache
+
+    invalidate_api_key_cache()
 import yaml
 from fastapi import Request
 

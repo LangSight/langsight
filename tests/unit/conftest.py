@@ -1,3 +1,11 @@
 from __future__ import annotations
-# Unit-level fixtures live here.
-# Add shared mocks (e.g. in-memory SQLite, mock MCP pool) as the project grows.
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _clear_api_key_cache() -> None:
+    """Clear the auth API key cache before each test to prevent cross-test leaks."""
+    from langsight.api.dependencies import invalidate_api_key_cache
+
+    invalidate_api_key_cache()

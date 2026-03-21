@@ -25,6 +25,7 @@ _TOOL_SCHEMA_ENDPOINT = "/api/servers/{server_name}/tools"
 _SEND_TIMEOUT = 3.0
 _BATCH_SIZE = 50  # flush when buffer reaches this many spans
 _FLUSH_INTERVAL = 1.0  # seconds between automatic flushes
+_MAX_BUFFER_SIZE = 10_000  # hard cap — drop oldest spans on overflow to prevent OOM
 
 
 class LangSightClient:
@@ -50,6 +51,7 @@ class LangSightClient:
         project_id: str | None = None,
         batch_size: int = _BATCH_SIZE,
         flush_interval: float = _FLUSH_INTERVAL,
+        max_buffer_size: int = _MAX_BUFFER_SIZE,
     ) -> None:
         self._url = url.rstrip("/")
         self._api_key = api_key
@@ -59,6 +61,7 @@ class LangSightClient:
         self._http: httpx.AsyncClient | None = None
         self._batch_size = batch_size
         self._flush_interval = flush_interval
+        self._max_buffer_size = max_buffer_size
         self._buffer: list[ToolCallSpan] = []
         self._flush_task: asyncio.Task[None] | None = None
 
@@ -125,8 +128,14 @@ class LangSightClient:
 
         Spans are flushed automatically when the buffer reaches ``batch_size``
         or every ``flush_interval`` seconds — whichever comes first.
+        If the buffer exceeds ``max_buffer_size``, oldest spans are dropped
+        to prevent unbounded memory growth when the backend is slow/down.
         """
         self._buffer.append(span)
+        if len(self._buffer) > self._max_buffer_size:
+            dropped = len(self._buffer) - self._max_buffer_size
+            self._buffer = self._buffer[dropped:]
+            logger.warning("sdk.buffer_overflow", dropped=dropped, max=self._max_buffer_size)
         self._ensure_flush_loop()
         if len(self._buffer) >= self._batch_size:
             asyncio.create_task(self.flush())
@@ -134,6 +143,10 @@ class LangSightClient:
     async def send_spans(self, spans: list[ToolCallSpan]) -> None:
         """Buffer multiple spans. Triggers immediate flush if threshold reached."""
         self._buffer.extend(spans)
+        if len(self._buffer) > self._max_buffer_size:
+            dropped = len(self._buffer) - self._max_buffer_size
+            self._buffer = self._buffer[dropped:]
+            logger.warning("sdk.buffer_overflow", dropped=dropped, max=self._max_buffer_size)
         self._ensure_flush_loop()
         if len(self._buffer) >= self._batch_size:
             asyncio.create_task(self.flush())

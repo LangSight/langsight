@@ -60,7 +60,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/status')"
 
-CMD ["uvicorn", "langsight.api.server:app", \
-     "--host", "0.0.0.0", \
-     "--port", "8000", \
-     "--workers", "2"]
+# Workers configurable via LANGSIGHT_WORKERS env var (default: 2)
+ENV LANGSIGHT_WORKERS=2
+CMD sh -c "uvicorn langsight.api.server:app --host 0.0.0.0 --port 8000 --workers ${LANGSIGHT_WORKERS}"

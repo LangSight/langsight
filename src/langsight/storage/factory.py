@@ -29,7 +29,7 @@ async def open_storage(config: StorageConfig) -> StorageBackend:
             )
         from langsight.storage.postgres import PostgresBackend
 
-        return await PostgresBackend.open(config.postgres_url)
+        return await PostgresBackend.open(config.postgres_url, min_size=config.pg_pool_min, max_size=config.pg_pool_max)
 
     if mode == "clickhouse":
         from urllib.parse import urlparse
@@ -62,7 +62,7 @@ async def open_storage(config: StorageConfig) -> StorageBackend:
         parsed = urlparse(config.clickhouse_url)
         host = parsed.hostname or "localhost"
         port = parsed.port or 8123
-        metadata = await PostgresBackend.open(config.postgres_url)
+        metadata = await PostgresBackend.open(config.postgres_url, min_size=config.pg_pool_min, max_size=config.pg_pool_max)
         analytics = await ClickHouseBackend.open(
             host=host,
             port=port,

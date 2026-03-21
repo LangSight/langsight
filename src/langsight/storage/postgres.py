@@ -287,9 +287,9 @@ class PostgresBackend:
     # ---------------------------------------------------------------------------
 
     @classmethod
-    async def open(cls, dsn: str) -> PostgresBackend:
+    async def open(cls, dsn: str, min_size: int = 2, max_size: int = 20) -> PostgresBackend:
         """Open a connection pool and create schema if needed."""
-        pool = await asyncpg.create_pool(dsn, min_size=2, max_size=10)
+        pool = await asyncpg.create_pool(dsn, min_size=min_size, max_size=max_size)
         async with pool.acquire() as conn:
             async with conn.transaction():
                 for stmt in _DDL_STATEMENTS:
