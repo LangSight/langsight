@@ -214,7 +214,7 @@ async def list_projects(
         return await _projects_with_counts(storage, projects, role_override="owner")
 
     # Use api_key record id as user proxy
-    projects: list[Project] = []
+    projects = []
     principal_id: str | None = None
     if api_key and hasattr(storage, "get_api_key_by_hash"):
         import hashlib

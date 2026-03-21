@@ -243,7 +243,7 @@ class TestLangGraphOnToolEnd:
         callback._pending[str(tool_id)] = ("query", datetime.now(UTC), "tool_node")
 
         with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
-            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: asyncio.get_event_loop().run_until_complete(coro)):
+            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: coro.close()):
                 callback.on_tool_end("ok", run_id=tool_id)
 
         span = mock_send.call_args[0][0]
@@ -259,7 +259,7 @@ class TestLangGraphOnToolEnd:
         callback._pending[str(tool_id)] = ("query", datetime.now(UTC), None)
 
         with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
-            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: asyncio.get_event_loop().run_until_complete(coro)):
+            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: coro.close()):
                 callback.on_tool_end("ok", run_id=tool_id)
 
         span = mock_send.call_args[0][0]
@@ -275,7 +275,7 @@ class TestLangGraphOnToolEnd:
         callback._pending[str(tool_id)] = ("tool", datetime.now(UTC), "node")
 
         with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
-            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: asyncio.get_event_loop().run_until_complete(coro)):
+            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: coro.close()):
                 callback.on_tool_end("ok", run_id=tool_id)
 
         span = mock_send.call_args[0][0]
@@ -291,7 +291,7 @@ class TestLangGraphOnToolError:
         callback._pending[str(tool_id)] = ("bad_tool", datetime.now(UTC), "agent_node")
 
         with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
-            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: asyncio.get_event_loop().run_until_complete(coro)):
+            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: coro.close()):
                 callback.on_tool_error(ValueError("db error"), run_id=tool_id)
 
         assert str(tool_id) not in callback._pending
@@ -310,7 +310,7 @@ class TestLangGraphOnToolError:
         callback._pending[str(tool_id)] = ("tool", datetime.now(UTC), None)
 
         with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
-            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: asyncio.get_event_loop().run_until_complete(coro)):
+            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: coro.close()):
                 callback.on_tool_error(RuntimeError("err"), run_id=tool_id)
 
         span = mock_send.call_args[0][0]
@@ -337,7 +337,7 @@ class TestLangGraphFullLifecycle:
 
         # Tool completes
         with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
-            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: asyncio.get_event_loop().run_until_complete(coro)):
+            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: coro.close()):
                 callback.on_tool_end("results", run_id=tool_id)
 
         span = mock_send.call_args[0][0]
@@ -362,7 +362,7 @@ class TestLangGraphFullLifecycle:
 
         spans = []
         with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
-            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: asyncio.get_event_loop().run_until_complete(coro)):
+            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: coro.close()):
                 callback.on_tool_end("ok_a", run_id=tool_id_1)
                 callback.on_tool_end("ok_b", run_id=tool_id_2)
 
@@ -380,7 +380,7 @@ class TestLangGraphFullLifecycle:
         callback.on_tool_start({"name": "bad_tool"}, "input", run_id=tool_id)
 
         with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
-            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: asyncio.get_event_loop().run_until_complete(coro)):
+            with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: coro.close()):
                 callback.on_tool_error(RuntimeError("failed"), run_id=tool_id)
 
         span = mock_send.call_args[0][0]

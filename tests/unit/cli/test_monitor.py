@@ -49,7 +49,7 @@ class TestMonitorCommand:
     def test_once_flag_runs_single_cycle(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.monitor.open_storage", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.monitor.try_open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.monitor.HealthChecker") as MockChecker:
                 MockChecker.return_value.check_many = AsyncMock(return_value=[_up_result()])
                 result = runner.invoke(cli, ["monitor", "--config", str(config_file), "--once"])
@@ -67,7 +67,7 @@ class TestMonitorCommand:
     def test_shows_up_status(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.monitor.open_storage", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.monitor.try_open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.monitor.HealthChecker") as MockChecker:
                 MockChecker.return_value.check_many = AsyncMock(return_value=[_up_result()])
                 result = runner.invoke(cli, ["monitor", "--config", str(config_file), "--once"])
@@ -77,7 +77,7 @@ class TestMonitorCommand:
     def test_shows_down_status(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.monitor.open_storage", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.monitor.try_open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.monitor.HealthChecker") as MockChecker:
                 MockChecker.return_value.check_many = AsyncMock(return_value=[_down_result()])
                 result = runner.invoke(cli, ["monitor", "--config", str(config_file), "--once"])
@@ -87,7 +87,7 @@ class TestMonitorCommand:
     def test_custom_interval_accepted(self, config_file: Path) -> None:
         runner = CliRunner()
         storage = _mock_storage()
-        with patch("langsight.cli.monitor.open_storage", new_callable=AsyncMock, return_value=storage):
+        with patch("langsight.cli.monitor.try_open_storage", new_callable=AsyncMock, return_value=storage):
             with patch("langsight.cli.monitor.HealthChecker") as MockChecker:
                 MockChecker.return_value.check_many = AsyncMock(return_value=[_up_result()])
                 result = runner.invoke(
