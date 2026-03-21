@@ -150,7 +150,7 @@ debugger → root cause → fix → tester (add regression test) → security-re
 | Type checker | mypy or pyright | Strict mode |
 | Testing | pytest + pytest-asyncio | Coverage target: 80%+ |
 | Containerization | Docker Compose | `docker compose up` for full stack |
-| License | Apache 2.0 | |
+| License | BSL 1.1 (converts to Apache 2.0 on 2030-03-21) | |
 
 ---
 

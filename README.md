@@ -5,7 +5,7 @@
 Trace every tool call your agents make — MCP servers, HTTP APIs, Python functions, sub-agents. For MCP servers specifically, get proactive health checks, schema drift detection, and security scanning.
 
 [![PyPI](https://img.shields.io/pypi/v/langsight)](https://pypi.org/project/langsight/)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![License: BSL 1.1](https://img.shields.io/badge/License-BSL%201.1-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![CI](https://github.com/sumankalyan123/langsight/actions/workflows/ci.yml/badge.svg)](https://github.com/sumankalyan123/langsight/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-mintlify-green)](https://lngsight.mintlify.app)
@@ -473,4 +473,6 @@ LangSight monitors MCP security — it must itself be secure. If you discover a 
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+BSL 1.1 — self-host free, no usage limits. See [LICENSE](LICENSE).
+
+Each version converts to Apache 2.0 four years after release. The only restriction: you may not offer LangSight as a hosted/managed service to third parties.
