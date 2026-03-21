@@ -20,6 +20,7 @@ import structlog
 from fastapi import APIRouter, Request
 from fastapi import status as http_status
 
+from langsight.api.metrics import SPANS_INGESTED
 from langsight.api.rate_limit import limiter
 from langsight.sdk.models import ToolCallSpan, ToolCallStatus
 
@@ -62,6 +63,20 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
     storage = getattr(request.app.state, "storage", None)
     if storage is not None and hasattr(storage, "save_tool_call_spans"):
         await storage.save_tool_call_spans(spans)
+
+    # Update metrics + broadcast to SSE clients
+    SPANS_INGESTED.inc(len(spans))
+    broadcaster = getattr(request.app.state, "broadcaster", None)
+    if broadcaster:
+        for span in spans:
+            broadcaster.publish("span:new", {
+                "session_id": span.session_id,
+                "agent_name": span.agent_name,
+                "server_name": span.server_name,
+                "tool_name": span.tool_name,
+                "status": span.status,
+                "latency_ms": span.latency_ms,
+            })
 
     return {"accepted": len(spans)}
 

@@ -25,6 +25,7 @@ dependencies = [
     "slowapi>=0.1.9",
     "alembic>=1.18.4",
     "bcrypt>=5.0.0",
+    "prometheus-client>=0.21",
 ]
 
 [project.scripts]

@@ -13,7 +13,9 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from langsight.api.broadcast import SSEBroadcaster
 from langsight.api.dependencies import verify_api_key
+from langsight.api.metrics import PrometheusMiddleware, metrics_router
 from langsight.api.rate_limit import limiter  # single global instance
 from langsight.api.routers import (
     agents,
@@ -22,6 +24,7 @@ from langsight.api.routers import (
     costs,
     health,
     lineage,
+    live,
     projects,
     reliability,
     security,
@@ -272,6 +275,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         config = config.model_copy(update={"storage": settings.apply_to_storage(config.storage)})
         app.state.config = config
         app.state.storage = await open_storage(app.state.config.storage)
+        app.state.broadcaster = SSEBroadcaster()
 
         # Auth setup — store parsed keys on app state so the dep can read them
         api_keys = settings.parsed_api_keys()
@@ -320,6 +324,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
     )
+
+    # Prometheus metrics — request count + duration histograms
+    app.add_middleware(PrometheusMiddleware)
 
     # Rate limiting — global 200/min default, per-route overrides where needed
     app.state.limiter = limiter
@@ -383,6 +390,10 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     app.include_router(users.router, prefix="/api", dependencies=_auth_dep)
     # Public user routes — no auth needed (login verify + accept-invite)
     app.include_router(users.public_router, prefix="/api")
+    # Live SSE event stream — requires auth
+    app.include_router(live.router, prefix="/api", dependencies=_auth_dep)
+    # Prometheus metrics — no auth (scrapers need direct access)
+    app.include_router(metrics_router)
 
     @app.get("/api/status", tags=["meta"])
     async def status() -> dict[str, Any]:
