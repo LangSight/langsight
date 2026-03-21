@@ -476,6 +476,14 @@ langsight investigate "customer got wrong refund amount"
 | `cost_daily` | Aggregated: per-tool, per-agent cost per day | 1 year |
 | `mcp_schema_snapshots` | Full tool schema JSON, stored on change (not on every check) | Forever |
 
+**Known scaling limit — project-scoped analytics**
+
+The materialized views (`tool_calls_mv`, `tool_reliability_hourly`, `cost_daily`) aggregate globally — they do not include `project_id` in their GROUP BY. When the dashboard filters by project, queries fall back to the raw `mcp_tool_calls` table with a WHERE clause instead of reading the pre-aggregated view.
+
+At current scale (demo data, single-digit projects) this is invisible — ClickHouse partition pruning on `toYYYYMM(started_at)` keeps scans fast. At 100k+ spans across 50+ projects, project-scoped dashboard pages will become noticeably slower.
+
+**When to fix:** When a real user reports slow project-filtered queries. The fix is mechanical: add `project_id` to the GROUP BY in each materialized view, or create per-project MVs. This is a migration, not a redesign. Do not pre-optimize — the real query patterns should drive the MV schema.
+
 **`mcp_tool_calls` payload columns** (added P5.1 + P5.3):
 | Column | Type | Description |
 |--------|------|-------------|
