@@ -88,13 +88,13 @@
 - Produces a scored report (0-10 overall, per-category scores)
 
 **Scan modes**:
-- **One-time**: `agentguard security-scan` — runs and exits
-- **Continuous**: Part of `agentguard monitor` — periodic re-scans to detect rug-pull attacks
+- **One-time**: `langsight security-scan` — runs and exits
+- **Continuous**: Part of `langsight monitor` — periodic re-scans to detect rug-pull attacks
 
 **Key design decisions**:
-- CVE database is a local JSON file, updated via `agentguard update-cves` or on startup
+- CVE database is a local JSON file, updated via `langsight update-cves` or on startup
 - Tool poisoning detection requires a baseline — first scan establishes it
-- Scanner reads MCP server configs from .agentguard.yaml, not from the servers themselves
+- Scanner reads MCP server configs from .langsight.yaml, not from the servers themselves
 
 ### 2.3 OTEL Trace Ingestion
 
@@ -103,7 +103,7 @@
 **How it works**:
 - OTEL Collector (contrib build) receives OTLP spans on ports 4317 (gRPC) / 4318 (HTTP)
 - Collector exports to ClickHouse via built-in ClickHouse exporter
-- AgentGuard adds materialized views on top of standard OTEL schema to extract:
+- LangSight adds materialized views on top of standard OTEL schema to extract:
   - Tool call spans (tool name, success/fail, latency, params, response)
   - LLM call spans (model, tokens, cost)
   - Agent spans (agent name, task, handoffs)
@@ -148,7 +148,7 @@
 
 **Key design decisions**:
 - Model pricing stored in ClickHouse dictionary table (updatable)
-- External API costs are user-configured in .agentguard.yaml
+- External API costs are user-configured in .langsight.yaml
 - Cost attribution by task requires session/task ID in OTEL spans (framework-dependent)
 
 ### 2.6 Alerting Engine
@@ -156,7 +156,7 @@
 **Purpose**: Fires alerts when MCP health, reliability, security, or cost thresholds are breached.
 
 **How it works**:
-- Alert rules defined in .agentguard.yaml or via API
+- Alert rules defined in .langsight.yaml or via API
 - Rule types: threshold-based (error rate > X%) and anomaly-based (deviation from baseline)
 - Deduplication: same alert within cooldown window = single notification
 - Channels: Slack webhook (rich Block Kit format), generic webhook (JSON payload)
@@ -174,27 +174,27 @@
 | Cost spike | Cost exceeds Nx baseline | 3x daily baseline |
 | Quality degradation | Tool success rate drops | Below 95% |
 
-### 2.7 CLI (`agentguard`)
+### 2.7 CLI (`langsight`)
 
 **Purpose**: Primary user interface for Phase 1 and 2.
 
 **Commands**:
 | Command | Description | Phase |
 |---|---|---|
-| `agentguard init` | Setup wizard, generates config | 1 |
-| `agentguard mcp-health` | Show MCP server health status | 1 |
-| `agentguard security-scan` | Run security scan | 1 |
-| `agentguard monitor` | Continuous monitoring daemon | 1 |
-| `agentguard costs` | Show cost breakdown | 2 |
-| `agentguard investigate "..."` | AI-powered root cause analysis | 2 |
-| `agentguard config` | View/edit configuration | 1 |
+| `langsight init` | Setup wizard, generates config | 1 |
+| `langsight mcp-health` | Show MCP server health status | 1 |
+| `langsight security-scan` | Run security scan | 1 |
+| `langsight monitor` | Continuous monitoring daemon | 1 |
+| `langsight costs` | Show cost breakdown | 2 |
+| `langsight investigate "..."` | AI-powered root cause analysis | 2 |
+| `langsight config` | View/edit configuration | 1 |
 
 **Design decisions**:
 - Built with Click (Python)
 - Rich terminal output with colors (via `rich` library)
 - All commands support `--json` for programmatic use
 - `--ci` flag on security-scan returns exit codes for CI/CD pipelines
-- Config resolution: CLI flags > env vars > .agentguard.yaml > defaults
+- Config resolution: CLI flags > env vars > .langsight.yaml > defaults
 
 ### 2.7.5 DualStorage (added 2026-03-19)
 
@@ -381,7 +381,7 @@ Session detail page starts compare flow against the replay session
 
 ### Health Check Flow
 ```
-agentguard monitor (or cron)
+langsight monitor (or cron)
     │
     ├─→ MCP Server A ──→ JSON-RPC ping ──→ response
     │       │
@@ -398,9 +398,9 @@ agentguard monitor (or cron)
 
 ### Security Scan Flow
 ```
-agentguard security-scan
+langsight security-scan
     │
-    ├─→ Load MCP server configs from .agentguard.yaml
+    ├─→ Load MCP server configs from .langsight.yaml
     │
     ├─→ For each server:
     │       ├─→ Match name/version against CVE database
@@ -436,7 +436,7 @@ OTEL Collector ──→ ClickHouse (otel_traces table)
 
 ### Root Cause Attribution Flow (Phase 2)
 ```
-agentguard investigate "customer got wrong refund amount"
+langsight investigate "customer got wrong refund amount"
     │
     ├─→ Query ClickHouse: recent tool calls with errors
     ├─→ Query ClickHouse: MCP health data (any servers degraded?)
@@ -524,11 +524,11 @@ agentguard investigate "customer got wrong refund amount"
 ## 6. Integration Points
 
 ### MCP Server Discovery
-AgentGuard discovers MCP servers from:
-1. `.agentguard.yaml` config file (primary)
+LangSight discovers MCP servers from:
+1. `.langsight.yaml` config file (primary)
 2. Auto-detect from `~/.config/claude/claude_desktop_config.json` (Claude Desktop)
 3. Auto-detect from Cursor MCP settings
-4. Manual `agentguard config add-server` command
+4. Manual `langsight config add-server` command
 
 ### MCP Transport Support
 | Transport | How we connect | Health check method |

@@ -372,7 +372,8 @@ export default function AgentsPage() {
   const { data: sessions, isLoading } = useSWR<AgentSession[]>(`/api/agents/sessions?hours=${hours}&limit=500${p}`, fetcher, { refreshInterval: 30_000 });
   const { data: costs } = useSWR<CostsBreakdownResponse>(`/api/costs/breakdown?hours=${hours}${p}`, () => getCostsBreakdown(hours, activeProject?.id), { refreshInterval: 30_000 });
   const { data: lineage, isLoading: lineageLoading } = useSWR<LineageGraph>(`/api/agents/lineage?hours=${hours}${p}`, fetcher, { refreshInterval: 60_000 });
-  const { data: metadata, mutate: mutateMetadata } = useSWR<AgentMetadata[]>("/api/agents/metadata", () => listAgentMetadata(), { refreshInterval: 60_000 });
+  const pid = activeProject?.id ?? null;
+  const { data: metadata, mutate: mutateMetadata } = useSWR<AgentMetadata[]>(`/api/agents/metadata${p}`, () => listAgentMetadata(pid), { refreshInterval: 60_000 });
   const { data: healthServers } = useSWR<HealthResult[]>("/api/health/servers", fetcher, { refreshInterval: 30_000 });
 
   const metaByName = useMemo(() => { const m = new Map<string, AgentMetadata>(); for (const meta of metadata ?? []) m.set(meta.agent_name, meta); return m; }, [metadata]);
@@ -508,7 +509,7 @@ export default function AgentsPage() {
                       const meta = metaByName.get(selected.agent_name);
                       async function saveMeta(field: string, value: string | string[]) {
                         const current = meta ?? { description: "", owner: "", tags: [] as string[], status: "active" as const, runbook_url: "" };
-                        await upsertAgentMetadata(selected!.agent_name, { ...current, [field]: value });
+                        await upsertAgentMetadata(selected!.agent_name, { ...current, [field]: value }, pid);
                         mutateMetadata();
                       }
                       const serverHealthMap = new Map<string, string>();

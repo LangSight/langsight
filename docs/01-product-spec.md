@@ -635,7 +635,7 @@ Cost by Agent:
 **Example: Alert Configuration**
 
 ```yaml
-# agentguard-alerts.yaml
+# langsight-alerts.yaml
 alerts:
   - name: tool-error-rate-critical
     description: "Tool error rate exceeds 5% for 10 minutes"

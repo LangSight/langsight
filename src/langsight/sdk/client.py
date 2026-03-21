@@ -206,14 +206,20 @@ class LangSightClient:
         tools: list[dict[str, object]],
         project_id: str | None = None,
     ) -> None:
-        """Fire-and-forget: POST observed tool schemas to the backend. Never raises."""
+        """Fire-and-forget: POST observed tool schemas to the backend. Never raises.
+
+        project_id is sent as a query parameter so get_active_project_id picks
+        it up from the request context — body.project_id is no longer trusted.
+        """
         endpoint = _TOOL_SCHEMA_ENDPOINT.format(server_name=server_name)
-        payload: dict[str, object] = {"tools": tools}
+        url = f"{self._url}{endpoint}"
         if project_id:
-            payload["project_id"] = project_id
+            from urllib.parse import quote
+            url = f"{url}?project_id={quote(project_id)}"
+        payload: dict[str, object] = {"tools": tools}
         try:
             http = await self._get_http()
-            response = await http.post(f"{self._url}{endpoint}", json=payload)
+            response = await http.post(url, json=payload)
             response.raise_for_status()
             logger.debug("sdk.tool_schemas_sent", server=server_name, count=len(tools))
         except Exception as exc:  # noqa: BLE001

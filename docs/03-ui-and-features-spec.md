@@ -21,12 +21,12 @@ CLI is the priority. Dashboard is built on the same FastAPI backend, so CLI user
 
 ## 2. CLI Specification
 
-### 2.1 `agentguard init`
+### 2.1 `langsight init`
 
-Interactive setup wizard that generates `.agentguard.yaml`.
+Interactive setup wizard that generates `.langsight.yaml`.
 
 ```
-$ agentguard init
+$ langsight init
 
 🔍 Scanning for MCP server configurations...
 
@@ -49,30 +49,30 @@ Alert notifications:
   Alert threshold - error rate: [5%]:
   Alert threshold - latency spike: [3x baseline]:
 
-✅ Configuration written to .agentguard.yaml
+✅ Configuration written to .langsight.yaml
    6 MCP servers configured
    Slack alerts enabled
 
 Next steps:
-  agentguard mcp-health      Check server health
-  agentguard security-scan   Run security audit
-  agentguard monitor         Start continuous monitoring
+  langsight mcp-health      Check server health
+  langsight security-scan   Run security audit
+  langsight monitor         Start continuous monitoring
 ```
 
 **Auto-discovery sources**:
 - `~/.config/claude/claude_desktop_config.json` (Claude Desktop)
 - `~/.cursor/mcp.json` (Cursor)
 - `~/.vscode/mcp.json` (VS Code)
-- Manual entry via `agentguard config add-server`
+- Manual entry via `langsight config add-server`
 
 ---
 
-### 2.2 `agentguard mcp-health`
+### 2.2 `langsight mcp-health`
 
 Shows real-time health status of all configured MCP servers.
 
 ```
-$ agentguard mcp-health
+$ langsight mcp-health
 
 MCP Server Health                                    6 servers monitored
 ────────────────────────────────────────────────────────────────────────
@@ -111,12 +111,12 @@ Summary: 3 healthy, 1 degraded, 1 down, 1 schema change
 
 ---
 
-### 2.3 `agentguard security-scan`
+### 2.3 `langsight security-scan`
 
 Scans all MCP servers for security vulnerabilities.
 
 ```
-$ agentguard security-scan
+$ langsight security-scan
 
 Scanning 6 MCP server configurations...
 
@@ -180,14 +180,14 @@ Overall Security Score: 4/10 — Needs improvement
 
 ---
 
-### 2.4 `agentguard monitor`
+### 2.4 `langsight monitor`
 
 Continuous monitoring daemon — runs health checks, security re-scans, and sends alerts.
 
 ```
-$ agentguard monitor
+$ langsight monitor
 
-AgentGuard Monitor v0.1.0
+LangSight Monitor v0.1.0
   Monitoring 6 MCP servers
   Health check interval: 30s
   Security re-scan interval: 1h
@@ -215,12 +215,12 @@ Press Ctrl+C to stop
 
 ---
 
-### 2.5 `agentguard investigate "description"` (Phase 2)
+### 2.5 `langsight investigate "description"` (Phase 2)
 
 AI-powered root cause attribution using Claude Agent SDK.
 
 ```
-$ agentguard investigate "customer bot said refund window is 30 days, but it's 14 days"
+$ langsight investigate "customer bot said refund window is 30 days, but it's 14 days"
 
 🔍 Investigating...
 
@@ -254,7 +254,7 @@ Blast Radius:
 Recommended Fix:
   1. Refresh policy-kb-mcp data source to latest version
   2. Add freshness monitoring: alert when source is updated but tool data isn't
-  3. Set max_age threshold for policy-kb-mcp in .agentguard.yaml
+  3. Set max_age threshold for policy-kb-mcp in .langsight.yaml
 ```
 
 **Options**:
@@ -267,12 +267,12 @@ Recommended Fix:
 
 ---
 
-### 2.6 `agentguard costs` (Phase 2)
+### 2.6 `langsight costs` (Phase 2)
 
 Cost breakdown by MCP tool, agent, and time period.
 
 ```
-$ agentguard costs --period 7d
+$ langsight costs --period 7d
 
 Cost Report — Last 7 Days                           Total: $47.23
 ────────────────────────────────────────────────────────────────────────
@@ -305,15 +305,15 @@ By Agent:
 
 ---
 
-### 2.7 `agentguard config`
+### 2.7 `langsight config`
 
 Configuration management.
 
 ```
-$ agentguard config show          # Show current configuration
-$ agentguard config add-server    # Add an MCP server interactively
-$ agentguard config set-alert     # Configure alert threshold
-$ agentguard config test          # Test connections to all servers
+$ langsight config show          # Show current configuration
+$ langsight config add-server    # Add an MCP server interactively
+$ langsight config set-alert     # Configure alert threshold
+$ langsight config test          # Test connections to all servers
 ```
 
 ---
@@ -660,16 +660,16 @@ This means:
 |---|---|---|
 | Web dashboard | Next.js | 6 pages: Home, Health, Reliability, Security, Costs, Alerts |
 | Integration testing | — | Verified with CrewAI, Pydantic AI, OpenAI Agents SDK |
-| MCP server (meta) | MCP | Expose AgentGuard tools via MCP so agents can query health |
+| MCP server (meta) | MCP | Expose LangSight tools via MCP so agents can query health |
 | Documentation | — | README, quickstart, framework guides, examples |
-| PyPI publish | — | `pip install agentguard` |
+| PyPI publish | — | `pip install langsight` |
 
 ---
 
 ## 7. Slack Alert Format
 
 ```
-🔴 AgentGuard Alert — MCP Server Down
+🔴 LangSight Alert — MCP Server Down
 
 Server: jira-mcp
 Status: DOWN (was UP)
@@ -684,11 +684,11 @@ Details:
 Impact:
   Agents using jira-mcp may fail or return incomplete results.
 
-→ Run: agentguard mcp-health --server jira-mcp
+→ Run: langsight mcp-health --server jira-mcp
 ```
 
 ```
-🟡 AgentGuard Alert — Schema Change Detected
+🟡 LangSight Alert — Schema Change Detected
 
 Server: filesystem-mcp
 Tool: read_file
@@ -699,5 +699,5 @@ New schema hash: 7d2e9f04
 
 This may affect agents relying on the previous tool interface.
 
-→ Run: agentguard security-scan --server filesystem-mcp
+→ Run: langsight security-scan --server filesystem-mcp
 ```

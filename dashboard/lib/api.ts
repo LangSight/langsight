@@ -206,13 +206,22 @@ export const deleteSLO = (id: string) => del(`/slos/${encodeURIComponent(id)}`);
 
 // ── Agent Metadata (Catalog) ─────────────────────────────────────────────────
 import type { AgentMetadata, ServerMetadata } from "./types";
-export const listAgentMetadata = () => get<AgentMetadata[]>("/agents/metadata");
-export const getAgentMetadata = (name: string) => get<AgentMetadata>(`/agents/metadata/${encodeURIComponent(name)}`);
-export const upsertAgentMetadata = (name: string, body: { description?: string; owner?: string; tags?: string[]; status?: string; runbook_url?: string }) =>
-  put<AgentMetadata>(`/agents/metadata/${encodeURIComponent(name)}`, body);
-export const deleteAgentMetadata = (name: string) => del(`/agents/metadata/${encodeURIComponent(name)}`);
+
+function withProject(path: string, projectId?: string | null): string {
+  return projectId ? `${path}?project_id=${encodeURIComponent(projectId)}` : path;
+}
+
+export const listAgentMetadata = (projectId?: string | null) =>
+  get<AgentMetadata[]>(withProject("/agents/metadata", projectId));
+export const getAgentMetadata = (name: string, projectId?: string | null) =>
+  get<AgentMetadata>(withProject(`/agents/metadata/${encodeURIComponent(name)}`, projectId));
+export const upsertAgentMetadata = (name: string, body: { description?: string; owner?: string; tags?: string[]; status?: string; runbook_url?: string }, projectId?: string | null) =>
+  put<AgentMetadata>(withProject(`/agents/metadata/${encodeURIComponent(name)}`, projectId), body);
+export const deleteAgentMetadata = (name: string, projectId?: string | null) =>
+  del(withProject(`/agents/metadata/${encodeURIComponent(name)}`, projectId));
 
 // ── Server Metadata (Catalog) ─────────────────────────────────────────────────
-export const listServerMetadata = () => get<ServerMetadata[]>("/servers/metadata");
-export const upsertServerMetadata = (name: string, body: { description?: string; owner?: string; tags?: string[]; transport?: string; runbook_url?: string }) =>
-  put<ServerMetadata>(`/servers/metadata/${encodeURIComponent(name)}`, body);
+export const listServerMetadata = (projectId?: string | null) =>
+  get<ServerMetadata[]>(withProject("/servers/metadata", projectId));
+export const upsertServerMetadata = (name: string, body: { description?: string; owner?: string; tags?: string[]; transport?: string; runbook_url?: string }, projectId?: string | null) =>
+  put<ServerMetadata>(withProject(`/servers/metadata/${encodeURIComponent(name)}`, projectId), body);

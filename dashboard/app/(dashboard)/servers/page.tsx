@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { fetcher, triggerHealthCheck, getServerHistoty, listServerMetadata, upsertServerMetadata } from "@/lib/api";
+import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatLatency, STATUS_BG } from "@/lib/utils";
 import { toast } from "sonner";
 import { EditableTextarea, EditableText, EditableTags, EditableUrl } from "@/components/editable-field";
@@ -326,17 +327,20 @@ function HealthHistoryPanel({ serverName }: { serverName: string }) {
 type DetailTab = "about" | "tools" | "health" | "consumers";
 
 export default function ServersPage() {
+  const { activeProject } = useProject();
+  const pid = activeProject?.id ?? null;
+  const pq = pid ? `?project_id=${encodeURIComponent(pid)}` : "";
   const [selectedServer, setSelectedServer] = useState<string | null>(null);
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [activeTab, setActiveTab] = useState<DetailTab>("about");
   const [checking, setChecking] = useState(false);
 
   const { data: servers, isLoading, mutate } = useSWR<HealthResult[]>("/api/health/servers", fetcher, { refreshInterval: 30_000 });
-  const { data: metadata, mutate: mutateMetadata } = useSWR<ServerMetadata[]>("/api/servers/metadata", () => listServerMetadata(), { refreshInterval: 60_000 });
+  const { data: metadata, mutate: mutateMetadata } = useSWR<ServerMetadata[]>(`/api/servers/metadata${pq}`, () => listServerMetadata(pid), { refreshInterval: 60_000 });
   const { data: lineage } = useSWR<LineageGraph>("/api/agents/lineage?hours=24", fetcher, { refreshInterval: 60_000 });
   const { data: toolReliability } = useSWR<ToolReliability[]>("/api/reliability/tools?hours=24", fetcher, { refreshInterval: 60_000 });
   const { data: declaredTools } = useSWR<{ tool_name: string; description: string; input_schema: Record<string, unknown> }[]>(
-    selectedServer ? `/api/servers/${encodeURIComponent(selectedServer)}/tools` : null,
+    selectedServer ? `/api/servers/${encodeURIComponent(selectedServer)}/tools${pq}` : null,
     fetcher,
     { refreshInterval: 60_000 },
   );
@@ -452,7 +456,7 @@ export default function ServersPage() {
                     const meta = metaByName.get(selected.server_name);
                     async function save(field: string, value: string | string[]) {
                       const cur = meta ?? { description: "", owner: "", tags: [] as string[], transport: "", runbook_url: "" };
-                      await upsertServerMetadata(selected!.server_name, { ...cur, [field]: value });
+                      await upsertServerMetadata(selected!.server_name, { ...cur, [field]: value }, pid);
                       mutateMetadata();
                     }
                     return (
