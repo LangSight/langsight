@@ -119,9 +119,17 @@ def _project_to_response(
 
 
 async def _projects_with_counts(
-    storage: StorageBackend, projects: list[Project],
+    storage: StorageBackend,
+    projects: list[Project],
+    *,
+    role_override: str | None = None,
+    user_id: str | None = None,
 ) -> list[ProjectResponse]:
-    """Build project responses with member counts in a single batch query."""
+    """Build project responses with member counts and caller's role.
+
+    role_override: set a fixed role for all projects (e.g. "owner" for admins).
+    user_id: look up the caller's membership role per project.
+    """
     if not projects:
         return []
     get_counts = getattr(storage, "get_member_counts", None)
@@ -133,7 +141,20 @@ async def _projects_with_counts(
         for p in projects:
             members = await storage.list_members(p.id)
             counts[p.id] = len(members)
-    return [_project_to_response(p, member_count=counts.get(p.id, 0)) for p in projects]
+
+    # Resolve per-project role for non-admin callers
+    roles: dict[str, str | None] = {}
+    if role_override:
+        roles = {p.id: role_override for p in projects}
+    elif user_id:
+        for p in projects:
+            member = await storage.get_member(p.id, user_id)
+            roles[p.id] = member.role.value if member else None
+
+    return [
+        _project_to_response(p, role=roles.get(p.id), member_count=counts.get(p.id, 0))
+        for p in projects
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -158,9 +179,10 @@ async def list_projects(
     if user_id:
         if user_role == "admin":
             projects = await storage.list_projects()
+            return await _projects_with_counts(storage, projects, role_override="owner")
         else:
             projects = await storage.list_projects_for_user(user_id)
-        return await _projects_with_counts(storage, projects)
+            return await _projects_with_counts(storage, projects, user_id=user_id)
 
     env_keys: list[str] = getattr(request.app.state, "api_keys", [])
     api_key = _read_api_key(request) or ""
@@ -189,18 +211,21 @@ async def list_projects(
 
     if is_admin:
         projects = await storage.list_projects()
-    else:
-        # Use api_key record id as user proxy
-        projects = []
-        if api_key and hasattr(storage, "get_api_key_by_hash"):
-            import hashlib
+        return await _projects_with_counts(storage, projects, role_override="owner")
 
-            key_hash = hashlib.sha256(api_key.encode()).hexdigest()
-            record = await storage.get_api_key_by_hash(key_hash)
-            if record:
-                projects = await storage.list_projects_for_user(record.user_id or record.id)
+    # Use api_key record id as user proxy
+    projects: list[Project] = []
+    principal_id: str | None = None
+    if api_key and hasattr(storage, "get_api_key_by_hash"):
+        import hashlib
 
-    return await _projects_with_counts(storage, projects)
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        record = await storage.get_api_key_by_hash(key_hash)
+        if record:
+            principal_id = str(record.user_id or record.id)
+            projects = await storage.list_projects_for_user(principal_id)
+
+    return await _projects_with_counts(storage, projects, user_id=principal_id)
 
 
 @router.post(

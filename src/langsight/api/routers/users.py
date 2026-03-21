@@ -39,6 +39,14 @@ _limiter = Limiter(key_func=get_remote_address)
 logger = structlog.get_logger()
 
 
+def _mask_email(email: str) -> str:
+    """Mask an email for audit logs: 'alice@example.com' → 'a***@example.com'."""
+    local, _, domain = email.partition("@")
+    if not domain:
+        return "***"
+    return f"{local[0]}***@{domain}" if local else f"***@{domain}"
+
+
 def _login_rate_key(request: Request) -> str:
     """Rate-limit key for /verify that respects X-Forwarded-For from trusted proxies.
 
@@ -206,12 +214,13 @@ async def invite_user(
     invite_url = f"{base_url}/accept-invite?token={token}"
 
     client_ip = request.client.host if request.client else "unknown"
-    logger.info("audit.user.invite_created", email=body.email, role=body.role.value, client_ip=client_ip)
+    masked_email = _mask_email(body.email)
+    logger.info("audit.user.invite_created", email=masked_email, role=body.role.value, client_ip=client_ip)
     append_audit(
         "user.invite_created",
         inviter_id,
         client_ip,
-        {"email": body.email, "role": body.role.value},
+        {"email": masked_email, "role": body.role.value},
         storage=storage,
     )
 
@@ -292,12 +301,13 @@ async def accept_invite(
         await storage.create_user(user)
 
     client_ip = request.client.host if request.client else "unknown"
-    logger.info("audit.user.account_created", email=user.email, role=user.role.value, client_ip=client_ip)
+    masked_email = _mask_email(user.email)
+    logger.info("audit.user.account_created", email=masked_email, role=user.role.value, client_ip=client_ip)
     append_audit(
         "user.account_created",
         user.id,
         client_ip,
-        {"email": user.email, "role": user.role.value},
+        {"email": masked_email, "role": user.role.value},
         storage=storage,
     )
 

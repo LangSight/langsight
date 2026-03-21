@@ -146,6 +146,7 @@ services:
       AUTH_TRUST_HOST: "true"
       NODE_ENV: production
       PORT: 3002
+      HOSTNAME: "0.0.0.0"
     ports:
       - "3003:3002"
     depends_on:
