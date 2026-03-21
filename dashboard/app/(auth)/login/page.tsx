@@ -211,7 +211,7 @@ export default function LoginPage() {
           <p className="mt-8 text-center text-xs text-muted-foreground">
             New users are invited by an admin.{" "}
             <a
-              href="https://lngsight.mintlify.app/users"
+              href="https://docs.langsight.dev/users"
               target="_blank"
               rel="noreferrer"
               className="underline underline-offset-2 transition-colors hover:text-foreground"

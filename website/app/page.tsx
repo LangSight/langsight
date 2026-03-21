@@ -121,7 +121,7 @@ function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
   const navLinks = [
     { label: "Security", href: "/security" },
     { label: "Pricing", href: "/pricing" },
-    { label: "Docs", href: "https://lngsight.mintlify.app" },
+    { label: "Docs", href: "https://docs.langsight.dev" },
     { label: "GitHub", href: "https://github.com/LangSight/langsight" },
   ];
 
@@ -165,7 +165,7 @@ function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
           </button>
 
           <a
-            href="https://lngsight.mintlify.app/quickstart"
+            href="https://docs.langsight.dev/quickstart"
             className="hidden sm:flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-lg transition-all hover:opacity-90 hover:-translate-y-px"
             style={{ background: "var(--indigo)", color: "white" }}
           >
@@ -200,7 +200,7 @@ function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
             </a>
           ))}
           <a
-            href="https://lngsight.mintlify.app/quickstart"
+            href="https://docs.langsight.dev/quickstart"
             className="block mt-2 px-3 py-2.5 rounded-lg text-sm font-semibold text-center"
             style={{ background: "var(--indigo)", color: "white" }}
           >
@@ -343,7 +343,7 @@ function Hero() {
             {/* CTAs */}
             <div className="fade-up delay-3 flex flex-wrap gap-3">
               <a
-                href="https://lngsight.mintlify.app/quickstart"
+                href="https://docs.langsight.dev/quickstart"
                 className="text-sm font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all hover:opacity-90 hover:-translate-y-px"
                 style={{ background: "var(--indigo)", color: "white" }}
               >
@@ -954,7 +954,7 @@ function CTA() {
 
             <div className="flex flex-wrap justify-center gap-4 mb-8">
               <a
-                href="https://lngsight.mintlify.app/quickstart"
+                href="https://docs.langsight.dev/quickstart"
                 className="text-base font-semibold px-7 py-3 rounded-lg flex items-center gap-2 transition-all hover:opacity-90 hover:-translate-y-px"
                 style={{ background: "var(--indigo)", color: "white" }}
               >
@@ -994,7 +994,7 @@ function CTA() {
 /* ── Footer ─────────────────────────────────────────────────── */
 function Footer() {
   const links = [
-    { label: "Docs", href: "https://lngsight.mintlify.app" },
+    { label: "Docs", href: "https://docs.langsight.dev" },
     { label: "GitHub", href: "https://github.com/LangSight/langsight" },
     { label: "PyPI", href: "https://pypi.org/project/langsight/" },
     { label: "Changelog", href: "https://github.com/LangSight/langsight/blob/main/CHANGELOG.md" },

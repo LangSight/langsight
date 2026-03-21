@@ -8,7 +8,7 @@ Trace what your agents called. Find what broke, what's expensive, and what's uns
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL%201.1-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![CI](https://github.com/LangSight/langsight/actions/workflows/ci.yml/badge.svg)](https://github.com/LangSight/langsight/actions/workflows/ci.yml)
-[![Docs](https://img.shields.io/badge/docs-mintlify-green)](https://lngsight.mintlify.app)
+[![Docs](https://img.shields.io/badge/docs-mintlify-green)](https://docs.langsight.dev)
 
 > **Not another prompt, eval, or simulation platform.**
 > LangSight monitors the runtime layer: the tools your agents depend on.

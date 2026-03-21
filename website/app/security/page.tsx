@@ -75,7 +75,7 @@ function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
             { label: "Home", href: "/" },
             { label: "Security", href: "/security" },
             { label: "Pricing", href: "/pricing" },
-            { label: "Docs", href: "https://lngsight.mintlify.app" },
+            { label: "Docs", href: "https://docs.langsight.dev" },
             { label: "GitHub", href: "https://github.com/LangSight/langsight" },
           ].map((l) => (
             <a key={l.label} href={l.href}
@@ -94,7 +94,7 @@ function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
               : <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
             }
           </button>
-          <a href="https://lngsight.mintlify.app/quickstart"
+          <a href="https://docs.langsight.dev/quickstart"
             className="hidden sm:flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-lg transition-all hover:opacity-90"
             style={{ background: "var(--indigo)", color: "white" }}>
             Get started →
@@ -230,14 +230,14 @@ export default function SecurityPage() {
 
             <div className="fade-up delay-3 flex flex-wrap justify-center gap-3 mb-16">
               <a
-                href="https://lngsight.mintlify.app/cli/security-scan"
+                href="https://docs.langsight.dev/cli/security-scan"
                 className="text-sm font-semibold px-5 py-2.5 rounded-lg transition-all hover:opacity-90 hover:-translate-y-px"
                 style={{ background: "var(--red)", color: "white" }}
               >
                 Read the docs →
               </a>
               <a
-                href="https://lngsight.mintlify.app/quickstart"
+                href="https://docs.langsight.dev/quickstart"
                 className="text-sm font-semibold px-5 py-2.5 rounded-lg transition-all hover:-translate-y-px"
                 style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }}
               >
@@ -518,7 +518,7 @@ jobs:
             </p>
             <div className="flex flex-wrap justify-center gap-3">
               <a
-                href="https://lngsight.mintlify.app/cli/security-scan"
+                href="https://docs.langsight.dev/cli/security-scan"
                 className="text-sm font-semibold px-5 py-2.5 rounded-lg transition-all hover:opacity-90 hover:-translate-y-px"
                 style={{ background: "var(--indigo)", color: "white" }}
               >
@@ -542,7 +542,7 @@ jobs:
         <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <Logo />
           <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm">
-            {[["Home", "/"], ["Pricing", "/pricing"], ["Docs", "https://lngsight.mintlify.app"], ["GitHub", "https://github.com/LangSight/langsight"]].map(([l, h]) => (
+            {[["Home", "/"], ["Pricing", "/pricing"], ["Docs", "https://docs.langsight.dev"], ["GitHub", "https://github.com/LangSight/langsight"]].map(([l, h]) => (
               <a key={l} href={h} className="transition-colors" style={{ color: "var(--muted)" }}
                 onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
                 onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted)")}>
