@@ -160,19 +160,22 @@ class AnthropicToolTracer(BaseIntegration):
             error = str(exc)
             raise
         finally:
-            span = ToolCallSpan.record(
-                server_name=self._server_name,
-                tool_name=tool_name,
-                started_at=started_at,
-                status=status,
-                error=error,
-                agent_name=self._agent_name,
-                session_id=self._session_id,
-                trace_id=self._trace_id,
-                input_args=tool_input,
-                output_result=output,
-            )
-            await self._client.send_span(span)
+            try:
+                span = ToolCallSpan.record(
+                    server_name=self._server_name,
+                    tool_name=tool_name,
+                    started_at=started_at,
+                    status=status,
+                    error=error,
+                    agent_name=self._agent_name,
+                    session_id=self._session_id,
+                    trace_id=self._trace_id,
+                    input_args=tool_input,
+                    output_result=output,
+                )
+                await self._client.send_span(span)
+            except Exception:  # noqa: BLE001
+                pass  # fail-open: tracing must never break tool calls
 
 
 class LangSightClaudeAgentHooks(BaseIntegration):
@@ -301,16 +304,19 @@ def langsight_anthropic_tool(
                 error = str(exc)
                 raise
             finally:
-                span = ToolCallSpan.record(
-                    server_name=server_name,
-                    tool_name=tool_name,
-                    started_at=started_at,
-                    status=status,
-                    error=error,
-                    agent_name=agent_name,
-                    session_id=session_id,
-                )
-                await client.send_span(span)
+                try:
+                    span = ToolCallSpan.record(
+                        server_name=server_name,
+                        tool_name=tool_name,
+                        started_at=started_at,
+                        status=status,
+                        error=error,
+                        agent_name=agent_name,
+                        session_id=session_id,
+                    )
+                    await client.send_span(span)
+                except Exception:  # noqa: BLE001
+                    pass  # fail-open: tracing must never break tool calls
 
         return wrapper  # type: ignore[return-value]
 
