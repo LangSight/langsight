@@ -1,170 +1,216 @@
 ---
 title: "Quickstart"
-description: "From install to your first agent session trace in 5 minutes."
+description: "Zero to your first agent trace in 5 minutes."
 ---
+
+## What you'll build
+
+By the end of this page you'll have LangSight running locally and capturing
+every tool call your AI agent makes — with full traces visible in both the
+CLI and the dashboard.
 
 ## Prerequisites
 
 - Python 3.11+
-- [uv](https://docs.astral.sh/uv/) (recommended) or pip
-- At least one MCP server configured (Claude Desktop, Cursor, or VS Code)
+- Docker (for the server) — or skip Docker and use [SQLite local mode](#option-b--local-mode-no-docker)
 
-## Step 1 — Install
+---
 
-<CodeGroup>
-```bash uv (recommended)
-uv tool install langsight
-```
+## 1. Start the server
 
-```bash pip
-pip install langsight
-```
+<Tabs>
+  <Tab title="Docker (recommended)">
+    ```bash
+    git clone https://github.com/sumankalyan123/langsight && cd langsight
+    ./scripts/quickstart.sh      # generates secrets, writes .env, starts everything
+    ```
 
-```bash From source
-git clone https://github.com/sumankalyan123/langsight
-cd langsight
-uv sync
-```
-</CodeGroup>
+    This starts Postgres, ClickHouse, the API (port 8000), and the dashboard (port 3003).
+    Open **http://localhost:3003** to see the dashboard.
+  </Tab>
+  <Tab title="Local mode (no Docker)">
+    ```bash
+    pip install langsight        # or: uv tool install langsight
+    langsight serve              # starts API on port 8000 with SQLite
+    ```
 
-## Step 2 — Auto-discover your MCP servers
+    Local mode stores everything in `~/.langsight/data.db`. No Postgres or
+    ClickHouse needed. Perfect for trying things out.
+  </Tab>
+</Tabs>
 
-```bash
-langsight init
-```
+## 2. Instrument your agent
 
-LangSight scans your local MCP configs and generates `.langsight.yaml`:
-
-```
-LangSight Init — scanning for MCP servers...
-
-  ✓ Claude Desktop (~/.config/claude/claude_desktop_config.json) — 4 servers
-  ✓ Cursor (~/.cursor/mcp.json) — 2 servers
-
-Discovered 6 MCP servers:
-  1. snowflake-mcp    (stdio)
-  2. github-mcp       (stdio)
-  3. slack-mcp        (sse)
-  4. jira-mcp         (stdio)
-  5. postgres-mcp     (stdio)
-  6. filesystem-mcp   (stdio)
-
-✓ Config written to .langsight.yaml
-```
-
-## Step 3 — Trace your agent sessions
-
-Add two lines to your agent code:
+Add 3 lines to your existing agent code. LangSight wraps your MCP client
+and captures every `call_tool()` automatically — fire-and-forget, fail-open.
 
 ```python
 from langsight.sdk import LangSightClient
 
-client = LangSightClient(
-    url="http://localhost:8000",
-    project_id="my-project",   # groups all spans under this project
+# Connect to your LangSight server
+langsight = LangSightClient(url="http://localhost:8000")
+
+# Wrap your MCP session — every call_tool() is now traced
+traced = langsight.wrap(
+    mcp_session,                     # your existing MCP client
+    server_name="postgres-mcp",      # which server this is
+    agent_name="my-agent",           # which agent is calling
+    session_id="sess-001",           # groups calls into one session
 )
-traced = client.wrap(mcp_session, server_name="my-mcp")  # line 2
-# All call_tool() calls are now traced automatically
+
+# Use traced exactly like your original session — the API is identical
+result = await traced.call_tool("query", {"sql": "SELECT 1"})
+#        ↑ this call is traced automatically
 ```
 
 <Note>
-  On first run, LangSight creates a "Default" project automatically. You can use `project_id="default"` or omit it to send spans to the default project. Create additional projects in the dashboard under Settings.
+  `wrap()` returns a transparent proxy. It intercepts `call_tool()` and
+  `list_tools()`, records timing and status, and sends spans asynchronously.
+  If LangSight is unreachable, your agent works normally — nothing breaks.
 </Note>
 
-Then view sessions from the CLI:
+### Using a framework? Even simpler.
 
-```bash
-langsight sessions
-```
+<Tabs>
+  <Tab title="LangChain / LangGraph">
+    ```python
+    from langsight.integrations.langchain import LangSightLangChainCallback
 
-```
-Agent Sessions                               last 24 hours
-──────────────────────────────────────────────────────────────────────
-Session          Agent              Duration   Tools   Failures   Cost
-sess-f2a9b1      support-agent      1,482ms       5          1   $0.023
-sess-d4c7e8      data-analyst       4,210ms      12          0   $0.089
-sess-a0b3f5      orchestrator        890ms        3          0   $0.012
-```
+    langsight = LangSightClient(url="http://localhost:8000")
+    callback = LangSightLangChainCallback(client=langsight, agent_name="my-agent")
 
-Drill into a session to see the full multi-agent trace:
+    # Pass as a callback — all tool calls traced automatically
+    agent.invoke({"input": "..."}, config={"callbacks": [callback]})
+    ```
+  </Tab>
+  <Tab title="CrewAI">
+    ```python
+    from langsight.integrations.crewai import LangSightCrewAICallback
 
-```bash
-langsight sessions --id sess-f2a9b1
-```
+    langsight = LangSightClient(url="http://localhost:8000")
+    callback = LangSightCrewAICallback(client=langsight)
 
-```
-Session: sess-f2a9b1  |  3 agents  |  7 tool calls  |  1 failure  |  $0.023
+    crew = Crew(agents=[...], tasks=[...], callbacks=[callback])
+    crew.kickoff()
+    ```
+  </Tab>
+  <Tab title="Pydantic AI">
+    ```python
+    from langsight.integrations.pydantic_ai import langsight_tool
 
-Task: "Resolve customer complaint #4821"
-│
-├── Agent: orchestrator
-│   ├── [MCP]      jira-mcp/get_issue        42ms  ✓  $0.001
-│   ├── [HTTP API] stripe-api/get_charges    210ms  ✓  $0.003
-│   ├── → Handoff to Agent: research
-│   │   ├── [MCP]  confluence-mcp/search    891ms  ✓  $0.001
-│   │   └── [HTTP] openai-api/embed         120ms  ✓  $0.004
-│   └── → Handoff to Agent: action
-│       ├── [MCP]      crm-mcp/update_ticket  89ms  ✓  $0.001
-│       └── [MCP]      slack-mcp/notify         —   ✗  connection refused
-```
+    langsight = LangSightClient(url="http://localhost:8000")
 
-LangSight traces every call the agent makes — MCP servers, HTTP APIs, and sub-agents — all in one tree. MCP servers (jira-mcp, confluence-mcp, crm-mcp, slack-mcp) are also independently health-checked and security-scanned. HTTP APIs (stripe-api, openai-api) appear in the trace but are observed passively only.
+    @langsight_tool(client=langsight, server_name="postgres-mcp")
+    async def query_db(sql: str) -> list[dict]:
+        return await session.call_tool("query", {"sql": sql})
+    ```
+  </Tab>
+</Tabs>
 
-## Step 4 — Check MCP server health
+## 3. See your first trace
 
-```bash
-langsight mcp-health
-```
+Run your agent, then check results:
 
-```
-MCP Server Health  (6 servers)
-──────────────────────────────────────────────────────────────────
-Server           Status      Latency   Tools   Schema
-snowflake-mcp    ✓ up        142ms     8       bcf0ec26…
-github-mcp       ✓ up        89ms      12      d2125e3a…
-slack-mcp        ⚠ degraded  1,240ms   4       abc123de…
-jira-mcp         ✗ down      —         —       —
-postgres-mcp     ✓ up        31ms      5       f4a2b1c9…
-filesystem-mcp   ✓ up        12ms      6       8e3d7f2a…
+<Tabs>
+  <Tab title="CLI">
+    ```bash
+    langsight sessions
+    ```
 
-4/6 servers healthy
-```
+    ```
+    Agent Sessions                             last 24 hours
+    ──────────────────────────────────────────────────────────────
+    Session       Agent         Duration   Tools   Errors   Cost
+    sess-001      my-agent      1,482ms       5        0   $0.02
+    ```
 
-## Step 5 — Run a security scan
+    Drill into a session:
 
-```bash
-langsight security-scan
-```
+    ```bash
+    langsight sessions --id sess-001
+    ```
 
-```
-Security Scan Results  (6 servers, 3 findings)
-────────────────────────────────────────────────────────
-CRITICAL  jira-mcp      CVE-2025-6514  Remote code execution
-HIGH      slack-mcp     OWASP-MCP-01   No authentication configured
-MEDIUM    postgres-mcp  OWASP-MCP-05   Tool 'query' has no input schema
-```
+    ```
+    Session: sess-001  |  1 agent  |  5 tool calls  |  0 failures
 
-## Step 6 — Start continuous monitoring
+    ├── [MCP] postgres-mcp/query          42ms  ✓
+    ├── [MCP] postgres-mcp/list_tables    18ms  ✓
+    ├── [MCP] postgres-mcp/query          89ms  ✓
+    ├── [MCP] slack-mcp/send_message     210ms  ✓
+    └── [MCP] slack-mcp/send_message     180ms  ✓
+    ```
+  </Tab>
+  <Tab title="Dashboard">
+    Open **http://localhost:3003** and navigate to **Sessions**.
 
-```bash
-langsight monitor --interval 30
-```
+    You'll see a full call tree with timing, status, payloads, and cost
+    attribution for every tool call your agent made.
+  </Tab>
+</Tabs>
 
-LangSight polls every 30 seconds and fires Slack/webhook alerts on state transitions.
+## 4. What's next
 
-## Next steps
+You now have full traces of every tool call. Here's what LangSight does beyond tracing:
 
 <CardGroup cols={2}>
-  <Card title="CLI Reference" icon="terminal" href="/cli/mcp-health">
-    All commands and options.
+  <Card title="MCP Health Monitoring" icon="heart-pulse" href="/cli/mcp-health">
+    Continuous uptime and latency checks for every MCP server.
+    Detects schema drift and fires alerts on state changes.
   </Card>
-  <Card title="AI Providers" icon="brain" href="/providers/overview">
-    Set up Claude, Gemini, or Ollama for `langsight investigate`.
+  <Card title="Security Scanning" icon="shield-halved" href="/cli/security-scan">
+    OWASP MCP Top 10 checks, CVE scanning, tool poisoning
+    detection, and auth auditing — built in.
   </Card>
-  <Card title="SDK Integration" icon="code" href="/sdk/python">
-    Add 2-line tracing to your agent code.
+  <Card title="Cost Attribution" icon="coins" href="/costs-model-pricing">
+    Per-agent, per-tool, per-session cost breakdown with
+    model pricing database (Claude, GPT, Gemini, Llama).
   </Card>
-  <Card title="Self-Hosting" icon="server" href="/self-hosting/docker-compose">
-    Production deployment with ClickHouse + PostgreSQL.
+  <Card title="SLOs & Alerting" icon="bell" href="/slos">
+    Define success rate and latency SLOs per agent.
+    Get Slack alerts on breaches and anomalies.
+  </Card>
+</CardGroup>
+
+### Multi-agent tracing
+
+If your agent hands off to sub-agents, LangSight captures the full tree:
+
+```python
+from langsight.sdk import LangSightClient
+from langsight.sdk.models import ToolCallSpan
+
+langsight = LangSightClient(url="http://localhost:8000")
+trace_id = "trace-abc"
+session_id = "sess-002"
+
+# Orchestrator wraps its MCP client
+orchestrator = langsight.wrap(
+    mcp, server_name="jira-mcp",
+    agent_name="orchestrator", trace_id=trace_id, session_id=session_id,
+)
+
+# When handing off, create a handoff span
+handoff = ToolCallSpan.handoff_span(
+    from_agent="orchestrator", to_agent="research-agent",
+    trace_id=trace_id, session_id=session_id,
+)
+await langsight.send_span(handoff)
+
+# Sub-agent wraps with parent_span_id → links to the handoff
+researcher = langsight.wrap(
+    mcp, server_name="confluence-mcp",
+    agent_name="research-agent", trace_id=trace_id, session_id=session_id,
+    parent_span_id=handoff.span_id,
+)
+```
+
+The dashboard renders this as a single connected tree across all agents.
+
+<CardGroup cols={2}>
+  <Card title="Python SDK Reference" icon="code" href="/sdk/python">
+    Full API reference with all options.
+  </Card>
+  <Card title="Self-Hosting Guide" icon="server" href="/self-hosting/docker-compose">
+    Production deployment with Postgres + ClickHouse.
   </Card>
 </CardGroup>
