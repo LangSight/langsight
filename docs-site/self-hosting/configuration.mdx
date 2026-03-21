@@ -131,6 +131,35 @@ When this env var is set it acts as the default webhook URL. Values saved throug
   For persistent alert configuration across restarts, set `LANGSIGHT_SLACK_WEBHOOK` in your environment and manage per-type toggles via the dashboard. The next release will add persistent storage for alert preferences.
 </Note>
 
+## Prometheus scrape configuration
+
+LangSight exposes a `GET /metrics` endpoint in Prometheus text exposition format. No authentication is required -- Prometheus scrapers can reach it directly.
+
+Add the following job to your `prometheus.yml`:
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: langsight
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["localhost:8000"]  # or "api:8000" inside Docker Compose
+    metrics_path: /metrics
+```
+
+If you run LangSight inside Docker Compose, use the service name as the target:
+
+```yaml
+scrape_configs:
+  - job_name: langsight
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["api:8000"]
+    metrics_path: /metrics
+```
+
+See [Monitoring](/monitoring) for available metrics, Grafana dashboard tips, and SSE live event feed usage.
+
 ## Dashboard authentication
 
 The dashboard authenticates users through the following flow:

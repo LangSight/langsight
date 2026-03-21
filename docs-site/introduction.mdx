@@ -67,6 +67,12 @@ Total: 680ms | 7 calls | 1 failure | $0.011
   <Card title="Projects" icon="folder">
     Group observability data by product, environment, or team. Multi-user with an invite system and admin/viewer roles per project.
   </Card>
+  <Card title="Prometheus Metrics" icon="chart-bar">
+    Built-in `/metrics` endpoint in Prometheus text format. Track HTTP request rates, span ingestion volume, SSE connections, and health check counts. Plug into Grafana for dashboards and alerting.
+  </Card>
+  <Card title="Live Event Feed" icon="bolt">
+    Real-time Server-Sent Events stream at `/api/live/events`. Get instant notifications when spans are ingested or health checks complete — no polling required.
+  </Card>
 </CardGroup>
 
 ## What you can observe per tool type

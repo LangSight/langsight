@@ -1,11 +1,11 @@
 # LangSight: Implementation Plan
 
-> **Version**: 1.8.0
+> **Version**: 1.9.0
 > **Date**: 2026-03-21
 > **Status**: Active — Phase 1-3 COMPLETE (alpha). Phase 5 COMPLETE. Phase 6 (Project-Level RBAC) planned. Phase 7 (Model-Based Cost Tracking) planned. Pre-Production Security Hardening phase added (S.4, S.7, S.9, S.10 COMPLETE). Release 0.1.0 is an alpha release.
 > **Author**: Engineering
 >
-> **Change from 1.7**: Rate limiter refactored to single global instance (`src/langsight/api/rate_limit.py`); per-route overrides now work (traces=2000/min, otlp=60/min, accept-invite=5/min, verify=10/min). `ToolCallSpan.latency_ms` changed to optional with auto-compute via `model_validator`. Three new SDK integrations shipped: OpenAI Agents (`LangSightOpenAIHooks`), Anthropic/Claude (`AnthropicToolTracer`, `LangSightClaudeAgentHooks`), LangGraph (`LangSightLangGraphCallback`). Integration count now 9. Three new docs-site pages added.
+> **Change from 1.8**: Prometheus `/metrics` endpoint shipped (`src/langsight/api/metrics.py`): `GET /metrics` — no auth, 6 metrics exported, `PrometheusMiddleware` instruments all requests. SSE live event feed shipped (`src/langsight/api/broadcast.py` + `src/langsight/api/routers/live.py`): `GET /api/live/events` — auth required, `SSEBroadcaster` in-memory pub/sub, max 200 clients, 50-event buffer, 15s keepalive. `traces.py` broadcasts `span:new` events. New dep: `prometheus-client>=0.21`. 20 new tests (11 metrics, 9 broadcaster). Total: 957 tests passing. W10.7 (Prometheus) and W14.1 (SSE real-time updates) marked COMPLETE.
 
 ---
 
@@ -47,6 +47,11 @@ Phase 11 (Catalogs + Graph UX)  ████████████████
 - New PostgreSQL tables: `server_metadata`, `server_tools`.
 - New API endpoints: `GET/PUT /api/servers/metadata`, `GET/PUT /api/servers/{name}/tools`.
 - SDK: `MCPClientProxy.list_tools()` intercepted — tool schemas fire-and-forget posted to backend; Tools tab populates automatically without health checker.
+
+**Prometheus metrics + SSE live feed (2026-03-21)**:
+- Prometheus `/metrics` endpoint: `src/langsight/api/metrics.py` — `GET /metrics` no auth, 6 metrics (http_requests_total, http_request_duration_seconds, spans_ingested_total, active_sse_connections, health_checks_total, storage_pool_size), `PrometheusMiddleware` instruments all requests with path normalization. New dep: `prometheus-client>=0.21`.
+- SSE live event feed: `src/langsight/api/broadcast.py` (`SSEBroadcaster` in-memory pub/sub, max 200 clients, 50-event buffer per client, 15s keepalive) + `src/langsight/api/routers/live.py` (`GET /api/live/events`, auth required). Event types: `span:new` (on trace ingestion), `health:check` (on health check completion). `traces.py` calls `broadcaster.publish()` after span storage.
+- 20 new tests (11 metrics + 9 broadcaster). Total: 957 tests passing.
 
 **SDK integrations + rate limiter fix (2026-03-21)**:
 - Rate limiter: single global `Limiter` instance in `src/langsight/api/rate_limit.py`; all routers import from this module. Per-route overrides: traces=2000/min, otlp=60/min, accept-invite=5/min, verify=10/min. Previously each router created its own instance, preventing overrides from working.
@@ -110,7 +115,7 @@ The MVP is a **CLI-first tool** that any engineer can install and run against th
 | Cost attribution engine | Requires live traffic data from OTEL traces | Phase 3 |
 | RCA Agent (Claude-powered) | Requires trace data + tool reliability data as inputs | Phase 5 |
 | Continuous monitoring daemon | MVP is run-on-demand; daemon adds process management complexity | Phase 4 |
-| Prometheus metrics endpoint | No server component in MVP | Phase 3 |
+| Prometheus metrics endpoint | No server component in MVP | ~~Phase 3~~ ✅ COMPLETE (shipped 2026-03-21) |
 | PagerDuty/OpsGenie integration | Webhook is sufficient for MVP alerting | Phase 4 |
 | Multi-transport SSE/StreamableHTTP | MVP focuses on stdio (most common); SSE/HTTP added iteratively | Phase 1, Week 3 |
 | MCP proxy mode | Complex transparent proxy; deferred to Phase 2+ | Phase 3 |
@@ -542,7 +547,7 @@ The MVP is "done" when all of the following are true:
 | W10.4 | Reliability metric refresh: recompute from ClickHouse on configurable schedule | 3h |
 | W10.5 | Graceful shutdown: SIGTERM/SIGINT handling, drain in-flight checks, flush metrics | 3h |
 | W10.6 | Process management: PID file, status check, restart capability | 3h |
-| W10.7 | Prometheus metrics endpoint: `/metrics` exposing all LangSight metrics in Prometheus format | 6h |
+| W10.7 | Prometheus metrics endpoint: `/metrics` exposing all LangSight metrics in Prometheus format | 6h | ✅ Done (2026-03-21) — `src/langsight/api/metrics.py`, `PrometheusMiddleware`, `prometheus-client>=0.21` |
 | W10.8 | `langsight monitor start` / `stop` / `status` CLI commands | 3h |
 | W10.9 | Systemd service file and Docker entrypoint for daemon mode | 3h |
 | W10.10 | Integration test: start daemon, trigger health degradation, verify alert fires | 4h |
@@ -559,7 +564,7 @@ The MVP is "done" when all of the following are true:
 - [ ] Health checks execute on configured interval (verified by log timestamps)
 - [ ] `langsight monitor status` shows "running" with uptime and last check time
 - [ ] `langsight monitor stop` sends SIGTERM, process exits within 10 seconds
-- [ ] Prometheus endpoint at `localhost:9090/metrics` returns valid exposition format
+- [x] Prometheus endpoint at `localhost:8000/metrics` returns valid exposition format (shipped 2026-03-21)
 - [ ] Alert fires within 2 check intervals of a health degradation
 - [ ] Daemon survives and recovers from: ClickHouse restart, network blip, MCP server crash
 
@@ -1587,7 +1592,7 @@ tests/unit/storage/test_project_filter.py    NEW — isolation tests
 | W13.6 | Tool detail page: metrics charts (latency, error rate, availability), schema history, security findings | 8h |
 | W13.7 | Security posture page: findings by severity, OWASP compliance checklist, CVE list, auth audit | 6h |
 | W13.8 | Tool Reliability page: ranked tool list, trend charts, failure breakdown | 6h |
-| W14.1 | Real-time updates: WebSocket or SSE for live metric updates on dashboard | 6h |
+| W14.1 | Real-time updates: WebSocket or SSE for live metric updates on dashboard | 6h | ✅ Done (2026-03-21) — SSE chosen over WebSocket; `src/langsight/api/broadcast.py` (`SSEBroadcaster`), `src/langsight/api/routers/live.py` (`GET /api/live/events`) |
 | W14.2 | Charts library: line charts for trends, bar charts for breakdowns, heatmaps for patterns | 4h |
 | W14.3 | Docker Compose update: add Next.js service, nginx reverse proxy | 3h |
 | W14.4 | Dashboard integration tests (Playwright or Cypress) | 4h |
@@ -1603,7 +1608,7 @@ tests/unit/storage/test_project_filter.py    NEW — isolation tests
 - [ ] Health page shows all servers with correct health scores
 - [ ] Tool detail page shows latency chart, error rate chart, schema history
 - [ ] Security page shows findings grouped by severity with OWASP compliance percentage
-- [ ] Real-time updates: metric change appears on dashboard within 5 seconds
+- [x] Real-time updates: metric change appears on dashboard within 5 seconds (shipped 2026-03-21 — SSE live feed)
 - [ ] Dashboard is responsive (works on 1920px, 1440px, and 1024px widths)
 
 ---
@@ -2139,7 +2144,7 @@ Phase 4 deliverables
 - Next.js 15 with App Router
 - shadcn/ui component library
 - recharts for time-series charts
-- Polls REST API (5s health, 30s metrics) — no WebSocket in v1
+- Polls REST API (5s health, 30s metrics) + SSE live feed (`GET /api/live/events`) for real-time span and health events (shipped 2026-03-21)
 
 **Acceptance Criteria**:
 - [ ] Overview page loads in <2 seconds with data from 50 tools
@@ -2332,7 +2337,7 @@ Phase 4 deliverables
 | `dashboard/src/components/charts/` | Reusable chart components (line, bar, heatmap) | `recharts` | 6h |
 | `dashboard/src/components/ui/` | shadcn/ui component customizations | None | 4h |
 | `dashboard/src/lib/api.ts` | API client for FastAPI backend | None | 4h |
-| `dashboard/src/lib/websocket.ts` | WebSocket client for real-time updates | None | 3h |
+| `dashboard/src/lib/live-events.ts` | SSE EventSource client for real-time updates (replaces WebSocket) | None | 3h | ✅ Done (2026-03-21) |
 | `dashboard/Dockerfile` | Multi-stage Docker build | None | 1h |
 
 **Test Approach**: Component tests with React Testing Library. E2E tests with Playwright against a running Docker Compose stack with seeded data.
@@ -2517,7 +2522,8 @@ langsight/
 |   |   |   |   |-- auth.py             # API authentication
 |   |   |   |   |-- cors.py             # CORS configuration
 |   |   |   |   |-- logging.py          # Request logging
-|   |   |   |-- websocket.py            # WebSocket for real-time updates
+|   |   |   |-- broadcast.py            # SSE broadcaster — in-memory pub/sub for live events
+|   |   |   |-- metrics.py             # Prometheus /metrics endpoint + PrometheusMiddleware
 |   |   |
 |   |   |-- storage/
 |   |   |   |-- __init__.py
@@ -2642,7 +2648,7 @@ langsight/
 | `src/langsight/costs/` | Cost calculation, aggregation, anomaly detection, budgets. |
 | `src/langsight/alerting/` | Alert rule engine, deduplication, notification channels. |
 | `src/langsight/rca/` | Root cause analysis: Claude Agent SDK, evidence collection, fallback. |
-| `src/langsight/server/` | FastAPI application serving REST API and WebSocket for dashboard. |
+| `src/langsight/server/` | FastAPI application serving REST API, SSE live feed, and Prometheus metrics for dashboard. |
 | `src/langsight/storage/` | Database backends: PostgreSQL (metadata), ClickHouse (traces). |
 | `src/langsight/monitor/` | Long-running monitoring daemon with scheduling and process management. |
 | `src/langsight/config/` | Configuration loading, validation, and defaults. |

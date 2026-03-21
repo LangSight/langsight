@@ -1,0 +1,275 @@
+---
+title: "Monitoring & Live Events"
+description: "Set up Prometheus metrics, Grafana dashboards, and SSE live event feeds for LangSight"
+---
+
+## Overview
+
+LangSight exposes two complementary monitoring surfaces:
+
+1. **Prometheus `/metrics` endpoint** -- pull-based metrics for infrastructure dashboards and alerting rules
+2. **SSE live event feed** (`GET /api/live/events`) -- push-based real-time events for dashboard UIs and custom integrations
+
+Use Prometheus + Grafana for long-term monitoring, capacity planning, and SLO-based alerting. Use the SSE feed for instant UI updates and event-driven automation.
+
+---
+
+## Prometheus Metrics
+
+### Available metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `langsight_http_requests_total` | Counter | `method`, `path`, `status` | Total HTTP requests processed by the API |
+| `langsight_http_request_duration_seconds` | Histogram | `method`, `path` | Request duration with buckets: 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s |
+| `langsight_spans_ingested_total` | Counter | -- | Total tool call spans ingested via `/api/traces/spans` and `/api/traces/otlp` |
+| `langsight_active_sse_connections` | Gauge | -- | Number of currently connected SSE live feed clients |
+| `langsight_health_checks_total` | Counter | `server`, `status` | Total MCP health checks performed, labeled by server name and result status |
+
+### Path normalization
+
+The `path` label in HTTP metrics uses normalized paths to keep cardinality bounded. UUIDs and long hex identifiers are collapsed to `{id}`:
+
+```
+/api/agents/sessions/abc123def456  -->  /api/agents/sessions/{id}
+/api/projects/proj-xyz-789/members -->  /api/projects/{id}/members
+```
+
+High-frequency internal paths (`/metrics`, `/api/liveness`, `/api/readiness`) are excluded from instrumentation entirely.
+
+### Authentication
+
+The `/metrics` endpoint requires **no authentication**. Prometheus scrapers can reach it directly without API keys. Access control should be enforced at the network level (firewall rules, Docker internal network, reverse proxy ACLs).
+
+### Scrape configuration
+
+Add the following job to your `prometheus.yml`:
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: langsight
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["localhost:8000"]
+    metrics_path: /metrics
+```
+
+If running inside Docker Compose, use the service name:
+
+```yaml
+scrape_configs:
+  - job_name: langsight
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["api:8000"]
+    metrics_path: /metrics
+```
+
+### Verify the endpoint
+
+```bash
+curl http://localhost:8000/metrics
+```
+
+You should see Prometheus text exposition format output:
+
+```
+# HELP langsight_http_requests_total Total HTTP requests
+# TYPE langsight_http_requests_total counter
+langsight_http_requests_total{method="GET",path="/api/health/servers",status="200"} 42.0
+# HELP langsight_spans_ingested_total Total tool call spans ingested
+# TYPE langsight_spans_ingested_total counter
+langsight_spans_ingested_total 1337.0
+...
+```
+
+---
+
+## Grafana Dashboard Tips
+
+### Recommended panels
+
+| Panel | PromQL | Visualization |
+|-------|--------|---------------|
+| Request rate | `rate(langsight_http_requests_total[5m])` | Time series, stacked by `path` |
+| Error rate | `sum(rate(langsight_http_requests_total{status=~"5.."}[5m])) / sum(rate(langsight_http_requests_total[5m]))` | Stat panel, threshold: red > 1% |
+| p99 latency | `histogram_quantile(0.99, rate(langsight_http_request_duration_seconds_bucket[5m]))` | Time series, by `path` |
+| Span ingestion rate | `rate(langsight_spans_ingested_total[5m])` | Stat panel (spans/sec) |
+| Active SSE clients | `langsight_active_sse_connections` | Gauge panel |
+| Health check rate | `rate(langsight_health_checks_total[5m])` | Time series, by `server` |
+| Health check failures | `rate(langsight_health_checks_total{status="down"}[5m])` | Time series, by `server` |
+
+### Alert rules (Grafana Alerting)
+
+```yaml
+# Example: alert when API error rate exceeds 5% for 5 minutes
+groups:
+  - name: langsight
+    rules:
+      - alert: LangSightHighErrorRate
+        expr: |
+          sum(rate(langsight_http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(langsight_http_requests_total[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LangSight API error rate above 5%"
+
+      - alert: LangSightHighLatency
+        expr: |
+          histogram_quantile(0.99, rate(langsight_http_request_duration_seconds_bucket[5m]))
+          > 2.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LangSight API p99 latency above 2 seconds"
+
+      - alert: LangSightHealthCheckFailing
+        expr: |
+          rate(langsight_health_checks_total{status="down"}[5m]) > 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MCP server {{ $labels.server }} failing health checks"
+```
+
+### Dashboard JSON
+
+A pre-built Grafana dashboard JSON is planned for a future release. In the meantime, create a dashboard manually using the PromQL queries above, or import the panels into an existing infrastructure dashboard.
+
+---
+
+## SSE Live Event Feed
+
+### How it works
+
+`GET /api/live/events` opens a Server-Sent Events stream. The server pushes events as they happen -- no polling required.
+
+**Authentication**: This endpoint requires the same authentication as all other API routes (`X-API-Key` header or session proxy headers).
+
+**Events pushed**:
+
+| Event type | Triggered by | Payload fields |
+|------------|-------------|----------------|
+| `span:new` | Span ingestion via `/api/traces/spans` | `session_id`, `agent_name`, `server_name`, `tool_name`, `status`, `latency_ms` |
+| `health:check` | Health check completion | `server_name`, `status`, `latency_ms` |
+
+**Connection behavior**:
+- Keepalive comments (`: keepalive`) sent every 15 seconds to prevent proxy/load-balancer timeouts
+- Maximum 200 concurrent clients -- the 201st connection receives an `event: error` and closes
+- Each client has a 50-event buffer; if the client is slower than the event rate, the oldest event is dropped
+- The browser `EventSource` API reconnects automatically on disconnection
+
+### JavaScript example (browser)
+
+```javascript
+// Connect to the live event stream
+const source = new EventSource("/api/proxy/live/events");
+
+// Listen for new span ingestion events
+source.addEventListener("span:new", (event) => {
+  const span = JSON.parse(event.data);
+  console.log(`[span:new] ${span.agent_name} -> ${span.server_name}/${span.tool_name}: ${span.status} (${span.latency_ms}ms)`);
+
+  // Example: update a dashboard counter
+  updateSpanCount(span);
+});
+
+// Listen for health check events
+source.addEventListener("health:check", (event) => {
+  const check = JSON.parse(event.data);
+  console.log(`[health:check] ${check.server_name}: ${check.status} (${check.latency_ms}ms)`);
+
+  // Example: flash a status indicator
+  updateServerHealth(check);
+});
+
+// Handle connection errors
+source.onerror = () => {
+  console.warn("SSE connection lost — EventSource will reconnect automatically");
+};
+```
+
+<Note>
+  When using the LangSight dashboard, the live event feed is connected automatically. The example above is for custom integrations or external dashboards that want to receive real-time events from LangSight.
+</Note>
+
+### Python example (httpx-sse)
+
+```python
+import httpx
+from httpx_sse import connect_sse
+
+with httpx.Client() as client:
+    with connect_sse(
+        client,
+        "GET",
+        "http://localhost:8000/api/live/events",
+        headers={"X-API-Key": "lsk_your_key"},
+    ) as event_source:
+        for sse in event_source.iter_sse():
+            if sse.event == "span:new":
+                print(f"New span: {sse.data}")
+            elif sse.event == "health:check":
+                print(f"Health check: {sse.data}")
+```
+
+### curl example
+
+```bash
+curl -N -H "X-API-Key: lsk_your_key" \
+  http://localhost:8000/api/live/events
+```
+
+The `-N` flag disables output buffering so events appear immediately.
+
+---
+
+## Dashboard Integration
+
+The LangSight Next.js dashboard uses both monitoring surfaces:
+
+1. **Polling** (existing): SWR fetchers poll REST API endpoints at 5s (health) and 30s (metrics) intervals for page-level data
+2. **SSE** (new): The dashboard connects to `GET /api/live/events` for instant notifications -- span ingestion events trigger session list refreshes and health check events update server status indicators without waiting for the next poll cycle
+
+The Prometheus metrics are not consumed by the dashboard directly. They are intended for external monitoring infrastructure (Prometheus, Grafana, Datadog, etc.) to provide infrastructure-level visibility into LangSight itself.
+
+---
+
+## Architecture
+
+```
+  Agent frameworks         LangSight API              Monitoring
+  ────────────────         ──────────────             ──────────
+  CrewAI    ──spans──►  POST /api/traces/spans
+  Pydantic AI             │                         GET /metrics
+  OpenAI Agents           ├── store in ClickHouse      │
+                          ├── broadcast to SSE ──► GET /api/live/events
+                          │                            │
+                          │                     ┌──────▼──────┐
+                          │                     │  Dashboard   │
+                          │                     │  (EventSource)│
+                          │                     └─────────────┘
+                          │
+                     ┌────▼──────┐
+                     │ Prometheus │
+                     │ (scrapes)  │
+                     └────┬──────┘
+                          │
+                     ┌────▼──────┐
+                     │  Grafana   │
+                     │ (visualize)│
+                     └───────────┘
+```
+
+### Single-instance limitation
+
+The `SSEBroadcaster` is an in-memory asyncio pub/sub. Events published on one API instance are not visible to SSE clients connected to a different instance. For single-instance deployments (the default Docker Compose setup), this is not a limitation.
+
+For multi-instance horizontal scaling, a Redis pub/sub layer can be added behind the same `SSEBroadcaster` interface. This is planned for a future release when horizontal scaling becomes a requirement.

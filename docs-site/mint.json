@@ -95,7 +95,8 @@
         "mcp-servers",
         "costs-model-pricing",
         "slos",
-        "anomaly-detection"
+        "anomaly-detection",
+        "monitoring"
       ]
     },
     {

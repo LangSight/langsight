@@ -74,6 +74,7 @@ Once the API is running:
 | `GET` | `/api/liveness` | Instant liveness probe — no I/O, always fast |
 | `GET` | `/api/readiness` | Readiness probe — verifies storage connectivity |
 | `GET` | `/api/status` | API status (deprecated — use `/api/liveness`) |
+| `GET` | `/metrics` | Prometheus scrape endpoint — no auth required (see [Monitoring](/monitoring)) |
 
 ### Health
 
@@ -251,6 +252,57 @@ Captured actions: `user.login`, `user.login_failed`, `api_key.created`, `api_key
 <Note>
   The audit log is persisted to the `audit_logs` PostgreSQL table. Writes are asynchronous (via `asyncio.create_task`) and never block the request path. Email addresses are masked (e.g., `a***@example.com`) before storage.
 </Note>
+
+### Live Events (SSE)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/live/events` | Server-Sent Events stream for real-time dashboard updates |
+
+The `/api/live/events` endpoint requires authentication (same as all other API routes). It streams events as they occur:
+
+- **`span:new`** — fired when a new tool call span is ingested
+- **`health:check`** — fired when a health check completes
+
+The stream sends keepalive comments (`: keepalive`) every 15 seconds to prevent proxy timeouts. Connect with the browser `EventSource` API or any SSE-compatible client.
+
+```javascript
+const source = new EventSource("/api/live/events", {
+  headers: { "X-API-Key": "lsk_your_key" }
+});
+
+source.addEventListener("span:new", (e) => {
+  const span = JSON.parse(e.data);
+  console.log(`New span: ${span.tool_name} — ${span.status}`);
+});
+
+source.addEventListener("health:check", (e) => {
+  const check = JSON.parse(e.data);
+  console.log(`Health: ${check.server_name} — ${check.status}`);
+});
+```
+
+<Note>
+  The SSE broadcaster supports up to 200 concurrent clients with a 50-event buffer per client. If a client falls behind, the oldest events are dropped. For production monitoring dashboards, see [Monitoring](/monitoring) for Prometheus-based metrics instead.
+</Note>
+
+### Prometheus Metrics
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/metrics` | Prometheus text exposition format — no authentication required |
+
+Available metrics:
+
+| Metric | Type | Labels |
+|--------|------|--------|
+| `langsight_http_requests_total` | Counter | `method`, `path`, `status` |
+| `langsight_http_request_duration_seconds` | Histogram | `method`, `path` |
+| `langsight_spans_ingested_total` | Counter | — |
+| `langsight_active_sse_connections` | Gauge | — |
+| `langsight_health_checks_total` | Counter | `server`, `status` |
+
+See [Monitoring](/monitoring) for Prometheus scrape configuration and Grafana dashboard setup.
 
 **Anomaly object**:
 

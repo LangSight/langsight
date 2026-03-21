@@ -1,8 +1,8 @@
 # LangSight: Architecture Design
 
-> **Version**: 1.4.0
+> **Version**: 1.5.0
 > **Date**: 2026-03-21
-> **Status**: Active — updated with rate limiter single-instance fix, 3 new SDK integrations (OpenAI Agents, Anthropic/Claude, LangGraph), latency_ms auto-compute, integration count now 9 (2026-03-21)
+> **Status**: Active — updated with Prometheus `/metrics` endpoint, SSE live event feed (`/api/live/events`), `PrometheusMiddleware` added to middleware stack, `SSEBroadcaster` in-memory pub/sub for real-time dashboard updates (2026-03-21)
 
 ---
 
@@ -249,13 +249,16 @@ accept_invite()             → Postgres  (fixed 2026-03-21 — was missing dele
 | `/api/alerts` | GET alerts, POST acknowledge, PUT rules | API key |
 | `/api/slos` | GET list, POST create, DELETE by id, GET /status (evaluate all) | API key |
 | `/api/config` | GET/PUT MCP server configs | API key |
+| `/api/live/events` | SSE stream of real-time span ingestion and health check events | API key |
+| `/metrics` | Prometheus scrape endpoint — text exposition format | **None** (no auth) |
 
 **Design decisions**:
 - Two auth paths coexist (decided 2026-03-19 — Phase 9):
   1. **Session headers from proxy** — dashboard users authenticate via NextAuth; the Next.js proxy injects `X-User-Id` + `X-User-Role` headers; FastAPI trusts these only from `LANGSIGHT_TRUSTED_PROXY_CIDRS` (loopback by default, expanded to internal container CIDRs in Docker deployments)
   2. **X-API-Key header** — SDK and CLI direct access; no session required
 - JSON responses, standard pagination (offset/limit)
-- WebSocket endpoint for real-time health updates (dashboard use)
+- **SSE live feed** replaces the originally planned WebSocket endpoint (decided 2026-03-21): `GET /api/live/events` streams `span:new` and `health:check` events via Server-Sent Events. SSE was chosen over WebSocket because: (a) unidirectional server-to-client is sufficient for dashboard updates; (b) SSE works through HTTP/2 and standard reverse proxies without upgrade negotiation; (c) browser `EventSource` API handles reconnection automatically. See `SSEBroadcaster` (section 2.14) for implementation details.
+- **Prometheus `/metrics` endpoint** (added 2026-03-21): `GET /metrics` returns all LangSight metrics in Prometheus text exposition format. Registered without authentication so Prometheus scrapers can reach it without API keys. See section 2.15 for details.
 - `get_active_project_id` FastAPI dependency enforces project membership before returning a `project_id` filter; non-members receive 404 (no enumeration)
 
 ### 2.9 LangSight SDK (Phase 2)
@@ -358,6 +361,64 @@ Session detail page starts compare flow against the replay session
 
 **Source**: `src/langsight/replay/`
 
+### 2.14 SSE Broadcaster (added 2026-03-21)
+
+**Purpose**: Push real-time events to connected dashboard clients without requiring WebSocket infrastructure.
+
+**How it works**:
+- `SSEBroadcaster` (in `src/langsight/api/broadcast.py`) is an in-memory asyncio pub/sub
+- On startup, a singleton `SSEBroadcaster` is stored on `app.state.broadcaster`
+- Producers call `broadcaster.publish(event_type, data)` — non-blocking, never raises
+- Consumers connect via `GET /api/live/events` (requires auth) and receive SSE-formatted events
+- Each client gets a bounded `asyncio.Queue` (50 events max); oldest event is dropped if the client is too slow
+- Hard limit of 200 concurrent clients to prevent resource exhaustion
+- 15-second keepalive heartbeats prevent proxy timeouts
+
+**Event types**:
+| Event | Source | Payload |
+|---|---|---|
+| `span:new` | `traces.py` — after span ingestion | `session_id`, `agent_name`, `server_name`, `tool_name`, `status`, `latency_ms` |
+| `health:check` | Health checker — after health check completion | `server_name`, `status`, `latency_ms` |
+
+**Key design decisions** (decided 2026-03-21):
+- **SSE over WebSocket**: The event flow is unidirectional (server-to-client). SSE works through HTTP/2 and reverse proxies without upgrade negotiation, and the browser `EventSource` API handles reconnection automatically.
+- **In-memory, not Redis**: Single-instance deployments do not need Redis overhead. For multi-instance horizontal scaling, Redis pub/sub can be added behind the same `SSEBroadcaster` interface.
+- **Bounded buffers**: Slow clients do not cause memory growth. The 50-event buffer with oldest-drop policy ensures the broadcaster never blocks producers.
+
+**Source**: `src/langsight/api/broadcast.py`, `src/langsight/api/routers/live.py`
+
+### 2.15 Prometheus Metrics (added 2026-03-21)
+
+**Purpose**: Expose LangSight internal metrics in Prometheus text exposition format for scraping by Prometheus, Grafana Agent, or any compatible collector.
+
+**How it works**:
+- `GET /metrics` endpoint registered without authentication (Prometheus scrapers need direct access)
+- `PrometheusMiddleware` (Starlette `BaseHTTPMiddleware`) instruments every API request with counters and histograms
+- Path normalization collapses UUIDs and long hex segments to `{id}` to keep metric cardinality bounded
+- High-frequency internal paths (`/metrics`, `/api/liveness`, `/api/readiness`) are excluded from instrumentation
+
+**Metrics exported**:
+| Metric | Type | Labels | Description |
+|---|---|---|---|
+| `langsight_http_requests_total` | Counter | `method`, `path`, `status` | Total HTTP requests processed |
+| `langsight_http_request_duration_seconds` | Histogram | `method`, `path` | Request duration with buckets from 10ms to 10s |
+| `langsight_spans_ingested_total` | Counter | — | Total tool call spans ingested via `/traces/spans` and `/traces/otlp` |
+| `langsight_active_sse_connections` | Gauge | — | Number of active SSE live feed connections |
+| `langsight_health_checks_total` | Counter | `server`, `status` | Total health checks performed |
+
+**Middleware stack** (order matters — outermost first):
+1. `CORSMiddleware` — CORS headers
+2. `SecurityHeadersMiddleware` — security response headers
+3. `PrometheusMiddleware` — request count + duration histograms
+4. `SlowAPIMiddleware` — rate limiting
+
+**Key design decisions** (decided 2026-03-21):
+- **No auth on `/metrics`**: Prometheus scrapers typically do not send auth headers. The endpoint exposes operational metrics, not user data. Network-level access control (firewall rules, Docker internal network) provides the security boundary.
+- **Path normalization**: Without normalization, endpoints like `/api/agents/sessions/{session_id}` would create unbounded label cardinality. The `_normalize_path()` heuristic collapses hex strings longer than 8 characters to `{id}`.
+- **`prometheus-client` library**: The standard Python Prometheus client library (`prometheus-client>=0.21`) — no custom exposition format.
+
+**Source**: `src/langsight/api/metrics.py`
+
 ### 2.12 Next.js Dashboard (Phase 4)
 
 **Purpose**: Web UI for teams that prefer a visual interface over CLI.
@@ -376,7 +437,7 @@ Session detail page starts compare flow against the replay session
 
 **Design decisions**:
 - shadcn/ui component library (fast to build, consistent look)
-- Polls REST API (5s for health, 30s for metrics) — no complex real-time infra
+- Polls REST API (5s for health, 30s for metrics) for initial data; real-time updates via SSE live feed (`GET /api/live/events`) for instant span ingestion and health check notifications (added 2026-03-21)
 - Charts via recharts
 - No SSR needed — static SPA with API calls
 - Shared raw SVG + `dagre` lineage renderer (decided 2026-03-20): replaced the earlier standalone lineage implementation so the same graph component can power both session-level and fleet-level topology views.
@@ -530,6 +591,7 @@ At current scale (demo data, single-digit projects) this is invisible — ClickH
 | **RCA agent** | Claude Agent SDK | For Phase 2 root cause investigation |
 | **Alerting** | Slack Block Kit + webhooks | Simple, widely used |
 | **Containerization** | Docker Compose | Single `docker compose up` for full stack |
+| **Metrics** | prometheus-client | Prometheus text exposition format for `/metrics` endpoint |
 | **Testing** | pytest + httpx + testcontainers | Standard Python testing stack |
 | **License** | Apache 2.0 | Maximum adoption, no ELv2 concerns |
 

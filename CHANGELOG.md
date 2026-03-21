@@ -9,6 +9,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (2026-03-21 — Prometheus metrics + SSE live event feed)
+
+- **Prometheus `/metrics` endpoint** — `src/langsight/api/metrics.py`: `GET /metrics` returns all LangSight metrics in Prometheus text exposition format, no authentication required. Metrics exported: `langsight_http_requests_total` (counter, method/path/status), `langsight_http_request_duration_seconds` (histogram, method/path), `langsight_spans_ingested_total` (counter), `langsight_active_sse_connections` (gauge), `langsight_health_checks_total` (counter, server/status). `PrometheusMiddleware` instruments all API requests with path normalization (collapses UUIDs to `{id}`) to keep cardinality bounded. Skips `/metrics`, `/api/liveness`, `/api/readiness`.
+- **SSE live event feed** — `src/langsight/api/broadcast.py` + `src/langsight/api/routers/live.py`: `GET /api/live/events` streams Server-Sent Events to connected dashboard clients. Events: `span:new` (fired on span ingestion in `traces.py`), `health:check` (fired on health check completion). `SSEBroadcaster` is an in-memory asyncio pub/sub — max 200 concurrent clients, 50-event buffer per client (oldest dropped when full), 15-second keepalive heartbeats. The `/api/live/events` endpoint requires authentication (same as all other API routes). `ACTIVE_SSE` gauge tracks connected clients in Prometheus.
+- **New dependency**: `prometheus-client>=0.21` added to `pyproject.toml`.
+- **Tests**: 20 new tests (11 for Prometheus metrics, 9 for SSE broadcaster). Total: 957 tests passing.
+
 ### Added (2026-03-21 — SDK integrations: OpenAI Agents, Anthropic/Claude, LangGraph)
 
 - **SDK: OpenAI Agents integration** — `src/langsight/integrations/openai_agents.py`: `LangSightOpenAIHooks` class implementing the `RunHooks` protocol; hooks into `on_tool_start`/`on_tool_end` to trace every tool call automatically. Also provides `langsight_openai_tool` decorator for tracing individual tool functions.
