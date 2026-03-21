@@ -112,7 +112,30 @@ class HealthChecker:
                 await self._storage.save_health_result(result)
             return result
 
-    async def check_many(self, servers: list[MCPServer]) -> list[HealthCheckResult]:
-        """Check multiple MCP servers concurrently via asyncio.gather."""
-        results = await asyncio.gather(*[self.check(server) for server in servers])
-        return list(results)
+    async def check_many(
+        self, servers: list[MCPServer], global_timeout: float = 60.0,
+    ) -> list[HealthCheckResult]:
+        """Check multiple MCP servers concurrently with a global timeout backstop.
+
+        Individual server timeouts are configured per-server (MCPServer.timeout_seconds).
+        The global_timeout prevents the entire batch from hanging if a server ignores
+        its per-check timeout (e.g., a deadlocked MCP process).
+        """
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*[self.check(server) for server in servers]),
+                timeout=global_timeout,
+            )
+            return list(results)
+        except TimeoutError:
+            logger.error("health_checker.global_timeout", timeout=global_timeout, servers=len(servers))
+            # Return DOWN results for all servers
+            now = datetime.now(UTC)
+            return [
+                HealthCheckResult(
+                    server_name=s.name, status=ServerStatus.DOWN,
+                    latency_ms=None, tools_count=0, schema_hash=None,
+                    error=f"global timeout ({global_timeout}s)", checked_at=now,
+                )
+                for s in servers
+            ]

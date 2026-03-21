@@ -39,6 +39,7 @@ def _mock_storage() -> MagicMock:
     s.save_health_result = AsyncMock()
     s.get_latest_schema_hash = AsyncMock(return_value=None)
     s.save_schema_snapshot = AsyncMock()
+    s.get_health_history = AsyncMock(return_value=[])
     s.close = AsyncMock()
     s.__aenter__ = AsyncMock(return_value=s)
     s.__aexit__ = AsyncMock(return_value=None)

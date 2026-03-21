@@ -10,7 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
 from langsight.api.audit import append_audit
-from langsight.api.dependencies import get_current_user_id, get_storage, require_admin
+from langsight.api.dependencies import (
+    get_current_user_id,
+    get_storage,
+    invalidate_api_key_cache,
+    require_admin,
+)
 from langsight.models import ApiKeyRecord, ApiKeyRole
 from langsight.storage.base import StorageBackend
 
@@ -102,6 +107,7 @@ async def create_api_key(
 
     if hasattr(storage, "create_api_key"):
         await storage.create_api_key(record)
+        invalidate_api_key_cache()
     else:
         # Storage backend doesn't support API keys (e.g. ClickHouse read-only mode)
         raise HTTPException(
@@ -163,6 +169,7 @@ async def revoke_api_key(
     found = await storage.revoke_api_key(key_id)
     if not found:
         raise HTTPException(status_code=404, detail="API key not found or already revoked")
+    invalidate_api_key_cache()
     client_ip = request.client.host if request.client else "unknown"
     logger.info("audit.api_key.revoked", id=key_id, client_ip=client_ip)
     append_audit("api_key.revoked", None, client_ip, {"key_id": key_id}, storage=storage)

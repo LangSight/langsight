@@ -101,6 +101,14 @@ async def _monitor_loop(
     storage = await try_open_storage(config)
     try:
         checker = HealthChecker(storage=storage)
+
+        # Seed alert baselines from recent health history (avoids false alarms after restart)
+        if storage:
+            for server in config.servers:
+                history = await storage.get_health_history(server.name, limit=10)
+                if history:
+                    alert_engine.seed_from_history(list(reversed(history)))
+
         cycle = 0
 
         while True:

@@ -22,26 +22,38 @@ logger = structlog.get_logger()
 # ---------------------------------------------------------------------------
 _HAS_DB_KEYS_CACHE: tuple[bool, float] = (False, 0.0)  # (value, expires_at)
 _HAS_DB_KEYS_TTL = 30.0  # seconds
+_HAS_DB_KEYS_LOCK = asyncio.Lock()
 
 
 async def _has_db_keys(storage: StorageBackend) -> bool:
-    """Check if any active API keys exist in the DB. Cached for 30 seconds."""
+    """Check if any active API keys exist in the DB. Cached for 30 seconds.
+
+    Thread-safe via asyncio.Lock — concurrent requests share one DB query
+    instead of racing.
+    """
     global _HAS_DB_KEYS_CACHE  # noqa: PLW0603
+    # Fast path: check cache without lock (monotonic reads are safe)
     value, expires_at = _HAS_DB_KEYS_CACHE
     if time.monotonic() < expires_at:
         return value
 
-    list_fn = getattr(storage, "list_api_keys", None)
-    if list_fn is None or not inspect.iscoroutinefunction(list_fn):
-        return False
-    try:
-        db_keys = await list_fn()
-        result = any(not k.is_revoked for k in db_keys)
-    except Exception:  # noqa: BLE001
-        # DB error: conservatively treat as auth-enabled (fail-closed)
-        result = True
-    _HAS_DB_KEYS_CACHE = (result, time.monotonic() + _HAS_DB_KEYS_TTL)
-    return result
+    async with _HAS_DB_KEYS_LOCK:
+        # Double-check after acquiring lock (another coroutine may have refreshed)
+        value, expires_at = _HAS_DB_KEYS_CACHE
+        if time.monotonic() < expires_at:
+            return value
+
+        list_fn = getattr(storage, "list_api_keys", None)
+        if list_fn is None or not inspect.iscoroutinefunction(list_fn):
+            return False
+        try:
+            db_keys = await list_fn()
+            result = any(not k.is_revoked for k in db_keys)
+        except Exception:  # noqa: BLE001
+            # DB error: conservatively treat as auth-enabled (fail-closed)
+            result = True
+        _HAS_DB_KEYS_CACHE = (result, time.monotonic() + _HAS_DB_KEYS_TTL)
+        return result
 
 
 def invalidate_api_key_cache() -> None:

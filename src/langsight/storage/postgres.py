@@ -288,12 +288,22 @@ class PostgresBackend:
 
     @classmethod
     async def open(cls, dsn: str, min_size: int = 2, max_size: int = 20) -> PostgresBackend:
-        """Open a connection pool and create schema if needed."""
-        pool = await asyncpg.create_pool(dsn, min_size=min_size, max_size=max_size)
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                for stmt in _DDL_STATEMENTS:
-                    await conn.execute(stmt)
+        """Open a connection pool and create schema if needed.
+
+        command_timeout=30 prevents any single query from blocking the pool
+        indefinitely. If DDL fails, the pool is closed to prevent leaks.
+        """
+        pool = await asyncpg.create_pool(
+            dsn, min_size=min_size, max_size=max_size, command_timeout=30,
+        )
+        try:
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    for stmt in _DDL_STATEMENTS:
+                        await conn.execute(stmt)
+        except Exception:
+            await pool.close()
+            raise
 
         logger.debug("storage.postgres.opened", dsn=_redact_dsn(dsn))
         return cls(pool)
@@ -917,17 +927,19 @@ class PostgresBackend:
             )
             for tool in tools
         ]
-        await self._pool.executemany(
-            """
-            INSERT INTO server_tools (id, server_name, tool_name, description, input_schema, project_id, first_seen_at, last_seen_at)
-            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $7)
-            ON CONFLICT (server_name, tool_name, project_id) DO UPDATE SET
-                description = EXCLUDED.description,
-                input_schema = EXCLUDED.input_schema,
-                last_seen_at = EXCLUDED.last_seen_at
-            """,
-            args,
-        )
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.executemany(
+                    """
+                    INSERT INTO server_tools (id, server_name, tool_name, description, input_schema, project_id, first_seen_at, last_seen_at)
+                    VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $7)
+                    ON CONFLICT (server_name, tool_name, project_id) DO UPDATE SET
+                        description = EXCLUDED.description,
+                        input_schema = EXCLUDED.input_schema,
+                        last_seen_at = EXCLUDED.last_seen_at
+                    """,
+                    args,
+                )
 
     async def get_server_tools(self, server_name: str, project_id: str | None = None) -> list[dict[str, object]]:
         """Get all declared tools for a server, scoped to project."""
