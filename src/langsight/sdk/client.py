@@ -291,9 +291,11 @@ class MCPClientProxy:
                     "description": getattr(t, "description", "") or "",
                     "input_schema": getattr(t, "inputSchema", None) or getattr(t, "input_schema", None) or {},
                 })
-            asyncio.create_task(
-                langsight.record_tool_schemas(server_name, tools_payload, project_id)
-            )
+            record_coro = langsight.record_tool_schemas(server_name, tools_payload, project_id)
+            try:
+                asyncio.create_task(record_coro)
+            except RuntimeError:
+                record_coro.close()
         except Exception as exc:  # noqa: BLE001
             logger.debug("sdk.list_tools_capture_failed", server=server_name, error=str(exc))
 

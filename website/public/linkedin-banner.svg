@@ -1,0 +1,32 @@
+<svg width="1584" height="396" viewBox="0 0 1584 396" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- LinkedIn company page banner (1584x396) -->
+  <rect width="1584" height="396" fill="#09090B"/>
+
+  <!-- Grid -->
+  <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+    <path d="M60 0V60H0" stroke="#1C1C1F" stroke-width="0.5" fill="none"/>
+  </pattern>
+  <rect width="1584" height="396" fill="url(#grid)"/>
+
+  <!-- Glow -->
+  <circle cx="792" cy="198" r="300" fill="#14B8A6" opacity="0.05"/>
+
+  <!-- Logo + wordmark centered -->
+  <rect x="560" y="90" width="68" height="68" rx="15" fill="#14B8A6"/>
+  <circle cx="594" cy="124" r="13" stroke="white" stroke-width="3.5" fill="none"/>
+  <circle cx="594" cy="124" r="3.5" fill="white"/>
+  <line x1="603" y1="115" x2="616" y2="102" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+
+  <text x="644" y="138" font-family="system-ui, -apple-system, sans-serif" font-weight="700" font-size="40" letter-spacing="-1">
+    <tspan fill="white">Lang</tspan><tspan fill="#2DD4BF">Sight</tspan>
+  </text>
+
+  <!-- Tagline -->
+  <text x="792" y="220" font-family="system-ui, -apple-system, sans-serif" font-weight="600" font-size="26" fill="#A1A1AA" text-anchor="middle">Your agent failed. Which tool broke — and why?</text>
+
+  <!-- Pillars -->
+  <text x="792" y="270" font-family="monospace" font-size="16" fill="#3F3F46" text-anchor="middle">Action Traces  ·  MCP Health  ·  Security Scanning  ·  Cost Attribution</text>
+
+  <!-- URL -->
+  <text x="792" y="340" font-family="monospace" font-size="18" fill="#14B8A6" text-anchor="middle">langsight.dev</text>
+</svg>

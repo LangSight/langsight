@@ -13,10 +13,10 @@
   --text: #09090B;
   --muted: #52525B;
   --dimmer: #A1A1AA;
-  --indigo: #6366F1;
-  --indigo-dim: rgba(99,102,241,0.08);
-  --indigo-glow: rgba(99,102,241,0.10);
-  --indigo-strong: rgba(99,102,241,0.20);
+  --indigo: #14B8A6;
+  --indigo-dim: rgba(20,184,166,0.08);
+  --indigo-glow: rgba(20,184,166,0.10);
+  --indigo-strong: rgba(20,184,166,0.20);
   --green: #16A34A;
   --green-dim: rgba(22,163,74,0.10);
   --red: #DC2626;
@@ -26,7 +26,7 @@
   --orange: #EA580C;
   --terminal-bg: #F8F8FA;
   --terminal-bar: #EFEFEF;
-  --code-text: #4338CA;
+  --code-text: #0D9488;
 }
 
 .dark {
@@ -39,10 +39,10 @@
   --text: #FAFAFA;
   --muted: #71717A;
   --dimmer: #3F3F46;
-  --indigo: #6366F1;
-  --indigo-dim: rgba(99,102,241,0.10);
-  --indigo-glow: rgba(99,102,241,0.18);
-  --indigo-strong: rgba(99,102,241,0.25);
+  --indigo: #2DD4BF;
+  --indigo-dim: rgba(45,212,191,0.10);
+  --indigo-glow: rgba(45,212,191,0.18);
+  --indigo-strong: rgba(45,212,191,0.25);
   --green: #22C55E;
   --green-dim: rgba(34,197,94,0.10);
   --red: #EF4444;
@@ -52,7 +52,7 @@
   --orange: #F97316;
   --terminal-bg: #0A0A0E;
   --terminal-bar: #111113;
-  --code-text: #818CF8;
+  --code-text: #5EEAD4;
 }
 
 /* ── Reset ──────────────────────────────────────────────────── */
@@ -142,7 +142,7 @@ body {
   background-clip: text;
 }
 .gradient-indigo {
-  background: linear-gradient(135deg, #818CF8 0%, #6366F1 60%, #4F46E5 100%);
+  background: linear-gradient(135deg, #5EEAD4 0%, #2DD4BF 50%, #14B8A6 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

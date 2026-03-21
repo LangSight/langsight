@@ -248,6 +248,22 @@ class TestListToolsFailOpenOnExtractionError:
         assert result is no_tools_result
 
     @pytest.mark.unit
+    async def test_list_tools_closes_schema_task_when_scheduling_fails(
+        self, langsight_client: LangSightClient
+    ) -> None:
+        """A failed create_task() must not leak an un-awaited coroutine."""
+        raw_result = _make_list_tools_result(_make_tool("query"))
+        mock_mcp = MagicMock()
+        mock_mcp.list_tools = AsyncMock(return_value=raw_result)
+
+        proxy = langsight_client.wrap(mock_mcp, server_name="pg")
+
+        with patch("langsight.sdk.client.asyncio.create_task", side_effect=RuntimeError("loop closed")):
+            result = await proxy.list_tools()
+
+        assert result is raw_result
+
+    @pytest.mark.unit
     async def test_list_tools_fail_open_when_individual_tool_has_no_name(
         self, langsight_client: LangSightClient
     ) -> None:

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 /* ── Theme ──────────────────────────────────────────────────── */
 function useTheme() {
@@ -54,20 +54,54 @@ function MoonIcon() {
   );
 }
 
+function ShieldIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+    </svg>
+  );
+}
+
+function HeartPulseIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+    </svg>
+  );
+}
+
+function ZapIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+    </svg>
+  );
+}
+
+function DollarIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+}
+
 /* ── Logo ───────────────────────────────────────────────────── */
 function Logo() {
   return (
     <a href="/" className="flex items-center gap-2.5 shrink-0">
-      <div
-        className="w-7 h-7 rounded-lg flex items-center justify-center"
-        style={{ background: "var(--indigo)" }}
-      >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M2 7h10M7 2v10M4 4l6 6M10 4l-6 6" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
+      <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--indigo)" }}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          {/* Outer ring — the lens */}
+          <circle cx="12" cy="12" r="9" stroke="white" strokeWidth="2.5" fill="none"/>
+          {/* Center dot — the focus point */}
+          <circle cx="12" cy="12" r="2.5" fill="white"/>
+          {/* Diagonal line — the active scan, breaks through the ring */}
+          <line x1="18" y1="6" x2="23" y2="1" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
         </svg>
       </div>
       <span className="font-bold text-lg tracking-tight" style={{ fontFamily: "var(--font-geist-sans)", color: "var(--text)" }}>
-        LangSight
+        Lang<span style={{ color: "var(--indigo)" }}>Sight</span>
       </span>
     </a>
   );
@@ -96,7 +130,8 @@ function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
       className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
       style={{
         background: scrolled ? "color-mix(in srgb, var(--bg) 88%, transparent)" : "transparent",
-        backdropFilter: scrolled ? "blur(16px)" : "none",
+        backdropFilter: scrolled ? "blur(16px) saturate(180%)" : "none",
+        WebkitBackdropFilter: scrolled ? "blur(16px) saturate(180%)" : "none",
         borderBottom: scrolled ? "1px solid var(--border)" : "1px solid transparent",
       }}
     >
@@ -134,7 +169,7 @@ function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
             className="hidden sm:flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-lg transition-all hover:opacity-90 hover:-translate-y-px"
             style={{ background: "var(--indigo)", color: "white" }}
           >
-            Get started →
+            Start self-hosting →
           </a>
 
           {/* Mobile hamburger */}
@@ -169,7 +204,7 @@ function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
             className="block mt-2 px-3 py-2.5 rounded-lg text-sm font-semibold text-center"
             style={{ background: "var(--indigo)", color: "white" }}
           >
-            Get started →
+            Start self-hosting →
           </a>
         </div>
       )}
@@ -185,14 +220,14 @@ const TERMINAL_LINES = [
   { text: "5 tool calls · 1 failed · 2,134ms · $0.023", color: "var(--muted)", small: true, delay: 500 },
   { text: "", delay: 620 },
   { text: "sess-f2a9b1", color: "var(--indigo)", delay: 760 },
-  { text: "├── 🔧 jira-mcp/get_issue        89ms  ✓", color: "var(--green)", delay: 940 },
-  { text: "├── 🔧 postgres-mcp/query        42ms  ✓", color: "var(--green)", delay: 1100 },
+  { text: "├── jira-mcp/get_issue        89ms  ✓", color: "var(--green)", delay: 940 },
+  { text: "├── postgres-mcp/query        42ms  ✓", color: "var(--green)", delay: 1100 },
   { text: "├──  → billing-agent          handoff", color: "var(--yellow)", delay: 1280 },
-  { text: "│   ├── 🔧 crm-mcp/update_customer  120ms  ✓", color: "var(--green)", delay: 1460 },
-  { text: "│   └── 🔧 slack-mcp/notify           —   ✗  timeout", color: "var(--red)", delay: 1640 },
+  { text: "│   ├── crm-mcp/update    120ms  ✓", color: "var(--green)", delay: 1460 },
+  { text: "│   └── slack-mcp/notify    —   ✗  timeout", color: "var(--red)", delay: 1640 },
   { text: "", delay: 1800 },
   { text: "Root cause: slack-mcp timed out at 14:32 UTC", color: "var(--orange)", bold: true, delay: 1960 },
-  { text: "└── Fix: check SLACK_TIMEOUT config (currently 500ms)", color: "var(--dimmer)", small: true, delay: 2100 },
+  { text: "└── Fix: check SLACK_TIMEOUT (currently 500ms)", color: "var(--dimmer)", small: true, delay: 2100 },
 ];
 
 function AnimatedTerminal() {
@@ -214,7 +249,7 @@ function AnimatedTerminal() {
           className="ml-3 text-xs"
           style={{ fontFamily: "var(--font-geist-mono)", color: "var(--dimmer)" }}
         >
-          langsight · sessions
+          langsight · session trace
         </span>
       </div>
       <div className="p-5 space-y-0.5 min-h-[300px] overflow-hidden" style={{ fontFamily: "var(--font-geist-mono)", fontSize: "0.82rem" }}>
@@ -247,8 +282,12 @@ function Hero() {
       {/* Background glow */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div
-          className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[600px] rounded-full blur-[160px]"
-          style={{ background: "var(--indigo-glow)" }}
+          className="absolute top-1/4 left-1/3 w-[600px] h-[600px] rounded-full blur-[160px]"
+          style={{ background: "rgba(20,184,166,0.12)" }}
+        />
+        <div
+          className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] rounded-full blur-[140px]"
+          style={{ background: "rgba(45,212,191,0.08)" }}
         />
       </div>
 
@@ -259,23 +298,23 @@ function Hero() {
             {/* Badge */}
             <div
               className="fade-up inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium"
-              style={{ background: "var(--indigo-dim)", border: "1px solid rgba(99,102,241,0.25)", color: "var(--indigo)" }}
+              style={{ background: "var(--indigo-dim)", border: "1px solid rgba(45,212,191,0.25)", color: "var(--indigo)" }}
             >
               <span className="w-1.5 h-1.5 rounded-full pulse-dot" style={{ background: "var(--indigo)" }} />
-              v0.2.0 · Open source · Apache 2.0
+              v0.2.0 · Self-host free · BSL 1.1
             </div>
 
-            {/* Headline */}
+            {/* Headline — lead with pain */}
             <div className="space-y-1">
               <h1
                 className="fade-up delay-1 font-bold leading-[1.04] tracking-tight"
                 style={{ fontSize: "clamp(2.6rem, 5vw, 3.75rem)", fontFamily: "var(--font-geist-sans)" }}
               >
-                <span className="gradient-text">Your agent broke.</span>
+                <span className="gradient-text">Your agent failed.</span>
                 <br />
-                <span className="gradient-text">Here&apos;s exactly</span>
+                <span className="gradient-text">Which tool broke</span>
                 <br />
-                <span className="gradient-indigo">why.</span>
+                <span className="gradient-indigo">— and why?</span>
               </h1>
             </div>
 
@@ -284,11 +323,22 @@ function Hero() {
               className="fade-up delay-2 text-lg leading-relaxed max-w-md"
               style={{ color: "var(--muted)" }}
             >
-              LangSight traces every tool call your AI agents make — MCP servers, HTTP APIs,
-              sub-agents. For MCP servers, get health checks, schema drift alerts, and security
-              scanning built in.{" "}
-              <strong style={{ color: "var(--text)" }}>Two lines to instrument. Self-host in 5 minutes.</strong>
+              Trace what your agents called. Find what broke, what&apos;s expensive, and what&apos;s unsafe.
+              For MCP servers, get health checks, schema drift alerts, and security scanning built in.
             </p>
+
+            {/* Positioning bar — the most important line on the page */}
+            <div
+              className="fade-up delay-2 rounded-lg px-4 py-3 text-sm"
+              style={{
+                background: "var(--surface-2)",
+                border: "1px solid var(--border)",
+                color: "var(--muted)",
+              }}
+            >
+              <strong style={{ color: "var(--text)" }}>Not another prompt, eval, or simulation platform.</strong>
+              {" "}LangSight monitors the runtime layer: the tools your agents depend on.
+            </div>
 
             {/* CTAs */}
             <div className="fade-up delay-3 flex flex-wrap gap-3">
@@ -297,15 +347,14 @@ function Hero() {
                 className="text-sm font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all hover:opacity-90 hover:-translate-y-px"
                 style={{ background: "var(--indigo)", color: "white" }}
               >
-                Get started free →
+                Start self-hosting →
               </a>
               <a
-                href="https://github.com/sumankalyan123/langsight"
+                href="#failure-trace"
                 className="text-sm font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all hover:-translate-y-px"
                 style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }}
               >
-                <GithubIcon className="w-4 h-4" />
-                Star on GitHub
+                See an MCP failure trace
               </a>
             </div>
 
@@ -329,9 +378,9 @@ function Hero() {
               className="fade-up delay-5 flex flex-wrap gap-x-5 gap-y-1 text-xs"
               style={{ color: "var(--dimmer)" }}
             >
-              <span>✓ LangChain · CrewAI · Pydantic AI · LibreChat</span>
-              <span>✓ Postgres + ClickHouse · dual-backend architecture</span>
-              <span>✓ 694 tests · 0 mypy errors</span>
+              <span>LangChain · CrewAI · Pydantic AI</span>
+              <span>Postgres + ClickHouse</span>
+              <span>1,003 tests · 77% coverage</span>
             </div>
           </div>
 
@@ -345,37 +394,107 @@ function Hero() {
   );
 }
 
+/* ── "What question?" comparison ────────────────────────────── */
+const QUESTIONS: { q: string; tool: string; us: boolean }[] = [
+  { q: "Did the prompt/model perform well?", tool: "LangWatch / Langfuse / LangSmith", us: false },
+  { q: "Should I change prompts or eval policy?", tool: "LangWatch / Langfuse / LangSmith", us: false },
+  { q: "Is my server CPU/memory healthy?", tool: "Datadog / New Relic", us: false },
+  { q: "Which tool call failed in production?", tool: "LangSight", us: true },
+  { q: "Is an MCP server unhealthy or drifting?", tool: "LangSight", us: true },
+  { q: "Is an MCP server exposed or risky?", tool: "LangSight", us: true },
+  { q: "Why did this session cost $47 instead of $3?", tool: "LangSight", us: true },
+];
+
+function Comparison() {
+  return (
+    <section className="py-24" style={{ background: "var(--bg-deep)" }}>
+      <div className="max-w-4xl mx-auto px-6">
+        <div className="text-center mb-14" data-reveal>
+          <p className="section-label mb-3">Where LangSight fits</p>
+          <h2
+            className="font-bold tracking-tight"
+            style={{ fontSize: "clamp(1.8rem, 3.5vw, 2.5rem)", fontFamily: "var(--font-geist-sans)" }}
+          >
+            <span className="gradient-text">What question are you</span>
+            <br />
+            <span className="gradient-indigo">trying to answer?</span>
+          </h2>
+          <p className="mt-4 max-w-xl mx-auto" style={{ color: "var(--muted)" }}>
+            Use LangSight with LangWatch, Langfuse, or LangSmith — not instead of them.
+            They evaluate model behavior. LangSight monitors the tool layer underneath.
+          </p>
+        </div>
+
+        <div data-reveal className="card-flat overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                  <th className="text-left px-6 py-4 font-medium" style={{ color: "var(--muted)" }}>Question</th>
+                  <th className="text-right px-6 py-4 font-medium" style={{ color: "var(--muted)" }}>Best tool</th>
+                </tr>
+              </thead>
+              <tbody>
+                {QUESTIONS.map((row, i) => (
+                  <tr
+                    key={i}
+                    style={{
+                      borderBottom: i < QUESTIONS.length - 1 ? "1px solid var(--border-dim)" : "none",
+                      background: row.us ? "var(--indigo-dim)" : "transparent",
+                    }}
+                  >
+                    <td className="px-6 py-3.5" style={{ color: row.us ? "var(--text)" : "var(--muted)" }}>
+                      {row.us && <span style={{ color: "var(--indigo)" }}>→ </span>}
+                      {row.q}
+                    </td>
+                    <td
+                      className="px-6 py-3.5 text-right font-semibold whitespace-nowrap"
+                      style={{ color: row.us ? "var(--indigo)" : "var(--dimmer)" }}
+                    >
+                      {row.tool}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ── Problem section ────────────────────────────────────────── */
 const PROBLEMS = [
   {
-    icon: "🔥",
-    time: "2:17 AM",
-    headline: "Agent down. Which tool broke it?",
-    body: "Your orchestrator agent calls 12 tools across 4 MCP servers. Something returned bad data. Without traces, you spend hours replaying requests manually — in the dark.",
+    icon: <ZapIcon />,
+    accent: "var(--red)",
+    headline: "Which of 15 tools failed?",
+    body: "Your orchestrator calls 15 tools across 4 MCP servers. Something returned bad data. Without traces, you spend hours replaying requests — in the dark.",
   },
   {
-    icon: "🌳",
-    time: "On every deploy",
-    headline: "Sub-agent called what, exactly?",
-    body: "Agent A delegated to Agent B which called Agent C. Which tool failed three levels deep? LangSight reconstructs the full multi-agent call tree automatically from parent_span_id.",
+    icon: <HeartPulseIcon />,
+    accent: "var(--orange)",
+    headline: "MCP server degraded silently",
+    body: "Schema changed. Latency spiked 10x. Auth expired. The agent keeps calling, gets bad data, and hallucinates. You find out from users, not alerts.",
   },
   {
-    icon: "💸",
-    time: "End of month",
+    icon: <DollarIcon />,
+    accent: "var(--yellow)",
     headline: "$4,200 in unexpected tool costs",
-    body: "A sub-agent retries a geocoding MCP 47× per session. At $0.005/call that's $0.24 per task. Nobody noticed until the invoice arrived. LangSight surfaces this in real time.",
+    body: "A sub-agent retries geocoding-mcp 47 times per session. Nobody noticed until the invoice arrived. You need cost attribution at the tool level, not the model level.",
   },
   {
-    icon: "🛡",
-    time: "Before it's too late",
-    headline: "Is this MCP server safe?",
-    body: "66% of community MCP servers have critical code smells. 8,000+ are exposed with no auth. Tool poisoning attacks are real and growing. You need automated scanning, not hope.",
+    icon: <ShieldIcon />,
+    accent: "var(--indigo)",
+    headline: "Is this MCP server safe to run?",
+    body: "66% of community MCP servers have critical code smells. Tool poisoning attacks are real. You need automated scanning, not hope.",
   },
 ];
 
 function Problem() {
   return (
-    <section className="py-24" style={{ background: "var(--bg-deep)" }}>
+    <section id="failure-trace" className="py-24">
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-center mb-16" data-reveal>
           <p className="section-label mb-3">The problem</p>
@@ -383,25 +502,24 @@ function Problem() {
             className="font-bold tracking-tight"
             style={{ fontSize: "clamp(1.8rem, 3.5vw, 2.5rem)", fontFamily: "var(--font-geist-sans)" }}
           >
-            <span className="gradient-text">AI agents fail silently.</span>
+            <span className="gradient-text">LLM quality is only</span>
+            <br />
+            <span className="gradient-indigo">half the problem.</span>
           </h2>
           <p className="mt-4 max-w-xl mx-auto text-base" style={{ color: "var(--muted)" }}>
-            Modern agents chain dozens of tool calls across multiple servers and sub-agents.
-            When something breaks, you have no idea where — or why.
+            Teams already have ways to inspect prompts and eval scores.
+            What they still cannot answer fast enough:
           </p>
         </div>
 
         <div className="grid sm:grid-cols-2 gap-5">
           {PROBLEMS.map((p, i) => (
-            <div key={i} data-reveal className="card p-7" style={{ transitionDelay: `${i * 70}ms` }}>
-              <div className="flex items-start justify-between mb-4">
-                <span className="text-2xl">{p.icon}</span>
-                <span
-                  className="text-xs px-2 py-0.5 rounded-full"
-                  style={{ fontFamily: "var(--font-geist-mono)", background: "var(--surface-2)", color: "var(--dimmer)" }}
-                >
-                  {p.time}
-                </span>
+            <div key={i} data-reveal className="card p-7 group" style={{ transitionDelay: `${i * 70}ms` }}>
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center mb-5 transition-transform group-hover:scale-110"
+                style={{ background: `color-mix(in srgb, ${p.accent} 12%, transparent)`, color: p.accent }}
+              >
+                {p.icon}
               </div>
               <h3
                 className="font-semibold text-base mb-2"
@@ -420,93 +538,102 @@ function Problem() {
   );
 }
 
-/* ── How it works ───────────────────────────────────────────── */
-const STEPS = [
+/* ── Solution pillars ──────────────────────────────────────── */
+const PILLARS = [
   {
     n: "01",
-    sub: "30 seconds",
-    title: "Install & discover",
-    desc: "One command discovers all your MCP servers from Claude Desktop, Cursor, and VS Code configs. Writes .langsight.yaml automatically. No manual configuration.",
-    code: `pip install langsight
-langsight init
+    title: "Action Traces",
+    desc: "See the exact sequence of tool calls, handoffs, failures, and costs across a full agent session. Multi-agent trees reconstructed automatically from parent_span_id.",
+    code: `$ langsight sessions --id sess-f2a9b1
 
-# Auto-discovered 4 MCP servers:
-#   ✓ postgres-mcp    (stdio)
-#   ✓ jira-mcp        (stdio)
-#   ✓ slack-mcp       (sse)
-#   ✓ filesystem-mcp  (stdio)`,
+sess-f2a9b1  (support-agent)
+├── jira-mcp/get_issue        89ms  ✓
+├── postgres-mcp/query        42ms  ✓
+├──  → billing-agent          handoff
+│   ├── crm-mcp/update    120ms  ✓
+│   └── slack-mcp/notify    —   ✗  timeout
+
+Root cause: slack-mcp timed out at 14:32`,
   },
   {
     n: "02",
-    sub: "2 lines of code",
-    title: "Instrument your agent",
-    desc: "Wraps any MCP client. Every call_tool() is traced asynchronously — never blocks your agent. Fail-open: if LangSight is unreachable, your agent continues normally.",
-    code: `from langsight.sdk import LangSightClient
+    title: "MCP Health",
+    desc: "Detect down, slow, stale, or changed MCP servers before they silently corrupt agent behavior. Schema drift detection catches breaking changes in minutes.",
+    code: `$ langsight mcp-health
 
-client = LangSightClient(url="http://localhost:8000")
-
-# Wrap your existing MCP session
-traced = client.wrap(
-    mcp_session,
-    server_name="postgres-mcp",
-    agent_name="support-agent",
-)
-
-# Use exactly as before — all calls traced
-result = await traced.call_tool("query", {...})`,
+Server           Status   Latency   Schema    Tools
+snowflake-mcp    ✅ UP    142ms     Stable    8
+slack-mcp        ⚠️ DEG  1,240ms   Stable    4
+jira-mcp         ❌ DOWN  —         —         —
+postgres-mcp     ✅ UP    31ms      Changed   5`,
   },
   {
     n: "03",
-    sub: "real-time",
-    title: "See everything",
-    desc: "Session traces, multi-agent trees, MCP health status, security findings, cost attribution, anomaly detection, and failure investigation — in the terminal and the dashboard.",
-    code: `langsight sessions          # all recent sessions
-langsight sessions --id X   # full trace for session
-langsight mcp-health        # server health status
-langsight security-scan     # CVE + OWASP + poisoning
-langsight costs --hours 24  # cost breakdown
-langsight investigate       # failure investigation`,
+    title: "MCP Security",
+    desc: "Scan for CVEs, OWASP MCP Top 10, tool poisoning signals, weak auth, and risky configs. Run in CI with --ci to block deploys on CRITICAL findings.",
+    code: `$ langsight security-scan
+
+CRITICAL  jira-mcp      CVE-2025-6514
+  Remote code execution in mcp-remote
+
+HIGH      slack-mcp     OWASP-MCP-01
+  Tool description contains injection pattern
+
+HIGH      postgres-mcp  OWASP-MCP-04
+  No authentication configured`,
+  },
+  {
+    n: "04",
+    title: "Cost Attribution",
+    desc: 'Move from "the invoice is $4,200" to "billing-agent\'s geocoding MCP retries 47x per session at $0.005/call."',
+    code: `$ langsight costs --hours 24
+
+Tool                 Calls  Failed  Cost     %
+geocoding-mcp        2,340  12      $1,872   44.6%
+postgres-mcp/query   890    3       $445     10.6%
+claude-3.5 (LLM)    156    0       $312     7.4%`,
   },
 ];
 
-function HowItWorks() {
+function Solution() {
   return (
-    <section className="py-24">
+    <section className="py-24" style={{ background: "var(--bg-deep)" }}>
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-center mb-16" data-reveal>
-          <p className="section-label mb-3">How it works</p>
+          <p className="section-label mb-3">The solution</p>
           <h2
             className="font-bold tracking-tight"
             style={{ fontSize: "clamp(1.8rem, 3.5vw, 2.5rem)", fontFamily: "var(--font-geist-sans)" }}
           >
-            <span className="gradient-text">Zero to traced</span>
+            <span className="gradient-text">Four pillars of</span>
             <br />
-            <span className="gradient-indigo">in 5 minutes.</span>
+            <span className="gradient-indigo">runtime observability.</span>
           </h2>
         </div>
 
-        <div className="space-y-20">
-          {STEPS.map((step, i) => (
+        <div className="space-y-16">
+          {PILLARS.map((step, i) => (
             <div
               key={i}
               data-reveal
-              className={`grid lg:grid-cols-2 gap-10 xl:gap-16 items-center`}
+              className="grid lg:grid-cols-2 gap-10 xl:gap-16 items-center"
               style={{ transitionDelay: `${i * 80}ms` }}
             >
               <div className={i % 2 === 1 ? "lg:order-2" : ""}>
-                <div
-                  className="font-bold mb-3 select-none"
-                  style={{ fontFamily: "var(--font-geist-mono)", fontSize: "3.5rem", color: "var(--border)", lineHeight: 1 }}
-                >
-                  {step.n}
+                <div className="flex items-center gap-4 mb-4">
+                  <span
+                    className="font-bold select-none"
+                    style={{ fontFamily: "var(--font-geist-mono)", fontSize: "2.5rem", color: "var(--border)", lineHeight: 1 }}
+                  >
+                    {step.n}
+                  </span>
+                  <h3
+                    className="font-bold text-2xl"
+                    style={{ color: "var(--text)", fontFamily: "var(--font-geist-sans)" }}
+                  >
+                    {step.title}
+                  </h3>
                 </div>
-                <p className="section-label mb-2">{step.sub}</p>
-                <h3
-                  className="font-bold text-2xl mb-4"
-                  style={{ color: "var(--text)", fontFamily: "var(--font-geist-sans)" }}
-                >
-                  {step.title}
-                </h3>
                 <p className="leading-relaxed" style={{ color: "var(--muted)" }}>{step.desc}</p>
               </div>
 
@@ -533,64 +660,104 @@ function HowItWorks() {
   );
 }
 
-/* ── Features ───────────────────────────────────────────────── */
+/* ── How it works ───────────────────────────────────────────── */
+function HowItWorks() {
+  return (
+    <section className="py-24">
+      <div className="max-w-6xl mx-auto px-6">
+        <div className="text-center mb-16" data-reveal>
+          <p className="section-label mb-3">Get started</p>
+          <h2
+            className="font-bold tracking-tight"
+            style={{ fontSize: "clamp(1.8rem, 3.5vw, 2.5rem)", fontFamily: "var(--font-geist-sans)" }}
+          >
+            <span className="gradient-text">Zero to traced</span>
+            <br />
+            <span className="gradient-indigo">in 5 minutes.</span>
+          </h2>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          {[
+            {
+              step: "1",
+              title: "Install & discover",
+              time: "30 seconds",
+              code: "pip install langsight\nlangsight init\n\n# Auto-discovered 4 MCP servers",
+            },
+            {
+              step: "2",
+              title: "Instrument your agent",
+              time: "2 lines of code",
+              code: 'from langsight.sdk import LangSightClient\n\nclient = LangSightClient(url="...")\ntraced = client.wrap(mcp, server_name="pg")',
+            },
+            {
+              step: "3",
+              title: "See everything",
+              time: "real-time",
+              code: "langsight sessions\nlangsight mcp-health\nlangsight security-scan\nlangsight costs --hours 24",
+            },
+          ].map((s, i) => (
+            <div key={i} data-reveal className="card p-6" style={{ transitionDelay: `${i * 80}ms` }}>
+              <div className="flex items-center gap-3 mb-4">
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
+                  style={{ background: "var(--indigo)", color: "white" }}
+                >
+                  {s.step}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm" style={{ color: "var(--text)" }}>{s.title}</h3>
+                  <p className="text-xs" style={{ color: "var(--dimmer)" }}>{s.time}</p>
+                </div>
+              </div>
+              <div className="terminal">
+                <pre
+                  className="p-4 text-xs overflow-x-auto leading-relaxed"
+                  style={{ fontFamily: "var(--font-geist-mono)", color: "var(--code-text)" }}
+                >
+                  {s.code}
+                </pre>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── Features grid ─────────────────────────────────────────── */
 const FEATURES = [
   {
-    icon: "🔭",
-    badge: "All tools",
-    title: "Agent Session Traces",
-    desc: "Every tool call in every session — MCP servers, HTTP APIs, Python functions — with latency, status, input args, output, and errors. The full picture, not just LLM logs.",
-    hot: true,
-  },
-  {
-    icon: "🌳",
-    badge: "Unique",
     title: "Multi-Agent Call Trees",
-    desc: "parent_span_id links sub-agent calls to the handoff that spawned them. See the exact path from orchestrator to leaf tool, reconstructed automatically across any depth.",
-    hot: true,
+    desc: "parent_span_id links sub-agent calls across any depth. See the path from orchestrator to leaf tool.",
+    badge: "Core",
   },
   {
-    icon: "📽",
-    badge: "New in v0.2",
     title: "Session Replay",
-    desc: "Re-execute any session against live MCP servers using stored input args. Side-by-side comparison of two sessions shows exactly what changed between runs.",
-    hot: true,
+    desc: "Re-execute any session against live MCP servers. Compare two runs side-by-side to see what changed.",
+    badge: "v0.2",
   },
   {
-    icon: "💰",
-    badge: "ClickHouse",
-    title: "Cost Attribution",
-    desc: "Token-based pricing for LLM calls. Per-tool rules for MCP calls. See total cost per session, per agent, per tool. Spot which sub-agent burns 80% of your budget.",
-  },
-  {
-    icon: "♥",
-    badge: "MCP only",
-    title: "MCP Health Monitoring",
-    desc: "Proactive health checks, schema drift detection, and Slack alerts on DOWN/recovery transitions — before your agents start failing.",
-  },
-  {
-    icon: "🛡",
-    badge: "MCP only",
-    title: "MCP Security Scanning",
-    desc: "CVE detection, 5 of 10 OWASP MCP checks (more coming), tool poisoning detection (injection phrases, hidden unicode, base64 encoded instructions), and auth gap analysis.",
-  },
-  {
-    icon: "📊",
-    badge: "New in v0.2",
     title: "Anomaly Detection",
-    desc: "Z-score analysis against 7-day ClickHouse baseline. Warning at |z|≥2, critical at |z|≥3. Guards against false positives with minimum standard deviation thresholds.",
+    desc: "Z-score analysis against 7-day baseline. Warning at |z|>=2, critical at |z|>=3. No manual thresholds.",
+    badge: "v0.2",
   },
   {
-    icon: "🎯",
-    badge: "New in v0.2",
     title: "Agent SLO Tracking",
-    desc: "Define success_rate and latency_p99 SLOs per agent. Evaluate against real session data. Get alerted before you breach your availability targets.",
+    desc: "Define success_rate and latency_p99 targets per agent. Get alerted before you breach availability.",
+    badge: "v0.2",
   },
   {
-    icon: "🤖",
-    badge: "4 LLMs",
     title: "AI Root Cause Analysis",
-    desc: "langsight investigate sends health evidence to Claude, GPT-4o, Gemini, or local Ollama and returns prioritised remediation steps. Rule-based fallback without a key.",
+    desc: "langsight investigate sends evidence to Claude, GPT-4o, Gemini, or Ollama and returns remediation steps.",
+    badge: "4 LLMs",
+  },
+  {
+    title: "Prometheus Metrics",
+    desc: "Native /metrics endpoint. Plug into your existing Grafana stack. Request counts, latencies, SSE connections.",
+    badge: "v0.2",
   },
 ];
 
@@ -598,20 +765,14 @@ function Features() {
   return (
     <section className="py-24" style={{ background: "var(--bg-deep)" }}>
       <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-16" data-reveal>
-          <p className="section-label mb-3">Features</p>
+        <div className="text-center mb-14" data-reveal>
+          <p className="section-label mb-3">And more</p>
           <h2
             className="font-bold tracking-tight"
             style={{ fontSize: "clamp(1.8rem, 3.5vw, 2.5rem)", fontFamily: "var(--font-geist-sans)" }}
           >
-            <span className="gradient-text">Observability for everything</span>
-            <br />
-            <span className="gradient-text">your agents call.</span>
+            <span className="gradient-text">Built for production.</span>
           </h2>
-          <p className="mt-4 max-w-xl mx-auto" style={{ color: "var(--muted)" }}>
-            Instrument once at the agent level. Every tool type is traced. MCP servers get proactive
-            health checks and security scanning on top — because the protocol makes it inspectable.
-          </p>
         </div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -619,33 +780,22 @@ function Features() {
             <div
               key={i}
               data-reveal
-              className="card p-7 relative"
+              className="card p-6 group"
               style={{ transitionDelay: `${i * 50}ms` }}
             >
-              {f.hot && (
-                <div
-                  className="absolute top-4 right-4 text-[10px] px-2 py-0.5 rounded-full font-semibold"
-                  style={{ background: "var(--indigo)", color: "white" }}
-                >
-                  {f.badge}
-                </div>
-              )}
-              <div className="text-2xl mb-4">{f.icon}</div>
-              <div className="flex items-start gap-2 mb-3">
+              <div className="flex items-start justify-between mb-3">
                 <h3
-                  className="font-semibold text-base flex-1"
+                  className="font-semibold text-sm flex-1"
                   style={{ color: "var(--text)", fontFamily: "var(--font-geist-sans)" }}
                 >
                   {f.title}
                 </h3>
-                {!f.hot && (
-                  <span
-                    className="shrink-0 text-[10px] rounded-full px-2 py-0.5 mt-0.5"
-                    style={{ background: "var(--indigo-dim)", color: "var(--indigo)", border: "1px solid rgba(99,102,241,0.2)" }}
-                  >
-                    {f.badge}
-                  </span>
-                )}
+                <span
+                  className="shrink-0 text-[10px] rounded-full px-2 py-0.5"
+                  style={{ background: "var(--indigo-dim)", color: "var(--indigo)", border: "1px solid rgba(45,212,191,0.2)" }}
+                >
+                  {f.badge}
+                </span>
               </div>
               <p className="text-sm leading-relaxed" style={{ color: "var(--muted)" }}>{f.desc}</p>
             </div>
@@ -656,164 +806,19 @@ function Features() {
   );
 }
 
-/* ── Personas ───────────────────────────────────────────────── */
-const PERSONAS = [
-  {
-    role: "AI/ML Engineer",
-    name: "Mark",
-    tagline: "Gets paged when the agent fails",
-    pain: "Spends 30% of debugging time figuring out which tool caused the failure. Can't tell if it's the LLM's choice or the tool's response.",
-    wins: [
-      "Session trace shows the exact tool that returned bad data at 14:32 UTC",
-      "Schema drift alert fires before agents start hallucinating column names",
-      "MTTR drops from 3 hours to 15 minutes",
-    ],
-    commands: ["langsight sessions --id <id>", "langsight investigate", "langsight mcp-health"],
-  },
-  {
-    role: "Platform Engineer",
-    name: "Marcus",
-    tagline: "Owns the MCP infrastructure for 40 engineers",
-    pain: "35 MCP servers with no standardised health checks. Can't answer which versions are running or catch schema changes before they break agents.",
-    wins: [
-      "Fleet health dashboard: every server status, version, and latency at a glance",
-      "Schema drift detection catches breaking changes before deploy",
-      "Achieves 99.9% MCP uptime with proactive alerting",
-    ],
-    commands: ["langsight mcp-health --all", "langsight serve", "langsight monitor"],
-  },
-  {
-    role: "Security Engineer",
-    name: "Aisha",
-    tagline: "Responsible for AI system security and compliance",
-    pain: "22 community MCP servers with no automated CVE scanning. Tool poisoning attacks moving from theoretical to practical.",
-    wins: [
-      "OWASP MCP Top 10 audit (5 of 10 checks shipped) with actionable remediation steps",
-      "Tool poisoning detection: alerts on hidden unicode, injected instructions, base64 payloads",
-      "Auth audit: which servers have auth, what type, what gaps exist",
-    ],
-    commands: ["langsight security-scan", "langsight security-scan --ci", "langsight security-scan --format json"],
-  },
-  {
-    role: "Engineering Lead",
-    name: "David",
-    tagline: "Needs to report AI reliability to the board",
-    pain: "Has LLM-level metrics (token costs, latency) but nothing at the tool level. Cannot answer 'what is the reliability of our AI products?' with data.",
-    wins: [
-      "Cost attribution per tool, per team, per session — identifies $20K/month savings",
-      "SLO tracking: are we meeting the 99.5% agent availability target?",
-      "Quarterly AI reliability report with tool-level granularity",
-    ],
-    commands: ["langsight costs --hours 720", "uv run langsight serve (dashboard)"],
-  },
-];
-
-function Personas() {
-  const [active, setActive] = useState(0);
-  const p = PERSONAS[active];
-
-  return (
-    <section className="py-24">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-12" data-reveal>
-          <p className="section-label mb-3">Built for your team</p>
-          <h2
-            className="font-bold tracking-tight"
-            style={{ fontSize: "clamp(1.8rem, 3.5vw, 2.5rem)", fontFamily: "var(--font-geist-sans)" }}
-          >
-            <span className="gradient-text">One tool. Every role.</span>
-          </h2>
-        </div>
-
-        {/* Tabs */}
-        <div
-          data-reveal
-          className="flex flex-wrap gap-2 justify-center mb-8 p-1.5 rounded-xl w-fit mx-auto"
-          style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
-        >
-          {PERSONAS.map((persona, i) => (
-            <button
-              key={i}
-              onClick={() => setActive(i)}
-              className={`persona-tab${active === i ? " active" : ""}`}
-            >
-              {persona.role}
-            </button>
-          ))}
-        </div>
-
-        {/* Card */}
-        <div data-reveal className="card-flat p-8 grid md:grid-cols-2 gap-8">
-          <div>
-            <p className="section-label mb-1">{p.role}</p>
-            <h3
-              className="font-bold text-2xl mb-1"
-              style={{ color: "var(--text)", fontFamily: "var(--font-geist-sans)" }}
-            >
-              {p.name}
-            </h3>
-            <p className="text-sm mb-5" style={{ color: "var(--muted)" }}>{p.tagline}</p>
-
-            <div
-              className="rounded-lg p-4 mb-5 text-sm"
-              style={{ background: "var(--red-dim)", border: "1px solid rgba(239,68,68,0.15)", color: "var(--muted)" }}
-            >
-              <span className="font-semibold" style={{ color: "var(--red)" }}>Pain: </span>
-              {p.pain}
-            </div>
-
-            <div className="space-y-2">
-              {p.wins.map((win, i) => (
-                <div key={i} className="flex items-start gap-2 text-sm">
-                  <span style={{ color: "var(--green)" }} className="mt-0.5 shrink-0">✓</span>
-                  <span style={{ color: "var(--muted)" }}>{win}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-xs font-medium mb-3" style={{ color: "var(--dimmer)" }}>Key commands</p>
-            <div className="terminal">
-              <div className="terminal-bar">
-                <div className="terminal-dot" style={{ background: "#EF444460" }} />
-                <div className="terminal-dot" style={{ background: "#EAB30860" }} />
-                <div className="terminal-dot" style={{ background: "#22C55E60" }} />
-              </div>
-              <div className="p-5 space-y-2">
-                {p.commands.map((cmd, i) => (
-                  <div
-                    key={i}
-                    className="text-sm"
-                    style={{ fontFamily: "var(--font-geist-mono)", color: "var(--code-text)" }}
-                  >
-                    <span style={{ color: "var(--dimmer)" }}>$ </span>{cmd}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 /* ── Integrations ───────────────────────────────────────────── */
 const INTEGRATIONS = [
-  { name: "LangChain", sub: "Langflow · LangGraph", accent: "#10B981" },
+  { name: "LangChain", sub: "LangGraph · Langflow", accent: "#10B981" },
   { name: "CrewAI", sub: "Multi-agent orchestration", accent: "#F59E0B" },
   { name: "Pydantic AI", sub: "Type-safe agents", accent: "#3B82F6" },
   { name: "LibreChat", sub: "Self-hosted chat", accent: "#8B5CF6" },
-  { name: "OpenWebUI", sub: "Local LLM UI", accent: "#EC4899" },
   { name: "OTLP", sub: "Any OpenTelemetry framework", accent: "#6366F1" },
-  { name: "Claude Desktop", sub: "Auto-discovered by init", accent: "#71717A" },
-  { name: "Cursor · VS Code", sub: "Auto-discovered by init", accent: "#71717A" },
+  { name: "Claude · Cursor", sub: "Auto-discovered by init", accent: "#71717A" },
 ];
 
 function Integrations() {
   return (
-    <section className="py-24" style={{ background: "var(--bg-deep)" }}>
+    <section className="py-24">
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-center mb-14" data-reveal>
           <p className="section-label mb-3">Integrations</p>
@@ -821,14 +826,11 @@ function Integrations() {
             className="font-bold tracking-tight"
             style={{ fontSize: "clamp(1.8rem, 3.5vw, 2.5rem)", fontFamily: "var(--font-geist-sans)" }}
           >
-            <span className="gradient-text">Works with every AI framework</span>
+            <span className="gradient-text">Drop into any framework.</span>
           </h2>
-          <p className="mt-4 max-w-lg mx-auto" style={{ color: "var(--muted)" }}>
-            One callback or two lines of SDK code. Drop into any framework without changing the rest of your agent.
-          </p>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
           {INTEGRATIONS.map((intg, i) => (
             <div
               key={i}
@@ -847,122 +849,68 @@ function Integrations() {
           ))}
         </div>
 
-        {/* Langfuse complementary callout */}
+        {/* Complementary callout */}
         <div
           data-reveal
-          className="mt-8 card-flat p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4"
+          className="mt-8 card-flat p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 max-w-2xl mx-auto"
         >
-          <div
-            className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-lg"
-            style={{ background: "var(--indigo-dim)", border: "1px solid rgba(99,102,241,0.2)" }}
-          >
-            🤝
-          </div>
           <div className="flex-1">
             <p className="font-semibold text-sm mb-1" style={{ color: "var(--text)" }}>
-              Works alongside Langfuse — not instead of it
+              Use alongside Langfuse, LangWatch, or LangSmith
             </p>
             <p className="text-sm" style={{ color: "var(--muted)" }}>
-              Langfuse traces the LLM reasoning layer (what the model decided). LangSight traces the action layer
-              (what the agent called, in what order, what failed, what it cost). They answer different questions.
-              Use both together for full-stack visibility.
+              They trace the LLM reasoning layer (what the model decided). LangSight traces the action layer
+              (what the agent called, what failed, what it cost). Different questions, same agent.
             </p>
           </div>
-          <a
-            href="https://lngsight.mintlify.app/sdk/integrations/langfuse"
-            className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
-            style={{ background: "var(--indigo-dim)", color: "var(--indigo)", border: "1px solid rgba(99,102,241,0.2)" }}
-          >
-            Integration guide →
-          </a>
         </div>
       </div>
     </section>
   );
 }
 
-/* ── Open Source / Compare ──────────────────────────────────── */
-const OSS_PILLARS = [
-  {
-    icon: "🔒",
-    title: "Your data stays yours",
-    body: "Self-host on your own infrastructure. No data ever leaves your network. PostgreSQL + ClickHouse via docker compose up -d — both fully under your control.",
-  },
-  {
-    icon: "🚫",
-    title: "No vendor lock-in",
-    body: "Apache 2.0. Fork it, embed it in your product, modify it without permission. We will never change the license or add closed-source features.",
-  },
-  {
-    icon: "🌍",
-    title: "Community-driven",
-    body: "Every feature was shaped by engineers running real agents. File an issue, submit a PR, or join the discussion — this is your project too.",
-  },
-];
-
-const COMPARE: { feature: string; ls: boolean | string; datadog: boolean | string; langfuse: boolean | string }[] = [
-  { feature: "Agent action traces",             ls: true,  datadog: true,  langfuse: "partial" },
-  { feature: "Multi-agent tree reconstruction", ls: true,  datadog: false, langfuse: false },
-  { feature: "Session replay & comparison",     ls: true,  datadog: false, langfuse: false },
-  { feature: "Anomaly detection (z-score)",     ls: true,  datadog: true,  langfuse: false },
-  { feature: "Agent SLO tracking",              ls: true,  datadog: true,  langfuse: false },
-  { feature: "MCP server health checks",        ls: true,  datadog: false, langfuse: false },
-  { feature: "CVE + OWASP security scanning",   ls: true,  datadog: false, langfuse: false },
-  { feature: "Tool poisoning detection",        ls: true,  datadog: false, langfuse: false },
-  { feature: "Schema drift detection",          ls: true,  datadog: false, langfuse: false },
-  { feature: "Self-hostable",                   ls: true,  datadog: false, langfuse: true  },
-  { feature: "Open source (Apache 2.0)",        ls: true,  datadog: false, langfuse: true  },
-  { feature: "Free forever",                    ls: true,  datadog: false, langfuse: "partial" },
-];
-
-function Cell({ v }: { v: boolean | string }) {
-  if (v === true)    return <span className="text-base" style={{ color: "var(--green)" }}>✓</span>;
-  if (v === false)   return <span className="text-base" style={{ color: "var(--dimmer)" }}>✗</span>;
-  return <span className="text-base" style={{ color: "var(--yellow)" }}>~</span>;
-}
-
-function OpenSource() {
+/* ── Self-hosted / OSS ─────────────────────────────────────── */
+function SelfHosted() {
   return (
-    <section className="py-24">
+    <section className="py-24" style={{ background: "var(--bg-deep)" }}>
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-center mb-16" data-reveal>
           <div
             className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium mb-5"
-            style={{ background: "var(--indigo-dim)", border: "1px solid rgba(99,102,241,0.2)", color: "var(--indigo)" }}
+            style={{ background: "var(--indigo-dim)", border: "1px solid rgba(45,212,191,0.2)", color: "var(--indigo)" }}
           >
-            <GithubIcon className="w-3.5 h-3.5" /> Apache 2.0 · Fully Open Source
+            <GithubIcon className="w-3.5 h-3.5" /> BSL 1.1 · Self-host free forever
           </div>
           <h2
             className="font-bold tracking-tight"
             style={{ fontSize: "clamp(1.8rem, 3.5vw, 2.5rem)", fontFamily: "var(--font-geist-sans)" }}
           >
-            <span className="gradient-text">Built in the open.</span>
+            <span className="gradient-text">Your data. Your infra.</span>
             <br />
-            <span className="gradient-indigo">Free to use, forever.</span>
+            <span className="gradient-indigo">No vendor dependency.</span>
           </h2>
           <p className="mt-4 max-w-xl mx-auto text-lg" style={{ color: "var(--muted)" }}>
-            Not &ldquo;open core&rdquo; — the CLI, SDK, API, all integrations, and every feature on this page is
-            fully open source. No paid tiers. No gated features. No surprises.
+            Self-host on your own infrastructure. No data ever leaves your network.
+            No paid tiers. No gated features. No usage limits.
           </p>
-          <a
-            href="https://github.com/sumankalyan123/langsight"
-            className="mt-6 inline-flex items-center gap-2 font-semibold text-sm px-5 py-2.5 rounded-lg transition-all hover:opacity-90 hover:-translate-y-px"
-            style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text)" }}
-          >
-            <GithubIcon className="w-4 h-4" /> sumankalyan123/langsight
-            <span
-              className="ml-1 text-xs px-2 py-0.5 rounded-full"
-              style={{ fontFamily: "var(--font-geist-mono)", background: "var(--indigo-dim)", color: "var(--indigo)" }}
-            >
-              Apache 2.0
-            </span>
-          </a>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-5 mb-16">
-          {OSS_PILLARS.map((p, i) => (
+        <div className="grid md:grid-cols-3 gap-5">
+          {[
+            {
+              title: "Your data stays yours",
+              body: "PostgreSQL + ClickHouse via docker compose up. Both fully under your control. No telemetry phoning home.",
+            },
+            {
+              title: "No vendor lock-in",
+              body: "BSL 1.1 — converts to Apache 2.0 after 4 years. Fork it, modify it, embed it. The only restriction: don't resell it as a hosted service.",
+            },
+            {
+              title: "5-minute setup",
+              body: "One script generates secrets, starts 5 containers, seeds demo data. You're looking at traces before your coffee is ready.",
+            },
+          ].map((p, i) => (
             <div key={i} data-reveal className="card p-7" style={{ transitionDelay: `${i * 80}ms` }}>
-              <div className="text-3xl mb-4">{p.icon}</div>
               <h3
                 className="font-semibold text-lg mb-3"
                 style={{ color: "var(--text)", fontFamily: "var(--font-geist-sans)" }}
@@ -973,50 +921,6 @@ function OpenSource() {
             </div>
           ))}
         </div>
-
-        {/* Compare table */}
-        <div data-reveal className="card-flat overflow-hidden">
-          <div
-            className="px-6 py-4 flex items-center justify-between"
-            style={{ borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}
-          >
-            <h3
-              className="font-semibold text-base"
-              style={{ color: "var(--text)", fontFamily: "var(--font-geist-sans)" }}
-            >
-              How LangSight compares
-            </h3>
-            <span className="text-xs" style={{ color: "var(--dimmer)" }}>✓ yes · ✗ no · ~ partial</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-                  <th className="text-left px-6 py-3 font-medium" style={{ color: "var(--muted)" }}>Feature</th>
-                  <th className="px-6 py-3 text-center font-bold" style={{ color: "var(--indigo)" }}>LangSight</th>
-                  <th className="px-6 py-3 text-center font-medium" style={{ color: "var(--muted)" }}>Datadog</th>
-                  <th className="px-6 py-3 text-center font-medium" style={{ color: "var(--muted)" }}>Langfuse *</th>
-                </tr>
-              </thead>
-              <tbody>
-                {COMPARE.map((row, i) => (
-                  <tr
-                    key={i}
-                    style={{ borderBottom: i < COMPARE.length - 1 ? "1px solid var(--border-dim)" : "none" }}
-                  >
-                    <td className="px-6 py-3" style={{ color: "var(--text)" }}>{row.feature}</td>
-                    <td className="px-6 py-3 text-center"><Cell v={row.ls} /></td>
-                    <td className="px-6 py-3 text-center"><Cell v={row.datadog} /></td>
-                    <td className="px-6 py-3 text-center"><Cell v={row.langfuse} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="px-6 py-3 text-xs" style={{ color: "var(--dimmer)", borderTop: "1px solid var(--border-dim)" }}>
-            * Langfuse is complementary, not competing — it traces LLM reasoning; LangSight traces agent actions. Use both together.
-          </div>
-        </div>
       </div>
     </section>
   );
@@ -1025,7 +929,7 @@ function OpenSource() {
 /* ── CTA ────────────────────────────────────────────────────── */
 function CTA() {
   return (
-    <section className="py-24" style={{ background: "var(--bg-deep)" }}>
+    <section className="py-24">
       <div className="max-w-3xl mx-auto px-6 text-center" data-reveal>
         <div className="card p-12 relative overflow-hidden">
           <div
@@ -1033,19 +937,19 @@ function CTA() {
             style={{ background: "linear-gradient(135deg, var(--indigo-dim) 0%, transparent 60%)" }}
           />
           <div className="relative">
-            <div className="text-5xl mb-6">⚡</div>
             <h2
-              className="font-bold tracking-tight mb-3"
+              className="font-bold tracking-tight mb-4"
               style={{ fontSize: "clamp(1.8rem, 4vw, 2.8rem)", fontFamily: "var(--font-geist-sans)" }}
             >
-              <span className="gradient-indigo">Start in 5 minutes.</span>
+              <span className="gradient-text">Own the runtime layer</span>
+              <br />
+              <span className="gradient-indigo">of your agent systems.</span>
             </h2>
-            <p className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>
-              Action-layer traces for your AI agents — free, open source, forever.
+            <p className="text-lg mb-2" style={{ color: "var(--text)" }}>
+              If your agents depend on MCP, LangSight keeps that dependency observable, reliable, and secure.
             </p>
             <p className="text-base mb-8 max-w-md mx-auto" style={{ color: "var(--muted)" }}>
-              Install in 30 seconds. Two lines to instrument. See exactly what your agents call,
-              how long each tool takes, and what everything costs.
+              Trace what broke. Find what&apos;s expensive. Scan what&apos;s unsafe.
             </p>
 
             <div className="flex flex-wrap justify-center gap-4 mb-8">
@@ -1054,7 +958,7 @@ function CTA() {
                 className="text-base font-semibold px-7 py-3 rounded-lg flex items-center gap-2 transition-all hover:opacity-90 hover:-translate-y-px"
                 style={{ background: "var(--indigo)", color: "white" }}
               >
-                Get started free →
+                Start self-hosting →
               </a>
               <a
                 href="https://github.com/sumankalyan123/langsight"
@@ -1071,19 +975,14 @@ function CTA() {
             >
               <span style={{ color: "var(--dimmer)", fontFamily: "var(--font-geist-mono)", fontSize: "0.85rem" }}>$</span>
               <span style={{ fontFamily: "var(--font-geist-mono)", fontSize: "0.85rem", color: "var(--code-text)" }}>
-                pip install langsight
-              </span>
-              <span style={{ color: "var(--dimmer)", fontFamily: "var(--font-geist-mono)", fontSize: "0.85rem" }}>&amp;&amp;</span>
-              <span style={{ fontFamily: "var(--font-geist-mono)", fontSize: "0.85rem", color: "var(--code-text)" }}>
-                langsight init
+                pip install langsight && langsight init
               </span>
             </div>
 
             <div className="flex flex-wrap justify-center gap-6 text-sm" style={{ color: "var(--dimmer)" }}>
-              <span>✓ Apache 2.0 — free forever</span>
-              <span>✓ No account needed</span>
-              <span>✓ docker compose up -d — full stack in &lt;5 min</span>
-              <span>✓ 694 tests passing</span>
+              <span>BSL 1.1 — self-host free</span>
+              <span>No account needed</span>
+              <span>docker compose up — full stack in 5 min</span>
             </div>
           </div>
         </div>
@@ -1122,7 +1021,7 @@ function Footer() {
           ))}
         </div>
         <p className="text-xs" style={{ color: "var(--dimmer)" }}>
-          Apache 2.0 · v0.2.0
+          BSL 1.1 · v0.2.0
         </p>
       </div>
     </footer>
@@ -1139,12 +1038,13 @@ export default function Home() {
       <Nav dark={dark} toggle={toggle} />
       <main>
         <Hero />
+        <Comparison />
         <Problem />
+        <Solution />
         <HowItWorks />
         <Features />
-        <Personas />
         <Integrations />
-        <OpenSource />
+        <SelfHosted />
         <CTA />
       </main>
       <Footer />

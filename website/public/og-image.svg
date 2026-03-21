@@ -1,0 +1,36 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Open Graph image: Twitter cards, LinkedIn shares, Facebook shares -->
+  <rect width="1200" height="630" fill="#09090B"/>
+
+  <!-- Subtle grid -->
+  <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+    <path d="M60 0V60H0" stroke="#1C1C1F" stroke-width="0.5" fill="none"/>
+  </pattern>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+
+  <!-- Glow -->
+  <circle cx="900" cy="315" r="300" fill="#14B8A6" opacity="0.06"/>
+
+  <!-- Logo icon -->
+  <rect x="80" y="200" width="80" height="80" rx="18" fill="#14B8A6"/>
+  <circle cx="120" cy="240" r="15" stroke="white" stroke-width="4" fill="none"/>
+  <circle cx="120" cy="240" r="4.5" fill="white"/>
+  <line x1="131" y1="229" x2="146" y2="214" stroke="white" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Text -->
+  <text x="180" y="255" font-family="system-ui, -apple-system, sans-serif" font-weight="700" font-size="48" letter-spacing="-1">
+    <tspan fill="white">Lang</tspan><tspan fill="#2DD4BF">Sight</tspan>
+  </text>
+
+  <!-- Headline -->
+  <text x="80" y="370" font-family="system-ui, -apple-system, sans-serif" font-weight="700" font-size="56" fill="white" letter-spacing="-1">Your agent failed.</text>
+  <text x="80" y="435" font-family="system-ui, -apple-system, sans-serif" font-weight="700" font-size="56" letter-spacing="-1">
+    <tspan fill="white">Which tool broke </tspan><tspan fill="#2DD4BF">— and why?</tspan>
+  </text>
+
+  <!-- Subline -->
+  <text x="80" y="500" font-family="system-ui, -apple-system, sans-serif" font-size="22" fill="#71717A">MCP runtime observability and security for AI agent toolchains</text>
+
+  <!-- URL -->
+  <text x="80" y="570" font-family="monospace" font-size="18" fill="#3F3F46">langsight.dev</text>
+</svg>

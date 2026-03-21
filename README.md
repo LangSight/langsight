@@ -1,8 +1,8 @@
 # LangSight
 
-**Action-layer traces for AI agents. MCP health + security built in.**
+**Your agent failed. Which tool broke — and why?**
 
-Trace every tool call your agents make — MCP servers, HTTP APIs, Python functions, sub-agents. For MCP servers specifically, get proactive health checks, schema drift detection, and security scanning.
+Trace what your agents called. Find what broke, what's expensive, and what's unsafe.
 
 [![PyPI](https://img.shields.io/pypi/v/langsight)](https://pypi.org/project/langsight/)
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL%201.1-blue.svg)](LICENSE)
@@ -10,73 +10,176 @@ Trace every tool call your agents make — MCP servers, HTTP APIs, Python functi
 [![CI](https://github.com/sumankalyan123/langsight/actions/workflows/ci.yml/badge.svg)](https://github.com/sumankalyan123/langsight/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-mintlify-green)](https://lngsight.mintlify.app)
 
-Agents call three types of things: MCP servers (postgres-mcp, jira-mcp, slack-mcp), non-MCP tools (Stripe API, Sendgrid, Python functions), and sub-agents. **LangSight observes all three.** Instrument once at the agent level and you automatically capture everything the agent touched — MCP or not. MCP servers get extra depth: proactive health checks, security scanning, schema drift detection, and alerting. Non-MCP tools are observed passively — every call appears in the trace, but there is no standard protocol to ping them proactively.
+> **Not another prompt, eval, or simulation platform.**
+> LangSight monitors the runtime layer: the tools your agents depend on.
 
 ---
 
-## Why LangSight
+## What question are you trying to answer?
 
-| Problem | Without LangSight | With LangSight |
-|---------|-------------------|----------------|
-| What did my agent call? | No trace of which tools ran, in what order | `langsight sessions --id` shows the full call tree |
-| Multi-agent handoffs | No visibility across agent boundaries | Full tree via `parent_span_id` — same model as OTEL |
-| Tool call costs | Invisible, discovered on the invoice | Per-session cost attribution in real time |
-| Which of 15 tools failed? | 3 days of manual log replay | `investigate` narrows it to a specific tool and time window |
-| Tool returning stale data | Agent hallucinates; you find out from users | Schema drift alert fires in <5 minutes |
-| CVE in a community MCP server | Unknown until exploited | Automated CVE scan via OSV database |
+| Question | Best tool |
+|----------|-----------|
+| Did the prompt/model perform well? | LangWatch / Langfuse / LangSmith |
+| Should I change prompts or eval policy? | LangWatch / Langfuse / LangSmith |
+| Is my server CPU/memory healthy? | Datadog / New Relic |
+| **Which tool call failed in production?** | **LangSight** |
+| **Is an MCP server unhealthy or drifting?** | **LangSight** |
+| **Is an MCP server exposed or risky?** | **LangSight** |
+| **Why did this session cost $47 instead of $3?** | **LangSight** |
 
-> [!NOTE]
-> **LangSight complements Langfuse and LangSmith — it does not replace them.** Langfuse traces your LLM calls (prompts, completions, token costs, evals). LangSight traces what your agents actually *did* (tool calls, latencies, errors, handoffs). For MCP servers specifically, LangSight adds proactive health checks, CVE scanning, schema drift detection, and poisoning detection. Use both together for full-stack agent observability.
+LangSight complements Langfuse, LangWatch, and LangSmith. They trace LLM reasoning. LangSight traces what agents actually *did* — and goes deep on MCP servers with health checks, security scanning, and schema drift detection.
 
 ---
 
-## What LangSight can do per tool type
+## The problem
 
-| Tool type | Observe calls | Health check | Security scan | Cost tracking |
-|-----------|:------------:|:------------:|:-------------:|:-------------:|
+LLM quality is only half the problem. Teams already have ways to inspect prompts, completions, and eval scores. What they still cannot answer fast enough:
+
+- **What did the agent actually call?** No trace of which tools ran, in what order
+- **Which MCP server degraded?** Agents silently return bad data; you find out from users
+- **Did a tool schema change?** Column names drift, agents hallucinate, nobody knows why
+- **Is this MCP server unsafe to run?** 66% of community MCP servers have critical code smells
+- **Which downstream tool caused the incident?** 3 days of manual log replay to find out
+
+---
+
+## The solution
+
+### 1. Action traces
+
+See the exact sequence of tool calls, handoffs, failures, and costs across a full agent session.
+
+```
+$ langsight sessions --id sess-f2a9b1
+
+Trace: sess-f2a9b1  (support-agent)
+5 tool calls · 1 failed · 2,134ms · $0.023
+
+sess-f2a9b1
+├── jira-mcp/get_issue        89ms  ✓
+├── postgres-mcp/query        42ms  ✓
+├──  → billing-agent          handoff
+│   ├── crm-mcp/update_customer  120ms  ✓
+│   └── slack-mcp/notify           —   ✗  timeout
+Root cause: slack-mcp timed out at 14:32 UTC
+```
+
+### 2. MCP health
+
+Detect down, slow, stale, or changed MCP servers before they silently corrupt agent behavior.
+
+```
+$ langsight mcp-health
+
+Server              Status    Latency     Schema    Tools   Last Check
+snowflake-mcp       ✅ UP     142ms       Stable    8       12s ago
+slack-mcp           ⚠️ DEG   1,240ms     Stable    4       5s ago
+jira-mcp            ❌ DOWN   —           —         —       3s ago
+postgres-mcp        ✅ UP     31ms        Changed   5       15s ago
+```
+
+### 3. MCP security
+
+Scan for CVEs, poisoning signals, weak auth, and risky server configs across your MCP fleet.
+
+```
+$ langsight security-scan
+
+CRITICAL  jira-mcp        CVE-2025-6514  Remote code execution in mcp-remote
+HIGH      slack-mcp       OWASP-MCP-01   Tool description contains injection pattern
+HIGH      postgres-mcp    OWASP-MCP-04   No authentication configured
+```
+
+### 4. Cost attribution
+
+Move from "the invoice is $4,200" to "billing-agent's geocoding MCP retries 47x per session."
+
+```
+$ langsight costs --hours 24
+
+Tool                    Calls   Failed   Cost       % of Total
+geocoding-mcp           2,340   12       $1,872     44.6%
+postgres-mcp/query      890     3        $445       10.6%
+claude-3.5 (LLM)       156     0        $312       7.4%
+```
+
+### 5. Fast root cause
+
+Move from "the agent failed" to "jira-mcp returned 429s after a schema change at 14:32."
+
+```
+$ langsight investigate jira-mcp
+
+Investigation: jira-mcp
+├── Health: DOWN since 14:32 UTC (3 consecutive failures)
+├── Schema: 2 tools changed (get_issue dropped 'priority' field)
+├── Recent errors: 429 Too Many Requests (rate limit)
+└── Recommendation: check API rate limits, restore 'priority' field
+```
+
+---
+
+## What LangSight monitors per tool type
+
+| Tool type | Trace calls | Health check | Security scan | Cost tracking |
+|-----------|:-----------:|:------------:|:-------------:|:-------------:|
 | MCP servers | Yes | Yes | Yes | Yes |
-| HTTP APIs (Stripe, Sendgrid, etc.) | Yes | No | No | Yes |
-| Python functions | Yes | No | No | Yes |
-| Sub-agents | Yes | No | No | Yes |
+| HTTP APIs (Stripe, Sendgrid, etc.) | Yes | — | — | Yes |
+| Python functions | Yes | — | — | Yes |
+| Sub-agents | Yes | — | — | Yes |
 
-MCP servers receive proactive health checks and security scanning because the MCP protocol is standard and inspectable. Non-MCP tools appear in every session trace but cannot be pinged or scanned — no standard protocol exists to do so.
+MCP servers get proactive health checks and security scanning because the MCP protocol is standard and inspectable. Non-MCP tools appear in every trace but cannot be pinged or scanned.
 
 ---
 
-## Features
+## Quick start
 
-**Agent Session Tracing** *(Primary)*
-- Full ordered trace for every agent session — every tool call, every handoff, every failure
-- `langsight sessions` — list sessions with call counts, failure counts, duration, and servers used
-- `langsight sessions --id` — drill into a single session to see the complete call tree
-- Agent reliability metrics — success rate per agent, not just per tool
+### Prerequisites
 
-**Multi-Agent Tree Tracing** *(Primary)*
-- When Agent A delegates to Agent B which calls Agent C, trace the full tree
-- `parent_span_id` on every span — same model as OpenTelemetry distributed tracing
-- Handoff spans — explicit records of agent-to-agent delegation events
-- Tree reconstruction from flat span storage via recursive parent-child query
+- Docker and Docker Compose
+- Python 3.11+ and [uv](https://docs.astral.sh/uv/)
 
-**MCP Health Monitoring** *(Secondary, unique vs competitors)*
-- Continuous availability checks (connect, initialize, tools list)
-- Server state tracking: `UP → DEGRADED → DOWN`
-- Schema drift detection — alerts when a tool's output format changes
-- Latency tracking per server and per tool
+### 1. Clone and start
 
-**Security Scanning** *(Secondary, unique vs competitors)*
-- CVE detection via OSV (Open Source Vulnerabilities) database
-- 5 of 10 OWASP MCP Top 10 checks (MCP-01, 02, 04, 05, 06 — more coming)
-- Tool poisoning detection — baseline hash comparison on every scan
-- Auth configuration audit (unauthenticated server detection, token exposure)
+```bash
+git clone https://github.com/sumankalyan123/langsight.git
+cd langsight
+./scripts/quickstart.sh
+```
 
-**Alerting**
-- Slack webhook alerts with configurable thresholds
-- Generic webhook for PagerDuty, Opsgenie, and custom systems
-- Alert deduplication — no alert storms during outages
+The quickstart script generates all secrets, writes `.env`, and runs `docker compose up`. Takes ~2 minutes.
 
-**Failure Investigation** *(Phase 2)*
-- `langsight investigate` — summarizes health history, schema drift, and recent errors for a server
-- AI-assisted analysis via Claude when `ANTHROPIC_API_KEY` is set; rule-based fallback otherwise
+### 2. Open the dashboard
+
+Go to **http://localhost:3003** and log in with `admin@admin.com` / `admin`.
+
+A **Sample Project** with 25 demo agent sessions is pre-loaded so you can explore sessions, traces, and cost views immediately.
+
+### 3. Trace your own agents
+
+```bash
+uv sync  # install the SDK
+```
+
+```python
+from langsight.sdk import LangSightClient
+
+client = LangSightClient(url="http://localhost:8000", api_key="<from quickstart output>")
+traced = client.wrap(mcp_session, server_name="postgres-mcp", agent_name="my-agent")
+result = await traced.call_tool("query", {"sql": "SELECT * FROM orders"})
+```
+
+That's it. Two lines. Every tool call is now traced.
+
+### Auto-discover MCP servers
+
+```bash
+langsight init
+```
+
+Auto-discovers MCP servers from Claude Desktop, Cursor, and VS Code configs. Writes `.langsight.yaml`.
+
+> **Tip:** Add `--json` to any command for machine-readable output. Use `--ci` on `security-scan` to exit with code 1 on CRITICAL findings.
 
 ---
 
@@ -85,8 +188,7 @@ MCP servers receive proactive health checks and security scanning because the MC
 ```
   Agent Frameworks                    ┌──────────────────────────────────┐
   (CrewAI, Pydantic AI,               │         LangSight Platform        │
-   LangChain, Langflow, LangGraph,
-   LibreChat, etc.)                   │                                  │
+   LangChain, LangGraph, etc.)       │                                  │
          │ OTLP                       │  ┌─────────────┐ ┌────────────┐  │
          ▼                            │  │ MCP Health  │ │  Security  │  │
   ┌─────────────┐                     │  │  Checker    │ │  Scanner   │  │
@@ -103,178 +205,56 @@ MCP servers receive proactive health checks and security scanning because the MC
                                       │  └───────────────────────────┘   │
                                       │                                  │
                                       │  ┌────────────┐ ┌─────────────┐ │
-                                      │  │  FastAPI   │ │  CLI        │ │
-                                      │  │  REST API  │ │  langsight  │ │
-                                      │  │  (Phase 2) │ │  (Phase 1)  │ │
+                                      │  │  FastAPI   │ │  Dashboard  │ │
+                                      │  │  REST API  │ │  Next.js 15 │ │
                                       │  └─────┬──────┘ └─────────────┘ │
                                       │        ▼                         │
                                       │  ┌───────────┐  ┌─────────────┐ │
-                                      │  │ Dashboard │  │ Slack /     │ │
-                                      │  │ (Phase 3) │  │ Webhook     │ │
+                                      │  │ CLI       │  │ Slack /     │ │
+                                      │  │ langsight │  │ Webhook     │ │
                                       │  └───────────┘  └─────────────┘ │
                                       └──────────────────────────────────┘
 ```
 
-**Storage strategy** (dual-backend architecture):
+**Dual-backend storage:**
 - **PostgreSQL** — metadata: users, projects, API keys, model pricing, SLOs, alert config, audit logs
 - **ClickHouse** — analytics: spans, traces, health results, reliability, costs, sessions
 
-Default mode is `dual` — both backends run together. `postgres` and `clickhouse` single-backend modes are available for constrained deployments. SQLite has been removed; `docker compose up -d` is required to run LangSight.
-
 ---
 
-## Quick Start
-
-### Prerequisites
-
-- Docker and Docker Compose
-- Python 3.11+ and [uv](https://docs.astral.sh/uv/) (for CLI and SDK)
-
-### 1. Clone and start
-
-```bash
-git clone https://github.com/sumankalyan123/langsight.git
-cd langsight
-./scripts/quickstart.sh
-```
-
-The quickstart script generates all secrets, writes `.env`, and runs `docker compose up`. Takes ~2 minutes on first run.
-
-### 2. Open the dashboard
-
-Go to **http://localhost:3003** and log in with `admin@admin.com` / `admin`.
-
-A **Sample Project** with 25 demo agent sessions is pre-loaded so you can explore the sessions, traces, and cost views immediately. Create your own project in Settings when you're ready to trace real agents.
-
-Useful dashboard paths once you log in:
-- **Sessions** — click any row to open the dedicated session debugger at `/sessions/<id>`
-- **Agents** — inspect per-agent summaries and the shared topology view
-- **Settings** — create API keys, manage projects, and configure notifications
-
-### 3. Trace your own agents
-
-```bash
-uv sync  # install the SDK
-```
-
-```python
-from langsight.sdk import LangSightClient
-
-client = LangSightClient(url="http://localhost:8000", api_key="<from quickstart output>")
-traced = client.wrap(mcp_session, server_name="postgres-mcp", agent_name="my-agent")
-result = await traced.call_tool("query", {"sql": "SELECT * FROM orders"})
-```
-
-### Manual setup (if you prefer)
-
-If you'd rather configure manually instead of using the quickstart script:
-
-```bash
-cp .env.example .env
-# Edit .env — set POSTGRES_PASSWORD, CLICKHOUSE_PASSWORD, LANGSIGHT_API_KEYS, AUTH_SECRET,
-#             LANGSIGHT_ADMIN_EMAIL, LANGSIGHT_ADMIN_PASSWORD
-docker compose up -d
-```
-
-### Auto-discover MCP servers
-
-```bash
-uv sync
-langsight init
-```
-
-LangSight auto-discovers MCP servers from Claude Desktop (`~/.config/claude/claude_desktop_config.json`), Cursor (`~/.cursor/mcp.json`), and VS Code (`~/.vscode/mcp.json`). It writes a `.langsight.yaml` config file you can customize.
-
-### Trace your agent sessions
-
-Add two lines to your agent code:
-
-```python
-from langsight.sdk import LangSightClient
-
-client = LangSightClient(url="http://localhost:8000")
-traced = client.wrap(mcp_session, server_name="postgres-mcp", agent_name="support-agent")
-result = await traced.call_tool("query", {"sql": "SELECT * FROM orders"})
-```
-
-View sessions from the CLI:
-
-```bash
-langsight sessions
-```
-
-```
-Agent Sessions  (last 24h — 2 sessions)
-──────────────────────────────────────────────────────────────────────────
-Session          Agent              Calls   Failed   Duration   Servers
-sess-f2a9b1      support-agent          5        1    1,482ms   postgres-mcp
-sess-d4c7e8      data-analyst          12        0    4,210ms   postgres-mcp, s3-mcp
-```
-
-### Run a health check
-
-```bash
-langsight mcp-health
-```
-
-```
-MCP Server Health                                    6 servers monitored
-────────────────────────────────────────────────────────────────────────
-Server              Status    Latency       Schema    Tools   Last Check
-snowflake-mcp       ✅ UP     142ms         Stable    8       12s ago
-github-mcp          ✅ UP     89ms          Stable    12      8s ago
-slack-mcp           ⚠️ DEG   1,240ms       Stable    4       5s ago
-jira-mcp            ❌ DOWN   —             —         —       3s ago
-postgres-mcp        ✅ UP     31ms          Changed   5       15s ago
-filesystem-mcp      ✅ UP     12ms          Stable    6       10s ago
-```
-
-### Run a security scan
-
-```bash
-langsight security-scan
-```
-
-```
-Security Scan Results                               Scanned 6 servers
-────────────────────────────────────────────────────────────────────────
-CRITICAL  jira-mcp           CVE-2025-6514  Remote code execution in mcp-remote
-HIGH      slack-mcp          OWASP-MCP-01   Tool description contains injection pattern
-HIGH      postgres-mcp       OWASP-MCP-04   No authentication configured
-```
-
-### Start continuous monitoring
-
-```bash
-langsight monitor
-```
-
-> [!TIP]
-> Add `--json` to any command for machine-readable output suitable for CI/CD pipelines. Use `--ci` on `security-scan` to exit with code `1` on CRITICAL findings.
-
----
-
-## CLI Reference
+## CLI reference
 
 | Command | Description |
 |---------|-------------|
-| `langsight init` | Interactive setup wizard, generates `.langsight.yaml` |
-| `langsight sessions` | List recent agent sessions with call counts, failures, duration, and servers |
+| `langsight init` | Interactive setup wizard, auto-discovers MCP servers |
+| `langsight sessions` | List recent agent sessions with call counts, failures, duration |
 | `langsight sessions --id <id>` | Full multi-agent trace for one session |
 | `langsight mcp-health` | Health status of all configured MCP servers |
-| `langsight security-scan` | CVE (OSV) + OWASP MCP checks (5 of 10) + poisoning detection |
-| `langsight monitor` | Start continuous background monitoring with alerts |
-| `langsight costs` | Tool call cost attribution by server and agent session |
-| `langsight investigate` | AI-assisted failure investigation for a server |
-| `langsight serve` | Start the LangSight REST API server |
+| `langsight security-scan` | CVE + OWASP MCP + poisoning detection |
+| `langsight monitor` | Continuous background monitoring with alerts |
+| `langsight costs` | Cost attribution by server, agent, and session |
+| `langsight investigate` | AI-assisted failure investigation |
+| `langsight serve` | Start the REST API server |
 
 All commands support `--help`, `--json`, and `--verbose`.
 
 ---
 
-## Configuration
+## Integrations
 
-LangSight is configured via `.langsight.yaml` in your project root (or `~/.langsight.yaml` for global config):
+| Framework | Integration |
+|-----------|------------|
+| Claude Desktop | Auto-discovered by `langsight init` |
+| Cursor / VS Code | Auto-discovered by `langsight init` |
+| LangChain / LangGraph | `LangSightLangChainCallback` |
+| CrewAI | `LangSightCrewAICallback` |
+| Pydantic AI | `@langsight_tool` decorator |
+| LibreChat | Native plugin |
+| Any OTEL framework | OTLP endpoint (`POST /api/traces/otlp`) |
+
+---
+
+## Configuration
 
 ```yaml
 servers:
@@ -290,139 +270,40 @@ servers:
 
 alerts:
   slack_webhook: ${LANGSIGHT_SLACK_WEBHOOK}
-  error_rate_threshold: 0.05      # 5%
-  latency_spike_multiplier: 3.0   # 3x baseline
   consecutive_failures: 3
 
 storage:
-  mode: dual                      # postgres | clickhouse | dual (default: dual)
+  mode: dual
   postgres_url: ${LANGSIGHT_POSTGRES_URL}
 ```
 
-### Key environment variables
+### Environment variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `LANGSIGHT_API_KEYS` | Yes (production) | Comma-separated API keys for SDK/CLI auth |
+| `LANGSIGHT_API_KEYS` | Yes | Comma-separated API keys for SDK/CLI auth |
 | `LANGSIGHT_POSTGRES_URL` | Yes | PostgreSQL DSN |
-| `LANGSIGHT_CLICKHOUSE_URL` | No (default: `http://localhost:8123`) | ClickHouse HTTP URL |
-| `LANGSIGHT_TRUSTED_PROXY_CIDRS` | No | CIDRs trusted as the Next.js proxy (default: `127.0.0.1/32,::1/128`). Set to include `172.16.0.0/12,10.0.0.0/8` in Docker deployments. |
-| `LANGSIGHT_DASHBOARD_URL` | No | Dashboard base URL used in invite links |
-| `LANGSIGHT_CORS_ORIGINS` | No (default: `*`) | Restrict CORS in production |
-| `AUTH_SECRET` | Yes (dashboard) | NextAuth session signing secret (`openssl rand -base64 32`) |
+| `LANGSIGHT_CLICKHOUSE_URL` | No | ClickHouse HTTP URL (default: `http://localhost:8123`) |
+| `AUTH_SECRET` | Yes (dashboard) | NextAuth session signing secret |
 | `LANGSIGHT_ADMIN_EMAIL` | Yes (dashboard) | Initial admin login email |
 | `LANGSIGHT_ADMIN_PASSWORD` | Yes (dashboard) | Initial admin login password |
 
-> [!IMPORTANT]
-> Never commit secrets to `.langsight.yaml` or `.env`. Use environment variables with the `LANGSIGHT_` prefix or your existing secret management tooling.
+> **Important:** Never commit secrets to `.langsight.yaml` or `.env`. Use environment variables with the `LANGSIGHT_` prefix.
 
 ---
 
-## Test MCP Servers
-
-The `test-mcps/` directory contains two real MCP servers for local development and integration testing.
-
-| Server | Transport | Tools |
-|--------|-----------|-------|
-| `postgres-mcp` | stdio | `query`, `list_tables`, `describe_table`, `get_row_count`, `get_schema_summary` |
-| `s3-mcp` | stdio | `list_buckets`, `list_objects`, `get_object_metadata`, `read_object`, `put_object`, `delete_object`, `search_objects` |
-
-### Start the test stack
-
-```bash
-# Start PostgreSQL with sample data
-cd test-mcps
-docker compose up -d
-
-# Set up PostgreSQL MCP
-cd postgres-mcp
-cp .env.example .env
-uv sync
-
-# Set up S3 MCP
-cd ../s3-mcp
-cp .env.example .env   # Fill in your AWS credentials
-uv sync
-```
-
-The PostgreSQL database is pre-seeded with an e-commerce schema: `customers`, `products`, `orders`, `order_items`, and `agent_conversations` — useful for testing queries, schema drift detection, and agent conversation replay.
-
----
-
-## Integrations
-
-LangSight works with every major MCP client and agent framework:
-
-| Framework | Integration |
-|-----------|------------|
-| Claude Desktop | Auto-discovered by `langsight init` |
-| Cursor | Auto-discovered by `langsight init` |
-| VS Code | Auto-discovered by `langsight init` |
-| LibreChat | Native plugin — `LANGSIGHT_URL` env var |
-| LangChain | `LangSightLangChainCallback` |
-| Langflow | `LangSightLangChainCallback` (LangChain-compatible) |
-| LangGraph | `LangSightLangChainCallback` (LangChain-compatible) |
-| LangServe | `LangSightLangChainCallback` (LangChain-compatible) |
-| CrewAI | `LangSightCrewAICallback` |
-| Pydantic AI | `@langsight_tool` decorator |
-| Any OTEL framework | OTLP endpoint (`POST /api/traces/otlp`) |
-
----
-
-## Roadmap
-
-### Phase 1 — CLI MVP
-- [x] `langsight init` with auto-discovery
-- [x] `langsight mcp-health` — health checks for stdio, SSE, StreamableHTTP transports
-- [x] `langsight security-scan` — CVE (OSV) + 5 of 10 OWASP MCP checks + poisoning detection
-- [x] `langsight monitor` — continuous monitoring with Slack/webhook alerts
-- [x] `langsight costs` — tool call cost attribution from OTEL traces
-- [x] PostgreSQL + ClickHouse backends via `docker compose up -d`
-
-### Phase 2 — SDK + Agent Tracing + Investigation
-- [x] `LangSightClient` Python SDK — 2-line instrumentation for any MCP client
-- [x] `parent_span_id` on `ToolCallSpan` — multi-agent tree tracing
-- [x] `langsight sessions` — agent session list and trace drill-down
-- [x] `GET /api/agents/sessions` and `GET /api/agents/sessions/{id}` endpoints
-- [x] Agent spans (lifecycle) and Handoff spans (agent-to-agent delegation)
-- [x] Framework adapters: CrewAI, Pydantic AI, LangChain, Langflow, LangGraph, LangServe, LibreChat
-- [x] `langsight investigate` — AI-assisted root cause attribution (Claude Agent SDK)
-- [x] ClickHouse + PostgreSQL backend for production deployments
-- [x] OTLP/JSON endpoint for trace ingestion from agent frameworks (`POST /api/traces/otlp`)
-- [ ] OTEL Collector infrastructure (separate service — collector config + Docker Compose wiring)
-
-### Phase 3 — Dashboard + Auth + Multi-Tenancy
-- [x] Next.js 15 web dashboard (`dashboard/`)
-- [x] Real-time health overview across all MCP servers
-- [x] Security posture timeline
-- [x] Cost attribution charts by server, tool, and agent session
-- [x] Alert management UI
-- [x] Marketing website (`website/`)
-- [x] Docs site (28 Mintlify pages, `docs-site/`)
-- [x] FastAPI REST API with `langsight serve`
-- [x] Production auth — API key auth (SDK/CLI) + NextAuth session proxy (dashboard)
-- [x] RBAC — admin/viewer roles on all write endpoints
-- [x] Dual-storage architecture — Postgres metadata + ClickHouse analytics
-- [x] Project-level data isolation (`project_id` scoping at DB layer)
-- [x] Accept-invite flow, settings page, audit logs, alert config persistence
-- [ ] Dashboard: Vercel deploy (manual step pending)
-
----
-
-## Tech Stack
+## Tech stack
 
 | Layer | Technology |
 |-------|------------|
 | Language | Python 3.11+ |
 | CLI | Click + Rich |
 | API | FastAPI (async) |
-| MCP client | `mcp` Python SDK |
-| OLAP storage | ClickHouse (analytics: spans, health, costs) |
-| Metadata DB | PostgreSQL via asyncpg (users, projects, API keys, SLOs) |
-| Trace ingestion | OTEL Collector (contrib) |
-| RCA agent | Claude Agent SDK (Phase 2) |
-| Dashboard | Next.js 15 + shadcn/ui (Phase 3) |
-| Auth | NextAuth.js (dashboard) + API key (SDK/CLI) |
+| OLAP storage | ClickHouse |
+| Metadata DB | PostgreSQL (asyncpg) |
+| Trace ingestion | OTEL Collector |
+| Dashboard | Next.js 15 + Radix UI |
+| Auth | NextAuth.js + API keys |
 | Package manager | uv |
 
 ---
@@ -430,44 +311,27 @@ LangSight works with every major MCP client and agent framework:
 ## Development
 
 ```bash
-# Install with dev dependencies
 uv sync --dev
-
-# Start the full stack (required for integration tests)
 docker compose up -d
 
-# Run unit tests only (no Docker required)
+# Unit tests (no Docker needed)
 uv run pytest -m unit
 
-# Run integration tests (requires docker compose up -d)
-uv run pytest tests/integration/ tests/regression/ -m integration -v
+# Integration tests
+uv run pytest -m integration
 
-# Run all tests with coverage
+# All tests with coverage
 uv run pytest --cov=langsight --cov-report=term-missing
 
-# Type check
-uv run mypy src/
-
-# Lint and format
-uv run ruff check src/ && uv run ruff format src/
+# Type check + lint
+uv run mypy src/ && uv run ruff check src/
 ```
-
-### Test environment variables for integration tests
-
-```bash
-TEST_POSTGRES_URL=postgresql://langsight:testpassword@localhost:5432/langsight
-TEST_CLICKHOUSE_HOST=localhost
-TEST_CLICKHOUSE_PORT=8123
-```
-
-> [!NOTE]
-> Unit tests run without any external dependencies — they mock all I/O. Integration tests require `docker compose up -d` and are marked `@pytest.mark.integration`. The `tests/conftest.py` `require_postgres` and `require_clickhouse` fixtures auto-skip tests when Docker is not running.
 
 ---
 
 ## Security
 
-LangSight monitors MCP security — it must itself be secure. If you discover a vulnerability, please report it via [GitHub Security Advisories](https://github.com/sumankalyan123/langsight/security/advisories) rather than a public issue.
+LangSight monitors MCP security — it must itself be secure. If you discover a vulnerability, please report it via [GitHub Security Advisories](https://github.com/sumankalyan123/langsight/security/advisories).
 
 ---
 
