@@ -19,12 +19,9 @@ from typing import Any
 import structlog
 from fastapi import APIRouter, Request
 from fastapi import status as http_status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
+from langsight.api.rate_limit import limiter
 from langsight.sdk.models import ToolCallSpan, ToolCallStatus
-
-_limiter = Limiter(key_func=get_remote_address)
 
 logger = structlog.get_logger()
 
@@ -42,7 +39,7 @@ router = APIRouter(prefix="/traces", tags=["traces"])
     summary="Ingest tool call spans from the LangSight SDK",
     response_model=dict[str, Any],
 )
-@_limiter.limit("2000/minute")
+@limiter.limit("2000/minute")
 async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str, Any]:
     """Accept a batch of ToolCallSpans from the SDK.
 
@@ -80,7 +77,7 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
     summary="Ingest spans via OpenTelemetry OTLP/JSON",
     response_model=dict[str, Any],
 )
-@_limiter.limit("60/minute")
+@limiter.limit("60/minute")
 async def ingest_otlp(request: Request) -> dict[str, Any]:
     """Accept OTLP/JSON trace data from any OpenTelemetry-instrumented framework.
 

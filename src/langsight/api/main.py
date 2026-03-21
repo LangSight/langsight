@@ -9,12 +9,12 @@ import structlog
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from slowapi.util import get_remote_address
 
 from langsight.api.dependencies import verify_api_key
+from langsight.api.rate_limit import limiter  # single global instance
 from langsight.api.routers import (
     agents,
     alerts_config,
@@ -32,10 +32,6 @@ from langsight.api.routers import (
 )
 from langsight.config import Settings, load_config
 from langsight.storage.factory import open_storage
-
-# Rate limiter — keyed by client IP.
-# default_limits applies to all endpoints; per-route @limiter.limit() overrides.
-limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 logger = structlog.get_logger()
 

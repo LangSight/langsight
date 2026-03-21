@@ -22,8 +22,6 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import status as http_status
 from pydantic import BaseModel, EmailStr, Field
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from langsight.api.audit import append_audit
 from langsight.api.dependencies import (
@@ -32,10 +30,10 @@ from langsight.api.dependencies import (
     get_storage,
     require_admin,
 )
+from langsight.api.rate_limit import limiter
 from langsight.models import InviteToken, User, UserRole
 from langsight.storage.base import StorageBackend
 
-_limiter = Limiter(key_func=get_remote_address)
 logger = structlog.get_logger()
 
 
@@ -239,7 +237,7 @@ async def invite_user(
     status_code=http_status.HTTP_201_CREATED,
     summary="Accept an invite and create your account",
 )
-@_limiter.limit("5/minute")
+@limiter.limit("5/minute")
 async def accept_invite(
     body: AcceptInviteRequest,
     request: Request,
@@ -398,7 +396,7 @@ async def deactivate_user(
     response_model=VerifyResponse,
     summary="Verify dashboard login credentials",
 )
-@_limiter.limit("10/minute", key_func=_login_rate_key)
+@limiter.limit("10/minute", key_func=_login_rate_key)
 async def verify_credentials(
     body: VerifyRequest,
     request: Request,

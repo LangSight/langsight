@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ToolCallStatus(StrEnum):
@@ -54,7 +54,7 @@ class ToolCallSpan(BaseModel):
     tool_name: str  # tool called / agent task / target agent name
     started_at: datetime
     ended_at: datetime
-    latency_ms: float
+    latency_ms: float | None = None  # auto-computed from started_at/ended_at if omitted
     status: ToolCallStatus
     error: str | None = None
     agent_name: str | None = None  # which agent emitted this span
@@ -67,6 +67,15 @@ class ToolCallSpan(BaseModel):
     input_tokens: int | None = None  # P7 — LLM input token count
     output_tokens: int | None = None  # P7 — LLM output token count
     model_id: str | None = None  # P7 — model used (gen_ai.request.model)
+
+    @model_validator(mode="after")
+    def _compute_latency(self) -> ToolCallSpan:
+        """Auto-compute latency_ms from started_at/ended_at if not provided."""
+        if self.latency_ms is None:
+            self.latency_ms = round(
+                (self.ended_at - self.started_at).total_seconds() * 1000, 2
+            )
+        return self
 
     @classmethod
     def record(
