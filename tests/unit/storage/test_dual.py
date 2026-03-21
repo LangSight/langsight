@@ -351,6 +351,16 @@ class TestInviteRouting:
         await storage.mark_invite_used("token-abc")
         meta.mark_invite_used.assert_called_once_with("token-abc")
 
+    async def test_accept_invite_goes_to_meta(
+        self, storage: DualStorage, meta: MagicMock, analytics: MagicMock
+    ) -> None:
+        meta.accept_invite = AsyncMock(return_value=True)
+        user = _user()
+        result = await storage.accept_invite("token-xyz", user)
+        assert result is True
+        meta.accept_invite.assert_called_once_with("token-xyz", user)
+        analytics.accept_invite.assert_not_called()
+
 
 class TestSLORouting:
     async def test_create_slo_goes_to_meta(
@@ -484,3 +494,58 @@ class TestAuditLogRouting:
         result = await storage.count_audit_logs()
         assert result == 42
         analytics.count_audit_logs.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Protocol conformance — auto-detect missing delegations
+# ---------------------------------------------------------------------------
+
+class TestProtocolConformance:
+    """Verify DualStorage explicitly implements every method in StorageBackend.
+
+    This catches bugs like the missing accept_invite delegation: if someone adds
+    a method to the StorageBackend protocol but forgets to add it to DualStorage,
+    this test will fail immediately.
+
+    Methods handled by __getattr__ (forwarded to analytics) are NOT considered
+    explicit implementations — only methods defined directly on DualStorage count.
+    """
+
+    def test_all_protocol_methods_are_explicitly_implemented(self) -> None:
+        import inspect
+
+        from langsight.storage.base import StorageBackend
+
+        # Get all public async methods from the protocol (excluding dunder)
+        protocol_methods = {
+            name
+            for name, _ in inspect.getmembers(StorageBackend, predicate=inspect.isfunction)
+            if not name.startswith("_")
+        }
+
+        # Get methods explicitly defined on DualStorage class (not inherited, not __getattr__)
+        dual_methods = {
+            name
+            for name in dir(DualStorage)
+            if not name.startswith("_") and name in protocol_methods
+            and name in DualStorage.__dict__  # must be defined on DualStorage itself
+        }
+
+        # __getattr__ catches anything not explicitly defined and routes to _analytics.
+        # That's fine for ClickHouse extension methods, but protocol methods MUST be
+        # explicitly delegated so the routing target (meta vs analytics) is intentional.
+        missing = protocol_methods - dual_methods - {"close", "__aenter__", "__aexit__"}
+        # close/__aenter__/__aexit__ are lifecycle methods that may delegate differently
+
+        # Check lifecycle methods exist too (they're special-cased above for clarity)
+        for lifecycle in ("close",):
+            assert lifecycle in DualStorage.__dict__, (
+                f"DualStorage is missing explicit implementation of lifecycle method: {lifecycle}"
+            )
+
+        assert not missing, (
+            f"DualStorage is missing explicit implementations for these StorageBackend methods "
+            f"(they would fall through to __getattr__ → analytics, which may be wrong):\n"
+            f"  {sorted(missing)}\n"
+            f"Add explicit delegation in dual.py for each."
+        )
