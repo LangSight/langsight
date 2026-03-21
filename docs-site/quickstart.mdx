@@ -12,43 +12,49 @@ CLI and the dashboard.
 ## Prerequisites
 
 - Python 3.11+
-- Docker (for the dashboard and history) — or skip Docker entirely for CLI-only use
+- Docker Desktop (recommended) — or skip Docker for CLI-only use
 
 ---
 
-## 1. Try it (no Docker needed)
-
-The CLI works immediately with zero config — no server, no database:
-
-```bash
-pip install langsight           # or: uv tool install langsight
-langsight init                  # discovers MCP servers from Claude/Cursor/VS Code
-langsight mcp-health            # instant health check results
-langsight security-scan         # OWASP + CVE scan findings
-```
-
-Results are displayed in the terminal. No persistence, no Docker, no setup.
-
-<Note>
-  Want history, traces, and the dashboard? Continue to step 2.
-  Otherwise, you're done — the CLI is fully functional without a server.
-</Note>
-
-## 2. Start the server (for dashboard + history)
+## 1. Choose your path
 
 <Tabs>
-  <Tab title="Docker Compose">
+  <Tab title="Full dashboard (recommended)">
+    See LangSight with realistic demo data — 30 agent sessions, health history,
+    security findings, and cost attribution, all pre-loaded:
+
     ```bash
     git clone https://github.com/sumankalyan123/langsight && cd langsight
     ./scripts/quickstart.sh      # generates secrets, writes .env, starts everything
     ```
 
-    This starts Postgres, ClickHouse, the API (port 8000), and the dashboard (port 3003).
-    Open **http://localhost:3003** to see the dashboard.
+    Open **http://localhost:3003** and log in. The dashboard is fully populated
+    with a demo project — explore Sessions, Health, Security, Costs, and Agents
+    pages to see what LangSight captures.
+
+    <Note>
+      The demo data includes multi-agent sessions with handoffs, MCP server
+      health history (mix of UP/DEGRADED/DOWN), security scan findings, and
+      per-agent cost breakdowns. Everything you see is what your real agent
+      data will look like.
+    </Note>
+  </Tab>
+  <Tab title="CLI only (no Docker)">
+    The CLI works immediately with zero config — no server, no database:
+
+    ```bash
+    pip install langsight           # or: uv tool install langsight
+    langsight init                  # discovers MCP servers from Claude/Cursor/VS Code
+    langsight mcp-health            # instant health check results
+    langsight security-scan         # OWASP + CVE scan findings
+    ```
+
+    Results are displayed in the terminal. When you're ready for the full
+    dashboard experience, come back and run `./scripts/quickstart.sh`.
   </Tab>
 </Tabs>
 
-## 3. Instrument your agent
+## 2. Instrument your agent
 
 Add 3 lines to your existing agent code. LangSight wraps your MCP client
 and captures every `call_tool()` automatically — fire-and-forget, fail-open.
@@ -116,7 +122,7 @@ result = await traced.call_tool("query", {"sql": "SELECT 1"})
   </Tab>
 </Tabs>
 
-## 4. See your first trace
+## 3. See your first trace
 
 Run your agent, then check results:
 
@@ -157,7 +163,7 @@ Run your agent, then check results:
   </Tab>
 </Tabs>
 
-## 5. What's next
+## 4. What's next
 
 You now have full traces of every tool call. Here's what LangSight does beyond tracing:
 
