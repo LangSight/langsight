@@ -49,11 +49,14 @@ Authentication is disabled only when running locally with no API keys configured
 
 ## Rate limits
 
+All rate limiting is enforced by a single shared `Limiter` instance (defined in `src/langsight/api/rate_limit.py`). Per-route overrides take precedence over the global default.
+
 | Route | Limit |
 |-------|-------|
-| `POST /api/traces/spans` | 200 requests/min |
-| `POST /api/traces/otlp` | 60 requests/min |
-| `POST /api/users/verify` | 10 requests/min |
+| `POST /api/traces/spans` | 2000 requests/min (high-frequency SDK ingestion) |
+| `POST /api/traces/otlp` | 60 requests/min (OTEL collector batches) |
+| `POST /api/users/accept-invite` | 5 requests/min (invite brute-force protection) |
+| `POST /api/users/verify` | 10 requests/min (login brute-force protection) |
 | All other routes | 200 requests/min (global default) |
 
 ## Interactive docs

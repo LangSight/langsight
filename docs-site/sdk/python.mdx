@@ -143,6 +143,12 @@ await langsight.send_span(ToolCallSpan.record(
 
 These map directly to OTLP semantic conventions: `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.request.model`. If you are sending OTLP traces, LangSight extracts these attributes automatically — no SDK changes needed.
 
+## `latency_ms` auto-computation
+
+`latency_ms` on `ToolCallSpan` is now **optional**. If you omit it, LangSight auto-computes it from `ended_at - started_at` via a Pydantic `model_validator`. You can still pass an explicit value if you prefer — the validator only runs when `latency_ms` is `None`.
+
+This means manual spans and OTLP ingestion no longer need to calculate latency separately.
+
 ## Manual spans
 
 Record spans without wrapping a client:

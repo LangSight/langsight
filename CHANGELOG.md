@@ -9,6 +9,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (2026-03-21 — SDK integrations: OpenAI Agents, Anthropic/Claude, LangGraph)
+
+- **SDK: OpenAI Agents integration** — `src/langsight/integrations/openai_agents.py`: `LangSightOpenAIHooks` class implementing the `RunHooks` protocol; hooks into `on_tool_start`/`on_tool_end` to trace every tool call automatically. Also provides `langsight_openai_tool` decorator for tracing individual tool functions.
+- **SDK: Anthropic/Claude integration** — `src/langsight/integrations/anthropic_sdk.py`: `AnthropicToolTracer` traces `tool_use` content blocks from Anthropic SDK message responses; `LangSightClaudeAgentHooks` provides lifecycle hooks for the Claude Agent SDK agent loop; `langsight_anthropic_tool` decorator for individual tool handlers. Works with both the `anthropic` package and `claude_agent_sdk`.
+- **SDK: LangGraph integration** — `src/langsight/integrations/langgraph.py`: `LangSightLangGraphCallback` extends the LangChain callback with graph-aware context — tracks which graph node is executing, groups spans at the graph level, and surfaces conditional routing. Works with both sync `invoke()` and async `ainvoke()`.
+- **Docs-site: 3 new integration pages** — `docs-site/sdk/integrations/openai-agents.mdx`, `docs-site/sdk/integrations/anthropic.mdx`, `docs-site/sdk/integrations/langgraph.mdx` added to Mintlify site; `mint.json` navigation updated with all three pages in "SDK & Integrations" group.
+- **Integration count now 9**: MCP (SDK wrap), LangChain, LangGraph, CrewAI, Pydantic AI, OpenAI Agents, Anthropic/Claude, OTEL, LibreChat.
+
+### Fixed (2026-03-21 — rate limiter: single instance + latency_ms auto-compute)
+
+- **Rate limiter: single global instance** — created `src/langsight/api/rate_limit.py` exporting a single `limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])`. All routers (`main.py`, `traces.py`, `users.py`) now import from this module instead of creating separate `Limiter` instances. Per-route overrides now work correctly: traces=2000/min, otlp=60/min, accept-invite=5/min, verify=10/min.
+- **`latency_ms` auto-compute** — `ToolCallSpan.latency_ms` changed from required to optional (`float | None = None`). A `model_validator(mode="after")` auto-computes it from `ended_at - started_at` when omitted. SDK users and OTLP ingestion no longer need to calculate latency manually.
+
 ### Fixed (2026-03-21 — principal engineer audit: security, correctness, scale, Docker)
 
 - **Security: AWS credential leak** — removed `test-mcps/s3-mcp/.env` volume mount from the production API service in `docker-compose.yml`; AWS credentials are no longer exposed to the API container

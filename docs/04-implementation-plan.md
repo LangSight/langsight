@@ -1,11 +1,11 @@
 # LangSight: Implementation Plan
 
-> **Version**: 1.7.0
+> **Version**: 1.8.0
 > **Date**: 2026-03-21
 > **Status**: Active — Phase 1-3 COMPLETE (alpha). Phase 5 COMPLETE. Phase 6 (Project-Level RBAC) planned. Phase 7 (Model-Based Cost Tracking) planned. Pre-Production Security Hardening phase added (S.4, S.7, S.9, S.10 COMPLETE). Release 0.1.0 is an alpha release.
 > **Author**: Engineering
 >
-> **Change from 1.6**: Security Hardening progress updated — S.4 (global rate limiting), S.7 (DB port binding), S.10 (Docker health check) marked COMPLETE (2026-03-21). CI dashboard type check job added. DualStorage protocol conformance test added. Principal engineer audit fixes documented.
+> **Change from 1.7**: Rate limiter refactored to single global instance (`src/langsight/api/rate_limit.py`); per-route overrides now work (traces=2000/min, otlp=60/min, accept-invite=5/min, verify=10/min). `ToolCallSpan.latency_ms` changed to optional with auto-compute via `model_validator`. Three new SDK integrations shipped: OpenAI Agents (`LangSightOpenAIHooks`), Anthropic/Claude (`AnthropicToolTracer`, `LangSightClaudeAgentHooks`), LangGraph (`LangSightLangGraphCallback`). Integration count now 9. Three new docs-site pages added.
 
 ---
 
@@ -47,6 +47,13 @@ Phase 11 (Catalogs + Graph UX)  ████████████████
 - New PostgreSQL tables: `server_metadata`, `server_tools`.
 - New API endpoints: `GET/PUT /api/servers/metadata`, `GET/PUT /api/servers/{name}/tools`.
 - SDK: `MCPClientProxy.list_tools()` intercepted — tool schemas fire-and-forget posted to backend; Tools tab populates automatically without health checker.
+
+**SDK integrations + rate limiter fix (2026-03-21)**:
+- Rate limiter: single global `Limiter` instance in `src/langsight/api/rate_limit.py`; all routers import from this module. Per-route overrides: traces=2000/min, otlp=60/min, accept-invite=5/min, verify=10/min. Previously each router created its own instance, preventing overrides from working.
+- `ToolCallSpan.latency_ms` changed from required to optional (`float | None = None`); `model_validator(mode="after")` auto-computes from `ended_at - started_at` when omitted.
+- 3 new SDK integrations: OpenAI Agents (`src/langsight/integrations/openai_agents.py`), Anthropic/Claude (`src/langsight/integrations/anthropic_sdk.py`), LangGraph (`src/langsight/integrations/langgraph.py`).
+- 3 new docs-site pages: `openai-agents.mdx`, `anthropic.mdx`, `langgraph.mdx`. `mint.json` updated.
+- Integration count: 9 (MCP, LangChain, LangGraph, CrewAI, Pydantic AI, OpenAI Agents, Anthropic/Claude, OTEL, LibreChat).
 
 **Principal engineer audit fixes (2026-03-21)**:
 - Security: removed AWS creds leak from docker-compose, DB ports bound to 127.0.0.1, CORS default tightened to `http://localhost:3003`, demo credentials gated behind `NODE_ENV !== "production"`, global rate limiting (200/min) on all endpoints, dashboard security headers added, PII masking in audit logs
@@ -463,7 +470,7 @@ The MVP is "done" when all of the following are true:
 | API key middleware on all API routes | S.1 | Add FastAPI dependency that validates `X-API-Key` header against a configurable key list. Wildcard CORS in `api/main.py` must be restricted to known origins. | P0 |
 | RBAC — admin and viewer roles | S.2 | Admin: full access including triggering scans and ingesting spans. Viewer: read-only. Enforce at the router dependency level. | P0 |
 | Dashboard real credential store or OIDC | S.3 | Replace hardcoded users in `dashboard/lib/auth.ts` with either a proper credential store or OIDC provider integration. Any-password-accepted logic must be removed. | P0 |
-| ✅ Rate limiting on all endpoints | S.4 | Global `default_limits=["200/minute"]` via `SlowAPIMiddleware` on all API endpoints. Ingestion routes (`POST /api/traces/spans` at 200/min, `POST /api/traces/otlp` at 60/min) retain their specific limits. **COMPLETE 2026-03-21** — goes beyond original scope (ingestion-only) to cover all endpoints. | P1 |
+| ✅ Rate limiting on all endpoints | S.4 | Global `default_limits=["200/minute"]` via `SlowAPIMiddleware` on all API endpoints. All routers share a single `Limiter` instance from `src/langsight/api/rate_limit.py` (refactored 2026-03-21 — previously each router created separate instances, preventing per-route overrides). Per-route overrides: spans=2000/min, otlp=60/min, accept-invite=5/min, verify=10/min. **COMPLETE 2026-03-21** — goes beyond original scope (ingestion-only) to cover all endpoints. | P1 |
 | Audit logging for security-sensitive actions | S.5 | Log (structured, to storage) all security scans triggered, auth failures, and config changes. Include actor, timestamp, source IP. | P1 |
 | No default secrets in docker-compose | S.6 | Remove hardcoded Postgres password, ClickHouse default user, and dashboard secret from `docker-compose.yml`. Require explicit env var injection. Add `.env.example` with placeholder values only. | P1 |
 | ✅ Close public DB ports in compose | S.7 | ClickHouse and Postgres ports bound to `127.0.0.1` instead of `0.0.0.0`. Databases are not reachable from external hosts. **COMPLETE 2026-03-21** | P1 |
@@ -1759,16 +1766,19 @@ mcp_client = wrap(mcp_client, client)  # all tool calls now recorded
 
 #### 2.2 Framework Integrations
 
-**Objective**: Native integration adapters for CrewAI, Pydantic AI, LangChain/Langflow/LangGraph/LangServe, and LibreChat so engineers do not need to manually call `wrap()`.
+**Objective**: Native integration adapters for CrewAI, Pydantic AI, LangChain/Langflow/LangGraph/LangServe, OpenAI Agents SDK, Anthropic/Claude, and LibreChat so engineers do not need to manually call `wrap()`.
 
-| Task | Description | Est. Hours |
-|------|-------------|-----------|
-| FW.1 | `src/langsight/integrations/crewai.py`: `LangSightCrewAICallback` — hooks into CrewAI's tool call lifecycle | 6h |
-| FW.2 | `src/langsight/integrations/pydantic_ai.py`: middleware that wraps Pydantic AI's `Tool` objects | 6h |
-| FW.3 | `src/langsight/integrations/langchain.py`: `LangSightLangChainCallback` — covers LangChain, Langflow, LangGraph, LangServe | 6h |
-| FW.4 | Common `IntegrationBase`: shared span-recording logic used by all adapters | 3h |
-| FW.5 | Integration tests: each adapter tested with a minimal real framework agent (mocked MCP server) | 6h |
-| FW.6 | Framework detection: `langsight.integrations.auto_configure()` detects installed frameworks and registers adapters | 3h |
+| Task | Description | Est. Hours | Status |
+|------|-------------|-----------|--------|
+| FW.1 | `src/langsight/integrations/crewai.py`: `LangSightCrewAICallback` — hooks into CrewAI's tool call lifecycle | 6h | DONE |
+| FW.2 | `src/langsight/integrations/pydantic_ai.py`: middleware that wraps Pydantic AI's `Tool` objects | 6h | DONE |
+| FW.3 | `src/langsight/integrations/langchain.py`: `LangSightLangChainCallback` — covers LangChain, Langflow, LangGraph, LangServe | 6h | DONE |
+| FW.4 | Common `IntegrationBase`: shared span-recording logic used by all adapters | 3h | DONE |
+| FW.5 | Integration tests: each adapter tested with a minimal real framework agent (mocked MCP server) | 6h | DONE |
+| FW.6 | Framework detection: `langsight.integrations.auto_configure()` detects installed frameworks and registers adapters | 3h | |
+| FW.7 | `src/langsight/integrations/openai_agents.py`: `LangSightOpenAIHooks` (RunHooks protocol) + `langsight_openai_tool` decorator | 6h | **DONE 2026-03-21** |
+| FW.8 | `src/langsight/integrations/anthropic_sdk.py`: `AnthropicToolTracer` + `LangSightClaudeAgentHooks` + `langsight_anthropic_tool` decorator | 6h | **DONE 2026-03-21** |
+| FW.9 | `src/langsight/integrations/langgraph.py`: `LangSightLangGraphCallback` — graph-aware node tracing, extends LangChain callback | 6h | **DONE 2026-03-21** |
 
 **Integration pattern (CrewAI example)**:
 
@@ -1783,11 +1793,14 @@ crew = Crew(
 ```
 
 **Acceptance Criteria**:
-- [ ] CrewAI adapter records tool calls without requiring `wrap()` on the MCP client
-- [ ] Pydantic AI adapter records spans for all `Tool` invocations
-- [ ] LangChain callback adapter records spans for LangChain, Langflow, LangGraph, and LangServe agents
-- [ ] All adapters respect fail-open: agent execution continues if LangSight is unreachable
+- [x] CrewAI adapter records tool calls without requiring `wrap()` on the MCP client
+- [x] Pydantic AI adapter records spans for all `Tool` invocations
+- [x] LangChain callback adapter records spans for LangChain, Langflow, LangGraph, and LangServe agents
+- [x] All adapters respect fail-open: agent execution continues if LangSight is unreachable
 - [ ] Trace IDs propagate correctly across nested tool calls
+- [x] OpenAI Agents SDK adapter (`LangSightOpenAIHooks`) traces tool calls via `RunHooks` protocol — **DONE 2026-03-21**
+- [x] Anthropic/Claude adapter (`AnthropicToolTracer`, `LangSightClaudeAgentHooks`) traces `tool_use` blocks — **DONE 2026-03-21**
+- [x] LangGraph dedicated adapter (`LangSightLangGraphCallback`) tracks graph node names + conditional routing — **DONE 2026-03-21**
 
 ---
 
@@ -2040,7 +2053,7 @@ Phase 4 deliverables
 | Hero | "The missing observability layer for MCP tool infrastructure" + GitHub CTA |
 | Features overview | Health monitoring, security scanning, SDK integration, investigate command |
 | How it works | 3-step flow: `langsight init` → `langsight monitor` → `langsight investigate` |
-| Integrations | Claude Desktop, Cursor, LibreChat, CrewAI, Pydantic AI |
+| Integrations | Claude Desktop, Cursor, LibreChat, CrewAI, Pydantic AI, OpenAI Agents, Anthropic/Claude, LangGraph |
 | Providers | Claude, OpenAI, Gemini, Ollama |
 | Pricing | Open source (free, self-hosted) + SaaS tiers (future, placeholder) |
 | GitHub CTA | Stars badge, link to repo, link to docs |
@@ -2079,7 +2092,7 @@ Phase 4 deliverables
 | CLI reference | All 6 commands: `init`, `mcp-health`, `security-scan`, `monitor`, `costs`, `investigate` |
 | Provider setup guide | `docs/06-provider-setup.md` (already written) |
 | SDK integration guide | New — `from langsight.sdk import wrap` usage |
-| Framework integrations | New — CrewAI, Pydantic AI, LibreChat |
+| Framework integrations | New — CrewAI, Pydantic AI, LibreChat, OpenAI Agents, Anthropic/Claude, LangGraph (dedicated) |
 | API reference | Auto-generated from FastAPI OpenAPI spec via Mintlify's OpenAPI integration |
 | Configuration reference | `.langsight.yaml` schema, all fields with defaults |
 | Self-hosting guide | New — Docker Compose, environment variables, PostgreSQL setup |

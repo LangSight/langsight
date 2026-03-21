@@ -1,8 +1,8 @@
 # LangSight: Architecture Design
 
-> **Version**: 1.3.0
+> **Version**: 1.4.0
 > **Date**: 2026-03-21
-> **Status**: Active — updated with global rate limiting, CORS default tightened, DualStorage accept_invite fix, dashboard security headers, PII masking in audit logs, Docker health check fix, DB port binding hardened (2026-03-21)
+> **Status**: Active — updated with rate limiter single-instance fix, 3 new SDK integrations (OpenAI Agents, Anthropic/Claude, LangGraph), latency_ms auto-compute, integration count now 9 (2026-03-21)
 
 ---
 
@@ -13,8 +13,8 @@
   ─────────────────────────────────  ─────────────────────────────────────────────
                                      ┌───────────────────────────────────────────┐
   Python agents (CrewAI, Pydantic    │                                           │
-  AI, OpenAI Agents SDK)             │  ┌───────────────┐  ┌──────────────────┐  │
-         │                           │  │  MCP Health    │  │  MCP Security    │  │
+  AI, OpenAI Agents, Anthropic,      │  ┌───────────────┐  ┌──────────────────┐  │
+  LangGraph)                         │  │  MCP Health    │  │  MCP Security    │  │
          │  LangSight SDK             │  │  Checker       │  │  Scanner         │  │
          │  wrap(mcp_client)          │  │  (Python)      │  │  (Python)        │  │
          ▼                           │  └───────┬───────┘  └────────┬─────────┘  │
@@ -305,8 +305,13 @@ accept_invite()             → Postgres  (fixed 2026-03-21 — was missing dele
 | `crewai.py` | CrewAI | `Crew(callbacks=[LangSightCrewAICallback(...)])` |
 | `pydantic_ai.py` | Pydantic AI | Wraps `Tool` objects at registration time |
 | `langchain.py` | LangChain / Langflow / LangGraph / LangServe | Callback-based span emission |
+| `openai_agents.py` | OpenAI Agents SDK | `Runner.run(agent, hooks=LangSightOpenAIHooks(...))` — implements the `RunHooks` protocol; also provides `langsight_openai_tool` decorator for individual tool functions |
+| `anthropic_sdk.py` | Anthropic SDK / Claude Agent SDK | `AnthropicToolTracer.trace_response(message)` for message-level tracing; `LangSightClaudeAgentHooks` for agent lifecycle hooks; `langsight_anthropic_tool` decorator for individual tool handlers |
+| `langgraph.py` | LangGraph (dedicated) | `graph.ainvoke({...}, config={"callbacks": [LangSightLangGraphCallback(...)]})` — graph-aware: tracks node names, graph-level span grouping, conditional routing visibility |
 
 All adapters share a common `IntegrationBase` that handles span serialization and HTTP dispatch. Fail-open behavior is enforced at the base class level.
+
+**Total integration count**: 9 (MCP SDK wrap, LangChain, LangGraph, CrewAI, Pydantic AI, OpenAI Agents, Anthropic/Claude, OTEL, LibreChat). Added 2026-03-21: OpenAI Agents, Anthropic/Claude, and dedicated LangGraph.
 
 ### 2.13 Replay Engine (Phase 5.7)
 
@@ -551,11 +556,21 @@ client = LangSightClient()  # reads LANGSIGHT_URL from env
 mcp_client = wrap(mcp_client, client)
 ```
 
-**Path 2 — Framework Adapters (Phase 2)**: For agents built on CrewAI, Pydantic AI, or OpenAI Agents SDK.
+**Path 2 — Framework Adapters (Phase 2)**: For agents built on CrewAI, Pydantic AI, OpenAI Agents SDK, Anthropic/Claude, or LangGraph.
 
 ```python
 from langsight.integrations.crewai import LangSightCrewAICallback
 crew = Crew(callbacks=[LangSightCrewAICallback()])
+
+from langsight.integrations.openai_agents import LangSightOpenAIHooks
+result = await Runner.run(agent, input="...", hooks=LangSightOpenAIHooks(client=client))
+
+from langsight.integrations.anthropic_sdk import AnthropicToolTracer
+tracer = AnthropicToolTracer(client=client, agent_name="my-agent")
+await tracer.trace_response(response)  # traces all tool_use blocks
+
+from langsight.integrations.langgraph import LangSightLangGraphCallback
+result = await graph.ainvoke({"input": "..."}, config={"callbacks": [LangSightLangGraphCallback(client=client)]})
 ```
 
 **Path 3 — OTEL Collector (Phase 3)**: For frameworks with native OTEL support. Point the OTEL exporter at LangSight's collector endpoint. No code changes needed in the agent.
@@ -567,7 +582,9 @@ crew = Crew(callbacks=[LangSightCrewAICallback()])
 | AG2/AutoGen | Native (`autogen.opentelemetry`) | Path 3 (OTEL) |
 | Claude Agent SDK | Native | Path 3 (OTEL) |
 | CrewAI | Via community OTEL package | Path 2 (adapter) preferred |
-| OpenAI Agents SDK | Via community instrumentor | Path 2 (adapter) preferred |
+| OpenAI Agents SDK | Via community instrumentor | Path 2 (adapter) — `LangSightOpenAIHooks` (added 2026-03-21) |
+| Anthropic SDK / Claude Agent SDK | No native OTEL | Path 2 (adapter) — `AnthropicToolTracer` / `LangSightClaudeAgentHooks` (added 2026-03-21) |
+| LangGraph (dedicated) | Accepts LangChain callbacks | Path 2 (adapter) — `LangSightLangGraphCallback` for graph-aware node tracing (added 2026-03-21) |
 | LibreChat | No OTEL — native Langfuse env var pattern | Path 4 (LibreChat plugin) |
 
 **Path 4 — LibreChat Plugin (Phase 2)**: Copy one file to LibreChat plugins directory, set two env vars.
@@ -720,7 +737,7 @@ All ClickHouse queries in `storage/clickhouse.py` that read from `mcp_tool_calls
 - **No external exposure by default** — Docker network is internal, only dashboard port exposed. ClickHouse and Postgres ports bind to `127.0.0.1` (changed from `0.0.0.0` on 2026-03-21).
 - **PII in traces**: `redact_payloads: true` config suppresses payload capture before transmission
 - **Principle of least privilege**: Health checker uses read-only MCP operations only
-- **Rate limiting**: Global default of `200/minute` applied to all API endpoints via `SlowAPIMiddleware` (added 2026-03-21). Additionally, `/api/users/verify` is limited to 10 requests/minute per IP. Health check frequency capped to avoid overloading MCP servers.
+- **Rate limiting**: Global default of `200/minute` applied to all API endpoints via a single shared `Limiter` instance in `src/langsight/api/rate_limit.py` (added 2026-03-21; refactored to single instance 2026-03-21 to fix per-route overrides). Per-route overrides: `POST /api/traces/spans` 2000/min, `POST /api/traces/otlp` 60/min, `POST /api/users/accept-invite` 5/min, `POST /api/users/verify` 10/min. All routers import the same `limiter` instance — previously separate `Limiter` instances prevented per-route overrides from taking effect. Health check frequency capped to avoid overloading MCP servers.
 - **RBAC hardened** (2026-03-19): `POST/GET/DELETE /api/auth/api-keys` require admin role; `POST/DELETE /api/slos` require admin role; `list_projects` handles session-user path correctly; `get_active_project_id` and `get_project_access` both check DB keys (not just env keys) for auth-disabled logic
 - **Project isolation**: all ClickHouse queries filtered by `project_id` at DB level when a project context is active
 - **Security headers on API**: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, HSTS on all API responses (via `SecurityHeadersMiddleware`)

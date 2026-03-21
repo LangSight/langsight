@@ -138,13 +138,15 @@ LangSight works with every major MCP client and agent framework:
 | Claude Desktop | Auto-discovered by `langsight init` |
 | Cursor | Auto-discovered by `langsight init` |
 | VS Code | Auto-discovered by `langsight init` |
-| LibreChat | [Native plugin](/sdk/integrations/librechat) |
+| OpenAI Agents SDK | [LangSightOpenAIHooks](/sdk/integrations/openai-agents) — RunHooks protocol + decorator |
+| Anthropic SDK / Claude Agent SDK | [AnthropicToolTracer + LangSightClaudeAgentHooks](/sdk/integrations/anthropic) |
+| LangGraph | [LangSightLangGraphCallback](/sdk/integrations/langgraph) — graph-aware node tracing |
 | LangChain | [LangSightLangChainCallback](/sdk/integrations/langchain) |
 | Langflow | [LangSightLangChainCallback](/sdk/integrations/langchain) |
-| LangGraph | [LangSightLangChainCallback](/sdk/integrations/langchain) |
 | LangServe | [LangSightLangChainCallback](/sdk/integrations/langchain) |
 | CrewAI | [LangSightCrewAICallback](/sdk/integrations/crewai) |
 | Pydantic AI | [@langsight_tool decorator](/sdk/integrations/pydantic-ai) |
+| LibreChat | [Native plugin](/sdk/integrations/librechat) |
 | Any OTEL framework | [OTLP endpoint](/sdk/integrations/otel) |
 
 ## Open source
