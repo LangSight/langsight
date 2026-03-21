@@ -8,8 +8,8 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@admin.com");
-  const [password, setPassword] = useState("admin");
+  const [email, setEmail] = useState(process.env.NODE_ENV !== "production" ? "admin@admin.com" : "");
+  const [password, setPassword] = useState(process.env.NODE_ENV !== "production" ? "admin" : "");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -189,21 +189,23 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Demo hint */}
-          <div
-            className="mt-6 p-3.5 rounded-xl text-[12px] leading-relaxed"
-            style={{
-              background: "hsl(var(--primary) / 0.06)",
-              border: "1px solid hsl(var(--primary) / 0.15)",
-            }}
-          >
-            <p className="font-semibold mb-0.5" style={{ color: "hsl(var(--primary))" }}>
-              Demo credentials
-            </p>
-            <p className="text-muted-foreground font-mono">
-              admin@admin.com / admin
-            </p>
-          </div>
+          {/* Demo hint — only shown in development; hidden in production builds */}
+          {process.env.NODE_ENV !== "production" && (
+            <div
+              className="mt-6 p-3.5 rounded-xl text-[12px] leading-relaxed"
+              style={{
+                background: "hsl(var(--primary) / 0.06)",
+                border: "1px solid hsl(var(--primary) / 0.15)",
+              }}
+            >
+              <p className="font-semibold mb-0.5" style={{ color: "hsl(var(--primary))" }}>
+                Demo credentials
+              </p>
+              <p className="text-muted-foreground font-mono">
+                admin@admin.com / admin
+              </p>
+            </div>
+          )}
 
           {/* Footer */}
           <p className="mt-8 text-center text-xs text-muted-foreground">

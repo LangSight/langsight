@@ -10,7 +10,7 @@ import {
   ChevronUp, ChevronLast, AlertTriangle, X, Bot, Activity,
 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
-import { fetcher, triggerHealthCheck, getServerHistoty, listServerMetadata, upsertServerMetadata } from "@/lib/api";
+import { fetcher, triggerHealthCheck, getServerHistory, listServerMetadata, upsertServerMetadata } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatLatency, STATUS_BG } from "@/lib/utils";
 import { toast } from "sonner";
@@ -283,7 +283,7 @@ function GroupedSidebar({ servers, metaByName, selectedServer, onSelect, search,
 /* ── History detail inside right panel ─────────────────────── */
 function HealthHistoryPanel({ serverName }: { serverName: string }) {
   const [history, setHistory] = useState<HealthResult[] | null>(null);
-  useEffect(() => { getServerHistoty(serverName, 50).then(setHistory).catch(() => setHistory([])); }, [serverName]);
+  useEffect(() => { getServerHistory(serverName, 50).then(setHistory).catch(() => setHistory([])); }, [serverName]);
 
   if (!history) return <div className="space-y-2">{[1, 2, 3].map((i) => <div key={i} className="skeleton h-6 rounded-lg" />)}</div>;
   if (history.length === 0) return <p className="text-[11px] text-muted-foreground">No history available</p>;
@@ -351,7 +351,7 @@ export default function ServersPage() {
     if (!servers) return;
     for (const s of servers) {
       if (!historyCache.has(s.server_name)) {
-        getServerHistoty(s.server_name, 30).then((h) => setHistoryCache((p) => new Map(p).set(s.server_name, h))).catch(() => {});
+        getServerHistory(s.server_name, 30).then((h) => setHistoryCache((p) => new Map(p).set(s.server_name, h))).catch(() => {});
       }
     }
   }, [servers]); // eslint-disable-line react-hooks/exhaustive-deps

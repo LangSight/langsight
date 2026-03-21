@@ -90,8 +90,8 @@ class Settings(BaseSettings):
     # When empty (default), authentication is DISABLED — safe for local dev only.
     # Set at least one key before exposing the API on a network.
     api_keys: str = ""
-    # CORS allowed origins.  Use "*" only for local dev.
-    cors_origins: str = "*"
+    # CORS allowed origins.  Override with LANGSIGHT_CORS_ORIGINS for production.
+    cors_origins: str = "http://localhost:3003"
     # Dashboard base URL used when constructing invite links.
     # Must point to the Next.js dashboard, NOT the FastAPI backend.
     # Example: https://langsight.example.com

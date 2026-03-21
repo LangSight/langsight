@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { RefreshCw, AlertTriangle, Search, ChevronRight, Server as ServerIcon } from "lucide-react";
-import { fetcher, triggerHealthCheck, getServerHistoty } from "@/lib/api";
+import { fetcher, triggerHealthCheck, getServerHistory } from "@/lib/api";
 import { cn, STATUS_BG, timeAgo, formatLatency } from "@/lib/utils";
 import { toast } from "sonner";
 import type { HealthResult } from "@/lib/types";
@@ -57,7 +57,7 @@ function ExpandedHistory({ serverName }: { serverName: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getServerHistoty(serverName, 50)
+    getServerHistory(serverName, 50)
       .then((h) => { setHistory(h); setLoading(false); })
       .catch(() => setLoading(false));
   }, [serverName]);
@@ -132,11 +132,10 @@ function ExpandedHistory({ serverName }: { serverName: string }) {
 }
 
 /* ── Server row ────────────────────────────────────────────── */
-function ServerRow({ server, expanded, onToggle, history }: {
+function ServerRow({ server, expanded, onToggle }: {
   server: HealthResult;
   expanded: boolean;
   onToggle: () => void;
-  history: HealthResult[];
 }) {
   const statusColor = server.status === "up" ? "#22c55e" : server.status === "degraded" ? "#eab308" : "#ef4444";
   return (
@@ -154,18 +153,8 @@ function ServerRow({ server, expanded, onToggle, history }: {
         {/* Status badge */}
         <span className={cn("text-[9px] px-2 py-0.5 rounded-full border font-semibold flex-shrink-0", STATUS_BG[server.status as keyof typeof STATUS_BG])}>{server.status}</span>
 
-        {/* Uptime dots */}
-        <div className="hidden md:flex flex-shrink-0">
-          <UptimeDots history={history} />
-        </div>
-
-        {/* Sparkline */}
-        <div className="hidden lg:block flex-shrink-0">
-          <LatencySparkline history={history} />
-        </div>
-
         {/* Latency */}
-        <span className="text-[12px] font-semibold text-foreground w-16 text-right flex-shrink-0" style={{ fontFamily: "var(--font-geist-mono)" }}>{formatLatency(server.latency_ms)}</span>
+        <span className="text-[12px] font-semibold text-foreground flex-1 text-right flex-shrink-0" style={{ fontFamily: "var(--font-geist-mono)" }}>{formatLatency(server.latency_ms)}</span>
 
         {/* Tools count */}
         <span className="text-[11px] text-muted-foreground w-8 text-center flex-shrink-0">{server.tools_count ?? "—"}</span>
@@ -202,20 +191,6 @@ export default function HealthPage() {
   const [checking, setChecking] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("all");
-  const [historyCache, setHistoryCache] = useState<Map<string, HealthResult[]>>(new Map());
-
-  // Preload history for all servers
-  useEffect(() => {
-    if (!servers) return;
-    for (const s of servers) {
-      if (!historyCache.has(s.server_name)) {
-        getServerHistoty(s.server_name, 30).then((h) => {
-          setHistoryCache((prev) => new Map(prev).set(s.server_name, h));
-        }).catch(() => {});
-      }
-    }
-  }, [servers]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const up = servers?.filter((s) => s.status === "up").length ?? 0;
   const degraded = servers?.filter((s) => s.status === "degraded").length ?? 0;
   const down = servers?.filter((s) => s.status === "down").length ?? 0;
@@ -318,9 +293,7 @@ export default function HealthPage() {
           <span className="w-2.5" /> {/* dot */}
           <span className="min-w-[140px]">Server</span>
           <span className="w-14">Status</span>
-          <span className="hidden md:block" style={{ width: 30 * 8 + 30 }}>Uptime (last 30 checks)</span>
-          <span className="hidden lg:block w-16">Trend</span>
-          <span className="w-16 text-right">Latency</span>
+          <span className="flex-1 text-right">Latency</span>
           <span className="w-8 text-center">Tools</span>
           <span className="w-16 text-right">Checked</span>
           <span className="w-3.5" /> {/* chevron */}
@@ -364,7 +337,6 @@ export default function HealthPage() {
               server={s}
               expanded={expanded === s.server_name}
               onToggle={() => setExpanded(expanded === s.server_name ? null : s.server_name)}
-              history={historyCache.get(s.server_name) ?? []}
             />
           ))}
         </div>

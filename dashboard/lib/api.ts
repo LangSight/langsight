@@ -95,7 +95,7 @@ export const getStatus = () => get<ApiStatus>("/status");
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 export const getServerHealth = () => get<HealthResult[]>("/health/servers");
-export const getServerHistoty = (name: string, limit = 20) =>
+export const getServerHistory = (name: string, limit = 20) =>
   get<HealthResult[]>(`/health/servers/${encodeURIComponent(name)}/history?limit=${limit}`);
 export const triggerHealthCheck = () => post<HealthResult[]>("/health/check");
 

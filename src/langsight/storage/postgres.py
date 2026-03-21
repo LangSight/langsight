@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -461,7 +463,6 @@ class PostgresBackend:
         )
 
     async def deactivate_model_pricing(self, entry_id: str) -> bool:
-        from datetime import UTC, datetime
 
         result: str = await self._pool.execute(
             "UPDATE model_pricing SET effective_to = $1 WHERE id = $2 AND effective_to IS NULL",
@@ -724,8 +725,6 @@ class PostgresBackend:
             return None
         alert_types = row["alert_types"] or {}
         if isinstance(alert_types, str):
-            import json
-
             alert_types = json.loads(alert_types)
         return {"slack_webhook": row["slack_webhook"], "alert_types": alert_types}
 
@@ -733,8 +732,6 @@ class PostgresBackend:
         self, slack_webhook: str | None, alert_types: dict[str, bool]
     ) -> None:
         """Upsert the singleton alert config row."""
-        import json
-
         await self._pool.execute(
             """
             INSERT INTO alert_config (id, slack_webhook, alert_types)
@@ -757,8 +754,6 @@ class PostgresBackend:
         details: dict[str, Any],
     ) -> None:
         """Append a new audit log entry."""
-        import json
-
         await self._pool.execute(
             "INSERT INTO audit_logs (event, user_id, ip, details) VALUES ($1, $2, $3, $4::jsonb)",
             event,
@@ -769,8 +764,6 @@ class PostgresBackend:
 
     async def list_audit_logs(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         """Return audit log entries most-recent-first."""
-        import json
-
         rows = await self._pool.fetch(
             "SELECT id, timestamp, event, user_id, ip, details FROM audit_logs ORDER BY id DESC LIMIT $1 OFFSET $2",
             limit,
@@ -830,9 +823,6 @@ class PostgresBackend:
         tags: list[str], status: str, runbook_url: str,
         project_id: str | None = None,
     ) -> dict[str, Any]:
-        import json
-        import uuid
-        from datetime import datetime
         row = await self._pool.fetchrow(
             """
             INSERT INTO agent_metadata (id, agent_name, description, owner, tags, status, runbook_url, project_id, created_at, updated_at)
@@ -861,7 +851,7 @@ class PostgresBackend:
             result = await self._pool.execute(
                 "DELETE FROM agent_metadata WHERE agent_name = $1 AND project_id IS NULL", agent_name,
             )
-        return result.endswith("1")
+        return result != "DELETE 0"
 
     # Server metadata (catalog)
     async def get_all_server_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]:
@@ -879,9 +869,6 @@ class PostgresBackend:
         return dict(row) if row else None
 
     async def upsert_server_metadata(self, *, server_name: str, description: str = "", owner: str = "", tags: list[str] | None = None, transport: str = "", runbook_url: str = "", project_id: str | None = None) -> dict[str, Any]:
-        import json
-        import uuid
-        from datetime import datetime
         row = await self._pool.fetchrow(
             """
             INSERT INTO server_metadata (id, server_name, description, owner, tags, transport, runbook_url, project_id, created_at, updated_at)
@@ -910,25 +897,16 @@ class PostgresBackend:
             result = await self._pool.execute(
                 "DELETE FROM server_metadata WHERE server_name = $1 AND project_id IS NULL", server_name,
             )
-        return result.endswith("1")
+        return result != "DELETE 0"
 
     # Server tools (captured from list_tools() SDK interception)
     async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]], project_id: str | None = None) -> None:
-        """Upsert a batch of tools for a server. Called from SDK list_tools() interception."""
-        import json
-        import uuid
-        from datetime import datetime
+        """Upsert a batch of tools for a server in a single pipelined call."""
+        if not tools:
+            return
         now = datetime.now(UTC)
-        for tool in tools:
-            await self._pool.execute(
-                """
-                INSERT INTO server_tools (id, server_name, tool_name, description, input_schema, project_id, first_seen_at, last_seen_at)
-                VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $7)
-                ON CONFLICT (server_name, tool_name, project_id) DO UPDATE SET
-                    description = EXCLUDED.description,
-                    input_schema = EXCLUDED.input_schema,
-                    last_seen_at = EXCLUDED.last_seen_at
-                """,
+        args = [
+            (
                 uuid.uuid4().hex,
                 server_name,
                 str(tool.get("name", "")),
@@ -937,6 +915,19 @@ class PostgresBackend:
                 project_id,
                 now,
             )
+            for tool in tools
+        ]
+        await self._pool.executemany(
+            """
+            INSERT INTO server_tools (id, server_name, tool_name, description, input_schema, project_id, first_seen_at, last_seen_at)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $7)
+            ON CONFLICT (server_name, tool_name, project_id) DO UPDATE SET
+                description = EXCLUDED.description,
+                input_schema = EXCLUDED.input_schema,
+                last_seen_at = EXCLUDED.last_seen_at
+            """,
+            args,
+        )
 
     async def get_server_tools(self, server_name: str, project_id: str | None = None) -> list[dict[str, object]]:
         """Get all declared tools for a server, scoped to project."""

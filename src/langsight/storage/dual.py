@@ -245,6 +245,9 @@ class DualStorage:
     async def mark_invite_used(self, token: str) -> None:
         return await self._meta.mark_invite_used(token)
 
+    async def accept_invite(self, token: str, user: User) -> bool:
+        return await self._meta.accept_invite(token, user)
+
     # SLOs
 
     async def create_slo(self, slo: AgentSLO) -> None:

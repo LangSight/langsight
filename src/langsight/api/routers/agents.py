@@ -174,10 +174,18 @@ async def compare_sessions(
 
     result = await storage.compare_sessions(a, b)
 
-    # Project isolation: if a project filter is active, both sessions must belong to it
+    # Project isolation: if a project filter is active, both sessions must belong to it.
+    # Spans with no project_id (ingested before project tagging was introduced) are
+    # treated as belonging to any project — they are not rejected.
     if project_id:
-        spans_a_in_project = [s for s in result["spans_a"] if s.get("project_id") == project_id]
-        spans_b_in_project = [s for s in result["spans_b"] if s.get("project_id") == project_id]
+        spans_a_in_project = [
+            s for s in result["spans_a"]
+            if s.get("project_id") is None or s.get("project_id") == project_id
+        ]
+        spans_b_in_project = [
+            s for s in result["spans_b"]
+            if s.get("project_id") is None or s.get("project_id") == project_id
+        ]
         if result["spans_a"] and not spans_a_in_project:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND, detail="Session not found."

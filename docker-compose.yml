@@ -20,10 +20,10 @@ services:
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:?CLICKHOUSE_USER env var is required}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD env var is required}
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-    # Exposed to host so integration tests can connect directly
+    # Ports bound to loopback — integration tests connect via localhost
     ports:
-      - "8123:8123"
-      - "9000:9000"
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9000:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
     healthcheck:
@@ -42,9 +42,9 @@ services:
       POSTGRES_DB: langsight
       POSTGRES_USER: langsight
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}
-    # Exposed to host so integration tests can connect directly
+    # Port bound to loopback — integration tests connect via localhost
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -76,8 +76,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    env_file:
-      - ./test-mcps/s3-mcp/.env
     container_name: langsight-api
     environment:
       LANGSIGHT_STORAGE_MODE: dual
