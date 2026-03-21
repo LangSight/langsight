@@ -1,8 +1,8 @@
 # LangSight: UI & Features Specification
 
-> **Version**: 1.3.0
-> **Date**: 2026-03-20
-> **Status**: Active — updated with session detail graph toolbar/minimap/timeline/slideout, agents catalog 3-state layout, MCP Servers catalog at /servers, and SDK auto tool-schema capture (2026-03-20)
+> **Version**: 1.4.0
+> **Date**: 2026-03-21
+> **Status**: Active — updated with health page lazy loading, agents page SWR staggering, login page demo credential gating, dashboard security headers (2026-03-21)
 
 ---
 
@@ -447,6 +447,10 @@ The Agents page renders in one of three states depending on what is selected:
 
 **Backend**: Editable metadata persisted to the `agent_metadata` PostgreSQL table via `GET /api/agents/metadata` and `PUT /api/agents/metadata/{name}`.
 
+**Performance** (optimized 2026-03-21):
+- Sessions fetch limit reduced from 500 to 100 on the agents page to reduce initial payload size
+- SWR refresh intervals are staggered across data fetchers (sessions, metadata, topology) to avoid concurrent API thundering herd on mount
+
 ### 4.3 Sessions Page
 
 **Session table**: One row per workflow/session with agent, tool-call count, failures, duration, and touched backends.
@@ -535,7 +539,10 @@ New page added 2026-03-20. Uses the same adaptive 3-state layout as the Agents p
 
 **Sidebar navigation**: "MCP Servers" entry added between Agents and Costs in the primary nav (`href="/servers"`, `Server` icon, indigo accent).
 
-### 4.5 Tool Reliability Page
+### 4.5 Tool Health / Reliability Page
+
+**Performance** (optimized 2026-03-21): The health page no longer preloads health history for all servers on mount (was O(N) API calls). History is now fetched lazily when a server row is expanded, reducing initial page load time proportional to server count.
+
 - **Metrics table**: Tool name, success rate (with sparkline), p50/p95/p99 latency, error rate, call volume
 - **Color coding**: Green (>95% success), Yellow (80-95%), Red (<80%)
 - **Click tool → drill-down**: Error breakdown by category, latency histogram, recent failures with trace links
@@ -567,6 +574,10 @@ Path: `/accept-invite?token=<invite_token>`
 - On success: redirects to `/login` with a success toast
 - Design matches the login page (same card layout, same indigo CTA button)
 - Middleware updated to allow `/accept-invite` through unauthenticated — it is excluded from the session-required redirect
+
+### 4.6.1.1 Login Page — Demo Credentials Gating (changed 2026-03-21)
+
+The login page (`dashboard/app/(auth)/login/page.tsx`) previously displayed demo credentials (email/password) unconditionally. As of 2026-03-21, demo credentials are only shown when `NODE_ENV !== "production"`. Production deployments no longer leak default passwords in the login UI.
 
 ### 4.6.2 NavProgress Bar (added 2026-03-19)
 

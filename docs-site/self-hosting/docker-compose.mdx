@@ -9,10 +9,11 @@ The root `docker-compose.yml` starts the full LangSight production stack.
 
 | Service | Port | Purpose |
 |---------|------|---------|
-| `clickhouse` | 8123 (internal only) | Time-series span storage + reliability analytics |
-| `postgres` | 5432 (internal only) | App state: configs, users, alert rules, model pricing |
+| `clickhouse` | 127.0.0.1:8123 (localhost only) | Time-series span storage + reliability analytics |
+| `postgres` | 127.0.0.1:5432 (localhost only) | App state: configs, users, alert rules, model pricing |
 | `otel-collector` | 4317, 4318 | Receives OTLP traces from agent frameworks |
 | `api` | 8000 | LangSight REST API |
+| `dashboard` | 3003 (maps to 3002 internal) | Next.js dashboard |
 
 <Warning>
   Database ports (5432, 8123) are not exposed to the host by default. Access databases through the `api` service only. Do not override this in production.

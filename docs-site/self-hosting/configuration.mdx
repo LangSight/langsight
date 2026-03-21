@@ -80,6 +80,8 @@ All settings can be overridden with environment variables using the `LANGSIGHT_`
 | *(admin bootstrap)* | `LANGSIGHT_ADMIN_EMAIL` | First-run only — creates admin account |
 | *(admin bootstrap)* | `LANGSIGHT_ADMIN_PASSWORD` | First-run only |
 | *(auth)* | `LANGSIGHT_AUTH_SECRET` | Required — shared session signing secret between Next.js and FastAPI (min 32 chars). Set the same value for both services. |
+| *(CORS)* | `LANGSIGHT_CORS_ORIGINS` | Comma-separated allowed origins (default: `http://localhost:3003`). Set explicitly for production deployments. |
+| *(proxy trust)* | `LANGSIGHT_TRUSTED_PROXY_CIDRS` | Comma-separated CIDRs for trusted proxy headers (default: `127.0.0.1/32,::1/128`) |
 | *(ClickHouse auth)* | `CLICKHOUSE_USER` | ClickHouse username |
 | *(ClickHouse auth)* | `CLICKHOUSE_PASSWORD` | ClickHouse password |
 

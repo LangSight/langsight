@@ -1,8 +1,8 @@
 # LangSight: Architecture Design
 
-> **Version**: 1.2.0
-> **Date**: 2026-03-19
-> **Status**: Active — updated with dual-storage, CIDR proxy trust, auth header fix, RBAC hardening, alert/audit persistence (2026-03-19)
+> **Version**: 1.3.0
+> **Date**: 2026-03-21
+> **Status**: Active — updated with global rate limiting, CORS default tightened, DualStorage accept_invite fix, dashboard security headers, PII masking in audit logs, Docker health check fix, DB port binding hardened (2026-03-21)
 
 ---
 
@@ -225,6 +225,7 @@ create_slo() / list_slos()  → Postgres
 list_projects()             → Postgres
 append_audit()              → Postgres
 save_alert_config()         → Postgres
+accept_invite()             → Postgres  (fixed 2026-03-21 — was missing delegation, raised AttributeError)
 ```
 
 **Source**: `src/langsight/storage/dual.py`
@@ -583,11 +584,11 @@ crew = Crew(callbacks=[LangSightCrewAICallback()])
 ### Docker Compose Services
 | Service | Image | Exposed Ports | Purpose |
 |---|---|---|---|
-| `clickhouse` | clickhouse/clickhouse-server:24 | 8123, 9000 | OLAP analytics storage |
-| `postgres` | postgres:16-alpine | 5432 | Metadata storage |
+| `clickhouse` | clickhouse/clickhouse-server:24 | 127.0.0.1:8123, 127.0.0.1:9000 | OLAP analytics storage (localhost-only, changed from 0.0.0.0 on 2026-03-21) |
+| `postgres` | postgres:16-alpine | 127.0.0.1:5432 | Metadata storage (localhost-only, changed from 0.0.0.0 on 2026-03-21) |
 | `otel-collector` | otel/opentelemetry-collector-contrib:0.120.0 | 4317, 4318 | Trace ingestion |
 | `api` | langsight/api:latest | 8000 | REST API (`LANGSIGHT_STORAGE_MODE: dual`) |
-| `dashboard` | langsight/dashboard:latest | 3003 (→ 3002) | Next.js dashboard |
+| `dashboard` | langsight/dashboard:latest | 3003 (→ 3002) | Next.js dashboard (`HOSTNAME=0.0.0.0`, health check via `127.0.0.1:3002`) |
 
 All required credentials are injected via env vars. The `${VAR:?error}` pattern in `docker-compose.yml` ensures compose refuses to start with missing secrets. Copy `.env.example` → `.env` and fill in all required values before `docker compose up -d`.
 
@@ -715,12 +716,15 @@ All ClickHouse queries in `storage/clickhouse.py` that read from `mcp_tool_calls
 - **SDK auth header**: API accepts both `X-API-Key` and `Authorization: Bearer` — SDK sends `X-API-Key` (fixed 2026-03-19; was sending Bearer which was silently ignored)
 - **Trusted proxy CIDRs**: `X-User-Id`/`X-User-Role` headers trusted only from `LANGSIGHT_TRUSTED_PROXY_CIDRS` (default: loopback; Docker default adds `172.16.0.0/12,10.0.0.0/8`). Changed from hardcoded loopback-only (2026-03-19) to support Docker network topology.
 - **MCP credentials** stored in .langsight.yaml (gitignored) or env vars
-- **No external exposure by default** — Docker network is internal, only dashboard port exposed
+- **CORS default**: `LANGSIGHT_CORS_ORIGINS` defaults to `"http://localhost:3003"` (changed from wildcard `"*"` on 2026-03-21). Production deployments must explicitly configure allowed origins.
+- **No external exposure by default** — Docker network is internal, only dashboard port exposed. ClickHouse and Postgres ports bind to `127.0.0.1` (changed from `0.0.0.0` on 2026-03-21).
 - **PII in traces**: `redact_payloads: true` config suppresses payload capture before transmission
 - **Principle of least privilege**: Health checker uses read-only MCP operations only
-- **Rate limiting**: `/api/users/verify` limited to 10 requests/minute per IP (via slowapi); health check frequency capped to avoid overloading MCP servers
+- **Rate limiting**: Global default of `200/minute` applied to all API endpoints via `SlowAPIMiddleware` (added 2026-03-21). Additionally, `/api/users/verify` is limited to 10 requests/minute per IP. Health check frequency capped to avoid overloading MCP servers.
 - **RBAC hardened** (2026-03-19): `POST/GET/DELETE /api/auth/api-keys` require admin role; `POST/DELETE /api/slos` require admin role; `list_projects` handles session-user path correctly; `get_active_project_id` and `get_project_access` both check DB keys (not just env keys) for auth-disabled logic
 - **Project isolation**: all ClickHouse queries filtered by `project_id` at DB level when a project context is active
-- **Security headers**: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, HSTS on all API responses
+- **Security headers on API**: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, HSTS on all API responses (via `SecurityHeadersMiddleware`)
+- **Security headers on dashboard**: Next.js dashboard also sets X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, and Permissions-Policy headers on all responses (added 2026-03-21)
 - **Alert config and audit logs persisted** (2026-03-19): previously stored in `app.state` (lost on restart); now in Postgres via `alert_config` (singleton upsert) and `audit_logs` (append-only) tables. `append_audit()` schedules async DB write via `asyncio.create_task` — never blocks the request path.
+- **PII masking in audit logs** (added 2026-03-21): `_mask_email()` transforms emails to `"a***@example.com"` before writing to audit logs. Raw email addresses no longer appear in audit log entries.
 - **No default secrets**: `docker-compose.yml` uses `${VAR:?error}` syntax — compose refuses to start if required vars are missing. No hardcoded passwords anywhere.

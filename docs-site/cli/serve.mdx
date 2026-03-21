@@ -79,8 +79,10 @@ Liveness (`/api/liveness`) and readiness (`/api/readiness`) probes are always un
 |----------|-------|
 | `POST /api/traces/spans` | 200 req/min |
 | `POST /api/traces/otlp` | 60 req/min |
+| `POST /api/users/verify` | 10 req/min |
+| All other endpoints | 200 req/min (global default) |
 
-All other endpoints are not rate-limited by default.
+All endpoints are rate-limited via `SlowAPIMiddleware`. The global default of 200 requests/minute applies to any route without a specific override.
 
 ## Production deployment
 

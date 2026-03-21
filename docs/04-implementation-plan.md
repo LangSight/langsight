@@ -1,11 +1,11 @@
 # LangSight: Implementation Plan
 
-> **Version**: 1.6.0
-> **Date**: 2026-03-20
-> **Status**: Active — Phase 1-3 COMPLETE (alpha). Phase 5 COMPLETE. Phase 6 (Project-Level RBAC) planned. Phase 7 (Model-Based Cost Tracking) planned. Pre-Production Security Hardening phase added. Release 0.1.0 is an alpha release.
+> **Version**: 1.7.0
+> **Date**: 2026-03-21
+> **Status**: Active — Phase 1-3 COMPLETE (alpha). Phase 5 COMPLETE. Phase 6 (Project-Level RBAC) planned. Phase 7 (Model-Based Cost Tracking) planned. Pre-Production Security Hardening phase added (S.4, S.7, S.9, S.10 COMPLETE). Release 0.1.0 is an alpha release.
 > **Author**: Engineering
 >
-> **Change from 1.5**: Phase 11 (Dashboard UX — Catalogs + Session Graph Toolbar) added (2026-03-20). Covers session detail graph toolbar/minimap/timeline/PayloadSlideout, agents catalog 3-state adaptive layout with editable metadata, new MCP Servers catalog at /servers with Tools/Health/Consumers tabs, and SDK automatic tool-schema capture via `MCPClientProxy.list_tools()` interception. `server_metadata` and `server_tools` PostgreSQL tables added.
+> **Change from 1.6**: Security Hardening progress updated — S.4 (global rate limiting), S.7 (DB port binding), S.10 (Docker health check) marked COMPLETE (2026-03-21). CI dashboard type check job added. DualStorage protocol conformance test added. Principal engineer audit fixes documented.
 
 ---
 
@@ -28,7 +28,7 @@ Phase 2 (SDK + Framework Integ) ████████████████
 Phase 3 (OTEL + Costs)          ████████████████ 100% — COMPLETE ✅
 Release 0.1.0                   ████████████████ 100% — SHIPPED ✅ (PyPI + GitHub)
 Phase 4 (Dashboard + Website)   ████████████████ 100% — COMPLETE ✅ full redesign shipped 2026-03-19
-Security Hardening (S.1-S.10)   █░░░░░░░░░░░░░░░  10% — S.9 COMPLETE ✅
+Security Hardening (S.1-S.10)   ████████░░░░░░░░  50% — S.4, S.7, S.9, S.10 COMPLETE ✅; S.1-S.3, S.5-S.6, S.8 in progress
 Phase 5 (Deep Observability)    ████████████████ 100% — COMPLETE ✅
 Phase 6 (Project-Level RBAC)    ████████████████ 100% — COMPLETE ✅
 Phase 7 (Model-Based Costs)     ████████████████ 100% — COMPLETE ✅
@@ -47,6 +47,14 @@ Phase 11 (Catalogs + Graph UX)  ████████████████
 - New PostgreSQL tables: `server_metadata`, `server_tools`.
 - New API endpoints: `GET/PUT /api/servers/metadata`, `GET/PUT /api/servers/{name}/tools`.
 - SDK: `MCPClientProxy.list_tools()` intercepted — tool schemas fire-and-forget posted to backend; Tools tab populates automatically without health checker.
+
+**Principal engineer audit fixes (2026-03-21)**:
+- Security: removed AWS creds leak from docker-compose, DB ports bound to 127.0.0.1, CORS default tightened to `http://localhost:3003`, demo credentials gated behind `NODE_ENV !== "production"`, global rate limiting (200/min) on all endpoints, dashboard security headers added, PII masking in audit logs
+- Correctness: DualStorage.accept_invite delegation fixed, delete metadata result check fixed, session compare handles null project_id, getServerHistory typo fixed
+- Performance: health page lazy-loads history on row expand, agents page sessions limit 500->100 with staggered SWR, upsert_server_tools uses executemany()
+- Docker: dashboard health check uses 127.0.0.1 (not localhost), HOSTNAME=0.0.0.0 for standalone mode, list_projects resolves caller's role
+- CI: new "Dashboard Type Check" job runs `tsc --noEmit`
+- Tests: DualStorage protocol conformance test, accept_invite routing test
 
 **Infrastructure changes (2026-03-19)**:
 - SQLite removed — `DualStorage` (Postgres + ClickHouse) is the only production topology; `factory.py` raises `ConfigError` on unknown/sqlite mode
@@ -446,27 +454,27 @@ The MVP is "done" when all of the following are true:
 
 ### Pre-Production Security Hardening (Security Assessment 2026-03-18)
 
-**Status**: NOT STARTED — required before production positioning or internet-facing deployment.
+**Status**: IN PROGRESS — S.4, S.7, S.9, S.10 complete; S.1-S.3, S.5-S.6, S.8 remaining.
 
-**Context**: A security review on 2026-03-18 identified two P0 blockers and two P1 gaps that prevent honest production claims. This phase must be completed before 0.2.0 can be called production-grade. See `PROGRESS.md` for the full assessment summary.
+**Context**: A security review on 2026-03-18 identified two P0 blockers and two P1 gaps that prevent honest production claims. This phase must be completed before 0.2.0 can be called production-grade. See `PROGRESS.md` for the full assessment summary. A principal engineer audit on 2026-03-21 addressed S.4 (global rate limiting), S.7 (DB port binding), and added dashboard security headers + CORS tightening. A subsequent audit on 2026-03-21 added a CI type-check job for the dashboard and DualStorage protocol conformance tests.
 
 | Task | ID | Description | Priority |
 |------|----|-------------|----------|
 | API key middleware on all API routes | S.1 | Add FastAPI dependency that validates `X-API-Key` header against a configurable key list. Wildcard CORS in `api/main.py` must be restricted to known origins. | P0 |
 | RBAC — admin and viewer roles | S.2 | Admin: full access including triggering scans and ingesting spans. Viewer: read-only. Enforce at the router dependency level. | P0 |
 | Dashboard real credential store or OIDC | S.3 | Replace hardcoded users in `dashboard/lib/auth.ts` with either a proper credential store or OIDC provider integration. Any-password-accepted logic must be removed. | P0 |
-| Rate limiting on ingestion endpoints | S.4 | Apply per-IP rate limiting on `POST /api/traces/spans` and `POST /api/traces/otlp` to prevent abuse. Use `slowapi` or similar. | P1 |
+| ✅ Rate limiting on all endpoints | S.4 | Global `default_limits=["200/minute"]` via `SlowAPIMiddleware` on all API endpoints. Ingestion routes (`POST /api/traces/spans` at 200/min, `POST /api/traces/otlp` at 60/min) retain their specific limits. **COMPLETE 2026-03-21** — goes beyond original scope (ingestion-only) to cover all endpoints. | P1 |
 | Audit logging for security-sensitive actions | S.5 | Log (structured, to storage) all security scans triggered, auth failures, and config changes. Include actor, timestamp, source IP. | P1 |
 | No default secrets in docker-compose | S.6 | Remove hardcoded Postgres password, ClickHouse default user, and dashboard secret from `docker-compose.yml`. Require explicit env var injection. Add `.env.example` with placeholder values only. | P1 |
-| Close public DB ports in compose | S.7 | ClickHouse and Postgres ports must not be bound to host by default. Move to internal Docker network; only the API and OTEL Collector should be reachable from outside. | P1 |
+| ✅ Close public DB ports in compose | S.7 | ClickHouse and Postgres ports bound to `127.0.0.1` instead of `0.0.0.0`. Databases are not reachable from external hosts. **COMPLETE 2026-03-21** | P1 |
 | Schema migration strategy | S.8 | Implement Alembic for Postgres schema migrations. Document ClickHouse migration approach (versioned SQL scripts). Neither database schema should be managed by application startup DDL in production. | P1 |
 | ✅ Threat model document | S.9 | Write `docs/06-threat-model.md` covering: trust boundaries, attack surface, deployment topology, data classification, and vulnerability disclosure policy. **COMPLETE 2026-03-19** — 10 threat scenarios, 8 known gaps, full deployment topology, vulnerability disclosure policy. | P1 |
-| Readiness/liveness probe split | S.10 | Split `GET /api/status` into `/readiness` (can serve traffic) and `/liveness` (process is alive). Required for correct Kubernetes and Docker health check behavior. | P1 |
+| ✅ Readiness/liveness probe split | S.10 | Split `GET /api/status` into `/readiness` (can serve traffic) and `/liveness` (process is alive). Docker health check now uses `http://127.0.0.1:3002` (not `localhost`) to avoid IPv6 resolution issues on Alpine. **COMPLETE 2026-03-21** — dashboard health check fixed to use IPv4 address directly. | P1 |
 
 **Acceptance criteria for this phase**:
 - [ ] `POST /api/traces/spans` with no API key returns HTTP 401
 - [ ] `docker-compose.yml` has no hardcoded secrets; `docker compose up` fails fast with a clear error if required env vars are absent
-- [ ] ClickHouse and Postgres ports are not bound to `0.0.0.0` in the default compose
+- [x] ClickHouse and Postgres ports are not bound to `0.0.0.0` in the default compose — **DONE 2026-03-21**: bound to `127.0.0.1`
 - [ ] Dashboard login rejects invalid credentials
 - [ ] `docs/06-threat-model.md` exists and covers all 6 trust boundary areas
 - [ ] Alembic `alembic upgrade head` applies all Postgres schema without errors on a fresh database

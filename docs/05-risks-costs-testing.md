@@ -1,8 +1,8 @@
 # LangSight: Risks, Costs, and Testing Strategy
 
-> **Version**: 1.1.0
-> **Date**: 2026-03-19
-> **Status**: Active — updated with dual-storage test infrastructure, coverage metrics, and new risks (2026-03-19)
+> **Version**: 1.2.0
+> **Date**: 2026-03-21
+> **Status**: Active — updated with global rate limiting enforcement, PII masking in audit logs, Docker health check fix, DualStorage conformance testing, CI dashboard type check (2026-03-21)
 > **Author**: Engineering
 
 ---
@@ -164,6 +164,17 @@
 | **Impact** | **Medium** — some potential users (solo devs on laptops without Docker, CI environments without Docker socket) cannot use LangSight. |
 | **Rationale for accepting** | (1) Multi-tenancy, RBAC, and audit logs require relational foreign keys and proper transactions — SQLite at scale is fragile. (2) All Phase 5+ features (replay, comparison, SLOs) depend on ClickHouse queries. (3) Maintaining a third backend path (SQLite) alongside Postgres and ClickHouse costs significant test coverage and correctness effort for a mode no production user would choose. |
 | **Mitigation** | Document Docker as a hard prerequisite. Provide `.env.example` with clear instructions. Consider a Docker-optional single-process mode (Postgres + embedded ClickHouse) as a future Phase 11 deliverable if demand proves it. |
+
+---
+
+### TR-11: Docker Health Check IPv6 Resolution (resolved 2026-03-21)
+
+| Attribute | Value |
+|-----------|-------|
+| **Description** | The dashboard Docker health check used `http://localhost:3002` in the `wget` command. On Alpine Linux (used by the Next.js standalone image), `wget` resolves `localhost` to `::1` (IPv6 loopback) first. The Node.js server listens on IPv4 only (`0.0.0.0`), causing health checks to fail and the container to be marked unhealthy despite serving requests normally. |
+| **Likelihood** | **Certain** — Alpine Linux resolves `localhost` to IPv6 first in its `/etc/hosts`. |
+| **Impact** | **Medium** — Docker reports the dashboard as unhealthy; orchestrators (Kubernetes, ECS) restart the container unnecessarily. |
+| **Resolution** | Changed health check URL to `http://127.0.0.1:3002` in both `Dockerfile` and `docker-compose.yml`. Added `HOSTNAME=0.0.0.0` to the dashboard service so Next.js standalone mode binds to all interfaces inside the container. |
 
 ---
 
@@ -368,6 +379,10 @@ This section estimates infrastructure costs for a hosted LangSight SaaS offering
 
 ## 5. Guardrails to Implement
 
+### 5.0 Global API Rate Limiting (implemented 2026-03-21)
+
+All API endpoints are now rate-limited globally via `SlowAPIMiddleware` with `default_limits=["200/minute"]`. This supplements the per-route limits on ingestion endpoints (`POST /api/traces/spans` at 200/min, `POST /api/traces/otlp` at 60/min) and the login endpoint (`POST /api/users/verify` at 10/min). The global default prevents abuse on endpoints that previously had no limit.
+
 ### 5.1 Rate Limiting on Health Checks
 
 | Guardrail | Implementation |
@@ -390,6 +405,7 @@ This section estimates infrastructure costs for a hosted LangSight SaaS offering
 | **Redaction method** | Replace detected PII with tokens: `[EMAIL_REDACTED]`, `[PHONE_REDACTED]`, `[SSN_REDACTED]`. Original values are never stored. |
 | **Custom patterns** | Users can define additional PII patterns in `langsight.yaml` (e.g., internal employee IDs, customer reference numbers). |
 | **Redaction audit log** | Log when PII is redacted (which field, which pattern matched) WITHOUT logging the actual PII value. Enables verification that redaction is working. |
+| **Audit log PII masking** (implemented 2026-03-21) | `_mask_email()` transforms email addresses to `"a***@example.com"` before writing to the `audit_logs` Postgres table. Raw emails no longer appear in audit log entries. This is in addition to the trace-level PII redaction above. |
 | **ClickHouse column-level access** | For SaaS: use ClickHouse RBAC to restrict access to payload columns. Only authorized roles can query raw data. |
 | **Data retention enforcement** | TTL on all tables: default 90 days. Configurable per table. Expired data is automatically deleted by ClickHouse/PostgreSQL. |
 

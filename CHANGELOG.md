@@ -9,6 +9,33 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed (2026-03-21 — principal engineer audit: security, correctness, scale, Docker)
+
+- **Security: AWS credential leak** — removed `test-mcps/s3-mcp/.env` volume mount from the production API service in `docker-compose.yml`; AWS credentials are no longer exposed to the API container
+- **Security: DB port binding** — ClickHouse and Postgres ports in `docker-compose.yml` now bind to `127.0.0.1` instead of `0.0.0.0`; databases are no longer reachable from external hosts
+- **Security: demo credentials gated** — login page (`dashboard/app/(auth)/login/page.tsx`) now only displays demo credentials when `NODE_ENV !== "production"`; production deployments no longer leak default passwords in the UI
+- **Security: CORS default tightened** — `LANGSIGHT_CORS_ORIGINS` default changed from `"*"` (wildcard) to `"http://localhost:3003"` in `config.py`; production deployments must explicitly configure allowed origins
+- **Security: global rate limiting** — added `SlowAPIMiddleware` with `default_limits=["200/minute"]` on all API endpoints; previously only ingestion routes were rate-limited
+- **Security: dashboard security headers** — Next.js dashboard now sets `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy` headers on all responses
+- **Security: PII masking in audit logs** — `_mask_email()` in the API now produces `"a***@example.com"` when logging user actions; raw emails no longer appear in audit log entries
+- **Correctness: DualStorage.accept_invite** — `DualStorage` was missing delegation to `self._meta.accept_invite()`; calling `accept_invite()` through the dual backend raised `AttributeError`; now correctly routes to `PostgresBackend`
+- **Correctness: delete metadata** — `delete_agent_metadata` and `delete_server_metadata` in `postgres.py` now check `!= "DELETE 0"` instead of `.endswith("1")`; previously failed silently when deleting rows with multi-digit affected counts
+- **Correctness: session compare 404** — `GET /api/agents/sessions/compare` no longer returns 404 for spans that lack a `project_id` (pre-tagging data); the compare endpoint now handles `None` project_id gracefully
+- **Correctness: typo fix** — `getServerHistoty` renamed to `getServerHistory` in `dashboard/lib/api.ts` and all consuming pages
+- **Performance: health page lazy loading** — removed O(N) health history preload on `/health` page mount; history is now fetched lazily when a server row is expanded, reducing initial page load time proportional to server count
+- **Performance: agents page SWR staggering** — reduced sessions fetch limit from 500 to 100 on the agents page and staggered SWR refresh intervals across data fetchers to avoid concurrent API thundering herd
+- **Performance: executemany batch** — `upsert_server_tools` in `postgres.py` replaced N sequential `execute()` calls with a single `executemany()` batch, reducing DB round trips from O(N) to O(1)
+- **Cleanup: top-level imports** — moved `import json`, `import uuid`, and `from datetime import datetime` out of function bodies to module top-level in `postgres.py`
+- **Docker: dashboard health check** — changed health check URL from `http://localhost:3002` to `http://127.0.0.1:3002` in both `Dockerfile` and `docker-compose.yml`; Alpine Linux `wget` resolves `localhost` to `::1` (IPv6) first while the server listens on IPv4 only, causing false unhealthy status
+- **Docker: dashboard hostname binding** — added `HOSTNAME=0.0.0.0` to the dashboard service in `Dockerfile` and `docker-compose.yml`; Next.js standalone mode was binding to `127.0.0.1` inside the container, making the dashboard unreachable from the Docker network
+- **Correctness: list_projects role resolution** — `list_projects()` now resolves the caller's role per project; `your_role` was previously always `null` in the response
+
+### Added (2026-03-21 — CI + test improvements)
+
+- **CI: Dashboard type check job** — new GitHub Actions job runs `tsc --noEmit` on the Next.js dashboard; TypeScript errors in dashboard code now block CI
+- **Test: DualStorage protocol conformance** — `TestProtocolConformance` class in `test_dual.py` introspects the `StorageBackend` protocol and verifies `DualStorage` explicitly implements every method; prevents silent `__getattr__` fallback hiding missing delegation
+- **Test: accept_invite routing** — new test verifies `accept_invite` calls are correctly routed to the metadata backend in `DualStorage`
+
 ### Added (2026-03-20 — session detail graph toolbar, MCP Servers catalog, agents catalog, SDK tool-schema capture)
 
 - Session detail lineage graph: graph toolbar with search bar (highlights/dims nodes), zoom slider (25-250%), Expand All / Collapse All buttons, and Failures toggle that isolates the error chain
