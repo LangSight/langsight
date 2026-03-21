@@ -78,6 +78,9 @@
       "group": "SDK & Integrations",
       "pages": [
         "sdk/python",
+        "sdk/integrations/openai-agents",
+        "sdk/integrations/anthropic",
+        "sdk/integrations/langgraph",
         "sdk/integrations/langchain",
         "sdk/integrations/crewai",
         "sdk/integrations/pydantic-ai",

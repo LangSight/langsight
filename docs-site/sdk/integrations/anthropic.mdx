@@ -1,0 +1,108 @@
+---
+title: "Anthropic SDK / Claude Agent SDK"
+description: "Trace tool_use calls from the Anthropic SDK and Claude Agent SDK."
+---
+
+## Install
+
+```bash
+pip install langsight anthropic
+```
+
+## Pattern 1: Tool decorator (simplest)
+
+Wrap individual tool handlers — every call is traced automatically:
+
+```python
+from langsight.sdk import LangSightClient
+from langsight.integrations.anthropic_sdk import langsight_anthropic_tool
+
+client = LangSightClient(url="http://localhost:8000")
+
+@langsight_anthropic_tool(client=client, server_name="my-tools")
+async def get_weather(location: str) -> str:
+    """Get current weather for a location."""
+    return f"72°F and sunny in {location}"
+
+@langsight_anthropic_tool(client=client, server_name="my-tools")
+async def search_docs(query: str) -> str:
+    """Search the documentation."""
+    return await do_search(query)
+```
+
+When Claude calls these tools via `tool_use`, the execution is traced.
+
+## Pattern 2: Message response tracing
+
+Trace all tool_use blocks from a message response:
+
+```python
+from langsight.integrations.anthropic_sdk import AnthropicToolTracer
+
+tracer = AnthropicToolTracer(
+    client=client,
+    agent_name="assistant",
+    session_id="sess-001",
+)
+
+# Your standard Anthropic SDK loop
+response = await anthropic.messages.create(
+    model="claude-sonnet-4-6",
+    messages=[{"role": "user", "content": "What's the weather in NYC?"}],
+    tools=[weather_tool, search_tool],
+)
+
+# Record what tools the model requested
+await tracer.trace_response(response)
+
+# Execute tools and trace the execution
+for block in response.content:
+    if block.type == "tool_use":
+        result = await tracer.execute_and_trace(
+            block.name, block.input, tool_handlers[block.name]
+        )
+```
+
+`trace_response()` captures the model's decision. `execute_and_trace()` captures
+the execution timing and result.
+
+## Pattern 3: Claude Agent SDK hooks
+
+For the Claude Agent SDK's higher-level agent runner:
+
+```python
+from langsight.integrations.anthropic_sdk import LangSightClaudeAgentHooks
+
+hooks = LangSightClaudeAgentHooks(
+    client=client,
+    agent_name="support-agent",
+    session_id="sess-001",
+    trace_id="trace-abc",
+)
+
+# Pass as lifecycle hooks
+result = await runner.run(agent, hooks=hooks)
+```
+
+Supports `on_tool_start`, `on_tool_end`, `on_tool_error`, and `on_handoff`.
+
+## What gets traced
+
+| Field | Value |
+|-------|-------|
+| `tool_name` | Tool function name or tool_use block name |
+| `model_id` | Model used (from response, e.g. `claude-sonnet-4-6`) |
+| `input_tokens` | Token usage from response |
+| `output_tokens` | Token usage from response |
+| `input_args` | Tool input parameters |
+| `output_result` | Tool return value (when using `execute_and_trace`) |
+| `latency_ms` | Auto-computed |
+| `status` | `success`, `error`, or `timeout` |
+
+## View traces
+
+```bash
+langsight sessions --id sess-001
+```
+
+Or open **http://localhost:3003/sessions/sess-001** in the dashboard.

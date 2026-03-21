@@ -1,0 +1,93 @@
+---
+title: "OpenAI Agents SDK"
+description: "Trace every tool call in your OpenAI agent with one line."
+---
+
+## Install
+
+```bash
+pip install langsight openai-agents
+```
+
+## Setup
+
+```python
+from langsight.sdk import LangSightClient
+from langsight.integrations.openai_agents import LangSightOpenAIHooks
+
+client = LangSightClient(url="http://localhost:8000")
+hooks = LangSightOpenAIHooks(
+    client=client,
+    agent_name="my-agent",
+    session_id="sess-001",       # optional: group calls into a session
+    trace_id="trace-abc",        # optional: link across multi-agent tasks
+)
+```
+
+## Usage
+
+Pass `hooks` to the OpenAI Agents SDK Runner:
+
+```python
+from agents import Agent, Runner
+
+agent = Agent(
+    name="research-agent",
+    instructions="You help with research.",
+    tools=[search_tool, summarize_tool],
+)
+
+result = await Runner.run(agent, input="Find recent papers on MCP security", hooks=hooks)
+```
+
+Every tool call is traced automatically — timing, status, errors, and handoffs.
+
+## Multi-agent handoffs
+
+When one agent delegates to another, `on_handoff` records a handoff span
+that links the two agents in the trace tree:
+
+```python
+hooks = LangSightOpenAIHooks(
+    client=client,
+    agent_name="orchestrator",
+    trace_id="trace-abc",       # same trace_id across all agents
+)
+
+# The SDK automatically calls hooks.on_handoff() when agents hand off
+triage_agent = Agent(name="triage", handoff_to=[research_agent, billing_agent])
+result = await Runner.run(triage_agent, input="...", hooks=hooks)
+```
+
+## Decorator pattern
+
+For individual tool functions, use the decorator:
+
+```python
+from langsight.integrations.openai_agents import langsight_openai_tool
+
+@langsight_openai_tool(client=client, server_name="my-tools")
+async def search(query: str) -> str:
+    """Search the knowledge base."""
+    return await do_search(query)
+```
+
+## What gets traced
+
+| Field | Value |
+|-------|-------|
+| `tool_name` | Function name or tool object name |
+| `server_name` | `"openai-agents"` (configurable) |
+| `latency_ms` | Auto-computed from start/end |
+| `status` | `success`, `error`, or `timeout` |
+| `error` | Exception message on failure |
+| `agent_name` | Agent that invoked the tool |
+| `span_type` | `tool_call` for tools, `handoff` for agent delegation |
+
+## View traces
+
+```bash
+langsight sessions --id sess-001
+```
+
+Or open the dashboard at **http://localhost:3003/sessions/sess-001**.

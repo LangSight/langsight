@@ -1,0 +1,97 @@
+---
+title: "LangGraph"
+description: "Graph-aware tracing — see which node called which tool."
+---
+
+## Install
+
+```bash
+pip install langsight langchain langgraph
+```
+
+## Setup
+
+```python
+from langsight.sdk import LangSightClient
+from langsight.integrations.langgraph import LangSightLangGraphCallback
+
+client = LangSightClient(url="http://localhost:8000")
+callback = LangSightLangGraphCallback(
+    client=client,
+    agent_name="my-graph",
+    session_id="sess-001",
+    trace_id="trace-abc",
+)
+```
+
+## Usage
+
+Pass as a callback to your LangGraph invocation:
+
+```python
+result = await graph.ainvoke(
+    {"input": "Analyze sales data for Q4"},
+    config={"callbacks": [callback]},
+)
+```
+
+Works with synchronous `graph.invoke()` too.
+
+## What makes this different from the LangChain callback?
+
+The basic [LangChain callback](/sdk/integrations/langchain) also works with
+LangGraph. This integration adds **graph node context**:
+
+| Feature | LangChain callback | LangGraph callback |
+|---------|-------------------|--------------------|
+| Tool call tracing | Yes | Yes |
+| Tool timing + status | Yes | Yes |
+| **Node name tracking** | No | Yes |
+| **Node → tool mapping** | No | Yes |
+
+With the LangGraph callback, spans show which graph node triggered each tool:
+
+```
+Session: sess-001
+├── langgraph/research_node/search_docs     142ms  ✓
+├── langgraph/research_node/fetch_page       89ms  ✓
+├── langgraph/analysis_node/query_db        210ms  ✓
+└── langgraph/summary_node/generate_report   45ms  ✓
+```
+
+The `server_name` field is `langgraph/{node_name}`, so you can filter and
+group by graph node in the dashboard.
+
+## Conditional routing
+
+LangGraph's conditional edges are visible in the trace — you can see which
+path the graph took based on which nodes executed and what tools they called.
+
+## Use with the basic LangChain callback
+
+If you don't need node-level context, the basic LangChain callback works:
+
+```python
+from langsight.integrations.langchain import LangSightLangChainCallback
+
+callback = LangSightLangChainCallback(client=client, agent_name="my-graph")
+result = await graph.ainvoke(input, config={"callbacks": [callback]})
+```
+
+## What gets traced
+
+| Field | Value |
+|-------|-------|
+| `tool_name` | Tool function name |
+| `server_name` | `langgraph/{node_name}` |
+| `agent_name` | Graph name (configurable) |
+| `latency_ms` | Auto-computed |
+| `status` | `success`, `error`, or `timeout` |
+
+## View traces
+
+```bash
+langsight sessions --id sess-001
+```
+
+Or open **http://localhost:3003/sessions/sess-001**.
