@@ -226,6 +226,7 @@ class TestVerifyApiKey:
         db_key_record = MagicMock()
         db_key_record.id = "key-id-1"
         db_key_record.is_revoked = False
+        db_key_record.is_expired = False
 
         storage = MagicMock()
         storage.list_api_keys = AsyncMock(return_value=[db_key_record])

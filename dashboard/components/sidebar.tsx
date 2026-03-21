@@ -333,8 +333,12 @@ function UserMenu() {
 export function Sidebar() {
   const path = usePathname();
   const router = useRouter();
+  const [mobileOpen, setMobileOpen] = useState(false);
   const isActive = (href: string) =>
     href === "/" ? path === "/" : path.startsWith(href);
+
+  // Close mobile sidebar on navigation
+  useEffect(() => { setMobileOpen(false); }, [path]);
 
   // Prefetch all routes on mount so they're pre-compiled and instant
   useEffect(() => {
@@ -342,14 +346,8 @@ export function Sidebar() {
     routes.forEach(route => router.prefetch(route));
   }, [router]);
 
-  return (
-    <aside
-      className="w-[224px] shrink-0 flex flex-col h-full"
-      style={{
-        background: "hsl(var(--sidebar-bg))",
-        borderRight: "1px solid hsl(var(--sidebar-border))",
-      }}
-    >
+  const sidebarContent = (
+    <>
       {/* ── Logo ──────────────────────────────────────────────── */}
       <div
         className="h-[54px] flex items-center gap-3 px-4 flex-shrink-0"
@@ -480,6 +478,45 @@ export function Sidebar() {
       <div style={{ borderTop: "1px solid hsl(var(--sidebar-border))" }}>
         <UserMenu />
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile hamburger button — visible only on small screens */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="fixed top-3 left-3 z-50 md:hidden w-9 h-9 rounded-lg flex items-center justify-center"
+        style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
+        aria-label="Open navigation menu"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 md:hidden"
+          style={{ background: "rgba(0,0,0,0.5)" }}
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Mobile sidebar — slides in from left */}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 w-[224px] flex flex-col h-full transition-transform duration-200 md:relative md:translate-x-0",
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+        )}
+        style={{
+          background: "hsl(var(--sidebar-bg))",
+          borderRight: "1px solid hsl(var(--sidebar-border))",
+        }}
+      >
+        {sidebarContent}
+      </aside>
+    </>
   );
 }

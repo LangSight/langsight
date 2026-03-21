@@ -220,6 +220,11 @@ async def verify_api_key(
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
         record = await get_fn(key_hash)
         if record:
+            if getattr(record, "is_expired", False):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="API key has expired",
+                )
             # Update last_used_at in background (non-blocking)
             touch_fn = getattr(storage, "touch_api_key", None)
             if touch_fn is not None and inspect.iscoroutinefunction(touch_fn):

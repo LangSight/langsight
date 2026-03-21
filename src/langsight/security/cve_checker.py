@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,7 @@ logger = structlog.get_logger()
 
 OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
 OSV_REQUEST_TIMEOUT = 10.0
+_CVE_CACHE_TTL = 3600.0  # 1 hour — CVE data doesn't change frequently
 
 
 def _parse_pyproject_deps(path: Path) -> list[dict[str, str]]:
@@ -97,8 +99,15 @@ def _find_dep_file(server: MCPServer) -> tuple[Path | None, str]:
     return None, ""
 
 
+# Module-level cache: dep_file_path → (findings, expires_at)
+_cve_cache: dict[str, tuple[list[SecurityFinding], float]] = {}
+
+
 async def check_cves(server: MCPServer) -> list[SecurityFinding]:
     """Query OSV API for CVEs in the server's dependencies.
+
+    Results are cached for 1 hour per dependency file to avoid hammering
+    the OSV API when scanning many servers that share the same deps.
 
     Returns an empty list if no dependency file is found or if the OSV
     API is unreachable (fail-open: don't block scans on network issues).
@@ -107,6 +116,13 @@ async def check_cves(server: MCPServer) -> list[SecurityFinding]:
     if dep_file is None:
         logger.debug("cve_checker.no_dep_file", server=server.name)
         return []
+
+    # Check cache
+    cache_key = str(dep_file)
+    cached = _cve_cache.get(cache_key)
+    if cached and time.monotonic() < cached[1]:
+        logger.debug("cve_checker.cache_hit", server=server.name, file=cache_key)
+        return cached[0]
 
     if dep_type == "pyproject":
         packages = _parse_pyproject_deps(dep_file)
@@ -158,6 +174,9 @@ async def check_cves(server: MCPServer) -> list[SecurityFinding]:
                     cve_id=vuln_id,
                 )
             )
+
+    # Cache results for 1 hour
+    _cve_cache[cache_key] = (findings, time.monotonic() + _CVE_CACHE_TTL)
 
     if findings:
         logger.warning(

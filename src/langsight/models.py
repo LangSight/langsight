@@ -219,7 +219,16 @@ class ApiKeyRecord(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_used_at: datetime | None = None
     revoked_at: datetime | None = None
+    expires_at: datetime | None = None  # optional expiration — None means never expires
 
     @property
     def is_revoked(self) -> bool:
         return self.revoked_at is not None
+
+    @property
+    def is_expired(self) -> bool:
+        return self.expires_at is not None and datetime.now(UTC) >= self.expires_at
+
+    @property
+    def is_active(self) -> bool:
+        return not self.is_revoked and not self.is_expired

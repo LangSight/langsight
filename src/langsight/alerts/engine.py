@@ -83,6 +83,27 @@ class AlertEngine:
         self._latency_multiplier = latency_spike_multiplier
         self._states: dict[str, _ServerState] = {}
 
+    def seed_from_history(self, history: list[HealthCheckResult]) -> None:
+        """Seed baseline state from recent health check history.
+
+        Call on startup with the last N results per server to restore
+        baseline_latency and consecutive_failures, so the first checks
+        after restart don't lose alert context.
+        """
+        for result in history:
+            state = self._states.setdefault(result.server_name, _ServerState())
+            state.last_status = result.status
+            if result.status == ServerStatus.UP and result.latency_ms:
+                if state.baseline_latency_ms is None:
+                    state.baseline_latency_ms = result.latency_ms
+                else:
+                    state.baseline_latency_ms = (
+                        state.baseline_latency_ms * 0.9 + result.latency_ms * 0.1
+                    )
+                state.consecutive_failures = 0
+            elif result.status == ServerStatus.DOWN:
+                state.consecutive_failures += 1
+
     def evaluate(self, result: HealthCheckResult) -> list[Alert]:
         """Evaluate a health check result and return any new alerts to fire.
 
@@ -117,9 +138,17 @@ class AlertEngine:
         return alerts
 
     def evaluate_many(self, results: list[HealthCheckResult]) -> list[Alert]:
-        """Evaluate multiple health check results and return all new alerts."""
+        """Evaluate multiple health check results and return all new alerts.
+
+        Results are processed in order — the sequence matters because each
+        result updates the server's state (consecutive_failures, baseline).
+        Sort results by server_name for deterministic behavior when the
+        input order is undefined (e.g., asyncio.gather results).
+
+        Not thread-safe — designed for single-threaded monitor loop.
+        """
         alerts: list[Alert] = []
-        for result in results:
+        for result in sorted(results, key=lambda r: r.server_name):
             alerts.extend(self.evaluate(result))
         return alerts
 
