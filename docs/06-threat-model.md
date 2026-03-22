@@ -23,7 +23,7 @@
 
 ## 1. System Overview
 
-LangSight is a self-hosted AI agent observability platform. It ingests OTEL spans from instrumented agents, stores them in ClickHouse, and exposes a FastAPI REST API and Next.js dashboard for querying traces, running security scans, replaying sessions, and monitoring MCP server health.
+LangSight is a self-hosted agent runtime reliability platform. It ingests OTEL spans from instrumented agents, stores them in ClickHouse, and exposes a FastAPI REST API and Next.js dashboard for querying traces, running security scans, replaying sessions, and monitoring MCP server health.
 
 ### Components
 
@@ -487,7 +487,7 @@ These are honest, documented security gaps. Each has a mitigation note and a tra
 Security vulnerabilities should be reported through one of the following channels:
 
 - **GitHub Private Security Advisory**: [github.com/langsight/langsight/security/advisories/new](https://github.com/langsight/langsight/security/advisories/new) (preferred)
-- **Email**: security@langsight.io — PGP key available on request
+- **Email**: security@langsight.dev — PGP key available on request
 
 Please do not open a public GitHub issue for security vulnerabilities before a patch is available.
 

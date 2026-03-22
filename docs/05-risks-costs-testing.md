@@ -1407,16 +1407,18 @@ class TestOtelIngestionThroughput:
 
 ## 7. Compliance and Legal
 
-### 7.1 Apache 2.0 License Implications
+### 7.1 BSL 1.1 License Implications
+
+(changed from original: was Apache 2.0; switched to BSL 1.1 on 2026-03-22)
 
 | Aspect | Implication | Action Required |
 |--------|-----------|----------------|
-| **Permissive use** | Anyone can use, modify, and distribute LangSight, including in commercial products, without releasing their modifications. | None. This is intentional to maximize adoption. |
-| **Patent grant** | Contributors grant a patent license to users. If a contributor holds patents covering their contribution, users get an automatic license. | Include a Contributor License Agreement (CLA) to ensure contributors have the right to grant patent licenses. |
-| **Attribution requirement** | Users must include the Apache 2.0 license and NOTICE file in distributions. They must state any modifications. | Include a NOTICE file listing copyright holders. Document this requirement clearly. |
-| **No trademark rights** | Apache 2.0 does not grant trademark rights. "LangSight" name and logo can be protected separately. | Register "LangSight" trademark if project gains traction. Publish trademark usage guidelines. |
-| **Compatibility** | Apache 2.0 is compatible with most open-source licenses (MIT, BSD, LGPL). It is one-way compatible with GPLv3 (Apache code can be used in GPL projects, but not vice versa). | No issues for the dependency tree (all deps should be Apache 2.0, MIT, or BSD compatible). Verify during dependency audits. |
-| **Commercial features** | Commercial features (SSO, RBAC, managed cloud) can be under a separate proprietary or BSL license alongside the Apache 2.0 open-source core. | Clearly separate open-source and commercial code directories. Document which code is under which license. |
+| **Source-available** | Anyone can view, modify, and self-host LangSight with no usage limits. The only restriction is offering LangSight as a hosted commercial service. | None. This is intentional to protect the project's ability to build a sustainable business. |
+| **Automatic conversion** | BSL 1.1 converts to Apache 2.0 on 2030-03-21. All code released before that date becomes fully permissive after the conversion date. | Track conversion date. Communicate clearly in LICENSE file and docs. |
+| **Self-hosting** | Self-hosting for internal use (including by companies) is explicitly allowed and unrestricted. No seat limits, no usage limits. | Document this clearly in README and docs to avoid adoption friction. |
+| **No trademark rights** | BSL 1.1 does not grant trademark rights. "LangSight" name and logo can be protected separately. | Register "LangSight" trademark if project gains traction. Publish trademark usage guidelines. |
+| **Compatibility** | BSL 1.1 is not an OSI-approved open-source license. Dependencies must be compatible (Apache 2.0, MIT, BSD are fine). | Verify during dependency audits. No GPL dependencies. |
+| **Commercial features** | The BSL 1.1 already protects the hosted-service use case. Additional commercial features (SSO, RBAC, managed cloud) can be offered alongside the core. | Clearly document which features are core (BSL 1.1) and which are commercial add-ons. |
 
 ### 7.2 Data Handling Responsibilities
 
@@ -1454,7 +1456,7 @@ If LangSight is offered as a hosted SaaS, it becomes a **data processor** under 
 |------|--------------|--------|
 | **CVE data usage** | OSV data is under CC-BY-4.0. NVD data is public domain. Both can be used commercially. | Include attribution for OSV data in NOTICE file. |
 | **MCP server scanning** | Scanning MCP servers you operate is fine. Scanning third-party servers without permission could be considered unauthorized access. | Document clearly: LangSight only scans servers explicitly configured by the user. Never scan arbitrary servers. |
-| **Contributor License Agreement** | CLA ensures contributors grant necessary rights for their contributions to be distributed under Apache 2.0 and potentially under commercial licenses. | Implement CLA-bot (e.g., cla-assistant) on the GitHub repository. Require CLA signature before merging PRs. |
+| **Contributor License Agreement** | CLA ensures contributors grant necessary rights for their contributions to be distributed under BSL 1.1 (and Apache 2.0 after conversion) and potentially under commercial licenses. | Implement CLA-bot (e.g., cla-assistant) on the GitHub repository. Require CLA signature before merging PRs. |
 | **Export controls** | Encryption in LangSight (TLS, at-rest encryption) may be subject to export control regulations (EAR) in certain jurisdictions. | Use standard, publicly available encryption libraries (OpenSSL, AWS KMS). File TSU notification if required for open-source software with encryption. |
 | **Security vulnerability disclosure** | As a security tool, LangSight may discover vulnerabilities in third-party MCP servers. Responsible disclosure practices are essential. | Publish a SECURITY.md with responsible disclosure guidelines. Allow 90 days for MCP server maintainers to fix issues before public disclosure. |
 

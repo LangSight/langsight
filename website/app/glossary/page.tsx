@@ -239,6 +239,26 @@ Within a session, LangSight captures the complete call tree: the root LLM reason
     relatedTerms: ["Tool Call Tracing", "MCP Observability", "MCP Health Check"],
     learnMore: { label: "Sessions documentation", href: "https://docs.langsight.dev" },
   },
+  {
+    id: "agent-runtime-reliability",
+    term: "Agent Runtime Reliability",
+    shortDef: "The practice of keeping AI agent toolchains running correctly in production — detecting loops, enforcing budgets, breaking failing tools, and mapping blast radius before users are impacted.",
+    body: `Agent runtime reliability is distinct from LLM evaluation and prompt quality. While tools like Langfuse and LangSmith focus on the model layer (did the prompt produce a good answer?), runtime reliability focuses on the tool layer (did the tool the agent called actually work, and what happens when it doesn't?).
+
+The core capabilities of an agent runtime reliability platform include: loop detection (same tool + same args called repeatedly), budget guardrails (per-session and per-tool cost limits), circuit breakers (auto-disable tools after consecutive failures), blast radius mapping (which agents break when a specific tool goes down), MCP health monitoring, security scanning, and schema drift detection. LangSight is purpose-built for this layer.`,
+    relatedTerms: ["Circuit Breaker", "MCP Health Check", "Agent Session"],
+    learnMore: { label: "LangSight overview", href: "https://docs.langsight.dev" },
+  },
+  {
+    id: "circuit-breaker",
+    term: "Circuit Breaker",
+    shortDef: "A runtime safety mechanism that automatically disables a tool after a configurable number of consecutive failures, preventing cascading errors and runaway costs.",
+    body: `Borrowed from distributed systems engineering, a circuit breaker in the AI agent context sits between the agent and the tool it wants to call. It tracks consecutive failures and, once a threshold is reached (e.g., 5 failures in a row), "opens" the circuit — blocking further calls to that tool until it recovers.
+
+Without a circuit breaker, a failing MCP server causes agents to retry endlessly, burning tokens and time. With a circuit breaker, the agent gets an immediate "tool unavailable" response, allowing it to fall back gracefully or report the issue. LangSight's SDK includes a built-in circuit breaker that can be enabled per-tool or globally, with configurable failure thresholds and recovery windows. Circuit breaker state is reported in health dashboards and alerts.`,
+    relatedTerms: ["Agent Runtime Reliability", "MCP Health Check", "MCP Server"],
+    learnMore: { label: "SDK circuit breaker docs", href: "https://docs.langsight.dev" },
+  },
 ];
 
 /* ── Page ───────────────────────────────────────────────────── */
@@ -269,7 +289,7 @@ export default function GlossaryPage() {
                 color: "var(--indigo)",
               }}
             >
-              MCP &amp; AI Agent Observability — Key Terms
+              MCP &amp; Agent Runtime Reliability — Key Terms
             </div>
 
             <h1
@@ -279,7 +299,7 @@ export default function GlossaryPage() {
                 fontFamily: "var(--font-geist-sans)",
               }}
             >
-              <span className="gradient-text">MCP Observability Glossary</span>
+              <span className="gradient-text">Agent Runtime Reliability Glossary</span>
             </h1>
 
             <p
@@ -287,7 +307,7 @@ export default function GlossaryPage() {
               style={{ color: "var(--muted)" }}
             >
               Plain-English definitions for the terms you&apos;ll encounter when building,
-              monitoring, and securing AI agent toolchains with MCP servers.
+              monitoring, and securing AI agent toolchains — runtime reliability, circuit breakers, MCP health, and more.
             </p>
           </div>
         </section>
@@ -447,15 +467,15 @@ export default function GlossaryPage() {
               }}
             >
               <span className="gradient-indigo">
-                See MCP observability in action.
+                See agent runtime reliability in action.
               </span>
             </h2>
             <p
               className="text-base mb-8"
               style={{ color: "var(--muted)" }}
             >
-              LangSight puts all of these concepts into a single platform — traces, health checks,
-              security scans, and cost attribution. Free to self-host.
+              LangSight puts all of these concepts into a single runtime reliability platform — traces, health checks,
+              security scans, circuit breakers, and cost guardrails. Free to self-host.
             </p>
             <div className="flex flex-wrap justify-center gap-3">
               <a
@@ -508,7 +528,7 @@ export default function GlossaryPage() {
             ))}
           </div>
           <p className="text-xs" style={{ color: "var(--dimmer)" }}>
-            Apache 2.0 · v0.2.0
+            BSL 1.1 · v0.2.0
           </p>
         </div>
       </footer>

@@ -22,11 +22,11 @@
 
 ## Status (as of v0.2.0)
 
-> **v0.2.0** ships authentication, project RBAC, model-based cost tracking, deep observability (payload capture, session replay, anomaly detection, SLO tracking), and full security hardening. It is suitable for production self-hosted deployments within trusted networks.
+> **v0.2.0** ships authentication, project RBAC, model-based cost tracking, deep runtime reliability features (payload capture, session replay, anomaly detection, SLO tracking), and full security hardening. It is suitable for production self-hosted deployments within trusted networks.
 
 ### What "alpha" means here
 
-LangSight v0.2.0 has 434 tests, 85%+ coverage, full auth/RBAC, deep observability features, and production-grade security hardening. It is suitable for self-hosted production deployments and internal team use.
+LangSight v0.2.0 has 434 tests, 85%+ coverage, full auth/RBAC, deep runtime reliability features, and production-grade security hardening. It is suitable for self-hosted production deployments and internal team use.
 
 ### Production Readiness Gaps
 
@@ -48,17 +48,26 @@ Gaps 3, 4, 5 (partial) are tracked as remaining tasks in `docs/04-implementation
 
 ### One-Liner
 
-**LangSight is the observability platform for AI agent actions — full traces of every tool call across single and multi-agent workflows, with deep MCP health monitoring and security scanning built in.**
+**LangSight is an agent runtime reliability platform — prevent loops, enforce budgets, detect cascading failures, monitor MCP health, and scan for CVEs. Not another prompt, eval, or simulation platform.**
+
+### Tagline
+
+**Prevent. Detect. Monitor. Map.** Langfuse watches the brain. LangSight watches the hands.
 
 ### Elevator Pitch
 
-The primary question every on-call engineer asks when a multi-agent workflow breaks is: "What did my agent call, in what order, how long did each tool take, which ones failed, and what did it cost?" LangSight answers that question first.
+The question is not "what did the LLM say?" The question is "how do we stop it next time?" Agents get stuck in loops. Tool calls cascade into failures. Budgets evaporate. Schema changes break production silently. LangSight is the runtime reliability layer that prevents these failures before they reach users.
 
-Agents call three types of things: MCP servers (postgres-mcp, jira-mcp, slack-mcp), non-MCP tools (Stripe API, Sendgrid, Python functions), and sub-agents (agent-to-agent handoffs). LangSight observes all three via the SDK and OTLP. MCP servers get extra depth because the MCP protocol is standard and inspectable — proactive health checks, security scanning, schema drift detection, and alerting. Non-MCP tools (HTTP APIs, functions) are observed passively — you see every call in the trace but LangSight cannot proactively health-check them because there is no standard protocol to ping.
+Agents call three types of things: MCP servers (postgres-mcp, jira-mcp, slack-mcp), non-MCP tools (Stripe API, Sendgrid, Python functions), and sub-agents (agent-to-agent handoffs). LangSight instruments at the agent level — capturing every tool call regardless of type — and adds proactive depth for MCP servers specifically because the MCP protocol is inspectable. The four pillars:
 
-**The key insight**: agent-level observability is a superset of MCP observability. If you instrument at the agent level, you automatically capture everything the agent touched — MCP or not. The `server_name` field in `ToolCallSpan` can be "stripe-api", "sendgrid", "openai-api", or "postgres-mcp" — it is not locked to MCP servers.
+1. **Prevent** — loop detection, budget guardrails, circuit breakers
+2. **Detect** — CVE scanning, OWASP MCP Top 10, tool poisoning, schema drift
+3. **Monitor** — MCP health checks, latency tracking, error rate alerts, SLOs
+4. **Map** — blast radius analysis, agent-to-tool lineage, dependency graphs
 
-(changed from original: was MCP-health-first positioning, then agent-trace-first; now the complete framing — all tool types observed, MCP gets proactive depth)
+**The key insight**: agent runtime reliability is not observability. Observability tools (Langfuse, LangWatch, LangSmith) watch the LLM reasoning layer — prompts, completions, evals. LangSight watches the action layer — what the agent actually did, whether it should have done it, and what breaks if a tool goes down. They are complementary, not competing.
+
+(changed from original: was "observability platform" positioning; pivoted to "runtime reliability" 2026-03-22 to avoid overlap with Langfuse/LangWatch and claim an empty category)
 
 ### Tool Type Capability Matrix
 
@@ -103,11 +112,11 @@ MCP has become the de facto standard for connecting AI agents to external tools.
 | Exposed MCP servers (no auth) | 8,000+ | Security research, 2025 |
 | Agentic AI projects predicted to fail by 2027 | 40% | Gartner |
 
-**The core problem**: Teams deploying AI agents are flying blind on what those agents actually do. The primary question — "what did my agent call, in what order, how long did each take, which failed, what did it cost?" — is unanswerable without dedicated tooling. Answering it immediately surfaces the secondary infrastructure question: "are my tools healthy and secure?"
+**The core problem**: Teams deploying AI agents have no runtime safety net. Agents get stuck in loops. Tool calls cascade into failures. Budgets evaporate on runaway retries. Schema changes break production silently. The question is not "what did the LLM say?" — observability tools answer that. The question is "how do we prevent it next time?"
 
-**Primary (agent-level)**: "What did my agent call, in what order, how long did each tool take, which ones failed, and what did it cost?" This is the first question every on-call engineer asks when a multi-agent workflow misbehaves.
+**Primary (runtime reliability)**: "How do we prevent agent failures at the tool layer?" This means loop detection, budget guardrails, circuit breakers, and blast radius analysis — features that do not exist in any observability tool today.
 
-**Secondary (infrastructure-level)**: "Are my MCP servers healthy and secure?" Answering the primary question leads immediately to this one.
+**Secondary (infrastructure-level)**: "Are my MCP servers healthy and secure?" This is the proactive monitoring layer — health checks, CVE scanning, schema drift detection, tool poisoning alerts.
 
 1. **"What did my agent call?"** -- An orchestrator agent delegates to three sub-agents. Each sub-agent calls multiple MCP tools. When the workflow fails, you have no trace of the full call tree. You cannot tell whether the problem is the orchestrator's routing decision, a sub-agent's tool choice, or a specific tool returning bad data.
 
@@ -119,29 +128,30 @@ MCP has become the de facto standard for connecting AI agents to external tools.
 
 4. **"What does this tool cost us?"** -- An agent calls a geocoding MCP tool 47 times per task because the tool returns partial results. At $0.005/call, a single customer interaction costs $0.24 in tool calls alone. Nobody tracks this.
 
-**The monitoring landscape is fragmented and inadequate**:
+**The tool landscape does not address runtime reliability**:
 
 | Tool | What It Does | What It Misses |
 |------|-------------|----------------|
-| MCPcat | Analytics/logging for MCP calls | No security scanning, no schema tracking, no alerting, analytics only |
-| Datadog | Commercial APM with MCP traces | $$$, no MCP-specific health checks, no tool poisoning detection |
-| Langfuse | LLM observability — prompts, completions, token costs, evals | **Complementary, not competing.** Langfuse traces the LLM reasoning layer (what the model decided). LangSight traces the action layer (what the agent called). Use both together. |
+| MCPcat | Analytics/logging for MCP calls | No security scanning, no guardrails, no alerting, analytics only |
+| Datadog | Commercial APM with MCP traces | $$$, no MCP-specific health checks, no loop detection, no tool poisoning detection |
+| Langfuse | LLM observability — prompts, completions, token costs, evals | **Complementary, not competing.** Langfuse watches the brain (what the model decided). LangSight watches the hands (what the agent did, and whether it should have). Use both together. |
+| LangWatch | LLM observability with guardrails | Guardrails are prompt-level (content filtering), not tool-level (loop detection, budget enforcement) |
 | Sentry | JS-only MCP error tracking (beta) | Single language, beta quality, no proactive monitoring |
-| Portkey | LLM gateway with routing | Not an observability tool, no MCP-specific features |
+| Portkey | LLM gateway with routing | Not a reliability tool, no MCP-specific features |
 
-No existing tool answers all questions above. LangSight does. Langfuse is the deliberate exception — it answers different questions and they work together (see Competitive Positioning below).
+No existing tool provides runtime reliability for the action layer. LangSight does. Langfuse/LangWatch are deliberate complements — they answer different questions (see Competitive Positioning below).
 
 ### Why Now
 
-**1. MCP has crossed the adoption tipping point.** With all four major AI labs supporting MCP and nearly 100M monthly SDK downloads, MCP is no longer experimental. It is production infrastructure. Production infrastructure demands production-grade observability.
+**1. MCP has crossed the adoption tipping point.** With all four major AI labs supporting MCP and nearly 100M monthly SDK downloads, MCP is no longer experimental. It is production infrastructure. Production infrastructure demands runtime reliability — health monitoring, security scanning, and failure prevention.
 
 **2. The security crisis is urgent and worsening.** The OWASP MCP Top 10 was published in 2025. Real CVEs have been discovered and exploited. Tool poisoning attacks -- where a malicious MCP server injects instructions into tool descriptions that manipulate agent behavior -- have moved from theoretical to practical. 8,000+ MCP servers are exposed without authentication. The window to establish security best practices is now.
 
 **3. Multi-agent architectures are going mainstream.** Teams are moving from single-agent demos to production systems with 10-50 MCP tools. At this scale, manual debugging is impossible. The team that needed 3 days to find the broken Jira tool is the norm, not the exception.
 
-**4. The "last mile" of AI reliability is tool reliability.** Billions of dollars have been invested in making LLMs better, faster, cheaper. Prompt engineering is well-understood. Eval frameworks exist. But the tools that agents depend on -- the MCP servers -- have zero standardized observability. This is the biggest remaining gap in the AI infrastructure stack.
+**4. The "last mile" of AI reliability is tool reliability.** Billions of dollars have been invested in making LLMs better, faster, cheaper. Prompt engineering is well-understood. Eval frameworks exist. But the tools that agents depend on -- the MCP servers -- have zero runtime reliability infrastructure. No loop detection. No budget guardrails. No circuit breakers. No health monitoring. This is the biggest remaining gap in the AI infrastructure stack.
 
-**5. Open-source timing is perfect.** The community is building MCP servers at breakneck speed but has no standardized way to monitor them. An open-source solution that integrates with existing stacks (Langfuse for traces, Prometheus for metrics, PagerDuty for alerts) will see rapid adoption because it fills a gap everyone feels but nobody has solved.
+**5. Open-source timing is perfect.** The community is building MCP servers at breakneck speed but has no standardized way to ensure runtime reliability. An open-source solution that complements existing stacks (Langfuse for LLM traces, Prometheus for metrics, PagerDuty for alerts) will see rapid adoption because it fills a gap everyone feels but nobody has solved. Observability tools watch what happened; LangSight prevents what happens next.
 
 ---
 
@@ -240,35 +250,37 @@ No existing tool answers all questions above. LangSight does. Langfuse is the de
 
 ### What LangSight IS
 
-LangSight is **complete observability for everything an AI agent calls**. It instruments at the agent level — capturing every tool call regardless of type — and adds proactive depth for MCP servers specifically because the MCP protocol is inspectable.
+LangSight is **agent runtime reliability** — the layer between "the agent decided" and "the tool executed." It prevents, detects, monitors, and maps failures at the action layer.
 
-1. **Agent session tracing** — observe every call the agent makes: MCP tools, HTTP APIs, Python functions, sub-agent handoffs, all in one ordered trace (PRIMARY — applies to all tool types)
-2. **Multi-agent tree tracing** — when Agent A hands off to Agent B which calls Agent C, trace the full tree via `parent_span_id` (PRIMARY — applies to all tool types)
-3. **Per-session cost attribution** — cost per tool, per agent, per session (PRIMARY — applies to all tool types)
-4. **MCP health monitoring** — continuous proactive health checks, schema drift detection, latency tracking (MCP servers only — unique vs competitors)
-5. **MCP security scanning** — CVE, OWASP MCP Top 10, tool poisoning detection, auth audit (MCP servers only — unique vs competitors)
-6. **Proactive alerting** — fires before MCP tools degrade enough to impact users (MCP servers only)
+1. **Prevent** — loop detection stops runaway agents before they burn budget; budget guardrails enforce per-session and per-tool cost limits; circuit breakers halt cascading tool failures (v0.3 roadmap)
+2. **Detect** — CVE scanning, OWASP MCP Top 10, tool poisoning detection, auth audit, schema drift detection (MCP servers only — unique vs competitors)
+3. **Monitor** — continuous proactive MCP health checks, latency tracking, SLO evaluation, anomaly detection, proactive alerting (MCP servers only — unique vs competitors)
+4. **Map** — blast radius analysis, agent-to-tool lineage graphs, dependency mapping across the full agent fleet (all tool types)
+5. **Agent session tracing** — observe every call the agent makes: MCP tools, HTTP APIs, Python functions, sub-agent handoffs, all in one ordered trace (all tool types)
+6. **Per-session cost attribution** — cost per tool, per agent, per session (all tool types)
 
-(changed from original: ordering reflects the complete framing — all tool types observed at the agent level; MCP health/security are proactive extras that only apply to MCP servers)
+(changed from original: was "observability platform" with tracing-first ordering; pivoted to "runtime reliability" with Prevent/Detect/Monitor/Map pillars 2026-03-22)
 
 ### What LangSight is NOT
 
 | LangSight is NOT... | Because... | Use Instead |
 |---------------------|-----------|-------------|
-| An LLM prompt/completion tracer | Langfuse does this well; we trace tool calls, not LLM reasoning | Langfuse, LangSmith |
+| Another observability platform | Langfuse, LangWatch, LangSmith already observe the LLM layer well; we are a runtime reliability layer for the action/tool layer | Langfuse, LangWatch |
+| An LLM prompt/completion tracer | Langfuse watches the brain; LangSight watches the hands | Langfuse, LangSmith |
 | An eval framework | Evaluating LLM output quality is a different problem | Ragas, DeepEval, Braintrust |
+| A simulation/testing platform | We prevent failures in production, not in staging | Invariant, Promptfoo |
 | An LLM gateway/router | Routing requests across LLM providers is orthogonal | Portkey, LiteLLM |
 | A prompt management tool | Managing prompt versions is a different workflow | Langfuse, PromptLayer |
-| A general APM tool | We focus exclusively on MCP tool calls, not HTTP/gRPC/DB monitoring | Datadog, New Relic |
-| An MCP server framework | We observe MCP servers, we don't help you build them | MCP SDK, FastMCP |
+| A general APM tool | We focus on agent runtime reliability, not HTTP/gRPC/DB monitoring | Datadog, New Relic |
+| An MCP server framework | We monitor and secure MCP servers, we don't help you build them | MCP SDK, FastMCP |
 
 ### Competitive Positioning
 
 ```
-                               Action-Layer Depth
+                               Runtime Reliability Depth
                                      ^
                                      |
-                            LangSight|
+                            LangSight|   (Prevent, Detect, Monitor, Map)
                                ******|
                               *      |
                              *       |
@@ -290,24 +302,21 @@ LangSight is **complete observability for everything an AI agent calls**. It ins
            *                \        |
 ```
 
-**vs. Langfuse**: LangSight and Langfuse answer different questions and are designed to work together — not compete.
+**The core framing**: Langfuse watches the brain. LangSight watches the hands. They are complementary layers, not competitors.
 
-- **Langfuse / LangSmith**: "What happened in the LLM and reasoning layer?" — prompts, completions, traces, token costs, evaluations.
-- **LangSight**: "What did the agent actually do?" — tool call traces, handoffs, action-level costs, tool reliability, MCP server health.
+**vs. Langfuse / LangWatch / LangSmith**: These are LLM observability tools — they trace the reasoning layer: prompts, completions, token costs, evaluations. LangSight is a runtime reliability tool — it prevents, detects, monitors, and maps failures at the action layer. Different category entirely. Use both together.
 
-Langfuse shows you the model span, prompt, and completion that led to a tool decision. LangSight shows you the execution path that followed: which tool ran, in what order, how long it took, whether it failed, how much it cost, and which sub-agent was involved. They are complementary layers of the same observability stack.
+LangSight has capabilities the observability tools do not and will not build: loop detection, budget guardrails, circuit breakers, MCP server health checks (synthetic probes, not just passive recording), CVE scanning, OWASP MCP Top 10 compliance, schema drift detection, tool poisoning detection, blast radius analysis, and alerting on DOWN/DEGRADED servers. These are runtime reliability features, not LLM-layer features.
 
-LangSight has capabilities Langfuse does not and will not build: MCP server health checks (synthetic probes, not just passive recording), CVE scanning, OWASP MCP Top 10 compliance, schema drift detection, tool poisoning detection, and alerting on DOWN/DEGRADED servers. These are tool-infrastructure features, not LLM-layer features.
+**vs. MCPcat**: MCPcat provides analytics and logging for MCP calls. It is a good starting point for understanding MCP usage patterns. LangSight goes deeper with proactive health monitoring, security scanning, runtime guardrails, and root cause attribution. MCPcat tells you what happened; LangSight prevents it from happening again.
 
-**vs. MCPcat**: MCPcat provides analytics and logging for MCP calls. It is a good starting point for understanding MCP usage patterns. LangSight goes deeper with proactive health monitoring, security scanning, multi-agent trees, and root cause attribution. MCPcat tells you what happened; LangSight tells you what the agent did across the whole workflow and warns you before it happens again.
+**vs. Datadog**: Datadog offers commercial APM with AI and MCP-adjacent tracing inside a broad observability suite. LangSight is narrower and deeper at the agent runtime reliability layer: loop detection, budget guardrails, circuit breakers, MCP health checks, schema drift detection, tool poisoning detection, and OWASP-driven security scanning. For many teams, LangSight should feed Datadog/Grafana rather than replace them.
 
-**vs. Datadog**: Datadog offers commercial APM with AI and MCP-adjacent tracing inside a broad observability suite. LangSight is narrower and deeper at the agent action layer: multi-agent trees, action-level RCA, MCP health checks, schema drift detection, tool poisoning detection, and OWASP-driven security scanning. For many teams, LangSight should feed Datadog/Grafana rather than replace them.
-
-**vs. Sentry (MCP)**: Sentry's MCP integration is oriented around error tracking. LangSight is built for action-layer execution visibility and MCP operational depth: traces, handoffs, health monitoring, schema drift, and security scanning.
+**vs. Sentry (MCP)**: Sentry's MCP integration is oriented around error tracking. LangSight is a runtime reliability platform: it prevents failures (guardrails), detects threats (security scanning), monitors infrastructure (health checks), and maps dependencies (blast radius).
 
 ### The Complement Story
 
-LangSight's position in the AI observability stack:
+LangSight's position in the AI infrastructure stack:
 
 ```
 +------------------------------------------------------------------+
@@ -317,12 +326,12 @@ LangSight's position in the AI observability stack:
          |                    |                    |
          v                    v                    v
 +------------------+  +------------------+  +------------------+
-|   LLM Layer      |  |   Tool Layer     |  |   Data Layer     |
-|                  |  |                  |  |                  |
-|  Langfuse        |  |  LangSight      |  |  Great           |
-|  LangSmith       |  |  <<<< HERE      |  |  Expectations    |
-|  Braintrust      |  |                  |  |  Soda            |
-|                  |  |                  |  |  Monte Carlo     |
+|   LLM Layer      |  |   Runtime Layer  |  |   Data Layer     |
+|   (the brain)    |  |   (the hands)    |  |                  |
+|                  |  |                  |  |  Great           |
+|  Langfuse        |  |  LangSight      |  |  Expectations    |
+|  LangWatch       |  |  <<<< HERE      |  |  Soda            |
+|  LangSmith       |  |                  |  |  Monte Carlo     |
 +------------------+  +------------------+  +------------------+
          |                    |                    |
          v                    v                    v
@@ -332,10 +341,13 @@ LangSight's position in the AI observability stack:
 +------------------+  +------------------+  +------------------+
 ```
 
-**Integration points with Langfuse**:
+**Langfuse watches the brain. LangSight watches the hands.** They are complementary layers:
+
+**Integration points with Langfuse/LangWatch**:
 - LangSight reads Langfuse trace IDs from MCP call context and links tool health data to specific traces
 - Langfuse users can click through from a slow MCP span to LangSight's detailed tool health view
 - LangSight publishes tool health scores that Langfuse can display as trace annotations
+- Teams use Langfuse for prompt debugging + LangSight for tool reliability — different questions, same workflow
 
 **Integration points with Prometheus/Grafana**:
 - LangSight exposes a `/metrics` endpoint in Prometheus exposition format
@@ -1084,7 +1096,7 @@ LangSight does NOT build:
 - LLM output evals or ground truth comparison
 - Agent execution replay at the LLM layer
 
-LangSight DOES trace tool calls at the MCP layer. When your agent calls `postgres-mcp/query`, LangSight records the span — timing, result, cost, parent agent. It does NOT record what the LLM was "thinking" when it decided to make that call. Langfuse records that. They are complementary.
+LangSight DOES trace tool calls at the action layer and adds runtime reliability guardrails. When your agent calls `postgres-mcp/query`, LangSight records the span — timing, result, cost, parent agent — and enforces runtime safety (loop detection, budget limits, circuit breakers). It does NOT record what the LLM was "thinking" when it decided to make that call. Langfuse records that. They are complementary.
 
 (added 2026-03-17: boundary with Langfuse clarified as part of product pivot)
 
@@ -1209,14 +1221,16 @@ LangSight DOES: export metrics in formats (Prometheus, OTLP) that feed into exis
 
 ### 8.1 License
 
-**Apache License 2.0**
+**Business Source License 1.1 (BSL 1.1)** — converts to Apache 2.0 on 2030-03-21.
+
+(changed from original: was Apache 2.0; switched to BSL 1.1 on 2026-03-22)
 
 Rationale:
-- Permissive enough for enterprise adoption (no copyleft concerns)
-- Allows commercial use, modification, and distribution
-- Patent grant protects contributors and users
-- Industry standard for infrastructure tooling (Kubernetes, Prometheus, Grafana, Langfuse all use Apache 2.0)
-- Compatible with the broadest range of downstream projects
+- Self-host free, no usage limits — same developer experience as Apache 2.0
+- Only restriction: cannot offer LangSight as a hosted commercial service
+- Converts automatically to Apache 2.0 after 4 years (2030-03-21)
+- Protects the project's ability to build a sustainable business while keeping the source fully open
+- Industry precedent: HashiCorp, MariaDB, CockroachDB, Sentry all use BSL or similar source-available licenses
 
 ### 8.2 What is Open Source (Core)
 
@@ -1224,20 +1238,20 @@ Everything in Phases 1-3 as described above is open source. Specifically:
 
 | Component | License | Rationale |
 |-----------|---------|-----------|
-| CLI tool | Apache 2.0 | Must be fully open for adoption |
-| Health monitoring engine | Apache 2.0 | Core value proposition, drives adoption |
-| Security scanner | Apache 2.0 | Security tooling must be inspectable |
-| Metrics collection agent | Apache 2.0 | Must run in user's infrastructure |
-| Quality scoring algorithm | Apache 2.0 | Transparency builds trust |
-| Alerting engine | Apache 2.0 | Core operational feature |
-| Web dashboard (app.langsight.io) | Apache 2.0 | Drives engagement and contributions |
-| Marketing website (langsight.io) | Apache 2.0 | Public-facing, self-hostable via Vercel |
-| Documentation site (docs.langsight.io) | Apache 2.0 | Mintlify, sourced from docs/ folder |
-| REST/gRPC API | Apache 2.0 | Enables ecosystem integration |
-| Prometheus/OTLP export | Apache 2.0 | Standard interoperability |
-| RCA engine (rule-based) | Apache 2.0 | Core debugging feature |
-| Langfuse integration | Apache 2.0 | Ecosystem play |
-| Helm chart + Docker Compose | Apache 2.0 | Easy deployment |
+| CLI tool | BSL 1.1 | Must be fully open for adoption |
+| Health monitoring engine | BSL 1.1 | Core value proposition, drives adoption |
+| Security scanner | BSL 1.1 | Security tooling must be inspectable |
+| Metrics collection agent | BSL 1.1 | Must run in user's infrastructure |
+| Quality scoring algorithm | BSL 1.1 | Transparency builds trust |
+| Alerting engine | BSL 1.1 | Core operational feature |
+| Web dashboard (app.langsight.dev) | BSL 1.1 | Drives engagement and contributions |
+| Marketing website (langsight.dev) | BSL 1.1 | Public-facing, self-hostable via Vercel |
+| Documentation site (docs.langsight.dev) | BSL 1.1 | Mintlify, sourced from docs/ folder |
+| REST/gRPC API | BSL 1.1 | Enables ecosystem integration |
+| Prometheus/OTLP export | BSL 1.1 | Standard interoperability |
+| RCA engine (rule-based) | BSL 1.1 | Core debugging feature |
+| Langfuse integration | BSL 1.1 | Ecosystem play |
+| Helm chart + Docker Compose | BSL 1.1 | Easy deployment |
 
 ### 8.3 What is Commercial (Enterprise)
 

@@ -269,7 +269,7 @@ accept_invite()             → Postgres  (fixed 2026-03-21 — was missing dele
 - `LangSightClient(url, api_key, redact_payloads=False)`: async HTTP client, reads `LANGSIGHT_URL` + `LANGSIGHT_API_KEY` from env if not provided. `redact_payloads` suppresses input/output capture globally.
 - `LangSightClient.wrap(mcp_client, redact_payloads=None)`: per-wrap override for `redact_payloads`; `None` inherits the client-level setting.
 - `MCPClientProxy` captures tool call arguments as `input_args` and JSON-serialises return values as `output_result` on every `ToolCallSpan`. Both fields are set to `None` when `redact_payloads=True`.
-- Fail-open: SDK errors are logged but never propagate to the wrapped MCP client — observability cannot break an agent
+- Fail-open: SDK errors are logged but never propagate to the wrapped MCP client — reliability instrumentation cannot break an agent
 - Context manager support for lifecycle management
 
 **Source**: `src/langsight/sdk/`
@@ -593,7 +593,7 @@ At current scale (demo data, single-digit projects) this is invisible — ClickH
 | **Containerization** | Docker Compose | Single `docker compose up` for full stack |
 | **Metrics** | prometheus-client | Prometheus text exposition format for `/metrics` endpoint |
 | **Testing** | pytest + httpx + testcontainers | Standard Python testing stack |
-| **License** | Apache 2.0 | Maximum adoption, no ELv2 concerns |
+| **License** | BSL 1.1 (converts to Apache 2.0 on 2030-03-21) | Self-host free; only restriction is hosted-service resale (changed from Apache 2.0, decided 2026-03-22) |
 
 ---
 

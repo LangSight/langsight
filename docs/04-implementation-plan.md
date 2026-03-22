@@ -29,7 +29,7 @@ Phase 3 (OTEL + Costs)          ████████████████
 Release 0.1.0                   ████████████████ 100% — SHIPPED ✅ (PyPI + GitHub)
 Phase 4 (Dashboard + Website)   ████████████████ 100% — COMPLETE ✅ full redesign shipped 2026-03-19
 Security Hardening (S.1-S.10)   ████████░░░░░░░░  50% — S.4, S.7, S.9, S.10 COMPLETE ✅; S.1-S.3, S.5-S.6, S.8 in progress
-Phase 5 (Deep Observability)    ████████████████ 100% — COMPLETE ✅
+Phase 5 (Deep Reliability)      ████████████████ 100% — COMPLETE ✅
 Phase 6 (Project-Level RBAC)    ████████████████ 100% — COMPLETE ✅
 Phase 7 (Model-Based Costs)     ████████████████ 100% — COMPLETE ✅
 Phase 8 (Dashboard Redesign)    ████████████████ 100% — COMPLETE ✅ 2026-03-19
@@ -345,7 +345,7 @@ The MVP is "done" when all of the following are true:
 | R.1 | Build package | `uv build` — generate `dist/` with wheel + sdist | ✅ Done — `dist/langsight-0.1.0-py3-none-any.whl` + `.tar.gz` |
 | R.2 | Publish to PyPI | `uv publish` — publish `langsight==0.1.0` to PyPI | ✅ Done — https://pypi.org/project/langsight/ |
 | R.3 | GitHub release | `git tag v0.1.0` + create GitHub release with CHANGELOG notes | ✅ Done — GitHub release `v0.1.0` exists |
-| R.4 | Mintlify deployment | Connect `docs-site/` to Mintlify dashboard; deploy to `docs.langsight.io` | Pending (manual) — requires connecting repo on mintlify.com |
+| R.4 | Mintlify deployment | Connect `docs-site/` to Mintlify dashboard; deploy to `docs.langsight.dev` | Pending (manual) — requires connecting repo on mintlify.com |
 | R.5 | Write sessions docs page | Create `docs-site/cli/sessions.mdx` — the only missing Mintlify page | ✅ Done — `docs-site/cli/sessions.mdx` exists |
 | R.6 | README badges | Add PyPI version badge (`https://img.shields.io/pypi/v/langsight`) to README | ✅ Done — badge in `README.md` |
 
@@ -353,7 +353,7 @@ The MVP is "done" when all of the following are true:
 - [x] `pip install langsight==0.1.0` installs from PyPI on a clean Python 3.11+ env
 - [x] `langsight --version` outputs `0.1.0`
 - [x] GitHub release tagged `v0.1.0` with full CHANGELOG notes
-- [ ] `docs.langsight.io` resolves and shows all 28 pages (blocked on R.4 manual step)
+- [ ] `docs.langsight.dev` resolves and shows all 28 pages (blocked on R.4 manual step)
 - [x] `docs-site/cli/sessions.mdx` covers `langsight sessions`, `--id`, `--json` flags, and Rich tree output
 
 ---
@@ -647,7 +647,7 @@ The MVP is "done" when all of the following are true:
 
 ---
 
-### Phase 5: Deep Observability (the Missing Killer Features)
+### Phase 5: Deep Reliability Features (the Missing Killer Features)
 
 **Status**: COMPLETE ✅ (2026-03-19) — all seven features shipped
 
@@ -807,7 +807,7 @@ The MVP is "done" when all of the following are true:
 
 **Status**: NOT STARTED
 
-**Goal**: Introduce the Project as the top-level isolation boundary. All observability data belongs to a project. Users hold project-level roles. Global admins see everything. Non-members receive HTTP 404 (not 403) to prevent project enumeration.
+**Goal**: Introduce the Project as the top-level isolation boundary. All reliability data belongs to a project. Users hold project-level roles. Global admins see everything. Non-members receive HTTP 404 (not 403) to prevent project enumeration.
 
 **Why this matters**: LangSight currently operates as a single flat namespace — every user sees every trace, SLO, and API key. Teams running multiple agents (e.g., "Customer Support Bot" vs "Internal HR Bot") need data isolation, independent API keys, and per-project access control before LangSight can be deployed in a shared environment.
 
@@ -1752,7 +1752,7 @@ mcp_client = wrap(mcp_client, client)  # all tool calls now recorded
 | SDK.3 | `wrap(mcp_client, langsight_client)`: proxy that intercepts `call_tool()`, measures latency, records success/error | 6h |
 | SDK.4 | Context manager support: `async with LangSightClient(...) as client:` | 2h |
 | SDK.5 | `ToolCallSpan` Pydantic model: server_name, tool_name, input_hash, success, latency_ms, error, trace_id | 3h |
-| SDK.6 | Fail-open: SDK errors never propagate to the wrapped MCP client — observability must not break the agent | 3h |
+| SDK.6 | Fail-open: SDK errors never propagate to the wrapped MCP client — reliability instrumentation must not break the agent | 3h |
 | SDK.7 | `LANGSIGHT_URL` env var support: `LangSightClient()` with no args reads from env | 2h |
 | SDK.8 | Tests: wrap a mock MCP client, verify spans are sent; verify fail-open on HTTP errors | 4h |
 
@@ -2040,14 +2040,14 @@ The current test-mcps/docker-compose.yml is for development only. Phase 3 ships 
 
 ```
 Phase 4 deliverables
-├── langsight.io          — marketing website (Next.js + Tailwind)
-├── docs.langsight.io     — developer docs (Mintlify)
-└── app.langsight.io      — product dashboard (Next.js 15 + shadcn/ui)
+├── langsight.dev          — marketing website (Next.js + Tailwind)
+├── docs.langsight.dev     — developer docs (Mintlify)
+└── app.langsight.dev      — product dashboard (Next.js 15 + shadcn/ui)
 ```
 
 ---
 
-#### 4.1 Marketing Website (langsight.io) — COMPLETE ✅ (Vercel deploy pending)
+#### 4.1 Marketing Website (langsight.dev) — COMPLETE ✅ (Vercel deploy pending)
 
 **Status**: Built at `website/app/page.tsx`. All sections implemented. Vercel deployment is a manual step.
 
@@ -2055,7 +2055,7 @@ Phase 4 deliverables
 
 | Page / Section | Content |
 |----------------|---------|
-| Hero | "The missing observability layer for MCP tool infrastructure" + GitHub CTA |
+| Hero | "Agent runtime reliability — prevent loops, enforce budgets, monitor MCP health, scan for CVEs" + GitHub CTA |
 | Features overview | Health monitoring, security scanning, SDK integration, investigate command |
 | How it works | 3-step flow: `langsight init` → `langsight monitor` → `langsight investigate` |
 | Integrations | Claude Desktop, Cursor, LibreChat, CrewAI, Pydantic AI, OpenAI Agents, Anthropic/Claude, LangGraph |
@@ -2080,14 +2080,14 @@ Phase 4 deliverables
 **Acceptance Criteria**:
 - [ ] Lighthouse performance score >= 90 on mobile
 - [ ] GitHub stars badge reflects live count
-- [ ] All integration logos link to respective integration docs on docs.langsight.io
+- [ ] All integration logos link to respective integration docs on docs.langsight.dev
 - [ ] `langsight init` quickstart code block is copy-pasteable and accurate
 
 ---
 
-#### 4.2 Documentation Site (docs.langsight.io) — COMPLETE ✅ (Mintlify deployment pending)
+#### 4.2 Documentation Site (docs.langsight.dev) — COMPLETE ✅ (Mintlify deployment pending)
 
-**Status**: 28 pages built in `docs-site/` including `sessions.mdx`. Mintlify deployment to `docs.langsight.io` is a manual step on mintlify.com dashboard.
+**Status**: 28 pages built in `docs-site/` including `sessions.mdx`. Mintlify deployment to `docs.langsight.dev` is a manual step on mintlify.com dashboard.
 
 **Tech**: Mintlify, sourced from `docs/` folder + new reference pages auto-generated from FastAPI OpenAPI spec.
 
@@ -2122,7 +2122,7 @@ Phase 4 deliverables
 
 ---
 
-#### 4.3 Product Dashboard (app.langsight.io) — COMPLETE ✅
+#### 4.3 Product Dashboard (app.langsight.dev) — COMPLETE ✅
 
 **Status**: Built at `dashboard/`. Core authenticated dashboard is live behind the NextAuth + proxy architecture. Recent UX consolidation (2026-03-20) moved topology exploration under Agents and session debugging into the dedicated `/sessions/[id]` route.
 
@@ -2626,7 +2626,7 @@ langsight/
 |-- mypy.ini                             # mypy type checker configuration
 |-- .pre-commit-config.yaml              # Pre-commit hooks
 |-- .env.example                         # Example environment variables
-|-- LICENSE                              # Apache 2.0
+|-- LICENSE                              # BSL 1.1 (converts to Apache 2.0 on 2030-03-21)
 |-- README.md
 |-- CONTRIBUTING.md
 |-- CODE_OF_CONDUCT.md

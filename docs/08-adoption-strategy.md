@@ -1,25 +1,48 @@
 # 08 — Adoption Strategy
 
+> Updated 2026-03-22: Major rewrite — positioning pivot from "observability platform" to "agent runtime reliability platform." LangSight no longer competes with Langfuse/LangWatch. It is the complementary "tool layer" alongside them.
+
 ## Current Reality (March 2026)
 
 - 0 GitHub stars, 0 forks, 0 external contributors
 - Docker + Postgres + ClickHouse required to try anything
-- Positioning as "observability platform" — competing with Langfuse (6k+ stars), Phoenix (15k+ stars), LangSmith (enterprise)
-- Real differentiator: MCP health/security ops. Not traces. Not dashboards.
+- **Positioning pivot complete**: LangSight is now "agent runtime reliability" — not observability. Observability overlaps with Langfuse (6k+ stars), Phoenix (15k+ stars), LangSmith (enterprise). Runtime reliability (prevent, detect, monitor, map) is an empty category.
+- Real differentiator: loop detection, budget guardrails, circuit breakers, MCP health/security, blast radius analysis. Not traces. Not dashboards. Not evals.
 - Product is a solid alpha with good architecture, but no external validation
+- License: BSL 1.1 (self-host free, converts to Apache 2.0 on 2030-03-21)
+- Domain: langsight.dev | Repo: github.com/LangSight/langsight
 
-**Core diagnosis**: LangSight is a tool pretending to be a platform. The path to becoming a platform starts with being an excellent tool first.
+**Core diagnosis**: LangSight tried to be an observability platform and got lost in Langfuse's shadow. The pivot to runtime reliability gives us an empty category. Nobody else does loop detection + budget guardrails + circuit breakers + MCP health + MCP security in one package. Own this category.
 
 ---
 
-## Strategy: Wedge → Integrate → Expand
+## Positioning: The Four Pillars
+
+**Prevent. Detect. Monitor. Map.**
+
+| Pillar | What it means | Key features |
+|---|---|---|
+| **Prevent** | Stop failures before they happen | Loop detection, budget guardrails, circuit breakers |
+| **Detect** | Find threats and drift proactively | CVE scanning, OWASP MCP Top 10, tool poisoning, schema drift |
+| **Monitor** | Track health and performance continuously | MCP health checks, latency tracking, SLOs, anomaly detection |
+| **Map** | Understand blast radius and dependencies | Agent-to-tool lineage, dependency graphs, blast radius analysis |
+
+**The tagline**: "Langfuse watches the brain. LangSight watches the hands."
+
+**What we are NOT**: Another prompt, eval, or simulation platform.
+
+---
+
+## Strategy: Wedge → Complement → Expand
 
 ```
 Phase 1 (Weeks 1-2):   WEDGE        → Zero-friction MCP security scanner
-Phase 2 (Weeks 3-4):   INTEGRATE    → Plug into Langfuse/Phoenix, not replace them
-Phase 3 (Weeks 5-8):   EXPAND       → Lineage graph + fleet intelligence
-Phase 4 (Months 3-6):  PLATFORM     → Earn the platform claim with traction
+Phase 2 (Weeks 3-4):   COMPLEMENT   → Plug alongside Langfuse/LangWatch, not instead of them
+Phase 3 (Weeks 5-8):   EXPAND       → Runtime guardrails + blast radius (the features nobody else has)
+Phase 4 (Months 3-6):  OWN          → Own the "agent runtime reliability" category
 ```
+
+(changed from original: Phase 2 was "INTEGRATE" — reframed as "COMPLEMENT" to reflect that we are a different category, not an add-on. Phase 4 was "PLATFORM" — reframed as "OWN" because we already have the platform; we need to own the positioning.)
 
 ---
 
@@ -41,12 +64,12 @@ Output:
 ```
 Found 6 MCP servers (Claude Desktop: 3, Cursor: 2, VS Code: 1)
 
-postgres-mcp     ✓ healthy  ·  5 tools  ·  CVE clean  ·  Auth: none ⚠
-jira-mcp         ✓ healthy  ·  3 tools  ·  CVE-2025-4821 (HIGH)
-slack-mcp        ✓ healthy  ·  4 tools  ·  CVE clean  ·  Auth: OAuth2
-github-mcp       ✗ DOWN     ·  connection refused
-filesystem-mcp   ✓ healthy  ·  6 tools  ·  MCP-06: plaintext HTTP ⚠
-s3-mcp           ✓ healthy  ·  7 tools  ·  CVE clean  ·  Auth: IAM
+postgres-mcp     healthy  ·  5 tools  ·  CVE clean  ·  Auth: none
+jira-mcp         healthy  ·  3 tools  ·  CVE-2025-4821 (HIGH)
+slack-mcp        healthy  ·  4 tools  ·  CVE clean  ·  Auth: OAuth2
+github-mcp       DOWN     ·  connection refused
+filesystem-mcp   healthy  ·  6 tools  ·  MCP-06: plaintext HTTP
+s3-mcp           healthy  ·  7 tools  ·  CVE clean  ·  Auth: IAM
 
 2 issues found:
   CRITICAL  jira-mcp         CVE-2025-4821  Remote code execution
@@ -64,11 +87,11 @@ Run 'langsight scan --json' for CI/CD integration.
 - Results stored in `~/.langsight/scan-history.db` (SQLite)
 
 **Why this works for adoption:**
-- Zero friction: `pip install` → immediate value in 30 seconds
+- Zero friction: `pip install` -> immediate value in 30 seconds
 - Solves a real anxiety: "are my MCP servers safe?"
 - Shareable output: screenshot the terminal, post in Slack/Discord
 - CI/CD hook: `langsight scan --ci --fail-on=high` in GitHub Actions
-- Natural upgrade path: "Want a dashboard? `docker compose up`"
+- Natural upgrade path: "Want runtime guardrails and a dashboard? `docker compose up`"
 
 ### 1.2 — GitHub Actions marketplace action
 
@@ -87,7 +110,7 @@ jobs:
           config: .langsight.yaml
 ```
 
-This is the `npm audit` / `trivy` equivalent for MCP servers. It positions LangSight as a security gate, not an observability platform.
+This is the `npm audit` / `trivy` equivalent for MCP servers. It positions LangSight as a security gate — part of the "Detect" pillar.
 
 ### 1.3 — Content that earns stars
 
@@ -97,7 +120,7 @@ Write 3 blog posts / dev.to articles targeting specific pain:
 
 2. **"Your Claude Desktop MCP servers have no auth. Here's how to fix it."** — Practical guide using LangSight scan output. Targets Claude Desktop power users (large, active community).
 
-3. **"MCP security checklist for production"** — Reference the 5 OWASP checks with examples. Position LangSight as the tool that automates the checklist.
+3. **"Why your AI agent observability tool won't save you at 2 AM"** — Position the runtime reliability angle. Observability tells you what happened. LangSight prevents it from happening again. Loop detection, budget guardrails, circuit breakers.
 
 ### Phase 1 success metric
 - 100+ `pip install langsight` downloads in week 2
@@ -106,11 +129,25 @@ Write 3 blog posts / dev.to articles targeting specific pain:
 
 ---
 
-## Phase 2: Integrate (Weeks 3-4)
+## Phase 2: Complement (Weeks 3-4)
 
-**Goal**: Make LangSight a complement to existing tools, not a competitor.
+**Goal**: Establish LangSight as the tool-layer complement alongside Langfuse/LangWatch, not a competitor.
 
-### 2.1 — OTLP span exporter
+(changed from original: was "Integrate" with the goal of "making LangSight a complement." Now explicitly positioned as a different category — we don't need to integrate to justify our existence; we need to show we solve a different problem.)
+
+### 2.1 — "Langfuse + LangSight" guide
+
+Publish a definitive guide: "Use Langfuse for LLM traces + LangSight for tool reliability." Show them working together with shared trace IDs.
+
+Key message: **Langfuse watches the brain. LangSight watches the hands.** You need both.
+
+```
+Langfuse tells you: "The LLM decided to call postgres-mcp/query"
+LangSight tells you: "That call failed because the MCP server was DOWN,
+                      and 3 other agents are also affected (blast radius: 340 sessions)"
+```
+
+### 2.2 — OTLP span exporter
 
 LangSight already *ingests* OTLP. Add an *exporter* so tool call spans flow *out* to wherever the team already looks:
 
@@ -118,32 +155,23 @@ LangSight already *ingests* OTLP. Add an *exporter* so tool call spans flow *out
 # .langsight.yaml
 export:
   otlp:
-    endpoint: http://localhost:4318    # → Phoenix, Jaeger, Datadog, Grafana Tempo
+    endpoint: http://localhost:4318    # -> Phoenix, Jaeger, Datadog, Grafana Tempo
   langfuse:
     public_key: pk-...
     secret_key: sk-...
     host: https://cloud.langfuse.com
 ```
 
-**Why this matters**: Teams already have Langfuse or Phoenix. They won't rip it out. But they *will* add LangSight if it feeds into what they already use. LangSight becomes a **data source**, not a silo.
+**Why this matters**: Teams already have Langfuse or Phoenix for LLM observability. They won't rip them out. But they *will* add LangSight alongside if it feeds tool reliability data into what they already use. LangSight becomes a **complementary data source**, not a silo.
 
-### 2.2 — Langfuse trace linking
+### 2.3 — Langfuse trace linking
 
-If a span has a Langfuse trace ID (from the LangChain/CrewAI callback), show a "View in Langfuse →" link in the LangSight dashboard. And vice versa: publish a Langfuse integration that links back to LangSight's session trace.
+If a span has a Langfuse trace ID, show a "View LLM reasoning in Langfuse ->" link in the LangSight dashboard. And vice versa: publish a Langfuse integration that links back to LangSight's tool health view.
 
-**Implementation**: The LangSight SDK already captures `trace_id`. If the user also has a Langfuse callback, both tools see the same trace ID. Add a config option:
-```yaml
-integrations:
-  langfuse_host: https://cloud.langfuse.com
-```
-Dashboard renders: `[View LLM reasoning in Langfuse →]` next to each session.
-
-### 2.3 — Phoenix MCP tracing bridge
-
-Phoenix already supports MCP tracing via OTEL. Publish a guide: "Use Phoenix for LLM traces + LangSight for MCP health/security." Show them working together with shared trace IDs.
+Dashboard renders: `[View LLM reasoning in Langfuse ->]` next to each session.
 
 ### Phase 2 success metric
-- Langfuse integration listed on langfuse.com/integrations
+- Langfuse/LangWatch communities acknowledge LangSight as complementary (not competing)
 - 1+ blog post from a Langfuse/Phoenix user mentioning LangSight
 - 200+ GitHub stars
 
@@ -151,15 +179,37 @@ Phoenix already supports MCP tracing via OTEL. Publish a guide: "Use Phoenix for
 
 ## Phase 3: Expand (Weeks 5-8)
 
-**Goal**: Ship the features that no competitor has.
+**Goal**: Ship the runtime reliability features that no competitor has. This is where we own the category.
 
-### 3.1 — Agent Action Lineage (spec: 07-agent-lineage-spec.md)
+### 3.1 — Runtime guardrails (the "Prevent" pillar)
 
-The DAG visualization of agent → server → tool dependencies. Built from observed span data. This is the feature that earns "platform" positioning.
+These are the features that make LangSight a runtime reliability platform, not just a monitor:
 
-Key selling point: "Langfuse shows what your LLM decided. LangSight shows what depends on what — and what breaks when something goes down."
+| Feature | What it does |
+|---|---|
+| **Loop detection** | Detect when an agent calls the same tool > N times in a session. Kill the loop before it burns budget. |
+| **Budget guardrails** | Per-session and per-tool cost limits. Hard-stop when budget is exhausted. |
+| **Circuit breakers** | When a tool fails N times, open the circuit and return a cached/fallback response instead of cascading the failure. |
 
-### 3.2 — Fleet inventory + drift intelligence
+These features exist in the SDK — they run at the agent level, not just the monitoring level. This is the key differentiator from every observability tool.
+
+```python
+from langsight import LangSightClient
+
+client = LangSightClient(
+    loop_detection={"max_repeat_calls": 5, "action": "warn"},
+    budget_guardrails={"max_session_cost_usd": 1.00, "action": "kill"},
+    circuit_breaker={"failure_threshold": 3, "cooldown_seconds": 60},
+)
+```
+
+### 3.2 — Blast radius analysis (the "Map" pillar)
+
+The DAG visualization of agent -> server -> tool dependencies, with blast radius overlay:
+
+Key selling point: "Langfuse shows what your LLM decided. LangSight shows what breaks when `postgres-mcp` goes down — and which 340 sessions are affected."
+
+### 3.3 — Fleet inventory + drift intelligence
 
 ```bash
 langsight fleet                    # inventory of all MCP servers across your org
@@ -175,44 +225,36 @@ New servers (last 7d):
 
 Schema changes (last 7d):
   ~ postgres-mcp      tool 'query' input_schema changed (added 'timeout' param)
-  ~ jira-mcp          tool 'create_issue' removed 'priority' field ⚠
+  ~ jira-mcp          tool 'create_issue' removed 'priority' field
 
 Servers at risk:
   ! jira-mcp           CVE-2025-4821 (unfixed for 12 days)
   ! filesystem-mcp     no auth, 3 agents depend on it
 ```
 
-This is the "fleet management" angle — borrowed from Kubernetes fleet management (Rancher, Fleet) and applied to MCP servers.
-
-### 3.3 — Deeper OWASP checks (6-10)
+### 3.4 — Deeper OWASP checks (6-10)
 
 Ship the remaining 5 OWASP MCP checks. Prioritize:
 - MCP-07 (Insecure Plugin Design) — most actionable
 - MCP-09 (Overreliance on LLM) — most novel
 - MCP-03 (Training Data Poisoning) — highest fear factor
 
-### 3.4 — CVE scanning with lockfile resolution
-
-Current CVE scanning is package-name-only (noisy). Add lockfile parsing:
-- `uv.lock`, `poetry.lock`, `package-lock.json`, `Pipfile.lock`
-- Resolve exact installed versions before querying OSV
-- Dramatically reduces false positives
-
 ### Phase 3 success metric
-- Lineage graph demo'd in a YouTube video / tweet thread
+- Runtime guardrails demo'd in a YouTube video / tweet thread
+- "Agent runtime reliability" appears in community discussions as a category
 - 500+ GitHub stars
 - 5+ community PRs
 - 1+ company using LangSight in production (even if small)
 
 ---
 
-## Phase 4: Platform (Months 3-6)
+## Phase 4: Own the Category (Months 3-6)
 
 Only enter this phase with evidence of traction (500+ stars, 3+ production users).
 
 ### 4.1 — Hosted demo / playground
 
-`demo.langsight.dev` — pre-loaded with sample multi-agent data. Zero install required. Let people experience the lineage graph and session traces before committing to self-hosting.
+`demo.langsight.dev` — pre-loaded with sample multi-agent data showing loop detection, budget enforcement, blast radius. Zero install required.
 
 ### 4.2 — Single-binary deployment
 
@@ -222,7 +264,11 @@ Replace Docker Compose with a single Go/Rust binary that embeds Postgres and use
 
 For teams that want Kubernetes deployment. Include horizontal scaling, connection pooling, and ingestion queue.
 
-### 4.4 — Team features
+### 4.4 — OpsGenie / PagerDuty native integration
+
+Alert routing for the "Monitor" pillar. When a circuit breaker opens or an SLO breaches, page the right team.
+
+### 4.5 — Team features
 
 - SSO/OIDC (beyond password auth)
 - Per-project API keys with scoped permissions
@@ -230,9 +276,9 @@ For teams that want Kubernetes deployment. Include horizontal scaling, connectio
 - Saved filters and search
 - Export APIs (CSV, JSON, OpenLineage)
 
-### 4.5 — Managed cloud (if traction justifies it)
+### 4.6 — Managed cloud (if traction justifies it)
 
-Only if self-hosted adoption proves the market. Not before.
+Only if self-hosted adoption proves the market. Not before. BSL 1.1 protects this option.
 
 ---
 
@@ -242,9 +288,10 @@ These are tempting but will not help adoption:
 
 | Temptation | Why not |
 |---|---|
-| LLM eval/scoring | Langfuse/Braintrust own this. Not differentiated. |
-| Prompt management | LangSmith/Langfuse own this. |
-| Model playground | Not related to the MCP ops wedge. |
+| LLM eval/scoring | Langfuse/Braintrust own this. Not our category. |
+| Prompt management | LangSmith/Langfuse own this. Not our category. |
+| LLM tracing | Langfuse/LangWatch own this. We are the tool layer, not the LLM layer. |
+| Model playground | Not related to runtime reliability. |
 | More dashboard pages | The dashboard is already broader than the user base justifies. |
 | Enterprise features | No enterprise users yet. Build for the 1-person team first. |
 
@@ -257,16 +304,40 @@ These are tempting but will not help adoption:
 >
 > `pip install langsight && langsight scan`
 
-### Phase 2 message (integration)
-> "LangSight plugs into your existing Langfuse/Phoenix setup. MCP health + security data flows into the tools you already use."
+### Phase 2 message (complement)
+> "Langfuse watches the brain. LangSight watches the hands. Use both."
 
-### Phase 3 message (lineage + fleet)
-> "See which agents depend on which MCP servers. Know the blast radius before something breaks."
+### Phase 3 message (runtime reliability)
+> "Your agent got stuck in a loop. LangSight would have killed it after 5 iterations. Prevent. Detect. Monitor. Map."
 
-### Phase 4 message (platform)
-> "Action-layer observability for AI agents. Traces, lineage, health, security — self-hosted or cloud."
+### Phase 4 message (category ownership)
+> "Agent runtime reliability. Prevent loops, enforce budgets, monitor MCP health, scan for CVEs. Self-hosted or cloud."
 
-Only claim "platform" after Phase 3 ships and has users.
+---
+
+## Competitive Framing
+
+### We do NOT compete with:
+
+| Tool | Their category | Our relationship |
+|---|---|---|
+| **Langfuse** | LLM observability (prompts, completions, evals) | Complementary — "brain vs hands" |
+| **LangWatch** | LLM observability with prompt-level guardrails | Complementary — their guardrails are prompt-level; ours are tool-level |
+| **LangSmith** | LLM development lifecycle | Different problem entirely |
+| **Phoenix** | LLM tracing and debugging | Complementary — they trace LLM calls, we monitor tools |
+
+### We DO compete with:
+
+| Tool | Overlap | Our advantage |
+|---|---|---|
+| **MCPcat** | MCP analytics/logging | We add health monitoring, security scanning, runtime guardrails |
+| **Sentry MCP** | MCP error tracking | We add proactive monitoring, CVE scanning, loop detection, blast radius |
+| **Datadog AI** | Commercial APM with some MCP traces | We are deeper on MCP + cheaper (self-hosted, BSL 1.1) |
+| **Nothing** | Loop detection + budget guardrails + circuit breakers | **Empty category** — nobody else does this |
+
+### The key insight
+
+"Agent runtime reliability" is an **empty category**. Observability is crowded (Langfuse, LangWatch, LangSmith, Phoenix, Datadog). Runtime reliability at the tool layer does not exist yet. LangSight claims it.
 
 ---
 
@@ -277,11 +348,11 @@ Only claim "platform" after Phase 3 ships and has users.
 | First 100 installs | Week 2 | `pip install` works, content landed |
 | First 50 stars | Week 3 | Security scanning resonates |
 | First external PR | Week 4 | Someone cares enough to contribute |
-| First Langfuse integration user | Week 5 | Integration story works |
+| "Langfuse + LangSight" guide shared | Week 5 | Complement story works |
 | First production user | Week 8 | Someone trusts it for real workloads |
 | 500 stars | Month 3 | Community momentum |
-| First company blog post mentioning LangSight | Month 4 | External validation |
-| Hacker News front page | Month 4-6 | Lineage demo or security research post |
+| "Agent runtime reliability" used as a term by others | Month 4 | Category created |
+| Hacker News front page | Month 4-6 | Runtime guardrails demo or security research post |
 
 ---
 
@@ -289,10 +360,11 @@ Only claim "platform" after Phase 3 ships and has users.
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| MCP doesn't become mainstream | Medium | Fatal | Ensure lineage/traces work for non-MCP tools too |
-| Langfuse/Phoenix add MCP health natively | Medium | High | Move faster on fleet intelligence + lineage — harder to replicate |
+| MCP doesn't become mainstream | Medium | Fatal | Ensure guardrails + lineage work for non-MCP tools too |
+| Langfuse/LangWatch add tool-level guardrails | Low | High | Move faster on the full "prevent + detect + monitor + map" stack — hard to replicate the full surface |
 | No one installs the CLI | Medium | High | Content marketing + GH Actions integration lower the bar |
 | ClickHouse requirement scares small teams | High | Medium | Phase 1 is SQLite-only; Phase 4 targets single-binary |
+| "Runtime reliability" framing doesn't resonate | Medium | High | A/B test messaging; fall back to "MCP security + health" if needed |
 | Solo maintainer burnout | High | Fatal | Optimize for external contributions (good-first-issues, CONTRIBUTING.md) |
 
 ---
@@ -305,10 +377,10 @@ Assuming solo developer + AI coding assistant:
 |---|---|---|
 | 1 | SQLite backend for CLI-only mode, `langsight scan` command | 80% code, 20% content |
 | 2 | GitHub Actions action, blog post #1 (MCP audit results) | 50% code, 50% content |
-| 3 | OTLP exporter, Langfuse integration | 80% code, 20% docs |
-| 4 | Blog post #2, Langfuse integration PR, community engagement | 30% code, 70% content |
-| 5-6 | Lineage backend + dashboard | 90% code, 10% docs |
-| 7 | Fleet inventory CLI, blog post #3 | 60% code, 40% content |
+| 3 | "Langfuse + LangSight" guide, OTLP exporter | 60% code, 40% content |
+| 4 | Blog post #2 ("why observability won't save you"), community engagement | 30% code, 70% content |
+| 5-6 | Loop detection, budget guardrails, circuit breakers (SDK) | 90% code, 10% docs |
+| 7 | Blast radius + fleet inventory CLI, blog post #3 | 60% code, 40% content |
 | 8 | OWASP checks 6-10, CVE lockfile resolution | 90% code, 10% docs |
 
 Content is not optional. Without it, the code is invisible.
@@ -317,4 +389,4 @@ Content is not optional. Without it, the code is invisible.
 
 ## One-Line Summary
 
-**Stop trying to be Langfuse. Start being the `trivy` of MCP servers — then grow from there.**
+**Stop trying to be Langfuse. Be the runtime reliability layer that Langfuse users also need. Prevent. Detect. Monitor. Map.**

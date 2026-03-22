@@ -105,7 +105,7 @@ function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
 
 /* ── Feature list ───────────────────────────────────────────── */
 const ALL_FEATURES = [
-  { category: "Agent Observability", items: ["Full session traces — every tool call", "Multi-agent call tree reconstruction", "Payload capture (input args + output)", "Session replay against live MCP servers", "Side-by-side session comparison", "LLM reasoning traces (llm_input / llm_output)", "Anomaly detection (z-score vs 7-day baseline)", "Agent SLO tracking (success_rate, latency_p99)"] },
+  { category: "Agent Runtime Reliability", items: ["Full session traces — every tool call", "Multi-agent call tree reconstruction", "Payload capture (input args + output)", "Session replay against live MCP servers", "Side-by-side session comparison", "LLM reasoning traces (llm_input / llm_output)", "Anomaly detection (z-score vs 7-day baseline)", "Agent SLO tracking (success_rate, latency_p99)"] },
   { category: "MCP Health Monitoring", items: ["Continuous proactive health checks", "Schema drift detection", "Latency tracking and p99 trends", "Slack + webhook alerts on DOWN/recovery", "Multi-transport: stdio, SSE, StreamableHTTP"] },
   { category: "MCP Security Scanning", items: ["CVE detection against public database", "5 of 10 OWASP MCP checks (MCP-01, 02, 04, 05, 06 — more coming)", "Tool poisoning detection (injection, unicode, base64)", "Auth gap analysis", "CI/CD integration with --ci flag", "JSON output for SIEM integration"] },
   { category: "Cost Attribution", items: ["Token-based pricing for LLM calls", "Per-tool call-based pricing rules", "Cost per session / per agent / per tool", "Model pricing table (admin-managed)", "Historical cost trends"] },
@@ -117,7 +117,7 @@ const ALL_FEATURES = [
 const FAQ = [
   {
     q: "Is it really free? What's the catch?",
-    a: "There is no catch. LangSight is Apache 2.0 open source. You can self-host it for free, forever, for any use including commercial. We do not have a paid tier today.",
+    a: "There is no catch. LangSight is BSL 1.1 open source. You can self-host it for free, forever, for any use including commercial. We do not have a paid tier today.",
   },
   {
     q: "Is there a cloud-hosted version?",
@@ -133,7 +133,7 @@ const FAQ = [
   },
   {
     q: "What happens when a cloud tier launches?",
-    a: "The self-hosted version will always remain Apache 2.0 and fully featured. Any cloud tier will be additive — managed hosting, support SLAs, enterprise SSO. We will never move existing features to a paid tier.",
+    a: "The self-hosted version will always remain BSL 1.1 and fully featured. Any cloud tier will be additive — managed hosting, support SLAs, enterprise SSO. We will never move existing features to a paid tier.",
   },
   {
     q: "How do I get support?",
@@ -219,7 +219,7 @@ export default function PricingPage() {
               className="fade-up delay-2 text-lg leading-relaxed max-w-xl mx-auto mb-10"
               style={{ color: "var(--muted)" }}
             >
-              LangSight is Apache 2.0 open source. Self-host the entire platform —
+              LangSight is BSL 1.1 open source. Self-host the entire platform —
               CLI, SDK, API, dashboard, and every feature — at no cost. Not &ldquo;open core&rdquo;.
               Not a free tier. Just free.
             </p>
@@ -290,7 +290,7 @@ export default function PricingPage() {
                     >
                       $0
                     </span>
-                    <span className="text-sm ml-2" style={{ color: "var(--muted)" }}>forever · Apache 2.0</span>
+                    <span className="text-sm ml-2" style={{ color: "var(--muted)" }}>forever · BSL 1.1</span>
                   </div>
 
                   <a
@@ -316,7 +316,7 @@ export default function PricingPage() {
                       "Anomaly detection + SLO tracking",
                       "AI root cause analysis (bring your key)",
                       "Self-hosted — your data, your infra",
-                      "Apache 2.0 — fork, modify, embed freely",
+                      "BSL 1.1 — fork, modify, self-host freely",
                     ].map((f, i) => (
                       <div key={i} className="flex items-center gap-2 text-sm">
                         <span style={{ color: "var(--green)" }}>✓</span>
@@ -475,7 +475,7 @@ export default function PricingPage() {
                       ["MCP health monitoring", "✓ Free", "✗", "✗"],
                       ["Security scanning", "✓ Free", "✗", "✗"],
                       ["Data leaves your network", "Never", "Always", "Always"],
-                      ["Vendor lock-in", "None (Apache 2.0)", "High", "High"],
+                      ["Vendor lock-in", "None (BSL 1.1)", "High", "High"],
                       ["Custom retention", "Unlimited", "Pay per GB", "Pay per GB"],
                     ].map((row, i) => (
                       <tr key={i} style={{ borderBottom: i < 6 ? "1px solid var(--border-dim)" : "none" }}>
@@ -558,7 +558,7 @@ export default function PricingPage() {
               </a>
             ))}
           </div>
-          <p className="text-xs" style={{ color: "var(--dimmer)" }}>Apache 2.0 · v0.2.0</p>
+          <p className="text-xs" style={{ color: "var(--dimmer)" }}>BSL 1.1 · v0.2.0</p>
         </div>
       </footer>
     </>

@@ -550,7 +550,7 @@ jobs:
               </a>
             ))}
           </div>
-          <p className="text-xs" style={{ color: "var(--dimmer)" }}>Apache 2.0 · v0.2.0</p>
+          <p className="text-xs" style={{ color: "var(--dimmer)" }}>BSL 1.1 · v0.2.0</p>
         </div>
       </footer>
     </>

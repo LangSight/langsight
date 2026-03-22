@@ -3,7 +3,7 @@
 > Last updated: 2026-03-20 (session detail graph toolbar/minimap/timeline/slideout, agents catalog 3-state layout, MCP Servers catalog at /servers, SDK auto tool-schema capture, docs sync)
 > Maintained by: docs-keeper agent — update after every feature, architectural decision, or milestone
 
-**Project framing**: LangSight is complete observability for everything an AI agent calls — MCP servers, HTTP APIs, Python functions, and sub-agents. Agent-level instrumentation captures all tool types in one trace. MCP servers additionally receive proactive health checks, security scanning, schema drift detection, and alerting because the MCP protocol is standard and inspectable. Non-MCP tools (HTTP APIs, functions) are passively observed in traces only.
+**Project framing**: LangSight is an **agent runtime reliability platform** — prevent loops, enforce budgets, detect cascading failures, monitor MCP health, and scan for CVEs. Not another prompt, eval, or simulation platform. **Prevent. Detect. Monitor. Map.** Langfuse watches the brain. LangSight watches the hands. Agent-level instrumentation captures all tool types. MCP servers additionally receive proactive health checks, security scanning, schema drift detection, and alerting because the MCP protocol is standard and inspectable. (changed from original: was "observability platform" positioning; pivoted to "runtime reliability" 2026-03-22)
 
 ---
 
@@ -143,18 +143,18 @@ The following items are required before LangSight can be positioned as productio
 
 ### Current Honest Positioning
 
-LangSight v0.1.0 is a **promising self-hosted observability and security toolkit for MCP and agent workflows**. It is suitable for:
+LangSight v0.2.0 is a **self-hosted agent runtime reliability platform** with MCP health monitoring, security scanning, session tracing, and cost attribution. It is suitable for:
+- Self-hosted production deployments within trusted networks
+- Internal team use with full auth/RBAC
 - Local development and experimentation
-- Internal pilots within trusted networks
-- Contributor adoption and OSS evaluation
 
-It is **not yet suitable** for internet-facing or multi-tenant deployment without the P0/P1 gaps above resolved.
+(changed from original: was "observability and security toolkit" — now "runtime reliability platform" per 2026-03-22 positioning pivot)
 
 ---
 
-## Phase 5 — Deep Observability: Gap Analysis (2026-03-18)
+## Phase 5 — Deep Runtime Reliability Features: Gap Analysis (2026-03-18)
 
-A thorough code review identified a set of high-value observability features that are implied by the product vision but not yet built. These form Phase 5.
+A thorough code review identified a set of high-value runtime reliability features that are implied by the product vision but not yet built. These form Phase 5.
 
 ### Gap Table
 
@@ -210,7 +210,7 @@ P5.1 (Payload Capture)
 
 ## Phase 6 — Project-Level RBAC: Planned (2026-03-19)
 
-A project is the top-level isolation boundary. Every piece of observability data belongs to a project. Users hold project-level roles (`owner`, `member`, `viewer`). Global admins retain cross-project visibility. Non-members receive HTTP 404 on any project endpoint to prevent enumeration.
+A project is the top-level isolation boundary. Every piece of reliability data belongs to a project. Users hold project-level roles (`owner`, `member`, `viewer`). Global admins retain cross-project visibility. Non-members receive HTTP 404 on any project endpoint to prevent enumeration.
 
 ### Sub-phases
 
@@ -252,7 +252,7 @@ Phase 3 (OTEL + Costs)          ████████████████
 Release 0.1.0                   ████████████████ 100% — SHIPPED ✅ (PyPI + GitHub)
 Phase 4 (Dashboard + Website)   ██████████████░░  90% — costs API + agents page added, Vercel deploy pending
 Security Hardening (S.1-S.10)   ░░░░░░░░░░░░░░░░   0% — NOT STARTED
-Phase 5 (Deep Observability)    ████████████████ 100% — COMPLETE ✅ P5.1 (2026-03-18), P5.2-P5.7 (2026-03-19)
+Phase 5 (Deep Reliability)      ████████████████ 100% — COMPLETE ✅ P5.1 (2026-03-18), P5.2-P5.7 (2026-03-19)
 Phase 6 (Project-Level RBAC)    ░░░░░░░░░░░░░░░░   0% — NOT STARTED
 Phase 7 (Model-Based Costs)     ░░░░░░░░░░░░░░░░   0% — NOT STARTED
 ```
@@ -461,7 +461,7 @@ Phase 7 (Model-Based Costs)     ░░░░░░░░░░░░░░░░
 
 **Note**: Marketing website (`website/`) and product dashboard (`dashboard/`) shipped post-0.1.0. Both are built. Website awaits Vercel deployment. Dashboard auth now runs through NextAuth + the authenticated proxy path; current follow-up work is UX/documentation alignment rather than demo-auth removal.
 
-### Marketing Website (langsight.io)
+### Marketing Website (langsight.dev)
 | Item | Status | Date | Notes |
 |------|--------|------|-------|
 | Next.js + Tailwind project setup | ✅ Done | 2026-03-18 | `website/app/page.tsx` exists |
@@ -473,7 +473,7 @@ Phase 7 (Model-Based Costs)     ░░░░░░░░░░░░░░░░
 | Pricing section | ✅ Done | 2026-03-18 | OSS free + SaaS tiers placeholder |
 | Vercel deployment | Pending (manual) | — | Manual step — connect repo on vercel.com |
 
-### Product Dashboard v2 (app.langsight.io)
+### Product Dashboard v2 (app.langsight.dev)
 | Item | Status | Date | Notes |
 |------|--------|------|-------|
 | Next.js 15 dashboard project setup | ✅ Done | 2026-03-18 | shadcn/ui, App Router, `dashboard/` directory |

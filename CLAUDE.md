@@ -2,7 +2,9 @@
 
 ## What We're Building
 
-LangSight is an **open-source observability platform for AI agent actions** — full traces of every tool call across single and multi-agent workflows, with deep MCP health monitoring and security scanning built in. Instrument once at the agent level and capture everything the agent touched: MCP servers, HTTP APIs, Python functions, and sub-agents. MCP servers get extra depth (health checks, CVE scanning, schema drift detection, poisoning detection) because the protocol is standard and inspectable. CLI-first, web dashboard in Phase 3, SaaS eventually.
+LangSight is an **agent runtime reliability platform** — prevent loops, enforce budgets, detect cascading failures, monitor MCP health, and scan for CVEs. Not another prompt, eval, or simulation platform. **Prevent. Detect. Monitor. Map.** Langfuse watches the brain. LangSight watches the hands.
+
+Instrument once at the agent level and capture everything the agent touched: MCP servers, HTTP APIs, Python functions, and sub-agents. MCP servers get extra depth (health checks, CVE scanning, schema drift detection, poisoning detection) because the protocol is standard and inspectable. CLI-first, web dashboard in Phase 3, SaaS eventually.
 
 **Build this as production-grade OSS.** Every line of code will be read by engineers worldwide. Write accordingly.
 

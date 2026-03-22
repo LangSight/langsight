@@ -3,12 +3,14 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "MCP Security Scanning — OWASP MCP Top 10 | LangSight",
   description:
-    "Automated MCP security scanning for AI agent toolchains. Detect CVEs, run OWASP MCP Top 10 checks, find tool poisoning attacks, and audit auth gaps. One command, plugs into CI/CD.",
+    "Automated MCP security scanning for AI agent runtime reliability. Detect CVEs, run OWASP MCP Top 10 checks, find tool poisoning attacks, and audit auth gaps. One command, plugs into CI/CD.",
   keywords: [
     "MCP security scanning",
     "OWASP MCP",
     "MCP CVE detection",
     "AI agent security",
+    "agent runtime reliability",
+    "agent guardrails",
     "tool poisoning detection",
     "MCP server security audit",
   ],

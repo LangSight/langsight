@@ -254,13 +254,13 @@ const COMPARISON_ROWS: ComparisonRow[] = [
   },
   {
     feature: "License",
-    langsight: "Apache 2.0",
+    langsight: "BSL 1.1",
     langfuse: "MIT / ELv2",
     langwatch: "Apache 2.0",
   },
   {
     feature: "Primary focus",
-    langsight: "MCP runtime + security",
+    langsight: "Agent runtime reliability",
     langfuse: "LLM evals + tracing",
     langwatch: "LLM quality + guardrails",
   },
@@ -318,7 +318,7 @@ export default function AlternativesPage() {
             >
               <span className="gradient-text">Not another LLM eval platform.</span>
               <br />
-              <span className="gradient-indigo">A runtime layer built for MCP.</span>
+              <span className="gradient-indigo">Agent runtime reliability, built for MCP.</span>
             </h1>
 
             <p
@@ -364,7 +364,7 @@ export default function AlternativesPage() {
                   badge: "MCP-native",
                   badgeColor: "var(--indigo)",
                   badgeBg: "var(--indigo-dim)",
-                  desc: "Runtime observability for AI agent toolchains. Purpose-built for MCP server monitoring, security scanning, schema drift detection, and tool call tracing.",
+                  desc: "Agent runtime reliability for AI toolchains. Purpose-built for MCP health monitoring, security scanning, circuit breakers, guardrails, and tool call tracing.",
                   highlight: true,
                 },
                 {
@@ -607,7 +607,7 @@ export default function AlternativesPage() {
             ))}
           </div>
           <p className="text-xs" style={{ color: "var(--dimmer)" }}>
-            Apache 2.0 · v0.2.0
+            BSL 1.1 · v0.2.0
           </p>
         </div>
       </footer>

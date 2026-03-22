@@ -22,6 +22,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **Dashboard metadata**: updated in `dashboard/app/layout.tsx` and settings page.
 - **Website metadata**: all page layouts (pricing, security, glossary, alternatives) updated from "observability" to "runtime reliability".
 - **v0.3 plan documented**: `docs/09-v03-runtime-reliability-plan.md` — 10-week roadmap covering loop detection, budget guardrails, circuit breakers, OpsGenie/PagerDuty, blast radius on lineage.
+- **Internal docs updated**: all 7 internal engineering docs (`01-product-spec.md` through `08-adoption-strategy.md`) updated to reflect "runtime reliability" positioning, BSL 1.1 license, langsight.dev domain, and LangSight/langsight GitHub org. CLAUDE.md "What We're Building" section rewritten. PROGRESS.md framing updated. `04-implementation-plan.md` and `05-risks-costs-testing.md` license sections updated from Apache 2.0 to BSL 1.1.
 
 ### Added (2026-03-22 — Website, branding, infrastructure)
 
