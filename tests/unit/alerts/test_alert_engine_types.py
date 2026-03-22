@@ -1,8 +1,8 @@
 """
 Unit tests for AlertType and AlertSeverity enum completeness.
 
-Verifies that all 8 AlertType values exist (4 original + 4 new agent-level
-types) and that AlertSeverity retains its full set of values.
+Verifies that all 13 AlertType values exist (4 original + 4 agent-level
++ 5 v0.3 prevention) and that AlertSeverity retains its full set of values.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from langsight.alerts.engine import AlertSeverity, AlertType
 
 
 class TestAlertTypeEnum:
-    def test_all_eight_alert_type_values_exist(self) -> None:
+    def test_all_alert_type_values_exist(self) -> None:
         expected = {
             "server_down",
             "server_recovered",
@@ -23,12 +23,18 @@ class TestAlertTypeEnum:
             "slo_breached",
             "anomaly_detected",
             "security_finding",
+            # v0.3 prevention layer
+            "loop_detected",
+            "budget_warning",
+            "budget_exceeded",
+            "circuit_breaker_open",
+            "circuit_breaker_recovered",
         }
         actual = {member.value for member in AlertType}
         assert actual == expected
 
-    def test_alert_type_has_exactly_eight_members(self) -> None:
-        assert len(AlertType) == 8
+    def test_alert_type_has_exactly_thirteen_members(self) -> None:
+        assert len(AlertType) == 13
 
     # Original four members
     def test_server_down_value(self) -> None:
