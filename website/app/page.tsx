@@ -231,22 +231,18 @@ const TERMINAL_LINES = [
 ];
 
 function AnimatedTerminal() {
-  const [visible, setVisible] = useState(0);
-  const [started, setStarted] = useState(false);
-
-  // Defer animation until after hydration to avoid blocking main thread on load
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => setStarted(true));
-    return () => cancelAnimationFrame(raf);
-  }, []);
+  // Render ALL lines immediately — critical for LCP.
+  // The animation replays after mount without blocking first paint.
+  const [visible, setVisible] = useState(TERMINAL_LINES.length);
 
   useEffect(() => {
-    if (!started) return;
+    // Replay animation once after initial paint (non-blocking)
+    setVisible(0);
     const timers = TERMINAL_LINES.map((line, i) =>
-      setTimeout(() => setVisible(i + 1), line.delay + 800)
+      setTimeout(() => setVisible(i + 1), line.delay + 600)
     );
     return () => timers.forEach(clearTimeout);
-  }, [started]);
+  }, []);
 
   return (
     <div className="terminal w-full">
@@ -316,7 +312,7 @@ function Hero() {
             {/* Headline — lead with pain */}
             <div className="space-y-1">
               <h1
-                className="fade-up delay-1 font-bold leading-[1.04] tracking-tight"
+                className="font-bold leading-[1.04] tracking-tight"
                 style={{ fontSize: "clamp(2.6rem, 5vw, 3.75rem)", fontFamily: "var(--font-geist-sans)" }}
               >
                 <span className="gradient-text">Your agent failed.</span>
