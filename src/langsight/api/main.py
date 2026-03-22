@@ -318,8 +318,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     app = FastAPI(
         title="LangSight API",
         description=(
-            "Open-source agent observability platform. "
-            "Trace every tool call, monitor MCP health, detect security vulnerabilities."
+            "Open-source agent runtime reliability platform. "
+            "Prevent loops, enforce budgets, monitor MCP health, detect security vulnerabilities."
         ),
         version=_VERSION,
         lifespan=lifespan,

@@ -9,7 +9,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "LangSight", template: "%s · LangSight" },
-  description: "AI agent observability — traces, costs, health checks, and security scanning for everything your agents call.",
+  description: "Agent runtime reliability — prevent loops, enforce budgets, trace every tool call, monitor MCP health, and scan for security issues.",
 };
 
 function getPlaywrightSession(): Session & { userId: string; userRole: string } {

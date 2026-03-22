@@ -4,18 +4,19 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "LangSight — MCP Observability & AI Agent Tracing",
+  title: "LangSight — Agent Runtime Reliability for AI Toolchains",
   description:
-    "Your agent broke. Here's exactly why. Trace every tool call, monitor MCP server health, scan for CVEs and OWASP issues, and attribute costs. Open-source MCP observability — self-host free.",
+    "Your agent failed. How do we stop it next time? Detect loops, enforce budgets, break failing tools, map blast radius. MCP health checks, security scanning, schema drift. Self-host free.",
   keywords: [
-    "MCP observability",
-    "AI agent tracing",
+    "agent runtime reliability",
+    "AI agent guardrails",
     "MCP server monitoring",
-    "agent tool call tracing",
+    "agent loop detection",
     "MCP health check",
     "MCP security scanning",
-    "open source AI observability",
+    "agent cost guardrails",
     "AI agent debugging",
+    "tool call circuit breaker",
   ],
   alternates: {
     canonical: "https://langsight.dev/",
@@ -29,9 +30,9 @@ export const metadata: Metadata = {
     apple: "/apple-touch-icon.png",
   },
   openGraph: {
-    title: "LangSight — MCP Observability & AI Agent Tracing",
+    title: "LangSight — Agent Runtime Reliability for AI Toolchains",
     description:
-      "Your agent broke. Here's exactly why. Open-source MCP observability: trace every tool call, monitor MCP health, scan for CVEs and OWASP issues. Self-host free.",
+      "Your agent failed. How do we stop it next time? Detect loops, enforce budgets, break failing tools, map blast radius. Self-host free.",
     url: "https://langsight.dev",
     siteName: "LangSight",
     type: "website",
@@ -39,9 +40,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "LangSight — MCP Observability & AI Agent Tracing",
+    title: "LangSight — Agent Runtime Reliability for AI Toolchains",
     description:
-      "Your agent broke. Here's exactly why. Open-source MCP observability — self-host free.",
+      "Your agent failed. How do we stop it next time? Detect loops, enforce budgets, break failing tools. Self-host free.",
     images: ["/og-image.svg"],
   },
 };
@@ -53,7 +54,7 @@ const jsonLd = {
   applicationCategory: "DeveloperApplication",
   operatingSystem: "Linux, macOS, Windows",
   description:
-    "Open-source MCP observability and security platform for AI agents. Trace every tool call, monitor MCP server health, scan for CVEs and OWASP issues, and attribute costs. Self-host free.",
+    "Agent runtime reliability platform. Detect loops, enforce budgets, break failing tools, map blast radius. MCP health checks, CVE scanning, schema drift detection. Self-host free.",
   url: "https://langsight.dev",
   softwareVersion: "0.2.0",
   license: "https://github.com/LangSight/langsight/blob/main/LICENSE",

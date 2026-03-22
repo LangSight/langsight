@@ -1233,7 +1233,7 @@ function InstanceSection() {
 
 function AboutSection() {
   return (
-    <Section title="About" description="LangSight open-source AI agent observability">
+    <Section title="About" description="LangSight — agent runtime reliability">
       <div className="space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0"
@@ -1245,7 +1245,7 @@ function AboutSection() {
           <div>
             <p className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>LangSight</p>
             <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-              Open-source observability for AI agent actions
+              Runtime reliability for AI agent toolchains
             </p>
           </div>
         </div>

@@ -9,6 +9,46 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed (2026-03-22 — Positioning: observability → runtime reliability)
+
+- **Positioning pivot**: LangSight is now positioned as "agent runtime reliability" — not observability. Observability overlaps with Langfuse/LangWatch. Runtime reliability (prevent, detect, monitor, map) is an empty category.
+- **README rewritten**: new headline "how do we stop it next time?", 6 sections (Prevent, Detect, Monitor, Attribute, Map, Investigate), SDK config examples for loop detection / budget guardrails / circuit breaker.
+- **Website homepage rewritten**: hero updated, solution pillars reordered to Prevent → Detect → Monitor → Map, problem cards reframed (loops, cascading failures, cost explosions, schema drift), comparison table expanded (9 rows), CTA updated.
+- **Mintlify docs introduction rewritten**: 4 pillars, "Langfuse watches the brain, LangSight watches the hands", blast radius section, updated integration table.
+- **Mintlify colors**: indigo → teal (`#14B8A6` / `#2DD4BF`), nav group renamed "Observability Features" → "Reliability Features".
+- **pyproject.toml description**: "Agent runtime reliability — prevent loops, enforce budgets, monitor MCP health, scan for CVEs".
+- **FastAPI description**: updated in `api/main.py` OpenAPI spec.
+- **CLI help text**: updated in `cli/main.py`.
+- **Dashboard metadata**: updated in `dashboard/app/layout.tsx` and settings page.
+- **Website metadata**: all page layouts (pricing, security, glossary, alternatives) updated from "observability" to "runtime reliability".
+- **v0.3 plan documented**: `docs/09-v03-runtime-reliability-plan.md` — 10-week roadmap covering loop detection, budget guardrails, circuit breakers, OpsGenie/PagerDuty, blast radius on lineage.
+
+### Added (2026-03-22 — Website, branding, infrastructure)
+
+- **BSL 1.1 license**: switched from MIT to Business Source License 1.1. Self-host free, no usage limits. Converts to Apache 2.0 on 2030-03-21. Only restriction: cannot offer LangSight as a hosted service.
+- **GitHub org**: repo moved from `sumankalyan123/langsight` to `LangSight/langsight`.
+- **langsight.dev domain**: purchased, deployed to Cloudflare Pages.
+- **docs.langsight.dev**: Mintlify custom domain configured.
+- **Teal design system**: website color scheme changed from indigo to teal (`#14B8A6` light / `#2DD4BF` dark).
+- **Logo**: scope mark (ring + dot + diagonal line) on teal background. SVG + PNG kit (512, 256, 128, 64, 32, 16px).
+- **Brand assets**: `og-image.svg`, `twitter-banner.svg`, `linkedin-banner.svg`, favicon, apple-touch-icon.
+- **Google Analytics GA4**: `G-S6E7SBNNXL` added to website layout.
+- **Cloudflare Web Analytics**: enabled on langsight.dev.
+- **Security headers**: `_headers` file for Cloudflare Pages — HSTS, CSP, COOP, XFO, nosniff.
+- **SEO**: JSON-LD SoftwareApplication schema, robots.txt, sitemap.xml (5 pages), per-page metadata layouts.
+- **New pages**: `/alternatives` (LangSight vs Langfuse vs LangWatch comparison), `/glossary` (8 MCP/observability terms).
+- **SEO skills installed**: `seo-audit` + `programmatic-seo` from marketingskills.
+- **seo-optimizer agent**: `.claude/agents/seo-optimizer.md`.
+
+### Fixed (2026-03-22 — Performance + accessibility)
+
+- **Next.js upgraded**: 15.2.3 → 15.5.14 (patches CVE-2025-66478).
+- **Lighthouse Performance 100**: terminal animation deferred via `requestAnimationFrame`, H1 `fade-up` removed for immediate LCP, `will-change` on all animated elements.
+- **Lighthouse Accessibility**: light mode teal darkened from `#14B8A6` to `#0F766E` (5.6:1 contrast ratio on white, WCAG AA compliant).
+- **SSE event drop counter**: `langsight_sse_events_dropped_total` Prometheus counter + debug logging when broadcaster drops events.
+- **Dashboard fetch timeouts**: 15-second `AbortSignal.timeout()` on all `fetch()` calls.
+- **API version**: reads from `importlib.metadata` instead of hardcoded `"0.1.0"`.
+
 ### Added (2026-03-21 — Prometheus metrics + SSE live event feed)
 
 - **Prometheus `/metrics` endpoint** — `src/langsight/api/metrics.py`: `GET /metrics` returns all LangSight metrics in Prometheus text exposition format, no authentication required. Metrics exported: `langsight_http_requests_total` (counter, method/path/status), `langsight_http_request_duration_seconds` (histogram, method/path), `langsight_spans_ingested_total` (counter), `langsight_active_sse_connections` (gauge), `langsight_health_checks_total` (counter, server/status). `PrometheusMiddleware` instruments all API requests with path normalization (collapses UUIDs to `{id}`) to keep cardinality bounded. Skips `/metrics`, `/api/liveness`, `/api/readiness`.

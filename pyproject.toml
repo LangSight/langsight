@@ -1,7 +1,7 @@
 [project]
 name = "langsight"
 version = "0.2.0"
-description = "Open-source MCP observability and security platform"
+description = "Agent runtime reliability — prevent loops, enforce budgets, monitor MCP health, scan for CVEs"
 readme = "README.md"
 license = { text = "BSL-1.1" }
 requires-python = ">=3.11"

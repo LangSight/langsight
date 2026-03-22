@@ -16,7 +16,7 @@ from langsight.cli.sessions import sessions
 @click.group()
 @click.version_option(version="0.2.0", prog_name="langsight")
 def cli() -> None:
-    """LangSight — agent observability and security platform.
+    """LangSight — agent runtime reliability platform.
 
     Trace every tool call your agents make, monitor MCP server health,
     detect security vulnerabilities, and attribute agent failures to
