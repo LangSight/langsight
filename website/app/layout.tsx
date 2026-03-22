@@ -56,7 +56,7 @@ const jsonLd = {
     "Open-source MCP observability and security platform for AI agents. Trace every tool call, monitor MCP server health, scan for CVEs and OWASP issues, and attribute costs. Self-host free.",
   url: "https://langsight.dev",
   softwareVersion: "0.2.0",
-  license: "https://www.apache.org/licenses/LICENSE-2.0",
+  license: "https://github.com/LangSight/langsight/blob/main/LICENSE",
   offers: {
     "@type": "Offer",
     price: "0",
