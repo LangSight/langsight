@@ -139,6 +139,42 @@ Once the API is running:
   | `schema_drift` | A tool schema changed mid-session, triggering a drift alert |
 </Note>
 
+### Prevention Config
+
+Per-agent and per-project prevention thresholds managed from the dashboard or API. Constructor params in the SDK are offline fallbacks; these values take precedence when the SDK can reach the backend.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/agents/{name}/prevention-config` | Read prevention config for one agent |
+| `PUT` | `/api/agents/{name}/prevention-config` | Create or update prevention config for one agent |
+| `DELETE` | `/api/agents/{name}/prevention-config` | Remove per-agent config (project default applies) |
+| `GET` | `/api/projects/{project_id}/prevention-config` | Read project-level default config (`agent_name="*"`) |
+| `PUT` | `/api/projects/{project_id}/prevention-config` | Create or update project-level default config |
+| `DELETE` | `/api/projects/{project_id}/prevention-config` | Remove project-level default |
+
+**Prevention config object**:
+
+```json
+{
+  "id": "pvc-abc123",
+  "project_id": "my-project",
+  "agent_name": "orchestrator",
+  "loop_enabled": true,
+  "loop_threshold": 5,
+  "loop_action": "terminate",
+  "max_steps": 30,
+  "max_cost_usd": 1.00,
+  "max_wall_time_s": 120,
+  "budget_soft_alert": 0.80,
+  "cb_enabled": true,
+  "cb_failure_threshold": 5,
+  "cb_cooldown_seconds": 60,
+  "cb_half_open_max_calls": 2
+}
+```
+
+Use `agent_name: "*"` for the project-level default that applies to all agents without a specific entry. All fields are optional on `PUT` — only supplied fields are updated.
+
 ### Agent Topology
 
 | Method | Path | Description |

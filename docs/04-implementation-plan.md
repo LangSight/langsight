@@ -2,10 +2,10 @@
 
 > **Version**: 2.0.0
 > **Date**: 2026-03-22
-> **Status**: Active — Phase 1-11 COMPLETE. v0.3 Tier 1 (Prevention Layer) COMPLETE: circuit breaker, loop detection, budget guardrails, health tag engine. Pre-Production Security Hardening in progress (S.4, S.7, S.9, S.10 COMPLETE). Release 0.2.0 shipped. v0.3.0 Prevention Layer shipped.
+> **Status**: Active — Phase 1-11 COMPLETE. v0.3 Tier 1 (Prevention Layer) COMPLETE: circuit breaker, loop detection, budget guardrails, health tag engine. Prevention Config (dashboard-managed thresholds) COMPLETE. Pre-Production Security Hardening in progress (S.4, S.7, S.9, S.10 COMPLETE). Release 0.2.0 shipped. v0.3.0 Prevention Layer shipped. v0.3.1 Prevention Config shipped.
 > **Author**: Engineering
 >
-> **Change from 1.9**: v0.3 Tier 1 Prevention Layer shipped (2026-03-22). New SDK modules: `circuit_breaker.py` (per-server CLOSED/OPEN/HALF_OPEN state machine), `loop_detector.py` (repetition, ping-pong, retry-without-progress detection), `budget.py` (step count, wall time, cumulative cost tracking). `client.py` extended with 12 new constructor params (all default disabled). 5 new alert types (`LOOP_DETECTED`, `BUDGET_WARNING`, `BUDGET_EXCEEDED`, `CIRCUIT_BREAKER_OPEN`, `CIRCUIT_BREAKER_RECOVERED`) + `evaluate_prevention_event()` method. `ToolCallStatus.PREVENTED` + `PreventionEvent` model + 3 new exceptions. Health tag engine (`src/langsight/tagging/engine.py`) with 8 priority-ordered tags. Dashboard `HealthTagBadge` component + sessions page health tag column/filter.
+> **Change from 2.0**: Prevention Config shipped (2026-03-22). `prevention_config` Postgres table (per-project, per-agent thresholds). `PreventionConfig` domain model. 6 new API endpoints under `/api/agents/` and `/api/projects/`. SDK `_apply_remote_config()` background task fetches dashboard config on `wrap()`, falls back to constructor defaults when offline. Dashboard Settings → Prevention tab with per-agent inline edit table. Demo seed: 5 sample configs.
 
 ---
 
@@ -37,6 +37,7 @@ Phase 9 (Production Auth)       ████████████████
 Phase 10 (Multi-tenancy)        ████████████████ 100% — COMPLETE ✅ 2026-03-19
 Phase 11 (Catalogs + Graph UX)  ████████████████ 100% — COMPLETE ✅ 2026-03-20
 v0.3 Tier 1 (Prevention Layer)  ████████████████ 100% — COMPLETE ✅ 2026-03-22
+Prevention Config (dashboard)   ████████████████ 100% — COMPLETE ✅ 2026-03-22
 v0.3 Tier 2 (Smarter Alerting)  ░░░░░░░░░░░░░░░░   0% — NOT STARTED (OpsGenie, PagerDuty, pattern alerts)
 v0.3 Tier 3 (Blast Radius)      ░░░░░░░░░░░░░░░░   0% — NOT STARTED (lineage-driven impact analysis)
 ```
@@ -2639,7 +2640,7 @@ langsight/
 |-- mypy.ini                             # mypy type checker configuration
 |-- .pre-commit-config.yaml              # Pre-commit hooks
 |-- .env.example                         # Example environment variables
-|-- LICENSE                              # BSL 1.1 (converts to Apache 2.0 on 2030-03-21)
+|-- LICENSE                              # Apache 2.0
 |-- README.md
 |-- CONTRIBUTING.md
 |-- CODE_OF_CONDUCT.md

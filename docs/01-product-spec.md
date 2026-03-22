@@ -1221,16 +1221,12 @@ LangSight DOES: export metrics in formats (Prometheus, OTLP) that feed into exis
 
 ### 8.1 License
 
-**Business Source License 1.1 (BSL 1.1)** — converts to Apache 2.0 on 2030-03-21.
-
-(changed from original: was Apache 2.0; switched to BSL 1.1 on 2026-03-22)
+**Apache 2.0**
 
 Rationale:
-- Self-host free, no usage limits — same developer experience as Apache 2.0
-- Only restriction: cannot offer LangSight as a hosted commercial service
-- Converts automatically to Apache 2.0 after 4 years (2030-03-21)
+- Free to use, modify, and distribute
+- Self-host free, no usage limits
 - Protects the project's ability to build a sustainable business while keeping the source fully open
-- Industry precedent: HashiCorp, MariaDB, CockroachDB, Sentry all use BSL or similar source-available licenses
 
 ### 8.2 What is Open Source (Core)
 
@@ -1238,24 +1234,24 @@ Everything in Phases 1-3 as described above is open source. Specifically:
 
 | Component | License | Rationale |
 |-----------|---------|-----------|
-| CLI tool | BSL 1.1 | Must be fully open for adoption |
-| Health monitoring engine | BSL 1.1 | Core value proposition, drives adoption |
-| Security scanner | BSL 1.1 | Security tooling must be inspectable |
-| Metrics collection agent | BSL 1.1 | Must run in user's infrastructure |
-| Quality scoring algorithm | BSL 1.1 | Transparency builds trust |
-| Alerting engine | BSL 1.1 | Core operational feature |
-| Web dashboard (app.langsight.dev) | BSL 1.1 | Drives engagement and contributions |
-| Marketing website (langsight.dev) | BSL 1.1 | Public-facing, self-hostable via Vercel |
-| Documentation site (docs.langsight.dev) | BSL 1.1 | Mintlify, sourced from docs/ folder |
-| REST/gRPC API | BSL 1.1 | Enables ecosystem integration |
-| Prometheus/OTLP export | BSL 1.1 | Standard interoperability |
-| RCA engine (rule-based) | BSL 1.1 | Core debugging feature |
-| Langfuse integration | BSL 1.1 | Ecosystem play |
-| Helm chart + Docker Compose | BSL 1.1 | Easy deployment |
+| CLI tool | Apache 2.0 | Must be fully open for adoption |
+| Health monitoring engine | Apache 2.0 | Core value proposition, drives adoption |
+| Security scanner | Apache 2.0 | Security tooling must be inspectable |
+| Metrics collection agent | Apache 2.0 | Must run in user's infrastructure |
+| Quality scoring algorithm | Apache 2.0 | Transparency builds trust |
+| Alerting engine | Apache 2.0 | Core operational feature |
+| Web dashboard (app.langsight.dev) | Apache 2.0 | Drives engagement and contributions |
+| Marketing website (langsight.dev) | Apache 2.0 | Public-facing, self-hostable via Vercel |
+| Documentation site (docs.langsight.dev) | Apache 2.0 | Mintlify, sourced from docs/ folder |
+| REST/gRPC API | Apache 2.0 | Enables ecosystem integration |
+| Prometheus/OTLP export | Apache 2.0 | Standard interoperability |
+| RCA engine (rule-based) | Apache 2.0 | Core debugging feature |
+| Langfuse integration | Apache 2.0 | Ecosystem play |
+| Helm chart + Docker Compose | Apache 2.0 | Easy deployment |
 
 ### 8.3 What is Commercial (Enterprise)
 
-Commercial features are available under a separate commercial license (BSL or proprietary, TBD). These features target enterprise-specific needs that do not reduce the value of the open-source core.
+Commercial features are available under a separate commercial license (proprietary, TBD). These features target enterprise-specific needs that do not reduce the value of the open source core.
 
 | Feature | Why Commercial | Target Persona |
 |---------|---------------|----------------|

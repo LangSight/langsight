@@ -1,8 +1,8 @@
 # LangSight: Architecture Design
 
-> **Version**: 1.6.0
+> **Version**: 1.7.0
 > **Date**: 2026-03-22
-> **Status**: Active — v0.3 Prevention Layer (Tier 1) shipped: circuit breaker, loop detection, budget guardrails integrated into SDK `call_tool()` path. New alert types for prevention events. Health tag engine for session auto-classification. Dashboard sessions page updated with health tag column and filter (2026-03-22)
+> **Status**: Active — v0.3 Prevention Layer (Tier 1) shipped: circuit breaker, loop detection, budget guardrails integrated into SDK `call_tool()` path. New alert types for prevention events. Health tag engine for session auto-classification. Dashboard sessions page updated with health tag column and filter (2026-03-22). Prevention Config shipped (2026-03-22): dashboard-managed thresholds via `prevention_config` Postgres table, 6 API endpoints, SDK `_apply_remote_config()` background fetch on `wrap()`, Settings → Prevention dashboard tab (section 2.9.2).
 
 ---
 
@@ -381,6 +381,30 @@ Thread-safe for single-threaded asyncio (Python GIL + cooperative scheduling —
 - **Raise exceptions, not return errors**: Prevention violations raise typed exceptions (`LoopDetectedError`, `BudgetExceededError`, `CircuitBreakerOpenError`) so the agent framework's error handling catches them. Returning error values would be silently ignored by most frameworks.
 - **`ToolCallStatus.PREVENTED`**: A new status value distinct from `ERROR` — prevented calls never reached the server. This distinction matters for reliability metrics: a prevented call is not a tool failure.
 
+### 2.9.2 Prevention Config — Dashboard-Managed Thresholds (added 2026-03-22)
+
+**Purpose**: Decouple prevention threshold management from code. Engineers configure loop, budget, and circuit-breaker limits in the dashboard or via API; the SDK fetches them on startup without a code deploy.
+
+**Data flow**:
+```
+Dashboard UI (Settings → Prevention)
+        ↓  CRUD via API
+  Postgres: prevention_config table (per-project, per-agent)
+        ↓  GET on wrap()
+  SDK: _apply_remote_config() — background task, non-blocking
+        ↓  merged over constructor defaults
+  MCPClientProxy (active thresholds)
+```
+
+**`prevention_config` table** — key columns: `id`, `project_id`, `agent_name`, `loop_enabled`, `loop_threshold`, `loop_action`, `max_steps`, `max_cost_usd`, `max_wall_time_s`, `budget_soft_alert`, `cb_enabled`, `cb_failure_threshold`, `cb_cooldown_seconds`, `cb_half_open_max_calls`.
+
+**Project default**: `agent_name="*"` row acts as the project-level fallback. Lookup order: per-agent row → project default row → SDK constructor params.
+
+**Key design decisions** (decided 2026-03-22):
+- **Constructor params as offline fallback, not the source of truth**: Thresholds set in code are kept so agents function correctly when the API is unreachable (offline mode, network partition, cold start). The platform config takes precedence when reachable.
+- **Non-blocking fetch on `wrap()`**: `_apply_remote_config()` is launched via `asyncio.create_task()`. `wrap()` returns immediately; remote config is applied before the first tool call completes. A failed fetch logs a warning and leaves constructor defaults active — it never blocks the agent.
+- **No per-call round-trip**: Remote config is fetched once per `wrap()` and cached in-memory for the lifetime of that proxy. This keeps the prevention path latency identical to Tier 1 (no added I/O per tool call).
+
 ### 2.10 LibreChat Plugin (Phase 2)
 
 **Purpose**: 50-line Node.js integration that intercepts LibreChat's MCP call path and sends spans to the LangSight API.
@@ -727,7 +751,7 @@ At current scale (demo data, single-digit projects) this is invisible — ClickH
 | **Containerization** | Docker Compose | Single `docker compose up` for full stack |
 | **Metrics** | prometheus-client | Prometheus text exposition format for `/metrics` endpoint |
 | **Testing** | pytest + httpx + testcontainers | Standard Python testing stack |
-| **License** | BSL 1.1 (converts to Apache 2.0 on 2030-03-21) | Self-host free; only restriction is hosted-service resale (changed from Apache 2.0, decided 2026-03-22) |
+| **License** | Apache 2.0 | Free to use, modify, and distribute |
 
 ---
 

@@ -477,11 +477,98 @@ client = LangSightClient(
 
 | Page | Change |
 |---|---|
-| **Sessions** | Health tag badges (success, loop_detected, budget_exceeded, etc.) + filter by tag |
+| **Sessions** | Health tag badges (success, loop_detected, budget_exceeded, etc.) + filter by tag ✅ DONE |
 | **Lineage** | Health overlay on nodes (green/yellow/red) + click server → blast radius panel |
 | **Health** | Circuit breaker status per server (closed/open/half-open) |
 | **Settings → Alerts** | OpsGenie + PagerDuty config panels |
 | **Overview** | New metric cards: loops prevented, budget saves, circuit breaker activations |
+| **Settings → Prevention** | Per-agent prevention config (thresholds for loop/budget/circuit) — see section below |
+
+---
+
+## Prevention Config (dashboard-managed thresholds) — NEW
+
+**Decision:** SDK constructor params are local offline defaults only. Source of truth moves to the platform.
+
+```
+Dashboard UI (Settings → Prevention)
+         ↓
+   Postgres: prevention_config table (per-project, per-agent)
+         ↓
+   API: GET/PUT /api/agents/{name}/prevention-config
+         ↓
+   SDK: fetches on client.wrap(), falls back to constructor params if server unreachable
+```
+
+### Postgres schema
+
+```sql
+CREATE TABLE prevention_config (
+    id            TEXT PRIMARY KEY,
+    project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    agent_name    TEXT NOT NULL,
+    -- Loop detection
+    loop_enabled          BOOLEAN NOT NULL DEFAULT TRUE,
+    loop_threshold        INTEGER NOT NULL DEFAULT 3,
+    loop_action           TEXT    NOT NULL DEFAULT 'terminate',  -- 'terminate' | 'warn'
+    -- Budget guardrails
+    max_steps             INTEGER,           -- NULL = disabled
+    max_cost_usd          NUMERIC(10, 4),   -- NULL = disabled
+    max_wall_time_s       NUMERIC(10, 2),   -- NULL = disabled
+    budget_soft_alert     NUMERIC(3, 2) NOT NULL DEFAULT 0.80,
+    -- Circuit breaker
+    cb_enabled            BOOLEAN NOT NULL DEFAULT TRUE,
+    cb_failure_threshold  INTEGER NOT NULL DEFAULT 5,
+    cb_cooldown_seconds   NUMERIC(10, 2) NOT NULL DEFAULT 60.0,
+    cb_half_open_max      INTEGER NOT NULL DEFAULT 2,
+    -- Metadata
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (project_id, agent_name)
+);
+```
+
+### API endpoints
+
+```
+GET  /api/agents/{agent_name}/prevention-config
+     → returns config for this agent (or project defaults if no agent-specific config)
+
+PUT  /api/agents/{agent_name}/prevention-config
+     body: { loop_enabled, loop_threshold, loop_action, max_steps, max_cost_usd, ... }
+     → upsert config for this agent
+
+DELETE /api/agents/{agent_name}/prevention-config
+     → remove agent-specific config (falls back to project defaults)
+
+GET  /api/projects/{project_id}/prevention-config
+     → get project-level default config (applies to all agents without a specific config)
+
+PUT  /api/projects/{project_id}/prevention-config
+     → set project-level defaults
+```
+
+### SDK fetch
+
+In `LangSightClient.wrap()`, after wrapping the MCP client, the SDK fetches the prevention config for this agent:
+
+```python
+config = await self._fetch_prevention_config(agent_name)
+# config overrides constructor params if found
+# constructor params remain as offline fallback
+```
+
+### Dashboard — Settings → Prevention tab
+
+Per-agent table with inline edit:
+
+| Agent | Loop | Threshold | Action | Max Steps | Max Cost | Max Time | CB |
+|---|---|---|---|---|---|---|---|
+| orchestrator | ✓ | 3 | terminate | 25 | $1.00 | 120s | ✓ |
+| billing-agent | ✓ | 3 | terminate | 10 | $0.50 | 60s | ✓ |
+| support-agent | ✓ | 5 | warn | — | — | — | ✓ |
+
+**Effort:** 3–4 days
 
 ---
 

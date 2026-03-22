@@ -7,6 +7,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.3.1] - 2026-03-22 — Prevention Config
+
+### Added
+
+- **`prevention_config` Postgres table** — per-project, per-agent prevention thresholds persisted in the platform. `agent_name="*"` row is the project-level default that applies to all agents without a specific config entry.
+- **`PreventionConfig` domain model** (`models.py`) — fields: `id`, `project_id`, `agent_name`, `loop_enabled`, `loop_threshold`, `loop_action`, `max_steps`, `max_cost_usd`, `max_wall_time_s`, `budget_soft_alert`, `cb_enabled`, `cb_failure_threshold`, `cb_cooldown_seconds`, `cb_half_open_max_calls`.
+- **API endpoints**: `GET /api/agents/{name}/prevention-config`, `PUT /api/agents/{name}/prevention-config`, `DELETE /api/agents/{name}/prevention-config`, and project-default equivalents under `/api/projects/{id}/prevention-config`.
+- **SDK: `LangSightClient._apply_remote_config()`** — background task launched on `wrap()` that fetches the agent's dashboard config and merges it over constructor defaults. Non-blocking: `wrap()` returns immediately; the remote config takes effect before the first tool call. Falls back to constructor params when the API is unreachable.
+- **Dashboard: Prevention tab in Settings** — per-agent table with inline edit forms for all threshold fields. Project default row (`*`) always shown at top.
+- **Demo seed**: 5 sample `prevention_config` rows covering demo agents.
+
 ## [0.3.0] - 2026-03-22 — Prevention Layer (Tier 1)
 
 ### Added

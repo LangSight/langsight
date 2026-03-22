@@ -9,7 +9,7 @@
 - **Positioning pivot complete**: LangSight is now "agent runtime reliability" — not observability. Observability overlaps with Langfuse (6k+ stars), Phoenix (15k+ stars), LangSmith (enterprise). Runtime reliability (prevent, detect, monitor, map) is an empty category.
 - Real differentiator: loop detection, budget guardrails, circuit breakers, MCP health/security, blast radius analysis. Not traces. Not dashboards. Not evals.
 - Product is a solid alpha with good architecture, but no external validation
-- License: BSL 1.1 (self-host free, converts to Apache 2.0 on 2030-03-21)
+- License: Apache 2.0 (free to use, modify, and distribute)
 - Domain: langsight.dev | Repo: github.com/LangSight/langsight
 
 **Core diagnosis**: LangSight tried to be an observability platform and got lost in Langfuse's shadow. The pivot to runtime reliability gives us an empty category. Nobody else does loop detection + budget guardrails + circuit breakers + MCP health + MCP security in one package. Own this category.
@@ -278,7 +278,7 @@ Alert routing for the "Monitor" pillar. When a circuit breaker opens or an SLO b
 
 ### 4.6 — Managed cloud (if traction justifies it)
 
-Only if self-hosted adoption proves the market. Not before. BSL 1.1 protects this option.
+Only if self-hosted adoption proves the market. Not before.
 
 ---
 
@@ -332,7 +332,7 @@ These are tempting but will not help adoption:
 |---|---|---|
 | **MCPcat** | MCP analytics/logging | We add health monitoring, security scanning, runtime guardrails |
 | **Sentry MCP** | MCP error tracking | We add proactive monitoring, CVE scanning, loop detection, blast radius |
-| **Datadog AI** | Commercial APM with some MCP traces | We are deeper on MCP + cheaper (self-hosted, BSL 1.1) |
+| **Datadog AI** | Commercial APM with some MCP traces | We are deeper on MCP + cheaper (self-hosted, Apache 2.0) |
 | **Nothing** | Loop detection + budget guardrails + circuit breakers | **Empty category** — nobody else does this |
 
 ### The key insight

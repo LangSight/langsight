@@ -310,3 +310,35 @@ except CircuitBreakerOpenError as e:
 ```
 
 Prevented calls are still recorded as spans with `status="prevented"` — visible in the dashboard trace view.
+
+### Server-Managed Configuration
+
+Constructor params are offline fallbacks. When a LangSight backend is configured, thresholds are managed from the dashboard and applied automatically on each `wrap()` call.
+
+```python
+# Constructor params = offline defaults (used when API unreachable)
+client = LangSightClient(
+    url="http://localhost:8000",
+    loop_detection=True,
+    loop_threshold=3,      # overridden by dashboard config if set
+    max_steps=25,          # overridden by dashboard config if set
+    circuit_breaker=True,
+)
+
+# On client.wrap(), thresholds are fetched from the dashboard and applied
+proxy = client.wrap(mcp, agent_name="orchestrator")
+# orchestrator's dashboard config (if set) overrides constructor params
+```
+
+`wrap()` returns immediately — the remote config fetch runs as a background task and takes effect before the first tool call. If the API is unreachable, constructor params remain active.
+
+Configure thresholds at **Settings → Prevention** in the dashboard, or via the API:
+
+```bash
+curl -X PUT http://localhost:8000/api/agents/orchestrator/prevention-config \
+  -H "X-API-Key: lsk_your_key" \
+  -H "Content-Type: application/json" \
+  -d '{"loop_threshold": 5, "max_steps": 30, "max_cost_usd": 1.00}'
+```
+
+Set `agent_name` to `"*"` for a project-level default that applies to all agents without a specific config entry.
