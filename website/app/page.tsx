@@ -307,7 +307,7 @@ function Hero() {
               style={{ background: "var(--indigo-dim)", border: "1px solid rgba(45,212,191,0.25)", color: "var(--indigo)" }}
             >
               <span className="w-1.5 h-1.5 rounded-full pulse-dot" style={{ background: "var(--indigo)" }} />
-              v0.2.0 · Self-host free · BSL 1.1
+              v0.2.0 · Self-host free · Apache 2.0
             </div>
 
             {/* Headline — lead with pain */}
@@ -889,7 +889,7 @@ function SelfHosted() {
             className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium mb-5"
             style={{ background: "var(--indigo-dim)", border: "1px solid rgba(45,212,191,0.2)", color: "var(--indigo)" }}
           >
-            <GithubIcon className="w-3.5 h-3.5" /> BSL 1.1 · Self-host free forever
+            <GithubIcon className="w-3.5 h-3.5" /> Apache 2.0 · Self-host free forever
           </div>
           <h2
             className="font-bold tracking-tight"
@@ -913,7 +913,7 @@ function SelfHosted() {
             },
             {
               title: "No vendor lock-in",
-              body: "BSL 1.1 — converts to Apache 2.0 after 4 years. Fork it, modify it, embed it. The only restriction: don't resell it as a hosted service.",
+              body: "Apache 2.0 — fork it, modify it, embed it, sell it. No restrictions.",
             },
             {
               title: "5-minute setup",
@@ -990,7 +990,7 @@ function CTA() {
             </div>
 
             <div className="flex flex-wrap justify-center gap-6 text-sm" style={{ color: "var(--dimmer)" }}>
-              <span>BSL 1.1 — self-host free</span>
+              <span>Apache 2.0 — self-host free</span>
               <span>No account needed</span>
               <span>docker compose up — full stack in 5 min</span>
             </div>
@@ -1032,7 +1032,7 @@ function Footer() {
           ))}
         </div>
         <p className="text-xs" style={{ color: "var(--dimmer)" }}>
-          BSL 1.1 · v0.2.0
+          Apache 2.0 · v0.2.0
         </p>
       </div>
     </footer>

@@ -254,7 +254,7 @@ const COMPARISON_ROWS: ComparisonRow[] = [
   },
   {
     feature: "License",
-    langsight: "BSL 1.1",
+    langsight: "Apache 2.0",
     langfuse: "MIT / ELv2",
     langwatch: "Apache 2.0",
   },
@@ -607,7 +607,7 @@ export default function AlternativesPage() {
             ))}
           </div>
           <p className="text-xs" style={{ color: "var(--dimmer)" }}>
-            BSL 1.1 · v0.2.0
+            Apache 2.0 · v0.2.0
           </p>
         </div>
       </footer>

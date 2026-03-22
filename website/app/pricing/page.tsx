@@ -117,7 +117,7 @@ const ALL_FEATURES = [
 const FAQ = [
   {
     q: "Is it really free? What's the catch?",
-    a: "There is no catch. LangSight is BSL 1.1 open source. You can self-host it for free, forever, for any use including commercial. We do not have a paid tier today.",
+    a: "There is no catch. LangSight is Apache 2.0 open source. You can self-host it for free, forever, for any use including commercial. We do not have a paid tier today.",
   },
   {
     q: "Is there a cloud-hosted version?",
@@ -133,7 +133,7 @@ const FAQ = [
   },
   {
     q: "What happens when a cloud tier launches?",
-    a: "The self-hosted version will always remain BSL 1.1 and fully featured. Any cloud tier will be additive — managed hosting, support SLAs, enterprise SSO. We will never move existing features to a paid tier.",
+    a: "The self-hosted version will always remain Apache 2.0 and fully featured. Any cloud tier will be additive — managed hosting, support SLAs, enterprise SSO. We will never move existing features to a paid tier.",
   },
   {
     q: "How do I get support?",
@@ -219,7 +219,7 @@ export default function PricingPage() {
               className="fade-up delay-2 text-lg leading-relaxed max-w-xl mx-auto mb-10"
               style={{ color: "var(--muted)" }}
             >
-              LangSight is BSL 1.1 open source. Self-host the entire platform —
+              LangSight is Apache 2.0 open source. Self-host the entire platform —
               CLI, SDK, API, dashboard, and every feature — at no cost. Not &ldquo;open core&rdquo;.
               Not a free tier. Just free.
             </p>
@@ -290,7 +290,7 @@ export default function PricingPage() {
                     >
                       $0
                     </span>
-                    <span className="text-sm ml-2" style={{ color: "var(--muted)" }}>forever · BSL 1.1</span>
+                    <span className="text-sm ml-2" style={{ color: "var(--muted)" }}>forever · Apache 2.0</span>
                   </div>
 
                   <a
@@ -316,7 +316,7 @@ export default function PricingPage() {
                       "Anomaly detection + SLO tracking",
                       "AI root cause analysis (bring your key)",
                       "Self-hosted — your data, your infra",
-                      "BSL 1.1 — fork, modify, self-host freely",
+                      "Apache 2.0 — fork, modify, sell freely",
                     ].map((f, i) => (
                       <div key={i} className="flex items-center gap-2 text-sm">
                         <span style={{ color: "var(--green)" }}>✓</span>
@@ -475,7 +475,7 @@ export default function PricingPage() {
                       ["MCP health monitoring", "✓ Free", "✗", "✗"],
                       ["Security scanning", "✓ Free", "✗", "✗"],
                       ["Data leaves your network", "Never", "Always", "Always"],
-                      ["Vendor lock-in", "None (BSL 1.1)", "High", "High"],
+                      ["Vendor lock-in", "None (Apache 2.0)", "High", "High"],
                       ["Custom retention", "Unlimited", "Pay per GB", "Pay per GB"],
                     ].map((row, i) => (
                       <tr key={i} style={{ borderBottom: i < 6 ? "1px solid var(--border-dim)" : "none" }}>
@@ -558,7 +558,7 @@ export default function PricingPage() {
               </a>
             ))}
           </div>
-          <p className="text-xs" style={{ color: "var(--dimmer)" }}>BSL 1.1 · v0.2.0</p>
+          <p className="text-xs" style={{ color: "var(--dimmer)" }}>Apache 2.0 · v0.2.0</p>
         </div>
       </footer>
     </>

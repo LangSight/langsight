@@ -63,7 +63,7 @@ const jsonLd = {
     "@type": "Offer",
     price: "0",
     priceCurrency: "USD",
-    description: "Free self-hosted, BSL 1.1 open source",
+    description: "Free self-hosted, Apache 2.0 open source",
   },
   author: {
     "@type": "Organization",

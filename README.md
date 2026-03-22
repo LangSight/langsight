@@ -6,7 +6,7 @@ Detect loops. Enforce budgets. Break failing tools. Map blast radius.
 For MCP servers: health checks, security scanning, schema drift detection.
 
 [![PyPI](https://img.shields.io/pypi/v/langsight)](https://pypi.org/project/langsight/)
-[![License: BSL 1.1](https://img.shields.io/badge/License-BSL%201.1-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![CI](https://github.com/LangSight/langsight/actions/workflows/ci.yml/badge.svg)](https://github.com/LangSight/langsight/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-mintlify-green)](https://docs.langsight.dev)
@@ -289,6 +289,4 @@ LangSight monitors MCP security — it must itself be secure. Report vulnerabili
 
 ## License
 
-BSL 1.1 — self-host free, no usage limits. See [LICENSE](LICENSE).
-
-Each version converts to Apache 2.0 four years after release. The only restriction: you may not offer LangSight as a hosted/managed service to third parties.
+Apache 2.0 — free to use, modify, distribute, and build on. See [LICENSE](LICENSE).

@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "LangSight Pricing — Free Self-Hosted Agent Runtime Reliability",
   description:
-    "LangSight is free forever. BSL 1.1 — self-host the entire platform at $0. Loop detection, budget guardrails, MCP health, security scanning. No free tier, no feature gating.",
+    "LangSight is free forever. Apache 2.0 — self-host the entire platform at $0. Loop detection, budget guardrails, MCP health, security scanning. No free tier, no feature gating.",
   keywords: [
     "LangSight pricing",
     "free self-hosted agent reliability",
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "LangSight Pricing — Free Self-Hosted",
     description:
-      "Free forever. BSL 1.1. Self-host LangSight at $0 — loop detection, guardrails, MCP health, security.",
+      "Free forever. Apache 2.0. Self-host LangSight at $0 — loop detection, guardrails, MCP health, security.",
   },
   alternates: {
     canonical: "https://langsight.dev/pricing/",

@@ -528,7 +528,7 @@ export default function GlossaryPage() {
             ))}
           </div>
           <p className="text-xs" style={{ color: "var(--dimmer)" }}>
-            BSL 1.1 · v0.2.0
+            Apache 2.0 · v0.2.0
           </p>
         </div>
       </footer>
