@@ -166,6 +166,11 @@
       "sourceType": "github",
       "computedHash": "0728424e6f56972333bd60e4f45da0322ac6db273744d863aa2b94f1e95d61ec"
     },
+    "programmatic-seo": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "40b8fe29a6c9cb0606e6fa77aff227cf275e3808adf66e5ef69e02dcf60a7303"
+    },
     "pytest-coverage": {
       "source": "github/awesome-copilot",
       "sourceType": "github",
@@ -220,6 +225,11 @@
       "source": "supercent-io/skills-template",
       "sourceType": "github",
       "computedHash": "a8c825eb0f2d2d3381f93dad83ea531579445c5646b38be0170f4a782689cf4b"
+    },
+    "seo-audit": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "ec3109d213dde1747614ad1112ef0e498e04b24e464538968e156dfbfadb2121"
     },
     "sql-optimization": {
       "source": "github/awesome-copilot",
