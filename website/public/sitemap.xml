@@ -7,6 +7,24 @@
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://langsight.dev/blog/</loc>
+    <lastmod>2026-03-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://langsight.dev/blog/ai-agent-loop-detection/</loc>
+    <lastmod>2026-03-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://langsight.dev/blog/mcp-server-security/</loc>
+    <lastmod>2026-03-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://langsight.dev/pricing/</loc>
     <lastmod>2026-03-22</lastmod>
     <changefreq>monthly</changefreq>

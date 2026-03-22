@@ -119,6 +119,7 @@ function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
   }, []);
 
   const navLinks = [
+    { label: "Blog", href: "/blog" },
     { label: "Security", href: "/security" },
     { label: "Pricing", href: "/pricing" },
     { label: "Docs", href: "https://docs.langsight.dev" },
@@ -1009,6 +1010,7 @@ function Footer() {
     { label: "Changelog", href: "https://github.com/LangSight/langsight/blob/main/CHANGELOG.md" },
     { label: "Security", href: "/security" },
     { label: "Pricing", href: "/pricing" },
+    { label: "Blog", href: "/blog" },
   ];
 
   return (
