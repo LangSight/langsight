@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://langsight.dev"),
   title: "LangSight — Agent Runtime Reliability for AI Toolchains",
   description:
     "Your agent failed. How do we stop it next time? Detect loops, enforce budgets, break failing tools, map blast radius. MCP health checks, security scanning, schema drift. Self-host free.",
