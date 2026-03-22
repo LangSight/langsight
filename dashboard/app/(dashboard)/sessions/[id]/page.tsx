@@ -776,7 +776,7 @@ function SpanRow({ span, depth = 0 }: { span: SpanNode; depth?: number }) {
         <td className="py-2 pr-3 text-[12px] text-muted-foreground">{span.agent_name || "—"}</td>
         <td className="py-2 pr-3 text-[12px]">
           <span className={cn("font-mono font-semibold", statusColor)}>
-            {span.status === "success" ? "✓" : span.status === "error" ? "✗" : "⏱"}
+            {span.status === "success" ? "✓" : span.status === "error" ? "✗" : span.status === "prevented" ? "⊘" : "⏱"}
           </span>
         </td>
         <td className="py-2 pr-3 text-[12px] font-mono text-right text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>
@@ -830,7 +830,7 @@ function DiffRow({ entry }: { entry: DiffEntry }) {
   const latStr = (span: Record<string, unknown> | null) =>
     span?.latency_ms != null ? `${Number(span.latency_ms).toFixed(0)}ms` : "—";
   const statusStr = (span: Record<string, unknown> | null) =>
-    span ? (span.status === "success" ? "✓" : span.status === "error" ? "✗" : "⏱") : "—";
+    span ? (span.status === "success" ? "✓" : span.status === "error" ? "✗" : span.status === "prevented" ? "⊘" : "⏱") : "—";
   const deltaColor =
     entry.latency_delta_pct === null ? ""
     : entry.latency_delta_pct > 0 ? "text-red-500" : "text-emerald-500";

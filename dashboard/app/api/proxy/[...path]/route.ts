@@ -53,7 +53,7 @@ async function proxyRequest(
 
   // Forward real client IP so the API rate limiter sees individual users,
   // not the dashboard container IP (which would share one bucket for all users)
-  const clientIp = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? req.ip;
+  const clientIp = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip");
   if (clientIp) headers["X-Forwarded-For"] = clientIp;
 
   // Forward request body for POST / PATCH / PUT

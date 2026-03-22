@@ -12,7 +12,8 @@ import {
 import { fetcher } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatDuration } from "@/lib/utils";
-import type { AgentSession } from "@/lib/types";
+import type { AgentSession, HealthTag } from "@/lib/types";
+import { HealthTagBadge } from "@/components/health-tag-badge";
 
 const PAGE_SIZE = 20;
 
@@ -23,6 +24,7 @@ export default function SessionsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "clean" | "failed">("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
+  const [healthTagFilter, setHealthTagFilter] = useState<string>("all");
   const [page, setPage] = useState(0);
 
   const { activeProject } = useProject();
@@ -34,7 +36,7 @@ export default function SessionsPage() {
     { refreshInterval: 30_000 }
   );
 
-  useEffect(() => { setPage(0); }, [search, statusFilter, agentFilter, hours]);
+  useEffect(() => { setPage(0); }, [search, statusFilter, agentFilter, healthTagFilter, hours]);
 
   const agentNames = useMemo(() => {
     if (!sessions) return [];
@@ -47,6 +49,7 @@ export default function SessionsPage() {
       if (statusFilter === "clean" && s.failed_calls > 0) return false;
       if (statusFilter === "failed" && s.failed_calls === 0) return false;
       if (agentFilter !== "all" && (s.agent_name ?? "unknown") !== agentFilter) return false;
+      if (healthTagFilter !== "all" && (s.health_tag ?? "") !== healthTagFilter) return false;
       if (search) {
         const q = search.toLowerCase();
         if (
@@ -57,7 +60,7 @@ export default function SessionsPage() {
       }
       return true;
     });
-  }, [sessions, statusFilter, agentFilter, search]);
+  }, [sessions, statusFilter, agentFilter, healthTagFilter, search]);
 
   const countAll    = sessions?.length ?? 0;
   const countClean  = sessions?.filter((s) => s.failed_calls === 0).length ?? 0;
@@ -163,6 +166,24 @@ export default function SessionsPage() {
               </select>
             </div>
           )}
+
+          <div className="flex items-center gap-1.5">
+            <select
+              value={healthTagFilter}
+              onChange={(e) => setHealthTagFilter(e.target.value)}
+              className="text-xs rounded-lg px-2 py-1.5 border border-border bg-card text-foreground outline-none h-[34px]"
+            >
+              <option value="all">All health tags</option>
+              <option value="success">Success</option>
+              <option value="success_with_fallback">Fallback</option>
+              <option value="loop_detected">Loop</option>
+              <option value="budget_exceeded">Budget</option>
+              <option value="tool_failure">Failure</option>
+              <option value="circuit_breaker_open">Circuit Open</option>
+              <option value="timeout">Timeout</option>
+              <option value="schema_drift">Schema Drift</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -223,6 +244,7 @@ export default function SessionsPage() {
                     {[
                       ["Session ID", "text-left"],
                       ["Agent", "text-left"],
+                      ["Health", "text-left"],
                       ["Calls", "text-right"],
                       ["Failed", "text-right"],
                       ["Duration", "text-right"],
@@ -261,6 +283,9 @@ export default function SessionsPage() {
                       </td>
                       <td className="px-4 py-3 text-[12px] text-muted-foreground">
                         {s.agent_name || "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <HealthTagBadge tag={s.health_tag} />
                       </td>
                       <td className="px-4 py-3 text-[12px] text-right">
                         <span className="flex items-center justify-end gap-1 text-muted-foreground">

@@ -1,5 +1,5 @@
 export type ServerStatus = "up" | "degraded" | "down" | "stale" | "unknown";
-export type ToolCallStatus = "success" | "error" | "timeout";
+export type ToolCallStatus = "success" | "error" | "timeout" | "prevented";
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 export type SpanType = "tool_call" | "agent" | "handoff";
 
@@ -34,6 +34,16 @@ export interface SecurityScanResult {
   findings: SecurityFinding[];
 }
 
+export type HealthTag =
+  | "success"
+  | "success_with_fallback"
+  | "loop_detected"
+  | "budget_exceeded"
+  | "tool_failure"
+  | "circuit_breaker_open"
+  | "timeout"
+  | "schema_drift";
+
 export interface AgentSession {
   session_id: string;
   agent_name: string | null;
@@ -43,6 +53,7 @@ export interface AgentSession {
   failed_calls: number;
   duration_ms: number;
   servers_used: string[];
+  health_tag: HealthTag | null;  // v0.3
 }
 
 export interface SpanNode {

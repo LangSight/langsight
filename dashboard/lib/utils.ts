@@ -64,9 +64,10 @@ export const SEVERITY_BG: Record<Severity, string> = {
 };
 
 export const CALL_STATUS_COLOR: Record<ToolCallStatus, string> = {
-  success: "text-emerald-400",
-  error:   "text-red-400",
-  timeout: "text-yellow-400",
+  success:   "text-emerald-400",
+  error:     "text-red-400",
+  timeout:   "text-yellow-400",
+  prevented: "text-orange-400",  // v0.3 — blocked by loop/budget/circuit breaker
 };
 
 export const SPAN_TYPE_ICON: Record<string, string> = {

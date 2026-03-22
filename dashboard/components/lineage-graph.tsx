@@ -127,6 +127,11 @@ export function LineageGraph({
   const baseH = nodeHeight ?? DEFAULT_NODE_H;
   const sel: GraphSelection = selection ?? (selectedId ? { type: "node", id: selectedId } : null);
   const doSelect = useCallback((s: GraphSelection) => { if (onSelectionChange) onSelectionChange(s); else onSelect?.(s?.type === "node" ? s.id : null); }, [onSelectionChange, onSelect]);
+  
+  // Stable ref for event handlers to prevent useEffect re-binding
+  const doSelectRef = useRef(doSelect);
+  useEffect(() => { doSelectRef.current = doSelect; }, [doSelect]);
+
 
   const containerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -203,7 +208,7 @@ export function LineageGraph({
       const tag = (document.activeElement?.tagName ?? "").toLowerCase();
       if (tag === "input" || tag === "textarea" || tag === "select") return;
       switch (e.key) {
-        case "Escape": doSelect(null); setSearchQ(""); setShowErrors(false); break;
+        case "Escape": doSelectRef.current(null); setSearchQ(""); setShowErrors(false); break;
         case "+": case "=": e.preventDefault(); setZoom((z) => Math.min(2.5, z * 1.15)); break;
         case "-": e.preventDefault(); setZoom((z) => Math.max(0.25, z * 0.85)); break;
         case "f": e.preventDefault(); setZoom(1); setPan({ x: 0, y: 0 }); setNodeOffsets(new Map()); break;
@@ -213,7 +218,7 @@ export function LineageGraph({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [doSelect]);
+  }, []); // Empty dependency array ensures listener attaches only once
 
   /* ── Mouse handlers ── */
   const onBgDown = useCallback((e: React.MouseEvent) => { if (e.button === 0) { setPanning(true); lastMouse.current = { x: e.clientX, y: e.clientY }; } }, []);
