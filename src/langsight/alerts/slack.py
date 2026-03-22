@@ -31,6 +31,12 @@ _TYPE_EMOJI = {
     AlertType.SLO_BREACHED: ":chart_with_downwards_trend:",
     AlertType.ANOMALY_DETECTED: ":mag:",
     AlertType.SECURITY_FINDING: ":shield:",
+    # v0.3 Prevention layer
+    AlertType.LOOP_DETECTED: ":repeat:",
+    AlertType.BUDGET_WARNING: ":moneybag:",
+    AlertType.BUDGET_EXCEEDED: ":no_entry_sign:",
+    AlertType.CIRCUIT_BREAKER_OPEN: ":zap:",
+    AlertType.CIRCUIT_BREAKER_RECOVERED: ":large_green_circle:",
 }
 
 SLACK_TIMEOUT = 5.0

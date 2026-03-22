@@ -18,6 +18,7 @@ from enum import StrEnum
 import structlog
 
 from langsight.models import HealthCheckResult, ServerStatus
+from langsight.sdk.models import PreventionEvent
 
 logger = structlog.get_logger()
 
@@ -38,6 +39,12 @@ class AlertType(StrEnum):
     SLO_BREACHED = "slo_breached"
     ANOMALY_DETECTED = "anomaly_detected"
     SECURITY_FINDING = "security_finding"
+    # v0.3 Prevention layer alerts
+    LOOP_DETECTED = "loop_detected"
+    BUDGET_WARNING = "budget_warning"
+    BUDGET_EXCEEDED = "budget_exceeded"
+    CIRCUIT_BREAKER_OPEN = "circuit_breaker_open"
+    CIRCUIT_BREAKER_RECOVERED = "circuit_breaker_recovered"
 
 
 @dataclass(frozen=True)
@@ -151,6 +158,104 @@ class AlertEngine:
         for result in sorted(results, key=lambda r: r.server_name):
             alerts.extend(self.evaluate(result))
         return alerts
+
+    # ---------------------------------------------------------------------------
+    # v0.3 Prevention event evaluation
+    # ---------------------------------------------------------------------------
+
+    _EVENT_TO_ALERT: dict[str, tuple[AlertType, AlertSeverity]] = {
+        "loop_detected": (AlertType.LOOP_DETECTED, AlertSeverity.WARNING),
+        "budget_warning": (AlertType.BUDGET_WARNING, AlertSeverity.WARNING),
+        "budget_exceeded": (AlertType.BUDGET_EXCEEDED, AlertSeverity.CRITICAL),
+        "circuit_breaker_open": (AlertType.CIRCUIT_BREAKER_OPEN, AlertSeverity.CRITICAL),
+        "circuit_breaker_recovered": (AlertType.CIRCUIT_BREAKER_RECOVERED, AlertSeverity.INFO),
+    }
+
+    def evaluate_prevention_event(self, event: PreventionEvent) -> list[Alert]:
+        """Create alerts from SDK prevention events (loop, budget, circuit breaker).
+
+        Unlike health-check evaluation, prevention events always produce an alert
+        (they are already significant events — no threshold needed).
+        """
+        mapping = self._EVENT_TO_ALERT.get(event.event_type)
+        if mapping is None:
+            return []
+
+        alert_type, severity = mapping
+        server = event.server_name or "unknown"
+        tool = event.tool_name or "unknown"
+        session = event.session_id or "unknown"
+        details = event.details
+
+        title = self._prevention_title(event.event_type, server, tool)
+        message = self._prevention_message(event.event_type, server, tool, session, details)
+
+        logger.info(
+            "alert_engine.prevention_event",
+            event_type=event.event_type,
+            server=server,
+            tool=tool,
+            session=session,
+        )
+        return [
+            Alert(
+                server_name=server,
+                alert_type=alert_type,
+                severity=severity,
+                title=title,
+                message=message,
+            )
+        ]
+
+    @staticmethod
+    def _prevention_title(event_type: str, server: str, tool: str) -> str:
+        titles = {
+            "loop_detected": f"Loop detected: '{tool}' on '{server}'",
+            "budget_warning": f"Budget warning for session on '{server}'",
+            "budget_exceeded": f"Budget exceeded for session on '{server}'",
+            "circuit_breaker_open": f"Circuit breaker OPEN: '{server}' disabled",
+            "circuit_breaker_recovered": f"Circuit breaker recovered: '{server}'",
+        }
+        return titles.get(event_type, f"Prevention event: {event_type}")
+
+    @staticmethod
+    def _prevention_message(
+        event_type: str, server: str, tool: str, session: str, details: dict[str, object],
+    ) -> str:
+        if event_type == "loop_detected":
+            pattern = details.get("pattern", "unknown")
+            count = details.get("loop_count", "?")
+            return (
+                f"Agent loop detected on '{server}': tool '{tool}' "
+                f"triggered {pattern} pattern ({count} repetitions). "
+                f"Session: {session}"
+            )
+        if event_type == "budget_warning":
+            limit = details.get("limit_type", "unknown")
+            pct = details.get("threshold_pct", 0.8)
+            return (
+                f"Session on '{server}' has reached {pct:.0%} of {limit} budget. "
+                f"Session: {session}"
+            )
+        if event_type == "budget_exceeded":
+            limit = details.get("limit_type", "unknown")
+            value = details.get("actual_value", "?")
+            cap = details.get("limit_value", "?")
+            return (
+                f"Session on '{server}' exceeded {limit} budget: "
+                f"{value} (limit: {cap}). Session terminated. "
+                f"Session: {session}"
+            )
+        if event_type == "circuit_breaker_open":
+            failures = details.get("failures", "?")
+            cooldown = details.get("cooldown_seconds", "?")
+            return (
+                f"Circuit breaker opened for '{server}' after {failures} "
+                f"consecutive failures. Auto-recovery in {cooldown}s."
+            )
+        if event_type == "circuit_breaker_recovered":
+            return f"Circuit breaker closed for '{server}'. Server recovered."
+        return f"Prevention event: {event_type} on '{server}'"
 
     # ---------------------------------------------------------------------------
     # Private check methods
