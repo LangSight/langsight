@@ -2,16 +2,16 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import useSWR from "swr";
 import {
   Key, Plus, Trash2, Copy, Check, ExternalLink, Shield, Database,
   Info, AlertTriangle, Eye, EyeOff, Users, UserPlus, UserX, ShieldCheck,
   DollarSign, Pencil, X, Folder, ChevronDown, ChevronRight,
-  Bell, ClipboardList, Server, Settings2, AlertCircle,
+  Bell, ClipboardList, Server, Settings2, AlertCircle, ShieldAlert,
 } from "lucide-react";
-import { fetcher, getApiKeys, createApiKey, revokeApiKey, listUsers, inviteUser, deactivateUser, updateUserRole, listModelPricing, createModelPricing, updateModelPricing, deactivateModelPricing, listProjects, createProject, deleteProject, listProjectMembers, addProjectMember, removeProjectMember, getAlertsConfig, saveAlertsConfig, testSlackWebhook, getAuditLogs } from "@/lib/api";
-import type { ApiKeyResponse, ApiKeyCreatedResponse, ApiStatus, DashboardUser, InviteResponse, ModelPricingEntry, ProjectResponse, ProjectMember } from "@/lib/types";
+import { fetcher, getApiKeys, createApiKey, revokeApiKey, listUsers, inviteUser, deactivateUser, updateUserRole, listModelPricing, createModelPricing, updateModelPricing, deactivateModelPricing, listProjects, createProject, deleteProject, listProjectMembers, addProjectMember, removeProjectMember, getAlertsConfig, saveAlertsConfig, testSlackWebhook, getAuditLogs, listPreventionConfigs, savePreventionConfig, deletePreventionConfig, saveProjectPreventionConfig, listAgentMetadata } from "@/lib/api";
+import type { ApiKeyResponse, ApiKeyCreatedResponse, ApiStatus, DashboardUser, InviteResponse, ModelPricingEntry, ProjectResponse, ProjectMember, PreventionConfig, PreventionConfigUpdate, AgentMetadata } from "@/lib/types";
 import { cn, timeAgo } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -1238,8 +1238,10 @@ function AboutSection() {
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0"
             style={{ background: "hsl(var(--primary))" }}>
-            <svg width="18" height="18" viewBox="0 0 14 14" fill="none">
-              <path d="M2 7h10M7 2v10M4 4l6 6M10 4l-6 6" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="9" stroke="white" strokeWidth="2.5" fill="none"/>
+              <circle cx="12" cy="12" r="2.5" fill="white"/>
+              <line x1="18" y1="6" x2="23" y2="1" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
             </svg>
           </div>
           <div>
@@ -1647,13 +1649,305 @@ function AuditLogsSection() {
   );
 }
 
+// ─── Prevention Config Section ────────────────────────────────────────────────
+
+const DEFAULT_PC: PreventionConfigUpdate = {
+  loop_enabled: true, loop_threshold: 3, loop_action: "terminate",
+  max_steps: null, max_cost_usd: null, max_wall_time_s: null, budget_soft_alert: 0.80,
+  cb_enabled: true, cb_failure_threshold: 5, cb_cooldown_seconds: 60.0, cb_half_open_max_calls: 2,
+};
+
+function PreventionSection() {
+  const { data: configs, isLoading, mutate } = useSWR<PreventionConfig[]>(
+    "/api/agents/prevention-configs",
+    () => listPreventionConfigs(),
+    { refreshInterval: 0 },
+  );
+  const { data: agentMeta } = useSWR<AgentMetadata[]>(
+    "/api/agents/metadata",
+    () => listAgentMetadata(),
+    { refreshInterval: 0 },
+  );
+  const availableAgents = useMemo(
+    () => (agentMeta ?? []).map((m) => m.agent_name).sort(),
+    [agentMeta],
+  );
+  const [editing, setEditing] = useState<string | null>(null);
+  const [form, setForm] = useState<PreventionConfigUpdate>(DEFAULT_PC);
+  const [saving, setSaving] = useState(false);
+
+  function startEdit(config: PreventionConfig | null, agentName: string) {
+    setEditing(agentName);
+    setForm(config ? {
+      loop_enabled: config.loop_enabled, loop_threshold: config.loop_threshold, loop_action: config.loop_action,
+      max_steps: config.max_steps, max_cost_usd: config.max_cost_usd, max_wall_time_s: config.max_wall_time_s,
+      budget_soft_alert: config.budget_soft_alert, cb_enabled: config.cb_enabled,
+      cb_failure_threshold: config.cb_failure_threshold, cb_cooldown_seconds: config.cb_cooldown_seconds,
+      cb_half_open_max_calls: config.cb_half_open_max_calls,
+    } : DEFAULT_PC);
+  }
+
+  async function handleSave(agentName: string) {
+    setSaving(true);
+    try {
+      if (agentName === "*") {
+        await saveProjectPreventionConfig(form);
+      } else {
+        await savePreventionConfig(agentName, form);
+      }
+      await mutate();
+      setEditing(null);
+      toast.success(`Prevention config saved for ${agentName === "*" ? "project default" : agentName}`);
+    } catch {
+      toast.error("Failed to save prevention config");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(agentName: string) {
+    try {
+      await deletePreventionConfig(agentName);
+      await mutate();
+      toast.success("Config removed — agent will use project default or SDK settings");
+    } catch {
+      toast.error("Failed to remove config");
+    }
+  }
+
+  const projectDefault = configs?.find(c => c.agent_name === "*");
+  const agentConfigs = configs?.filter(c => c.agent_name !== "*") ?? [];
+
+  return (
+    <div className="space-y-5 max-w-3xl">
+      <SectionHeader
+        title="Prevention Guardrails"
+        description="Set loop detection, budget limits, and circuit breaker thresholds per agent. SDK constructor params are the offline fallback when no dashboard config is set."
+      />
+
+      {/* Project-level defaults */}
+      <Section title="Project Default" description="Applies to all agents without a specific config. agent_name = *">
+        {isLoading ? (
+          <div className="skeleton h-9 w-full rounded-lg" />
+        ) : editing === "*" ? (
+          <PreventionForm form={form} setForm={setForm} onSave={() => handleSave("*")} onCancel={() => setEditing(null)} saving={saving} />
+        ) : (
+          <div className="flex items-center justify-between gap-4">
+            <PreventionSummary config={projectDefault} />
+            <button onClick={() => startEdit(projectDefault ?? null, "*")} className="btn btn-secondary text-xs">
+              {projectDefault ? "Edit" : "Set defaults"}
+            </button>
+          </div>
+        )}
+      </Section>
+
+      {/* Per-agent overrides */}
+      <Section title="Per-Agent Overrides" description="Override defaults for a specific agent. Delete to fall back to project default.">
+        <div className="space-y-2">
+          {agentConfigs.map(config => (
+            <div key={config.agent_name}
+              className="rounded-xl border p-4 flex flex-col gap-3"
+              style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card))" }}
+            >
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-[13px] font-semibold font-mono">{config.agent_name}</span>
+                <div className="flex items-center gap-2">
+                  {editing === config.agent_name ? null : (
+                    <>
+                      <button onClick={() => startEdit(config, config.agent_name)} className="btn btn-secondary text-xs">Edit</button>
+                      <button onClick={() => handleDelete(config.agent_name)} className="btn btn-danger text-xs">Remove</button>
+                    </>
+                  )}
+                </div>
+              </div>
+              {editing === config.agent_name ? (
+                <PreventionForm form={form} setForm={setForm} onSave={() => handleSave(config.agent_name)} onCancel={() => setEditing(null)} saving={saving} />
+              ) : (
+                <PreventionSummary config={config} />
+              )}
+            </div>
+          ))}
+
+          {/* Add new agent config */}
+          <AddAgentPreventionConfig
+            onAdd={(agentName) => { startEdit(null, agentName); }}
+            existingAgents={agentConfigs.map(c => c.agent_name)}
+            availableAgents={availableAgents}
+          />
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+function PreventionSummary({ config }: { config: PreventionConfig | undefined }) {
+  if (!config) return <span className="text-xs text-muted-foreground italic">Using SDK constructor defaults</span>;
+  return (
+    <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+      <span>Loop: {config.loop_enabled ? `${config.loop_threshold}× (${config.loop_action})` : "off"}</span>
+      {config.max_steps && <span>Steps: {config.max_steps}</span>}
+      {config.max_cost_usd && <span>Cost: ${config.max_cost_usd}</span>}
+      {config.max_wall_time_s && <span>Time: {config.max_wall_time_s}s</span>}
+      <span>CB: {config.cb_enabled ? `${config.cb_failure_threshold} fails → ${config.cb_cooldown_seconds}s` : "off"}</span>
+    </div>
+  );
+}
+
+function AddAgentPreventionConfig({
+  onAdd, existingAgents, availableAgents,
+}: {
+  onAdd: (name: string) => void;
+  existingAgents: string[];
+  availableAgents: string[];
+}) {
+  const [adding, setAdding] = useState(false);
+  const [agentName, setAgentName] = useState("");
+
+  const options = availableAgents.filter((n) => !existingAgents.includes(n));
+
+  function cancel() { setAdding(false); setAgentName(""); }
+  function confirm() { if (!agentName) return; onAdd(agentName); cancel(); }
+
+  if (!adding) return (
+    <button onClick={() => setAdding(true)} className="btn btn-secondary text-xs w-full mt-1">
+      <Plus size={13} className="mr-1" /> Add agent override
+    </button>
+  );
+  return (
+    <div className="flex items-center gap-2 mt-1">
+      {options.length > 0 ? (
+        <select
+          autoFocus
+          value={agentName}
+          onChange={(e) => setAgentName(e.target.value)}
+          className="input-base flex-1 h-8 text-xs font-mono"
+          data-testid="agent-select"
+        >
+          <option value="">— select agent —</option>
+          {options.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          autoFocus
+          type="text" value={agentName} onChange={(e) => setAgentName(e.target.value)}
+          placeholder="agent-name"
+          className="input-base flex-1 h-8 text-xs font-mono"
+          data-testid="agent-input"
+        />
+      )}
+      <button
+        className="btn btn-primary text-xs"
+        disabled={!agentName}
+        onClick={confirm}
+        data-testid="configure-btn"
+      >
+        Configure
+      </button>
+      <button onClick={cancel} className="btn btn-secondary text-xs">Cancel</button>
+    </div>
+  );
+}
+
+function PreventionForm({
+  form, setForm, onSave, onCancel, saving,
+}: {
+  form: PreventionConfigUpdate;
+  setForm: (f: PreventionConfigUpdate) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  function set<K extends keyof PreventionConfigUpdate>(k: K, v: PreventionConfigUpdate[K]) {
+    setForm({ ...form, [k]: v });
+  }
+  return (
+    <div className="space-y-4">
+      {/* Loop detection */}
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Loop Detection</p>
+        <div className="grid grid-cols-3 gap-3">
+          <label className="flex items-center gap-2 text-xs cursor-pointer col-span-1">
+            <input type="checkbox" checked={form.loop_enabled} onChange={e => set("loop_enabled", e.target.checked)} className="accent-primary" />
+            Enabled
+          </label>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] text-muted-foreground">Threshold</span>
+            <input type="number" min={1} max={50} value={form.loop_threshold}
+              onChange={e => set("loop_threshold", Number(e.target.value))}
+              className="input-base h-7 text-xs w-full" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] text-muted-foreground">Action</span>
+            <select value={form.loop_action} onChange={e => set("loop_action", e.target.value as "terminate" | "warn")}
+              className="input-base h-7 text-xs w-full">
+              <option value="terminate">terminate</option>
+              <option value="warn">warn</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Budget guardrails */}
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Budget Guardrails</p>
+        <div className="grid grid-cols-3 gap-3">
+          {([
+            ["max_steps", "Max Steps", "steps", "number"],
+            ["max_cost_usd", "Max Cost ($)", "USD", "number"],
+            ["max_wall_time_s", "Max Time (s)", "seconds", "number"],
+          ] as const).map(([key, label, placeholder]) => (
+            <div key={key} className="flex flex-col gap-1">
+              <span className="text-[10px] text-muted-foreground">{label}</span>
+              <input type="number" min={0} step={key === "max_cost_usd" ? 0.01 : 1}
+                placeholder={`${placeholder} (blank=off)`}
+                value={form[key] ?? ""}
+                onChange={e => set(key, e.target.value === "" ? null : Number(e.target.value))}
+                className="input-base h-7 text-xs w-full" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Circuit breaker */}
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Circuit Breaker</p>
+        <div className="grid grid-cols-3 gap-3">
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input type="checkbox" checked={form.cb_enabled} onChange={e => set("cb_enabled", e.target.checked)} className="accent-primary" />
+            Enabled
+          </label>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] text-muted-foreground">Fail threshold</span>
+            <input type="number" min={1} value={form.cb_failure_threshold}
+              onChange={e => set("cb_failure_threshold", Number(e.target.value))}
+              className="input-base h-7 text-xs w-full" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] text-muted-foreground">Cooldown (s)</span>
+            <input type="number" min={1} value={form.cb_cooldown_seconds}
+              onChange={e => set("cb_cooldown_seconds", Number(e.target.value))}
+              className="input-base h-7 text-xs w-full" />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 pt-1">
+        <button onClick={onSave} disabled={saving} className="btn btn-primary text-xs">{saving ? "Saving…" : "Save"}</button>
+        <button onClick={onCancel} className="btn btn-secondary text-xs">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
-type SettingsSection = "general" | "api-keys" | "model-pricing" | "members" | "projects" | "notifications" | "audit-logs" | "instance";
+type SettingsSection = "general" | "api-keys" | "model-pricing" | "members" | "projects" | "notifications" | "prevention" | "audit-logs" | "instance";
 
 const VALID_SECTIONS: SettingsSection[] = [
   "general", "api-keys", "model-pricing", "members",
-  "projects", "notifications", "audit-logs", "instance",
+  "projects", "notifications", "prevention", "audit-logs", "instance",
 ];
 
 function isValidSection(s: string): s is SettingsSection {
@@ -1683,6 +1977,7 @@ export default function SettingsPage() {
     { id: "members",       label: "Members",        icon: Users },
     { id: "projects",      label: "Projects",       icon: Folder },
     { id: "notifications", label: "Notifications",  icon: Bell },
+    { id: "prevention",    label: "Prevention",     icon: ShieldAlert },
     { id: "audit-logs",    label: "Audit Logs",     icon: ClipboardList },
     { id: "instance",      label: "Instance",       icon: Server },
   ];
@@ -1719,6 +2014,7 @@ export default function SettingsPage() {
         {active === "members"        && <UsersSection />}
         {active === "projects"       && <ProjectsSection />}
         {active === "notifications"  && <NotificationsSection />}
+        {active === "prevention"     && <PreventionSection />}
         {active === "audit-logs"     && <AuditLogsSection />}
         {active === "instance"       && (
           <div className="space-y-5 max-w-2xl">

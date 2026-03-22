@@ -231,6 +231,20 @@ export const upsertAgentMetadata = (name: string, body: { description?: string; 
 export const deleteAgentMetadata = (name: string, projectId?: string | null) =>
   del(withProject(`/agents/metadata/${encodeURIComponent(name)}`, projectId));
 
+// ── v0.3 Prevention Config ────────────────────────────────────────────────────
+export const listPreventionConfigs = (projectId?: string | null) =>
+  get<import("@/lib/types").PreventionConfig[]>(withProject("/agents/prevention-configs", projectId));
+export const getPreventionConfig = (agentName: string, projectId?: string | null) =>
+  get<import("@/lib/types").PreventionConfig>(withProject(`/agents/${encodeURIComponent(agentName)}/prevention-config`, projectId));
+export const savePreventionConfig = (agentName: string, body: import("@/lib/types").PreventionConfigUpdate, projectId?: string | null) =>
+  put<import("@/lib/types").PreventionConfig>(withProject(`/agents/${encodeURIComponent(agentName)}/prevention-config`, projectId), body);
+export const deletePreventionConfig = (agentName: string, projectId?: string | null) =>
+  del(withProject(`/agents/${encodeURIComponent(agentName)}/prevention-config`, projectId));
+export const getProjectPreventionConfig = (projectId?: string | null) =>
+  get<import("@/lib/types").PreventionConfig>(withProject("/projects/prevention-config", projectId));
+export const saveProjectPreventionConfig = (body: import("@/lib/types").PreventionConfigUpdate, projectId?: string | null) =>
+  put<import("@/lib/types").PreventionConfig>(withProject("/projects/prevention-config", projectId), body);
+
 // ── Server Metadata (Catalog) ─────────────────────────────────────────────────
 export const listServerMetadata = (projectId?: string | null) =>
   get<ServerMetadata[]>(withProject("/servers/metadata", projectId));

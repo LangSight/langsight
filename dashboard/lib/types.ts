@@ -341,3 +341,36 @@ export interface ServerCallerInfo {
   agentLabel: string;
   metrics: PathMetrics;
 }
+
+// ─── v0.3 Prevention Config ───────────────────────────────────────────────────
+
+export interface PreventionConfig {
+  agent_name: string;        // "*" = project-level default
+  loop_enabled: boolean;
+  loop_threshold: number;
+  loop_action: "terminate" | "warn";
+  max_steps: number | null;
+  max_cost_usd: number | null;
+  max_wall_time_s: number | null;
+  budget_soft_alert: number;
+  cb_enabled: boolean;
+  cb_failure_threshold: number;
+  cb_cooldown_seconds: number;
+  cb_half_open_max_calls: number;
+  is_default: boolean;
+  updated_at: string;
+}
+
+export interface PreventionConfigUpdate {
+  loop_enabled: boolean;
+  loop_threshold: number;
+  loop_action: "terminate" | "warn";
+  max_steps: number | null;
+  max_cost_usd: number | null;
+  max_wall_time_s: number | null;
+  budget_soft_alert: number;
+  cb_enabled: boolean;
+  cb_failure_threshold: number;
+  cb_cooldown_seconds: number;
+  cb_half_open_max_calls: number;
+}
