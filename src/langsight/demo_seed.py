@@ -259,6 +259,219 @@ def _generate_slos() -> list[dict[str, Any]]:
     ]
 
 
+# ── v0.3 Prevention layer ─────────────────────────────────────────────────────
+
+
+def _make_span(
+    *,
+    session_id: str,
+    trace_id: str,
+    server: str,
+    tool: str,
+    agent: str,
+    project_id: str,
+    base_time: datetime,
+    elapsed_ms: float,
+    latency_ms: float,
+    status: str,
+    error: str | None = None,
+    parent_span_id: str | None = None,
+    input_args: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a raw span dict (passed to ToolCallSpan constructor)."""
+    start = base_time + timedelta(milliseconds=elapsed_ms)
+    end = start + timedelta(milliseconds=latency_ms)
+    return {
+        "span_id": str(uuid.uuid4()),
+        "span_type": "tool_call",
+        "trace_id": trace_id,
+        "session_id": session_id,
+        "server_name": server,
+        "tool_name": tool,
+        "started_at": start.isoformat(),
+        "ended_at": end.isoformat(),
+        "latency_ms": latency_ms,
+        "status": status,
+        "error": error,
+        "agent_name": agent,
+        "project_id": project_id,
+        "input_args": input_args or _SAMPLE_INPUTS.get(tool),
+        "output_result": '{"status": "ok"}' if status == "success" else None,
+        "parent_span_id": parent_span_id,
+    }
+
+
+def _generate_prevention_sessions(project_id: str) -> list[tuple[str, list[dict[str, Any]]]]:
+    """Generate sessions that demonstrate all v0.3 Prevention Layer features.
+
+    Returns list of (session_id, spans) tuples so health tags can be assigned.
+    """
+    now = datetime.now(UTC)
+    sessions: list[tuple[str, list[dict[str, Any]]]] = []
+
+    # ── Session 1: Loop detected (repetition pattern) ────────────────────────
+    sess_id = f"demo-loop-{uuid.uuid4().hex[:8]}"
+    trace_id = f"trace-{uuid.uuid4().hex[:8]}"
+    base = now - timedelta(hours=2)
+    spans: list[dict[str, Any]] = [
+        # Two successful calls with identical args
+        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="query",
+                   agent="support-agent", project_id=project_id, base_time=base,
+                   elapsed_ms=0, latency_ms=35.0, status="success",
+                   input_args={"sql": "SELECT id FROM orders WHERE status = 'pending'"}),
+        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="query",
+                   agent="support-agent", project_id=project_id, base_time=base,
+                   elapsed_ms=150, latency_ms=33.0, status="success",
+                   input_args={"sql": "SELECT id FROM orders WHERE status = 'pending'"}),
+        # Third identical call — PREVENTED (loop detected)
+        {
+            "span_id": str(uuid.uuid4()),
+            "span_type": "tool_call",
+            "trace_id": trace_id,
+            "session_id": sess_id,
+            "server_name": "postgres-mcp",
+            "tool_name": "query",
+            "started_at": (base + timedelta(milliseconds=300)).isoformat(),
+            "ended_at": (base + timedelta(milliseconds=300)).isoformat(),
+            "latency_ms": 0.0,
+            "status": "prevented",
+            "error": "loop_detected: repetition — query repeated 3 times (args_hash=a1b2c3d4)",
+            "agent_name": "support-agent",
+            "project_id": project_id,
+            "input_args": {"sql": "SELECT id FROM orders WHERE status = 'pending'"},
+            "output_result": None,
+        },
+    ]
+    sessions.append((sess_id, spans))
+
+    # ── Session 2: Budget exceeded (step limit) ──────────────────────────────
+    sess_id = f"demo-budget-{uuid.uuid4().hex[:8]}"
+    trace_id = f"trace-{uuid.uuid4().hex[:8]}"
+    base = now - timedelta(hours=5)
+    spans = [
+        _make_span(session_id=sess_id, trace_id=trace_id, server="jira-mcp", tool="search_issues",
+                   agent="orchestrator", project_id=project_id, base_time=base,
+                   elapsed_ms=0, latency_ms=90.0, status="success"),
+        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="query",
+                   agent="orchestrator", project_id=project_id, base_time=base,
+                   elapsed_ms=200, latency_ms=42.0, status="success"),
+        _make_span(session_id=sess_id, trace_id=trace_id, server="slack-mcp", tool="send_message",
+                   agent="orchestrator", project_id=project_id, base_time=base,
+                   elapsed_ms=400, latency_ms=65.0, status="success"),
+        # 4th call hits max_steps=3 — PREVENTED
+        {
+            "span_id": str(uuid.uuid4()),
+            "span_type": "tool_call",
+            "trace_id": trace_id,
+            "session_id": sess_id,
+            "server_name": "jira-mcp",
+            "tool_name": "create_issue",
+            "started_at": (base + timedelta(milliseconds=600)).isoformat(),
+            "ended_at": (base + timedelta(milliseconds=600)).isoformat(),
+            "latency_ms": 0.0,
+            "status": "prevented",
+            "error": "budget_exceeded: max_steps limit is 3, actual is 4 — session terminated",
+            "agent_name": "orchestrator",
+            "project_id": project_id,
+            "input_args": {"project": "PROJ", "summary": "Auto-generated ticket", "type": "Task"},
+            "output_result": None,
+        },
+    ]
+    sessions.append((sess_id, spans))
+
+    # ── Session 3: Circuit breaker open ──────────────────────────────────────
+    sess_id = f"demo-circuit-{uuid.uuid4().hex[:8]}"
+    trace_id = f"trace-{uuid.uuid4().hex[:8]}"
+    base = now - timedelta(hours=8)
+    spans = [
+        # Two real failures that open the circuit
+        _make_span(session_id=sess_id, trace_id=trace_id, server="jira-mcp", tool="get_issue",
+                   agent="billing-agent", project_id=project_id, base_time=base,
+                   elapsed_ms=0, latency_ms=5000.0, status="error",
+                   error="Connection refused: jira-mcp — upstream at jira.example.com returned 503"),
+        _make_span(session_id=sess_id, trace_id=trace_id, server="jira-mcp", tool="get_issue",
+                   agent="billing-agent", project_id=project_id, base_time=base,
+                   elapsed_ms=5100, latency_ms=5000.0, status="error",
+                   error="Connection refused: jira-mcp — upstream at jira.example.com returned 503"),
+        # Third call — circuit is open, PREVENTED without hitting server
+        {
+            "span_id": str(uuid.uuid4()),
+            "span_type": "tool_call",
+            "trace_id": trace_id,
+            "session_id": sess_id,
+            "server_name": "jira-mcp",
+            "tool_name": "get_issue",
+            "started_at": (base + timedelta(milliseconds=10200)).isoformat(),
+            "ended_at": (base + timedelta(milliseconds=10200)).isoformat(),
+            "latency_ms": 0.0,
+            "status": "prevented",
+            "error": "circuit_breaker_open: jira-mcp disabled after 2 consecutive failures — cooldown 60s",
+            "agent_name": "billing-agent",
+            "project_id": project_id,
+            "input_args": {"issue_key": "BILLING-99"},
+            "output_result": None,
+        },
+    ]
+    sessions.append((sess_id, spans))
+
+    # ── Session 4: Success with fallback ─────────────────────────────────────
+    sess_id = f"demo-fallback-{uuid.uuid4().hex[:8]}"
+    trace_id = f"trace-{uuid.uuid4().hex[:8]}"
+    base = now - timedelta(hours=12)
+    spans = [
+        # First attempt fails
+        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="query",
+                   agent="data-analyst", project_id=project_id, base_time=base,
+                   elapsed_ms=0, latency_ms=5000.0, status="timeout",
+                   error="Tool 'query' timed out after 5000ms"),
+        # Retry succeeds
+        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="query",
+                   agent="data-analyst", project_id=project_id, base_time=base,
+                   elapsed_ms=5200, latency_ms=38.0, status="success",
+                   input_args={"sql": "SELECT count(*) FROM orders"}),
+        _make_span(session_id=sess_id, trace_id=trace_id, server="s3-mcp", tool="put_object",
+                   agent="data-analyst", project_id=project_id, base_time=base,
+                   elapsed_ms=5400, latency_ms=125.0, status="success"),
+    ]
+    sessions.append((sess_id, spans))
+
+    # ── Session 5: Schema drift ───────────────────────────────────────────────
+    # This is represented as a health check result (not a session) — see health seeding.
+    # But we also add a session where a tool call fails due to schema mismatch.
+    sess_id = f"demo-schema-{uuid.uuid4().hex[:8]}"
+    trace_id = f"trace-{uuid.uuid4().hex[:8]}"
+    base = now - timedelta(hours=18)
+    spans = [
+        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="list_tables",
+                   agent="data-analyst", project_id=project_id, base_time=base,
+                   elapsed_ms=0, latency_ms=28.0, status="success"),
+        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="query",
+                   agent="data-analyst", project_id=project_id, base_time=base,
+                   elapsed_ms=100, latency_ms=42.0, status="error",
+                   error="schema drift detected: column 'billing_status' not found — tool schema changed"),
+    ]
+    sessions.append((sess_id, spans))
+
+    # ── Session 6: Clean success ──────────────────────────────────────────────
+    sess_id = f"demo-success-{uuid.uuid4().hex[:8]}"
+    trace_id = f"trace-{uuid.uuid4().hex[:8]}"
+    base = now - timedelta(hours=1)
+    spans = [
+        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="query",
+                   agent="support-agent", project_id=project_id, base_time=base,
+                   elapsed_ms=0, latency_ms=31.0, status="success"),
+        _make_span(session_id=sess_id, trace_id=trace_id, server="jira-mcp", tool="create_issue",
+                   agent="support-agent", project_id=project_id, base_time=base,
+                   elapsed_ms=150, latency_ms=88.0, status="success"),
+        _make_span(session_id=sess_id, trace_id=trace_id, server="slack-mcp", tool="send_message",
+                   agent="support-agent", project_id=project_id, base_time=base,
+                   elapsed_ms=350, latency_ms=67.0, status="success"),
+    ]
+    sessions.append((sess_id, spans))
+
+    return sessions
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
@@ -433,10 +646,61 @@ async def seed_demo_data(storage: Any, project_id: str) -> None:
                 pass
         logger.info("demo_seed.agent_metadata", count=meta_count)
 
+    # ── 6. v0.3 Prevention layer sessions ────────────────────────────────────
+    if hasattr(storage, "save_tool_call_spans"):
+        from langsight.sdk.models import ToolCallSpan
+        from langsight.tagging.engine import tag_from_spans
+
+        prevention_sessions = _generate_prevention_sessions(project_id)
+        prevention_span_count = 0
+        for sess_id, raw_spans in prevention_sessions:
+            models = []
+            for s in raw_spans:
+                started = datetime.fromisoformat(s["started_at"])
+                ended = datetime.fromisoformat(s["ended_at"])
+                models.append(ToolCallSpan(
+                    span_id=s["span_id"],
+                    parent_span_id=s.get("parent_span_id"),
+                    span_type=s.get("span_type", "tool_call"),
+                    trace_id=s.get("trace_id"),
+                    session_id=s.get("session_id"),
+                    server_name=s["server_name"],
+                    tool_name=s["tool_name"],
+                    started_at=started,
+                    ended_at=ended,
+                    latency_ms=s["latency_ms"],
+                    status=s["status"],
+                    error=s.get("error"),
+                    agent_name=s.get("agent_name"),
+                    project_id=s.get("project_id"),
+                    input_args=s.get("input_args"),
+                    output_result=s.get("output_result"),
+                ))
+            try:
+                await storage.save_tool_call_spans(models)
+                prevention_span_count += len(models)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("demo_seed.prevention_span_error", error=str(exc))
+                continue
+
+            # Compute and store health tag for each prevention session
+            if hasattr(storage, "save_session_health_tag"):
+                span_dicts = [
+                    {"tool_name": s["tool_name"], "status": s["status"], "error": s.get("error")}
+                    for s in raw_spans
+                ]
+                try:
+                    tag = tag_from_spans(span_dicts)
+                    await storage.save_session_health_tag(sess_id, tag.value, None, project_id)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("demo_seed.health_tag_error", session=sess_id, error=str(exc))
+
+        logger.info("demo_seed.prevention_layer", sessions=len(prevention_sessions), spans=prevention_span_count)
+
     logger.info(
         "demo_seed.complete",
         project_id=project_id,
-        sessions=_NUM_SESSIONS,
+        sessions=_NUM_SESSIONS + 6,  # 30 base + 6 prevention
         spans=total_spans,
         servers=len(_SERVERS),
     )
