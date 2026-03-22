@@ -163,6 +163,21 @@ Run your agent, then check results:
   </Tab>
 </Tabs>
 
+## 3 (optional). Add prevention guardrails
+
+Prevent runaway loops and budget overruns with a few extra parameters:
+
+```python
+client = LangSightClient(
+    url="http://localhost:8000",
+    loop_detection=True,   # stop if agent loops the same call 3x
+    max_steps=25,          # hard stop at 25 tool calls per session
+    circuit_breaker=True,  # auto-disable servers after 5 consecutive failures
+)
+```
+
+See [Prevention Guardrails](/sdk/python#prevention-guardrails) for full configuration options.
+
 ## 4. What's next
 
 You now have full traces of every tool call. Here's what LangSight does beyond tracing:

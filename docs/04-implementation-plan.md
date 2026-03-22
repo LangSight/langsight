@@ -1,11 +1,11 @@
 # LangSight: Implementation Plan
 
-> **Version**: 1.9.0
-> **Date**: 2026-03-21
-> **Status**: Active — Phase 1-3 COMPLETE (alpha). Phase 5 COMPLETE. Phase 6 (Project-Level RBAC) planned. Phase 7 (Model-Based Cost Tracking) planned. Pre-Production Security Hardening phase added (S.4, S.7, S.9, S.10 COMPLETE). Release 0.1.0 is an alpha release.
+> **Version**: 2.0.0
+> **Date**: 2026-03-22
+> **Status**: Active — Phase 1-11 COMPLETE. v0.3 Tier 1 (Prevention Layer) COMPLETE: circuit breaker, loop detection, budget guardrails, health tag engine. Pre-Production Security Hardening in progress (S.4, S.7, S.9, S.10 COMPLETE). Release 0.2.0 shipped. v0.3.0 Prevention Layer shipped.
 > **Author**: Engineering
 >
-> **Change from 1.8**: Prometheus `/metrics` endpoint shipped (`src/langsight/api/metrics.py`): `GET /metrics` — no auth, 6 metrics exported, `PrometheusMiddleware` instruments all requests. SSE live event feed shipped (`src/langsight/api/broadcast.py` + `src/langsight/api/routers/live.py`): `GET /api/live/events` — auth required, `SSEBroadcaster` in-memory pub/sub, max 200 clients, 50-event buffer, 15s keepalive. `traces.py` broadcasts `span:new` events. New dep: `prometheus-client>=0.21`. 20 new tests (11 metrics, 9 broadcaster). Total: 957 tests passing. W10.7 (Prometheus) and W14.1 (SSE real-time updates) marked COMPLETE.
+> **Change from 1.9**: v0.3 Tier 1 Prevention Layer shipped (2026-03-22). New SDK modules: `circuit_breaker.py` (per-server CLOSED/OPEN/HALF_OPEN state machine), `loop_detector.py` (repetition, ping-pong, retry-without-progress detection), `budget.py` (step count, wall time, cumulative cost tracking). `client.py` extended with 12 new constructor params (all default disabled). 5 new alert types (`LOOP_DETECTED`, `BUDGET_WARNING`, `BUDGET_EXCEEDED`, `CIRCUIT_BREAKER_OPEN`, `CIRCUIT_BREAKER_RECOVERED`) + `evaluate_prevention_event()` method. `ToolCallStatus.PREVENTED` + `PreventionEvent` model + 3 new exceptions. Health tag engine (`src/langsight/tagging/engine.py`) with 8 priority-ordered tags. Dashboard `HealthTagBadge` component + sessions page health tag column/filter.
 
 ---
 
@@ -20,7 +20,7 @@
 
 ---
 
-## Current Progress Summary (as of 2026-03-20)
+## Current Progress Summary (as of 2026-03-22)
 
 ```
 Phase 1 (CLI MVP)               ████████████████ 100% — COMPLETE ✅
@@ -36,9 +36,22 @@ Phase 8 (Dashboard Redesign)    ████████████████
 Phase 9 (Production Auth)       ████████████████ 100% — COMPLETE ✅ 2026-03-19
 Phase 10 (Multi-tenancy)        ████████████████ 100% — COMPLETE ✅ 2026-03-19
 Phase 11 (Catalogs + Graph UX)  ████████████████ 100% — COMPLETE ✅ 2026-03-20
+v0.3 Tier 1 (Prevention Layer)  ████████████████ 100% — COMPLETE ✅ 2026-03-22
+v0.3 Tier 2 (Smarter Alerting)  ░░░░░░░░░░░░░░░░   0% — NOT STARTED (OpsGenie, PagerDuty, pattern alerts)
+v0.3 Tier 3 (Blast Radius)      ░░░░░░░░░░░░░░░░   0% — NOT STARTED (lineage-driven impact analysis)
 ```
 
 **Shipped metrics (v0.2.0)**: 694 unit tests, 77% coverage (threshold 75%), ruff `All checks passed`, mypy `Success: no issues found in 68 source files`. Full dashboard redesign with Geist fonts + deep dark sidebar, marketing website with /security and /pricing pages, projects management UI.
+
+**v0.3 Tier 1 — Prevention Layer (shipped 2026-03-22)**:
+- **Circuit breaker** (`src/langsight/sdk/circuit_breaker.py`): per-server CLOSED/OPEN/HALF_OPEN state machine. Configurable failure threshold (default 5), cooldown (default 60s), half-open test calls (default 2). Thread-safe for single-threaded asyncio.
+- **Loop detector** (`src/langsight/sdk/loop_detector.py`): per-session sliding window (default 20 calls). Three detection patterns: repetition, ping-pong, retry-without-progress. Configurable threshold (default 3) and action (`warn`/`terminate`).
+- **Budget guardrails** (`src/langsight/sdk/budget.py`): per-session tracking of step count, wall time, cumulative cost. Pre-call checks (steps, wall time) and post-call cost check. Soft alert at 80% threshold.
+- **SDK integration** (`src/langsight/sdk/client.py`): 12 new constructor params (all default disabled). Pre-call prevention checks in `call_tool()` path; post-call state updates. `ToolCallStatus.PREVENTED` for blocked calls. Backward compatible — no breaking changes.
+- **Alert types**: `LOOP_DETECTED` (WARNING), `BUDGET_WARNING` (WARNING), `BUDGET_EXCEEDED` (CRITICAL), `CIRCUIT_BREAKER_OPEN` (CRITICAL), `CIRCUIT_BREAKER_RECOVERED` (INFO). `evaluate_prevention_event()` method on `AlertEngine`.
+- **New models**: `PreventionEvent` in `sdk/models.py`. `CircuitBreakerConfig` added as optional field on `MCPServer`. `LoopDetectedError`, `BudgetExceededError`, `CircuitBreakerOpenError` exceptions.
+- **Health tag engine** (`src/langsight/tagging/engine.py`): `HealthTag` enum with 8 priority-ordered tags. `tag_from_spans()` computes tags from session spans.
+- **Dashboard**: `HealthTagBadge` component, sessions page health tag column + filter dropdown, `HealthTag` type + `health_tag` field on `AgentSession`.
 
 **Phase 11 changes (shipped 2026-03-20)**:
 - Session detail page: graph toolbar (search, zoom slider 25-250%, expand/collapse, failures toggle), minimap (150×90px, draggable viewport), timeline bar (colored segments per tool call, click to select node), PayloadSlideout component (full-width slide-over, line numbers, copy, word wrap, Esc to close), per-tool edge expansion (circular `+` button with call count), "View in Catalog" links from node panels. Keyboard shortcuts: `/` search, `f` fit, `e` error toggle, `+`/`-` zoom, `Esc` deselect.

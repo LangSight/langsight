@@ -1,7 +1,7 @@
 # LangSight v0.3 — Agent Runtime Reliability
 
 **Date:** 2026-03-22
-**Status:** Planning
+**Status:** Active — Tier 1 (Prevention Layer) COMPLETE. Tier 2 (Smarter Alerting) and Tier 3 (Blast Radius) NOT STARTED.
 **Author:** Suman Sahoo
 
 ---
@@ -50,11 +50,11 @@ LangSight is not replacing any tool. It's the **tool layer** that sits alongside
 
 ## What we add (v0.3 features)
 
-### Tier 1 — Prevention layer (weeks 1-3)
+### Tier 1 — Prevention layer (weeks 1-3) — COMPLETE ✅ (shipped 2026-03-22)
 
 These features transform LangSight from "we observe" to "we protect."
 
-#### 1.1 Loop detection
+#### 1.1 Loop detection ✅
 
 **Problem:** Most common agent failure mode. Agent calls the same tool with the same args repeatedly, burning tokens and producing no progress.
 
@@ -97,7 +97,7 @@ client = LangSightClient(
 
 ---
 
-#### 1.2 Budget guardrails
+#### 1.2 Budget guardrails ✅
 
 **Problem:** Agent loops or expensive tool calls cause surprise bills. No existing tool enforces cost limits at the tool layer.
 
@@ -138,7 +138,7 @@ client = LangSightClient(
 
 ---
 
-#### 1.3 Circuit breaker per tool
+#### 1.3 Circuit breaker per tool ✅
 
 **Problem:** A failing MCP server causes cascading failures across all agents that depend on it. Standard pattern in microservices, completely missing in AI agent toolchains.
 
@@ -176,7 +176,7 @@ Auto-recovery in 60 seconds.
 
 ---
 
-#### 1.4 Run health tags
+#### 1.4 Run health tags ✅
 
 **Problem:** Engineers can't quickly filter sessions by failure mode. Every session looks the same in the list until you open it.
 
@@ -199,6 +199,37 @@ schema_drift             — tool schema changed during session
 **Dashboard:** Sessions list shows colored tag badges. Filter dropdown by health tag.
 
 **Effort:** 1-2 days
+
+---
+
+### Tier 1 — Implementation notes (shipped 2026-03-22)
+
+**What shipped as planned:**
+- Loop detection: all 3 patterns (repetition, ping-pong, retry-without-progress), configurable threshold + action
+- Budget guardrails: step count, wall time, cost tracking with soft alert + hard limit
+- Circuit breaker: full CLOSED/OPEN/HALF_OPEN state machine with configurable threshold, cooldown, half-open test calls
+- Health tags: all 8 tags, priority ordering, dashboard `HealthTagBadge` + filter
+- New alert types: `LOOP_DETECTED`, `BUDGET_WARNING`, `BUDGET_EXCEEDED`, `CIRCUIT_BREAKER_OPEN`, `CIRCUIT_BREAKER_RECOVERED`
+
+**What changed from plan:**
+- `budget_action="degrade"` (switch to cheaper model) was deferred — requires framework-specific model selection hooks. Only `terminate` behavior is implemented. (changed from original: was planned for Tier 1, now deferred to Tier 4+)
+- `pricing_table` parameter added (not in original plan) — maps `model_name → (input_price_per_1k, output_price_per_1k)` for client-side cost estimation
+- `LoopDetector` uses a sliding window (`deque` of configurable size, default 20) rather than full session history — bounded memory usage
+- `CircuitBreakerConfig` added as optional field on `MCPServer` model for per-server overrides via `.langsight.yaml`
+- `PreventionEvent` model added as SDK-originated event type for alert engine integration
+
+**Source files:**
+| File | What it does |
+|---|---|
+| `src/langsight/sdk/circuit_breaker.py` | Circuit breaker state machine |
+| `src/langsight/sdk/loop_detector.py` | Loop detection (3 patterns) |
+| `src/langsight/sdk/budget.py` | Budget tracking + soft/hard alerts |
+| `src/langsight/sdk/client.py` | SDK integration — prevention in `call_tool()` |
+| `src/langsight/sdk/models.py` | `ToolCallStatus.PREVENTED`, `PreventionEvent` |
+| `src/langsight/tagging/engine.py` | `HealthTag` enum + `tag_from_spans()` |
+| `src/langsight/alerts/engine.py` | 5 new alert types + `evaluate_prevention_event()` |
+| `src/langsight/exceptions.py` | `LoopDetectedError`, `BudgetExceededError`, `CircuitBreakerOpenError` |
+| `dashboard/components/health-tag-badge.tsx` | Colored health tag badges |
 
 ---
 

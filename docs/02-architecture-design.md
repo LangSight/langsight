@@ -1,8 +1,8 @@
 # LangSight: Architecture Design
 
-> **Version**: 1.5.0
-> **Date**: 2026-03-21
-> **Status**: Active — updated with Prometheus `/metrics` endpoint, SSE live event feed (`/api/live/events`), `PrometheusMiddleware` added to middleware stack, `SSEBroadcaster` in-memory pub/sub for real-time dashboard updates (2026-03-21)
+> **Version**: 1.6.0
+> **Date**: 2026-03-22
+> **Status**: Active — v0.3 Prevention Layer (Tier 1) shipped: circuit breaker, loop detection, budget guardrails integrated into SDK `call_tool()` path. New alert types for prevention events. Health tag engine for session auto-classification. Dashboard sessions page updated with health tag column and filter (2026-03-22)
 
 ---
 
@@ -153,11 +153,12 @@
 
 ### 2.6 Alerting Engine
 
-**Purpose**: Fires alerts when MCP health, reliability, security, or cost thresholds are breached.
+**Purpose**: Fires alerts when MCP health, reliability, security, cost thresholds are breached, or SDK prevention events occur.
 
 **How it works**:
 - Alert rules defined in .langsight.yaml or via API
 - Rule types: threshold-based (error rate > X%) and anomaly-based (deviation from baseline)
+- Prevention events: `evaluate_prevention_event()` method — always produces an alert (no threshold needed, prevention events are already significant)
 - Deduplication: same alert within cooldown window = single notification
 - Channels: Slack webhook (rich Block Kit format), generic webhook (JSON payload)
 - Lifecycle: FIRING → ACKNOWLEDGED → RESOLVED
@@ -173,6 +174,13 @@
 | Security CVE | New CVE matches a server | Any CRITICAL/HIGH CVE |
 | Cost spike | Cost exceeds Nx baseline | 3x daily baseline |
 | Quality degradation | Tool success rate drops | Below 95% |
+| Loop detected | SDK loop detector fires (v0.3) | Any detection (WARNING) |
+| Budget warning | Session budget crosses soft threshold (v0.3) | 80% of any budget limit (WARNING) |
+| Budget exceeded | Session budget hard limit hit (v0.3) | Any limit exceeded (CRITICAL) |
+| Circuit breaker open | Per-server circuit breaker trips (v0.3) | Threshold consecutive failures (CRITICAL) |
+| Circuit breaker recovered | Circuit breaker returns to CLOSED (v0.3) | Auto on recovery (INFO) |
+
+**Prevention event evaluation** (added v0.3, 2026-03-22): The `evaluate_prevention_event(event: PreventionEvent)` method maps SDK events to alert types via `_EVENT_TO_ALERT` lookup. Unlike health-check evaluation which requires threshold logic, prevention events always produce an alert — they represent significant runtime interventions.
 
 ### 2.7 CLI (`langsight`)
 
@@ -263,14 +271,42 @@ accept_invite()             → Postgres  (fixed 2026-03-21 — was missing dele
 
 ### 2.9 LangSight SDK (Phase 2)
 
-**Purpose**: Python client library that wraps any MCP client and records tool call spans to the LangSight API. This is the primary integration path for Python agent developers.
+**Purpose**: Python client library that wraps any MCP client, records tool call spans to the LangSight API, and (v0.3) enforces runtime prevention guardrails. This is the primary integration path for Python agent developers.
 
-**Design** (decided 2026-03-17 — SDK-first before OTEL):
+**Design** (decided 2026-03-17 — SDK-first before OTEL; extended 2026-03-22 with prevention layer):
 - `LangSightClient(url, api_key, redact_payloads=False)`: async HTTP client, reads `LANGSIGHT_URL` + `LANGSIGHT_API_KEY` from env if not provided. `redact_payloads` suppresses input/output capture globally.
 - `LangSightClient.wrap(mcp_client, redact_payloads=None)`: per-wrap override for `redact_payloads`; `None` inherits the client-level setting.
 - `MCPClientProxy` captures tool call arguments as `input_args` and JSON-serialises return values as `output_result` on every `ToolCallSpan`. Both fields are set to `None` when `redact_payloads=True`.
 - Fail-open: SDK errors are logged but never propagate to the wrapped MCP client — reliability instrumentation cannot break an agent
 - Context manager support for lifecycle management
+- **v0.3 Prevention layer** (added 2026-03-22): opt-in loop detection, budget guardrails, and circuit breaker. Prevention is BLOCKING by design — it must stop the call before it happens. Prevented calls are recorded as spans with `status=PREVENTED`.
+
+**Full constructor signature (v0.3)**:
+```python
+LangSightClient(
+    url: str,
+    api_key: str | None = None,
+    timeout: float = 3.0,
+    redact_payloads: bool = False,
+    project_id: str | None = None,
+    batch_size: int = 50,
+    flush_interval: float = 1.0,
+    max_buffer_size: int = 10_000,
+    # --- v0.3 Prevention layer ---
+    loop_detection: bool = False,
+    loop_threshold: int = 3,
+    loop_action: str = "terminate",       # "terminate" | "warn"
+    max_cost_usd: float | None = None,
+    max_steps: int | None = None,
+    max_wall_time_s: float | None = None,
+    budget_soft_alert: float = 0.80,
+    pricing_table: dict[str, tuple[float, float]] | None = None,
+    circuit_breaker: bool = False,
+    circuit_breaker_threshold: int = 5,
+    circuit_breaker_cooldown: float = 60.0,
+    circuit_breaker_half_open_max: int = 2,
+)
+```
 
 **Source**: `src/langsight/sdk/`
 
@@ -279,6 +315,71 @@ accept_invite()             → Postgres  (fixed 2026-03-21 — was missing dele
 - Fire-and-forget HTTP POST for spans: agent latency is not impacted by LangSight availability
 - `ToolCallSpan` is sent asynchronously using `asyncio.create_task()` — the wrapped `call_tool()` returns to the caller immediately after the underlying call completes
 - **Payload capture is opt-out, not opt-in** (decided 2026-03-18): `input_args` and `output_result` are captured by default for maximum debuggability. Set `redact_payloads: true` in `.langsight.yaml` (or pass `redact_payloads=True` to `LangSightClient`) for tools that handle PII. Redaction is applied before transmission — payloads never leave the host process when redaction is enabled.
+- **Prevention defaults to disabled** (decided 2026-03-22): all prevention params (`loop_detection`, `circuit_breaker`, budget limits) default to disabled/`None`. Existing SDK users are not affected — zero breaking changes. Engineers opt in per-feature.
+- **Prevention is blocking, observability is async** (decided 2026-03-22): span recording is fire-and-forget (`asyncio.create_task`), but prevention checks are synchronous within `call_tool()`. A blocked call must raise immediately — not after the call completes. This is a deliberate asymmetry: observability must never slow an agent, but prevention must be able to stop one.
+
+### 2.9.1 SDK Prevention Layer (v0.3, added 2026-03-22)
+
+**Purpose**: Client-side runtime prevention that stops harmful agent behavior before it reaches MCP servers.
+
+**Architecture**:
+```
+MCPClientProxy.call_tool(tool_name, args)
+    │
+    ├─→ PRE-CALL checks (blocking, synchronous)
+    │     ├── CircuitBreaker.allow_call(server_name)
+    │     │     └── OPEN? → raise CircuitBreakerOpenError
+    │     ├── LoopDetector.check_pre_call(tool_name, args)
+    │     │     └── loop detected + action=terminate? → raise LoopDetectedError
+    │     └── SessionBudget.check_pre_call()
+    │           └── steps exceeded or wall time exceeded? → raise BudgetExceededError
+    │
+    ├─→ ACTUAL TOOL CALL (underlying MCP client)
+    │
+    └─→ POST-CALL updates (non-blocking)
+          ├── LoopDetector.record(tool_name, args, status, error)
+          ├── SessionBudget.record_call(cost)
+          │     └── cost exceeded? → raise BudgetExceededError
+          │     └── soft threshold crossed? → emit BudgetWarning
+          └── CircuitBreaker.record_success() / record_failure()
+                └── threshold reached? → state → OPEN → emit CircuitBreakerOpen
+```
+
+**Prevented calls**: When a prevention check blocks a call, the SDK records a `ToolCallSpan` with `status=PREVENTED` and the error message describing the reason. This ensures prevented calls are visible in the session trace and dashboard.
+
+**Three prevention subsystems**:
+
+| Subsystem | Source | Scope | State storage |
+|---|---|---|---|
+| Circuit breaker | `sdk/circuit_breaker.py` | Per-server (shared across sessions) | `dict[server_name, CircuitBreaker]` on client |
+| Loop detector | `sdk/loop_detector.py` | Per-session | `dict[session_id, LoopDetector]` on client |
+| Budget guardrails | `sdk/budget.py` | Per-session | `dict[session_id, SessionBudget]` on client |
+
+**Circuit breaker state machine**:
+```
+CLOSED ──(N consecutive failures)──► OPEN ──(cooldown elapsed)──► HALF_OPEN
+  ▲                                                                  │
+  └──────────(all test calls succeed)────────────────────────────────┘
+                                    HALF_OPEN ──(any test call fails)──► OPEN
+```
+Thread-safe for single-threaded asyncio (Python GIL + cooperative scheduling — no preemption within a sync method).
+
+**Loop detection patterns**:
+1. **Repetition**: same `tool_name` + normalized `input_args` hash repeated N times in sliding window
+2. **Ping-pong**: alternating between two `tool_name + args` pairs
+3. **Retry-without-progress**: same tool + same error hash repeated N times
+
+**Budget tracking**:
+- **Step count** and **wall time** are checked pre-call (knowable before the call happens)
+- **Cost** is checked post-call (we cannot predict the next call's cost)
+- Cost limit fires on the first call that pushes over the threshold
+- Soft alert at configurable fraction (default 80%) fires once per limit type per session
+
+**Key design decisions** (decided 2026-03-22):
+- **Client-side, not server-side**: Prevention must be low-latency and work even when the LangSight API is unreachable. All state is held in-memory on the `LangSightClient` instance. There is no round-trip to the server before each tool call.
+- **Per-server circuit breaker, per-session everything else**: Circuit breaker state is shared across all sessions using the same client — if a server is failing for one agent session, it should be disabled for all. Loop detection and budget tracking are per-session because loops and costs are session-scoped behaviors.
+- **Raise exceptions, not return errors**: Prevention violations raise typed exceptions (`LoopDetectedError`, `BudgetExceededError`, `CircuitBreakerOpenError`) so the agent framework's error handling catches them. Returning error values would be silently ignored by most frameworks.
+- **`ToolCallStatus.PREVENTED`**: A new status value distinct from `ERROR` — prevented calls never reached the server. This distinction matters for reliability metrics: a prevented call is not a tool failure.
 
 ### 2.10 LibreChat Plugin (Phase 2)
 
@@ -418,6 +519,39 @@ Session detail page starts compare flow against the replay session
 - **`prometheus-client` library**: The standard Python Prometheus client library (`prometheus-client>=0.21`) — no custom exposition format.
 
 **Source**: `src/langsight/api/metrics.py`
+
+### 2.16 Health Tag Engine (added v0.3, 2026-03-22)
+
+**Purpose**: Auto-classify completed sessions with a machine-readable health tag computed from span data. Tags enable one-click filtering in the dashboard and structured alerting.
+
+**How it works**:
+- `tag_from_spans(spans)` evaluates a session's flat list of spans against a priority-ordered rule set
+- Tags are computed server-side after a session ends (or immediately when a `PREVENTED` span is ingested)
+- The highest-priority matching tag wins — a session gets exactly one tag
+
+**Tag priority order** (highest first):
+| Tag | Condition | Priority |
+|---|---|---|
+| `loop_detected` | Any span with `status=prevented` and `"loop_detected"` in error | 1 |
+| `budget_exceeded` | Any span with `status=prevented` and `"budget_exceeded"` in error | 2 |
+| `circuit_breaker_open` | Any span with `status=prevented` and `"circuit_breaker"` in error | 3 |
+| `schema_drift` | Any span with `"schema drift"` in error message | 4 |
+| `timeout` | Any span with `status=timeout` | 5 |
+| `tool_failure` | Any span with `status=error` (no fallback recovery) | 6 |
+| `success_with_fallback` | Same tool called multiple times: some failed, some succeeded | 7 |
+| `success` | All spans succeeded | 8 |
+
+**Dashboard integration**:
+- `HealthTagBadge` component (`dashboard/components/health-tag-badge.tsx`) renders colored badges
+- Sessions page: `health_tag` column in the session list table
+- Filter dropdown: filter sessions by health tag
+
+**Key design decisions** (decided 2026-03-22):
+- **Server-side, not client-side**: Tags are computed from the full span history, not from the SDK. This ensures tags are consistent regardless of which integration path was used (SDK, OTEL, LibreChat plugin).
+- **Single tag per session**: A session does not accumulate multiple tags. The priority order ensures the most severe condition wins. This simplifies dashboard filtering and alerting.
+- **`PREVENTED` status drives tag selection**: Prevention events (loop, budget, circuit breaker) take highest priority because they represent active interventions — the session was stopped, not just degraded.
+
+**Source**: `src/langsight/tagging/engine.py`
 
 ### 2.12 Next.js Dashboard (Phase 4)
 

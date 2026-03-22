@@ -19,6 +19,11 @@ servers:
     url: http://localhost:8080/sse  # sse/streamable_http only
     tags: [production, data]        # optional labels
     timeout_seconds: 5              # default: 5
+    # Optional: v0.3 circuit breaker per-server override
+    circuit_breaker:
+      failure_threshold: 5    # open after N consecutive failures
+      cooldown_seconds: 60    # disable for N seconds
+      half_open_max_calls: 2  # test with N calls before closing
 
 # Alerting configuration
 alerts:

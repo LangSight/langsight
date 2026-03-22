@@ -119,9 +119,25 @@ Once the API is running:
   "duration_ms": 1482,
   "tool_calls": 5,
   "failed_calls": 1,
-  "servers_used": ["postgres-mcp", "slack-mcp"]
+  "servers_used": ["postgres-mcp", "slack-mcp"],
+  "health_tag": "success"
 }
 ```
+
+<Note>
+  `health_tag` is assigned automatically by the v0.3 prevention layer when the session ends. The 8 possible values are:
+
+  | Value | Meaning |
+  |-------|---------|
+  | `success` | All tool calls completed without issue |
+  | `success_with_fallback` | Completed, but at least one circuit-breaker fallback was used |
+  | `loop_detected` | Session was terminated because a loop pattern was detected |
+  | `budget_exceeded` | Session was stopped because a cost, step, or time limit was hit |
+  | `tool_failure` | One or more tool calls failed (but no loop or budget event) |
+  | `circuit_breaker_open` | A tool call was blocked because its server's circuit breaker was open |
+  | `timeout` | The session exceeded the configured `max_wall_time_s` limit |
+  | `schema_drift` | A tool schema changed mid-session, triggering a drift alert |
+</Note>
 
 ### Agent Topology
 
@@ -219,7 +235,10 @@ Query params for `/api/costs/breakdown`: `project_id`, `window` (24h, 7d, 30d).
     "agent_failure": true,
     "slo_breached": true,
     "anomaly_critical": true,
-    "security_critical": true
+    "security_critical": true,
+    "loop_detected": true,
+    "budget_exceeded": true,
+    "circuit_breaker_open": true
   }
 }
 ```

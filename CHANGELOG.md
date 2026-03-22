@@ -7,6 +7,26 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.3.0] - 2026-03-22 — Prevention Layer (Tier 1)
+
+### Added
+
+- **SDK: Circuit breaker** (`src/langsight/sdk/circuit_breaker.py`) — per-server CLOSED → OPEN → HALF_OPEN state machine. Configurable failure threshold (default 5), cooldown period (default 60s), and half-open test calls (default 2). When open, tool calls are rejected immediately without hitting the server. Recovery is automatic via half-open test calls.
+- **SDK: Loop detector** (`src/langsight/sdk/loop_detector.py`) — per-session sliding window (default 20 calls) detecting three patterns: repetition (same tool + same args N times), ping-pong (alternating between two tool+args pairs), and retry-without-progress (same tool + same error repeated). Configurable threshold (default 3) and action (`warn` or `terminate`).
+- **SDK: Budget guardrails** (`src/langsight/sdk/budget.py`) — per-session tracking of step count, wall time, and cumulative cost. Step count and wall time are checked pre-call; cost limit fires post-call on the first call that pushes over the threshold. Soft alert at configurable fraction (default 80%) fires once per limit type.
+- **SDK: Prevention integration in `call_tool()`** — pre-call checks (circuit breaker, loop detection, budget step/wall-time) and post-call state updates (loop detector record, budget cost/step increment, circuit breaker success/failure). All prevention params default to disabled for backward compatibility.
+- **New SDK constructor params**: `loop_detection`, `loop_threshold`, `loop_action`, `max_cost_usd`, `max_steps`, `max_wall_time_s`, `budget_soft_alert`, `pricing_table`, `circuit_breaker`, `circuit_breaker_threshold`, `circuit_breaker_cooldown`, `circuit_breaker_half_open_max`.
+- **New alert types**: `LOOP_DETECTED`, `BUDGET_WARNING`, `BUDGET_EXCEEDED`, `CIRCUIT_BREAKER_OPEN`, `CIRCUIT_BREAKER_RECOVERED` in `alerts/engine.py`.
+- **`AlertEngine.evaluate_prevention_event()`** — new method that creates alerts from SDK prevention events. Unlike health-check evaluation, prevention events always produce an alert (no threshold needed).
+- **`ToolCallStatus.PREVENTED`** — new status value for tool calls blocked by prevention layer.
+- **`PreventionEvent` model** (`sdk/models.py`) — SDK-originated event model for loop/budget/circuit-breaker events.
+- **New exceptions**: `LoopDetectedError`, `BudgetExceededError`, `CircuitBreakerOpenError` in `exceptions.py`.
+- **Health tag engine** (`src/langsight/tagging/engine.py`) — `HealthTag` enum with 8 tags: `success`, `success_with_fallback`, `loop_detected`, `budget_exceeded`, `tool_failure`, `circuit_breaker_open`, `timeout`, `schema_drift`. `tag_from_spans()` computes tags from session spans using priority ordering.
+- **Dashboard: `HealthTagBadge` component** (`dashboard/components/health-tag-badge.tsx`) — colored tag badges for session health status.
+- **Dashboard: Sessions page** — health tag column added to session list, filter dropdown for filtering by health tag.
+- **Dashboard: `HealthTag` type** and `health_tag` field on `AgentSession` type.
+- **`CircuitBreakerConfig`** added as optional field on `MCPServer` model for per-server circuit breaker overrides.
+
 ## [Unreleased]
 
 ### Changed (2026-03-22 — Positioning: observability → runtime reliability)

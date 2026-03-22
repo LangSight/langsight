@@ -16,6 +16,7 @@ langsight sessions [OPTIONS]
 | `--config` | auto-discovered | Path to `.langsight.yaml` |
 | `--window`, `-w` | `24h` | Look-back window (24h, 7d, 30d) |
 | `--agent`, `-a` | all agents | Filter sessions by agent name |
+| `--health-tag` | — | Filter by health tag (v0.3): `success`, `loop_detected`, `budget_exceeded`, `tool_failure`, `circuit_breaker_open`, `timeout`, `schema_drift`, `success_with_fallback` |
 | `--id` | — | Show full multi-agent trace tree for one session |
 | `--json` | false | Output as JSON |
 
@@ -31,13 +32,19 @@ langsight sessions --window 7d
 
 ```
 Agent Sessions  (last 168h — 42 sessions)
-────────────────────────────────────────────────────────────────────────────────
-Session ID                           Agent            Calls  Failed  Duration  Servers
-a3f1c2b0-1e4d-4a8f-8c9d-7b2e5f0d1a6  research-agent      24       1    14.2s  jira-mcp, confluence-mcp
-b7e9d4c3-2f5e-4b9g-9d0e-8c3f6g1e2b7  data-pipeline        8       0     3.1s  postgres-mcp
-c1a2b3d4-3g6f-4c0h-0e1f-9d4g7h2f3c8  support-agent       31       3    22.8s  jira-mcp, slack-mcp, s3-mcp
-d5b6c7e8-4h7g-4d1i-1f2g-0e5h8i3g4d9  code-reviewer       12       0     5.6s  github-mcp, postgres-mcp
-e9c0d1f2-5i8h-4e2j-2g3h-1f6i9j4h5e0  research-agent      18       2    11.4s  confluence-mcp, s3-mcp
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Session ID                           Agent            Calls  Failed  Health          Duration  Servers
+a3f1c2b0-1e4d-4a8f-8c9d-7b2e5f0d1a6  research-agent      24       1  tool_failure      14.2s  jira-mcp, confluence-mcp
+b7e9d4c3-2f5e-4b9g-9d0e-8c3f6g1e2b7  data-pipeline        8       0  success            3.1s  postgres-mcp
+c1a2b3d4-3g6f-4c0h-0e1f-9d4g7h2f3c8  support-agent       31       3  loop_detected     22.8s  jira-mcp, slack-mcp, s3-mcp
+d5b6c7e8-4h7g-4d1i-1f2g-0e5h8i3g4d9  code-reviewer       12       0  success            5.6s  github-mcp, postgres-mcp
+e9c0d1f2-5i8h-4e2j-2g3h-1f6i9j4h5e0  research-agent      18       2  budget_exceeded   11.4s  confluence-mcp, s3-mcp
+```
+
+Filter by health tag:
+
+```bash
+langsight sessions --health-tag loop_detected
 ```
 
 ## Single-session trace tree
@@ -97,7 +104,8 @@ Returns a JSON array of session objects:
     "tool_calls": 24,
     "failed_calls": 1,
     "duration_ms": 14200,
-    "servers_used": ["jira-mcp", "confluence-mcp", "slack-mcp"]
+    "servers_used": ["jira-mcp", "confluence-mcp", "slack-mcp"],
+    "health_tag": "tool_failure"
   }
 ]
 ```

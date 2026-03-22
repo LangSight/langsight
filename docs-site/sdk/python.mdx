@@ -224,3 +224,89 @@ async def research_agent(session_id: str, trace_id: str, parent_span_id: str):
 ### How parent_span_id works
 
 `parent_span_id` uses the same model as OpenTelemetry distributed tracing. Each span has a unique `span_id`. When a child agent sets `parent_span_id`, LangSight can reconstruct the full call tree by following parent-child relationships from the flat span storage. No separate tree structure is required — tree reconstruction is a recursive query at read time.
+
+## Prevention Guardrails
+
+LangSight v0.3 adds a prevention layer that stops runaway agents before they waste tokens or cascade failures.
+
+### Loop Detection
+
+Detects when an agent calls the same tool with the same arguments repeatedly.
+
+```python
+client = LangSightClient(
+    url="http://localhost:8000",
+    loop_detection=True,     # enable loop detection
+    loop_threshold=3,        # same tool+args 3 times = loop (default: 3)
+    loop_action="terminate", # "terminate" (default) or "warn"
+)
+```
+
+Raises `LoopDetectedError` when a loop is detected (with `action="terminate"`).
+
+Detection patterns: **repetition** (same call N times), **ping-pong** (A→B→A→B→A), **retry-without-progress** (same error repeated).
+
+### Budget Guardrails
+
+Prevents sessions from exceeding cost, step count, or time budgets.
+
+```python
+client = LangSightClient(
+    url="http://localhost:8000",
+    max_steps=25,            # hard stop at 25 tool calls
+    max_cost_usd=1.00,       # hard stop at $1 (requires pricing_table)
+    max_wall_time_s=120,     # hard stop at 2 minutes
+    budget_soft_alert=0.80,  # log warning at 80% of each limit
+    pricing_table={          # optional: model_id → (input_per_1m, output_per_1m)
+        "claude-sonnet-4-6": (3.00, 15.00),
+        "gpt-4o": (2.50, 10.00),
+    },
+)
+```
+
+Raises `BudgetExceededError` when a limit is hit.
+
+### Circuit Breaker
+
+Automatically disables a failing MCP server after N consecutive failures.
+
+```python
+client = LangSightClient(
+    url="http://localhost:8000",
+    circuit_breaker=True,            # enable circuit breaker
+    circuit_breaker_threshold=5,     # open after 5 consecutive failures (default)
+    circuit_breaker_cooldown=60.0,   # disable for 60 seconds (default)
+    circuit_breaker_half_open_max=2, # test with 2 calls before closing (default)
+)
+```
+
+Raises `CircuitBreakerOpenError` when a tool call is blocked.
+
+Per-server configuration in `.langsight.yaml` overrides SDK defaults:
+
+```yaml
+servers:
+  - name: postgres-mcp
+    transport: stdio
+    command: python server.py
+    circuit_breaker:
+      failure_threshold: 3
+      cooldown_seconds: 30
+```
+
+### Handling Prevention Errors
+
+```python
+from langsight.exceptions import LoopDetectedError, BudgetExceededError, CircuitBreakerOpenError
+
+try:
+    result = await traced.call_tool("query", {"sql": "SELECT 1"})
+except LoopDetectedError as e:
+    print(f"Loop stopped: {e.tool_name} repeated {e.loop_count} times ({e.pattern})")
+except BudgetExceededError as e:
+    print(f"Budget exceeded: {e.limit_type} = {e.actual_value} (limit: {e.limit_value})")
+except CircuitBreakerOpenError as e:
+    print(f"Server disabled: {e.server_name}, cooldown: {e.cooldown_remaining_s:.0f}s")
+```
+
+Prevented calls are still recorded as spans with `status="prevented"` — visible in the dashboard trace view.
