@@ -7,9 +7,9 @@
   },
   "favicon": "/logo/favicon.svg",
   "colors": {
-    "primary": "#6366F1",
-    "light": "#818CF8",
-    "dark": "#4F46E5",
+    "primary": "#14B8A6",
+    "light": "#2DD4BF",
+    "dark": "#0D9488",
     "background": {
       "dark": "#0F172A"
     }
@@ -89,7 +89,7 @@
       ]
     },
     {
-      "group": "Observability Features",
+      "group": "Reliability Features",
       "pages": [
         "session-replay",
         "mcp-servers",

@@ -317,9 +317,9 @@ function Hero() {
               >
                 <span className="gradient-text">Your agent failed.</span>
                 <br />
-                <span className="gradient-text">Which tool broke</span>
+                <span className="gradient-text">Which tool broke — and</span>
                 <br />
-                <span className="gradient-indigo">— and why?</span>
+                <span className="gradient-indigo">how do we stop it next time?</span>
               </h1>
             </div>
 
@@ -328,8 +328,8 @@ function Hero() {
               className="fade-up delay-2 text-lg leading-relaxed max-w-md"
               style={{ color: "var(--muted)" }}
             >
-              Trace what your agents called. Find what broke, what&apos;s expensive, and what&apos;s unsafe.
-              For MCP servers, get health checks, schema drift alerts, and security scanning built in.
+              Detect loops. Enforce budgets. Break failing tools. Map blast radius.
+              For MCP servers: health checks, security scanning, and schema drift detection.
             </p>
 
             {/* Positioning bar — the most important line on the page */}
@@ -342,7 +342,7 @@ function Hero() {
               }}
             >
               <strong style={{ color: "var(--text)" }}>Not another prompt, eval, or simulation platform.</strong>
-              {" "}LangSight monitors the runtime layer: the tools your agents depend on.
+              {" "}LangSight is the runtime reliability layer for AI agent toolchains.
             </div>
 
             {/* CTAs */}
@@ -405,9 +405,11 @@ const QUESTIONS: { q: string; tool: string; us: boolean }[] = [
   { q: "Should I change prompts or eval policy?", tool: "LangWatch / Langfuse / LangSmith", us: false },
   { q: "Is my server CPU/memory healthy?", tool: "Datadog / New Relic", us: false },
   { q: "Which tool call failed in production?", tool: "LangSight", us: true },
+  { q: "Is my agent stuck in a loop?", tool: "LangSight", us: true },
   { q: "Is an MCP server unhealthy or drifting?", tool: "LangSight", us: true },
   { q: "Is an MCP server exposed or risky?", tool: "LangSight", us: true },
   { q: "Why did this session cost $47 instead of $3?", tool: "LangSight", us: true },
+  { q: "If this tool goes down, which agents break?", tool: "LangSight", us: true },
 ];
 
 function Comparison() {
@@ -425,8 +427,8 @@ function Comparison() {
             <span className="gradient-indigo">trying to answer?</span>
           </h2>
           <p className="mt-4 max-w-xl mx-auto" style={{ color: "var(--muted)" }}>
-            Use LangSight with LangWatch, Langfuse, or LangSmith — not instead of them.
-            They evaluate model behavior. LangSight monitors the tool layer underneath.
+            Langfuse watches the brain. LangSight watches the hands.
+            Use them together — they never overlap.
           </p>
         </div>
 
@@ -474,26 +476,26 @@ const PROBLEMS = [
   {
     icon: <ZapIcon />,
     accent: "var(--red)",
-    headline: "Which of 15 tools failed?",
-    body: "Your orchestrator calls 15 tools across 4 MCP servers. Something returned bad data. Without traces, you spend hours replaying requests — in the dark.",
+    headline: "Agent stuck in a loop",
+    body: "Your agent retries the same tool with the same args 47 times. Burns $200. Produces nothing. Nobody detects it until the invoice arrives.",
   },
   {
     icon: <HeartPulseIcon />,
     accent: "var(--orange)",
-    headline: "MCP server degraded silently",
-    body: "Schema changed. Latency spiked 10x. Auth expired. The agent keeps calling, gets bad data, and hallucinates. You find out from users, not alerts.",
+    headline: "Tool failure cascades across agents",
+    body: "postgres-mcp goes down. 3 agents depend on it. All sessions fail. You don't know which agents are affected or how many users are impacted.",
   },
   {
     icon: <DollarIcon />,
     accent: "var(--yellow)",
-    headline: "$4,200 in unexpected tool costs",
-    body: "A sub-agent retries geocoding-mcp 47 times per session. Nobody noticed until the invoice arrived. You need cost attribution at the tool level, not the model level.",
+    headline: "Cost explosion with no guardrails",
+    body: "A sub-agent retries geocoding-mcp endlessly. At $0.005/call, that's $1,800/week. No budget limit existed to stop it. You need tool-level cost control.",
   },
   {
     icon: <ShieldIcon />,
     accent: "var(--indigo)",
-    headline: "Is this MCP server safe to run?",
-    body: "66% of community MCP servers have critical code smells. Tool poisoning attacks are real. You need automated scanning, not hope.",
+    headline: "MCP server changed and nobody noticed",
+    body: "Schema drifted. A field was renamed. Auth expired. The agent keeps calling, gets corrupted data, and hallucinates downstream. Silent until users complain.",
   },
 ];
 
@@ -547,11 +549,25 @@ function Problem() {
 const PILLARS = [
   {
     n: "01",
-    title: "Action Traces",
-    desc: "See the exact sequence of tool calls, handoffs, failures, and costs across a full agent session. Multi-agent trees reconstructed automatically from parent_span_id.",
+    title: "Prevent",
+    desc: "Stop loops, enforce budgets, break failing tools — before users notice. The SDK detects repeated calls, enforces cost limits, and auto-disables broken tools.",
+    code: `from langsight.sdk import LangSightClient
+
+client = LangSightClient(
+    url="http://localhost:8000",
+    loop_detection=True,       # same tool+args 3x → stop
+    max_cost_usd=1.00,         # budget limit per session
+    max_steps=25,              # step limit
+    circuit_breaker=True,      # auto-disable after 5 failures
+)`,
+  },
+  {
+    n: "02",
+    title: "Detect",
+    desc: "See exactly which tool failed, when, and why. Every session gets a health tag: success, loop_detected, budget_exceeded, tool_failure. Filter and investigate instantly.",
     code: `$ langsight sessions --id sess-f2a9b1
 
-sess-f2a9b1  (support-agent)
+sess-f2a9b1  (support-agent)  [LOOP_DETECTED]
 ├── jira-mcp/get_issue        89ms  ✓
 ├── postgres-mcp/query        42ms  ✓
 ├──  → billing-agent          handoff
@@ -561,42 +577,30 @@ sess-f2a9b1  (support-agent)
 Root cause: slack-mcp timed out at 14:32`,
   },
   {
-    n: "02",
-    title: "MCP Health",
-    desc: "Detect down, slow, stale, or changed MCP servers before they silently corrupt agent behavior. Schema drift detection catches breaking changes in minutes.",
+    n: "03",
+    title: "Monitor",
+    desc: "MCP health checks, security scanning, schema drift detection. Proactive — catches problems before agents start failing. Alerts via Slack, OpsGenie, PagerDuty.",
     code: `$ langsight mcp-health
 
-Server           Status   Latency   Schema    Tools
-snowflake-mcp    ✅ UP    142ms     Stable    8
-slack-mcp        ⚠️ DEG  1,240ms   Stable    4
-jira-mcp         ❌ DOWN  —         —         —
-postgres-mcp     ✅ UP    31ms      Changed   5`,
-  },
-  {
-    n: "03",
-    title: "MCP Security",
-    desc: "Scan for CVEs, OWASP MCP Top 10, tool poisoning signals, weak auth, and risky configs. Run in CI with --ci to block deploys on CRITICAL findings.",
-    code: `$ langsight security-scan
-
-CRITICAL  jira-mcp      CVE-2025-6514
-  Remote code execution in mcp-remote
-
-HIGH      slack-mcp     OWASP-MCP-01
-  Tool description contains injection pattern
-
-HIGH      postgres-mcp  OWASP-MCP-04
-  No authentication configured`,
+Server           Status   Latency   Schema    Circuit
+snowflake-mcp    ✅ UP    142ms     Stable    closed
+slack-mcp        ⚠️ DEG  1,240ms   Stable    closed
+jira-mcp         ❌ DOWN  —         —         open
+postgres-mcp     ✅ UP    31ms      Changed   closed`,
   },
   {
     n: "04",
-    title: "Cost Attribution",
-    desc: 'Move from "the invoice is $4,200" to "billing-agent\'s geocoding MCP retries 47x per session at $0.005/call."',
-    code: `$ langsight costs --hours 24
+    title: "Map",
+    desc: "Lineage shows which agents call which tools. Blast radius shows what breaks when a tool goes down. Impact alerts include affected agents and session counts.",
+    code: `postgres-mcp ❌ DOWN
 
-Tool                 Calls  Failed  Cost     %
-geocoding-mcp        2,340  12      $1,872   44.6%
-postgres-mcp/query   890    3       $445     10.6%
-claude-3.5 (LLM)    156    0       $312     7.4%`,
+Blast radius:
+  support-agent   200 sessions/day  HIGH
+  billing-agent    50 sessions/day  MEDIUM
+  data-agent       10 sessions/day  LOW
+
+Total: ~260 sessions/day affected
+Circuit breaker: active`,
   },
 ];
 
@@ -610,9 +614,9 @@ function Solution() {
             className="font-bold tracking-tight"
             style={{ fontSize: "clamp(1.8rem, 3.5vw, 2.5rem)", fontFamily: "var(--font-geist-sans)" }}
           >
-            <span className="gradient-text">Four pillars of</span>
+            <span className="gradient-text">Prevent. Detect.</span>
             <br />
-            <span className="gradient-indigo">runtime observability.</span>
+            <span className="gradient-indigo">Monitor. Map.</span>
           </h2>
         </div>
 
@@ -861,11 +865,11 @@ function Integrations() {
         >
           <div className="flex-1">
             <p className="font-semibold text-sm mb-1" style={{ color: "var(--text)" }}>
-              Use alongside Langfuse, LangWatch, or LangSmith
+              Langfuse watches the brain. LangSight watches the hands.
             </p>
             <p className="text-sm" style={{ color: "var(--muted)" }}>
-              They trace the LLM reasoning layer (what the model decided). LangSight traces the action layer
-              (what the agent called, what failed, what it cost). Different questions, same agent.
+              Use alongside Langfuse, LangWatch, or LangSmith. They trace model reasoning.
+              LangSight guards the tool layer — loops, budgets, health, security, blast radius.
             </p>
           </div>
         </div>
@@ -951,10 +955,10 @@ function CTA() {
               <span className="gradient-indigo">of your agent systems.</span>
             </h2>
             <p className="text-lg mb-2" style={{ color: "var(--text)" }}>
-              If your agents depend on MCP, LangSight keeps that dependency observable, reliable, and secure.
+              If your agents depend on tools, LangSight keeps them reliable, safe, and within budget.
             </p>
             <p className="text-base mb-8 max-w-md mx-auto" style={{ color: "var(--muted)" }}>
-              Trace what broke. Find what&apos;s expensive. Scan what&apos;s unsafe.
+              Prevent loops. Enforce budgets. Break failing tools. Map blast radius.
             </p>
 
             <div className="flex flex-wrap justify-center gap-4 mb-8">
