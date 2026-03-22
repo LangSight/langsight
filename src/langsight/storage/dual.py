@@ -136,6 +136,28 @@ class DualStorage:
     async def save_tool_call_spans(self, spans: list[ToolCallSpan]) -> None:
         return await self._analytics.save_tool_call_spans(spans)
 
+    # v0.3 Session health tags → ClickHouse
+
+    async def save_session_health_tag(
+        self,
+        session_id: str,
+        health_tag: str,
+        details: str | None = None,
+        project_id: str | None = None,
+    ) -> None:
+        return await self._analytics.save_session_health_tag(session_id, health_tag, details, project_id)
+
+    async def get_session_health_tag(self, session_id: str) -> str | None:
+        return await self._analytics.get_session_health_tag(session_id)
+
+    async def get_untagged_sessions(
+        self,
+        inactive_seconds: int = 30,
+        limit: int = 100,
+        project_id: str | None = None,
+    ) -> list[str]:
+        return await self._analytics.get_untagged_sessions(inactive_seconds, limit, project_id)
+
     # ── Metadata → Postgres ───────────────────────────────────────────────────
     # API keys
 

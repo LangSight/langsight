@@ -955,6 +955,33 @@ class PostgresBackend:
             )
         return [dict(r) for r in rows]
 
+    # ---------------------------------------------------------------------------
+    # v0.3 Session health tags — not stored in Postgres (ClickHouse handles these)
+    # Stubs satisfy the StorageBackend protocol when Postgres is used standalone.
+    # ---------------------------------------------------------------------------
+
+    async def save_session_health_tag(
+        self,
+        session_id: str,
+        health_tag: str,
+        details: str | None = None,
+        project_id: str | None = None,
+    ) -> None:
+        """No-op: health tags live in ClickHouse, not Postgres."""
+
+    async def get_session_health_tag(self, session_id: str) -> str | None:
+        """No-op: health tags live in ClickHouse, not Postgres."""
+        return None
+
+    async def get_untagged_sessions(
+        self,
+        inactive_seconds: int = 30,
+        limit: int = 100,
+        project_id: str | None = None,
+    ) -> list[str]:
+        """No-op: health tags live in ClickHouse, not Postgres."""
+        return []
+
     async def close(self) -> None:
         """Close the connection pool."""
         await self._pool.close()

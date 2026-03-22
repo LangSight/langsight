@@ -292,6 +292,31 @@ class StorageBackend(Protocol):
         """Get all declared tools for a server, scoped to project."""
         ...
 
+    # ── v0.3 Session health tags ─────────────────────────────────────────────
+
+    async def save_session_health_tag(
+        self,
+        session_id: str,
+        health_tag: str,
+        details: str | None = None,
+        project_id: str | None = None,
+    ) -> None:
+        """Persist (or replace) a health tag for a session."""
+        ...
+
+    async def get_session_health_tag(self, session_id: str) -> str | None:
+        """Return the health tag for a session, or None."""
+        ...
+
+    async def get_untagged_sessions(
+        self,
+        inactive_seconds: int = 30,
+        limit: int = 100,
+        project_id: str | None = None,
+    ) -> list[str]:
+        """Return session_ids with no health tag that have been inactive for N seconds."""
+        ...
+
     async def close(self) -> None:
         """Release any resources held by the backend (connections, file handles)."""
         ...

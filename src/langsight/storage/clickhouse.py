@@ -148,6 +148,20 @@ _DDL = [
     WHERE session_id != ''
     GROUP BY session_id, agent_name
     """,
+    # v0.3 Session health tags — one row per session, auto-classified
+    # Uses ReplacingMergeTree so re-tagging a session replaces the old row
+    """
+    CREATE TABLE IF NOT EXISTS session_health_tags (
+        session_id   String,
+        health_tag   LowCardinality(String),
+        details      Nullable(String),
+        project_id   String DEFAULT '',
+        tagged_at    DateTime64(3, 'UTC')
+    )
+    ENGINE = ReplacingMergeTree(tagged_at)
+    ORDER BY (session_id)
+    SETTINGS index_granularity = 8192
+    """,
 ]
 
 
@@ -480,10 +494,12 @@ class ClickHouseBackend:
         agent_name: str | None = None,
         limit: int = 50,
         project_id: str | None = None,
+        health_tag: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Return recent agent sessions with call counts, failures, and cost estimate.
+        """Return recent agent sessions with call counts, failures, and health tags.
 
         Uses mv_agent_sessions materialized view for fast aggregation.
+        JOINs with session_health_tags to include v0.3 health tag per session.
         """
         cols = [
             "session_id",
@@ -495,34 +511,41 @@ class ClickHouseBackend:
             "total_latency_ms",
             "servers_used",
             "duration_ms",
+            "health_tag",  # v0.3
         ]
 
         # mv_agent_sessions does not include project_id — query base table when filtering by project
         if project_id:
             where = (
-                "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR"
-                " AND session_id != ''"
-                " AND project_id = {project_id:String}"
+                "WHERE t.started_at >= now() - INTERVAL {hours:UInt32} HOUR"
+                " AND t.session_id != ''"
+                " AND t.project_id = {project_id:String}"
             )
             params: dict[str, Any] = {"hours": hours, "limit": limit, "project_id": project_id}
             if agent_name:
-                where += " AND agent_name = {agent_name:String}"
+                where += " AND t.agent_name = {agent_name:String}"
                 params["agent_name"] = agent_name
+            if health_tag:
+                where += " AND sht.health_tag = {health_tag:String}"
+                params["health_tag"] = health_tag
             result = await self._client.query(
                 f"""
                 SELECT
-                    session_id,
-                    any(agent_name)                                             AS agent_name,
-                    min(started_at)                                             AS first_call_at,
-                    max(ended_at)                                               AS last_call_at,
-                    countIf(span_type = 'tool_call')                            AS tool_calls,
-                    countIf(status != 'success' AND span_type = 'tool_call')   AS failed_calls,
-                    sum(latency_ms)                                             AS total_latency_ms,
-                    groupUniqArray(server_name)                                 AS servers_used,
-                    dateDiff('millisecond', min(started_at), max(ended_at))    AS duration_ms
-                FROM mcp_tool_calls
+                    t.session_id,
+                    any(t.agent_name)                                            AS agent_name,
+                    min(t.started_at)                                            AS first_call_at,
+                    max(t.ended_at)                                              AS last_call_at,
+                    countIf(t.span_type = 'tool_call')                          AS tool_calls,
+                    countIf(t.status != 'success' AND t.span_type = 'tool_call') AS failed_calls,
+                    sum(t.latency_ms)                                            AS total_latency_ms,
+                    groupUniqArray(t.server_name)                               AS servers_used,
+                    dateDiff('millisecond', min(t.started_at), max(t.ended_at)) AS duration_ms,
+                    any(sht.health_tag)                                          AS health_tag
+                FROM mcp_tool_calls t
+                LEFT JOIN (SELECT session_id, health_tag FROM session_health_tags FINAL) sht
+                    ON t.session_id = sht.session_id
                 {where}
-                GROUP BY session_id
+                GROUP BY t.session_id
                 ORDER BY first_call_at DESC
                 LIMIT {{limit:UInt32}}
                 """,
@@ -530,29 +553,35 @@ class ClickHouseBackend:
             )
             return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
-        # No project_id filter — use the fast MV
-        where = "WHERE first_call_at >= now() - INTERVAL {hours:UInt32} HOUR"
+        # No project_id filter — use the fast MV, join health tags separately
+        where = "WHERE mv.first_call_at >= now() - INTERVAL {hours:UInt32} HOUR"
         params = {"hours": hours, "limit": limit}
 
         if agent_name:
-            where += " AND agent_name = {agent_name:String}"
+            where += " AND mv.agent_name = {agent_name:String}"
             params["agent_name"] = agent_name
+        if health_tag:
+            where += " AND sht.health_tag = {health_tag:String}"
+            params["health_tag"] = health_tag
 
         result = await self._client.query(
             f"""
             SELECT
-                session_id,
-                agent_name,
-                first_call_at,
-                last_call_at,
-                tool_calls,
-                failed_calls,
-                total_latency_ms,
-                servers_used,
-                dateDiff('millisecond', first_call_at, last_call_at) AS duration_ms
-            FROM mv_agent_sessions
+                mv.session_id,
+                mv.agent_name,
+                mv.first_call_at,
+                mv.last_call_at,
+                mv.tool_calls,
+                mv.failed_calls,
+                mv.total_latency_ms,
+                mv.servers_used,
+                dateDiff('millisecond', mv.first_call_at, mv.last_call_at) AS duration_ms,
+                sht.health_tag
+            FROM mv_agent_sessions mv
+            LEFT JOIN (SELECT session_id, health_tag FROM session_health_tags FINAL) sht
+                ON mv.session_id = sht.session_id
             {where}
-            ORDER BY first_call_at DESC
+            ORDER BY mv.first_call_at DESC
             LIMIT {{limit:UInt32}}
             """,
             parameters=params,
@@ -988,6 +1017,62 @@ class ClickHouseBackend:
 
         cols = ["from_agent", "to_agent", "handoff_count", "session_count"]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+    # ---------------------------------------------------------------------------
+    # v0.3 Session health tags
+    # ---------------------------------------------------------------------------
+
+    async def save_session_health_tag(
+        self,
+        session_id: str,
+        health_tag: str,
+        details: str | None = None,
+        project_id: str | None = None,
+    ) -> None:
+        """Persist (or replace) a health tag for a session."""
+        now = datetime.now(UTC)
+        await self._client.insert(
+            "session_health_tags",
+            [[session_id, health_tag, details, project_id or "", now]],
+            column_names=["session_id", "health_tag", "details", "project_id", "tagged_at"],
+        )
+
+    async def get_session_health_tag(self, session_id: str) -> str | None:
+        """Return the health tag for a session, or None if not tagged."""
+        result = await self._client.query(
+            "SELECT health_tag FROM session_health_tags FINAL WHERE session_id = {sid:String} LIMIT 1",
+            parameters={"sid": session_id},
+        )
+        rows = result.result_rows
+        if rows:
+            return str(rows[0][0])
+        return None
+
+    async def get_untagged_sessions(
+        self,
+        inactive_seconds: int = 30,
+        limit: int = 100,
+        project_id: str | None = None,
+    ) -> list[str]:
+        """Return session_ids that have no health tag and have been inactive for N seconds."""
+        project_filter = "AND project_id = {pid:String}" if project_id else ""
+        params: dict[str, Any] = {"inactive_s": inactive_seconds, "lim": limit}
+        if project_id:
+            params["pid"] = project_id
+        result = await self._client.query(
+            f"""
+            SELECT DISTINCT session_id
+            FROM mcp_tool_calls
+            WHERE session_id != ''
+              {project_filter}
+              AND max(ended_at) < now() - INTERVAL {{inactive_s:UInt32}} SECOND
+              AND session_id NOT IN (SELECT DISTINCT session_id FROM session_health_tags FINAL)
+            GROUP BY session_id
+            LIMIT {{lim:UInt32}}
+            """,
+            parameters=params,
+        )
+        return [str(row[0]) for row in result.result_rows]
 
     # ---------------------------------------------------------------------------
     # Context manager
