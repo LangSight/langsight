@@ -10,6 +10,14 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: { default: "LangSight", template: "%s · LangSight" },
   description: "Agent runtime reliability — prevent loops, enforce budgets, trace every tool call, monitor MCP health, and scan for security issues.",
+  icons: {
+    icon: [
+      { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/logo-256.png",   sizes: "256x256", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 function getPlaywrightSession(): Session & { userId: string; userRole: string } {
