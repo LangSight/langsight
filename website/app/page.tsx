@@ -307,7 +307,7 @@ function Hero() {
               style={{ background: "var(--indigo-dim)", border: "1px solid rgba(45,212,191,0.25)", color: "var(--indigo)" }}
             >
               <span className="w-1.5 h-1.5 rounded-full pulse-dot" style={{ background: "var(--indigo)" }} />
-              v0.2.0 · Self-host free · Apache 2.0
+              v0.3.0 · Self-host free · Apache 2.0
             </div>
 
             {/* Headline — lead with pain */}
@@ -551,7 +551,7 @@ const PILLARS = [
   {
     n: "01",
     title: "Prevent",
-    desc: "Stop loops, enforce budgets, break failing tools — before users notice. The SDK detects repeated calls, enforces cost limits, and auto-disables broken tools.",
+    desc: "Stop loops, enforce budgets, break failing tools — before users notice. Configure thresholds per-agent from the dashboard. No code change needed after initial SDK setup.",
     code: `from langsight.sdk import LangSightClient
 
 client = LangSightClient(
@@ -560,7 +560,11 @@ client = LangSightClient(
     max_cost_usd=1.00,         # budget limit per session
     max_steps=25,              # step limit
     circuit_breaker=True,      # auto-disable after 5 failures
-)`,
+)
+
+# Override thresholds per-agent from the dashboard —
+# Settings → Prevention → Add agent override
+# No code change needed.`,
   },
   {
     n: "02",
@@ -739,6 +743,12 @@ function HowItWorks() {
 
 /* ── Features grid ─────────────────────────────────────────── */
 const FEATURES = [
+  {
+    icon: "🛡️",
+    title: "Prevention Guardrails",
+    badge: "v0.3",
+    desc: "Loop detection, budget limits, and circuit breakers. Configure thresholds per-agent from the dashboard — no code change needed after initial SDK setup.",
+  },
   {
     title: "Multi-Agent Call Trees",
     desc: "parent_span_id links sub-agent calls across any depth. See the path from orchestrator to leaf tool.",
@@ -1032,7 +1042,7 @@ function Footer() {
           ))}
         </div>
         <p className="text-xs" style={{ color: "var(--dimmer)" }}>
-          Apache 2.0 · v0.2.0
+          Apache 2.0 · v0.3.0
         </p>
       </div>
     </footer>
@@ -1052,6 +1062,23 @@ export default function Home() {
         <Comparison />
         <Problem />
         <Solution />
+
+        {/* ── Blog callout ─────────────────────────────────────────── */}
+        <div style={{ background: "var(--bg-deep)", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)" }}>
+          <div className="mx-auto max-w-5xl px-6 py-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-lg">📖</span>
+              <div>
+                <span className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>Deep dive: How LangSight detects agent loops</span>
+                <span className="text-[12px] ml-2" style={{ color: "var(--dimmer)" }}>3 detection patterns, real incident walkthrough</span>
+              </div>
+            </div>
+            <a href="/blog/ai-agent-loop-detection" className="text-[12px] font-semibold shrink-0" style={{ color: "var(--indigo)" }}>
+              Read the post →
+            </a>
+          </div>
+        </div>
+
         <HowItWorks />
         <Features />
         <Integrations />

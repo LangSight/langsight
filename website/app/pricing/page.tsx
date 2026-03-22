@@ -310,6 +310,8 @@ export default function PricingPage() {
                       "Full REST API + dashboard",
                       "PostgreSQL + ClickHouse (dual-backend)",
                       "MCP health monitoring",
+                      "Prevention guardrails (loop detection, budget limits, circuit breaker)",
+                      "Per-agent override config from dashboard",
                       "Security scanning (OWASP + CVE)",
                       "Cost attribution + model pricing",
                       "Session replay + comparison",
@@ -558,7 +560,7 @@ export default function PricingPage() {
               </a>
             ))}
           </div>
-          <p className="text-xs" style={{ color: "var(--dimmer)" }}>Apache 2.0 · v0.2.0</p>
+          <p className="text-xs" style={{ color: "var(--dimmer)" }}>Apache 2.0 · v0.3.0</p>
         </div>
       </footer>
     </>
