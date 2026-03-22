@@ -26,7 +26,32 @@ router = APIRouter(prefix="/agents", tags=["agents"])
 
 
 class AgentSession(BaseModel):
-    """Summary of one agent session."""
+    """Summary of one agent session.
+
+    Fields:
+        session_id: Unique session identifier.
+        agent_name: Name of the top-level agent that started the session.
+        first_call_at: ISO 8601 timestamp of the first span in the session.
+        last_call_at: ISO 8601 timestamp of the last span in the session.
+        tool_calls: Total number of tool call spans (excludes agent lifecycle spans).
+        failed_calls: Number of tool call spans whose status is not "success".
+        duration_ms: Wall-clock duration from first_call_at to last_call_at.
+        servers_used: Deduplicated list of MCP server names called in the session.
+        health_tag: Auto-classified session outcome assigned by the v0.3 prevention
+            layer when the session ends. Possible values:
+
+            - ``success``               All tool calls completed without issue.
+            - ``success_with_fallback`` Completed, but a circuit-breaker fallback was used.
+            - ``loop_detected``         Session terminated due to a detected loop pattern.
+            - ``budget_exceeded``       Stopped because a cost, step, or time limit was hit.
+            - ``tool_failure``          One or more tool calls failed (no loop/budget event).
+            - ``circuit_breaker_open``  A tool call was blocked by an open circuit breaker.
+            - ``timeout``               Session exceeded the configured max_wall_time_s limit.
+            - ``schema_drift``          A tool schema changed mid-session, triggering drift alert.
+
+            ``None`` when the session was recorded before v0.3 or when the prevention
+            layer is not enabled.
+    """
 
     session_id: str
     agent_name: str | None
@@ -36,6 +61,7 @@ class AgentSession(BaseModel):
     failed_calls: int
     duration_ms: float
     servers_used: list[str]
+    health_tag: str | None = None  # v0.3 — auto-classified session health tag
 
 
 class SpanNode(BaseModel):
@@ -108,19 +134,30 @@ class ReplayResponse(BaseModel):
 async def list_sessions(
     hours: int = Query(default=24, ge=1, le=720, description="Look-back window in hours"),
     agent_name: str | None = Query(default=None, description="Filter by agent name"),
+    health_tag: str | None = Query(default=None, description="Filter by health tag (v0.3)"),
     limit: int = Query(default=50, ge=1, le=1000),
     project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
 ) -> list[AgentSession]:
     """Return recent agent sessions with call counts, failure rates, and duration.
 
-    Requires ClickHouse backend. Returns empty list on SQLite.
+    Query parameters:
+        hours: Look-back window in hours (1–720, default 24).
+        agent_name: Optional filter — return only sessions for this agent.
+        health_tag: Optional filter — return only sessions with this health tag (v0.3).
+            Accepted values: ``success``, ``success_with_fallback``, ``loop_detected``,
+            ``budget_exceeded``, ``tool_failure``, ``circuit_breaker_open``,
+            ``timeout``, ``schema_drift``.
+        limit: Maximum sessions to return (1–1000, default 50).
+
+    Requires ClickHouse backend. Returns empty list on PostgreSQL-only deployments.
     """
     if not hasattr(storage, "get_agent_sessions"):
         return []
 
     rows = await storage.get_agent_sessions(
-        hours=hours, agent_name=agent_name, limit=limit, project_id=project_id
+        hours=hours, agent_name=agent_name, limit=limit,
+        project_id=project_id, health_tag=health_tag,
     )
     return [
         AgentSession(
@@ -132,6 +169,7 @@ async def list_sessions(
             failed_calls=int(r.get("failed_calls") or 0),
             duration_ms=float(r.get("duration_ms") or 0),
             servers_used=list(r.get("servers_used") or []),
+            health_tag=r.get("health_tag") or None,
         )
         for r in rows
     ]
