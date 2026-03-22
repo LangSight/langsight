@@ -39,6 +39,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+      <head>
+        {/* Preconnect to Cloudflare CDN to reduce CSS blocking time */}
+        <link rel="preconnect" href="https://langsight.dev" />
+        <link rel="dns-prefetch" href="https://langsight.dev" />
+      </head>
       <body>{children}</body>
     </html>
   );
