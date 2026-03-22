@@ -28,10 +28,25 @@ _POSTGRES_DSN = os.environ.get(
     "postgresql://langsight:${POSTGRES_PASSWORD}@localhost:5432/langsight",
 )
 # Allow a plain test DSN without the env-var substitution
-_POSTGRES_TEST_DSN = os.environ.get(
-    "TEST_POSTGRES_URL",
-    "postgresql://langsight:testpassword@localhost:5432/langsight",
-)
+# Try to load POSTGRES_PASSWORD from .env for local dev convenience
+def _load_postgres_test_dsn() -> str:
+    if "TEST_POSTGRES_URL" in os.environ:
+        return os.environ["TEST_POSTGRES_URL"]
+    # Try reading POSTGRES_PASSWORD from .env in project root
+    try:
+        env_file = os.path.join(os.path.dirname(__file__), "..", ".env")
+        with open(env_file) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("POSTGRES_PASSWORD="):
+                    pw = line.split("=", 1)[1].strip()
+                    return f"postgresql://langsight:{pw}@localhost:5432/langsight"
+    except OSError:
+        pass
+    return "postgresql://langsight:testpassword@localhost:5432/langsight"
+
+
+_POSTGRES_TEST_DSN = _load_postgres_test_dsn()
 _CLICKHOUSE_HOST = os.environ.get("TEST_CLICKHOUSE_HOST", "localhost")
 _CLICKHOUSE_PORT = int(os.environ.get("TEST_CLICKHOUSE_PORT", "8123"))
 

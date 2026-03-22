@@ -235,3 +235,45 @@ class ApiKeyRecord(BaseModel):
     @property
     def is_active(self) -> bool:
         return not self.is_revoked and not self.is_expired
+
+
+# ---------------------------------------------------------------------------
+# v0.3 Prevention Config (dashboard-managed thresholds)
+# ---------------------------------------------------------------------------
+
+
+class PreventionConfig(BaseModel):
+    """Dashboard-managed prevention thresholds for one agent.
+
+    Stored in Postgres, fetched by the SDK on wrap(). SDK constructor params
+    serve as offline fallback when the API is unreachable.
+
+    agent_name = "*" represents the project-level default, applied to all
+    agents that have no agent-specific config entry.
+    """
+
+    id: str
+    project_id: str
+    agent_name: str  # specific agent name or "*" for project-level default
+
+    # Loop detection
+    loop_enabled: bool = True
+    loop_threshold: int = 3       # same tool+args N times = loop
+    loop_action: str = "terminate"  # "terminate" | "warn"
+
+    # Budget guardrails
+    max_steps: int | None = None        # None = disabled
+    max_cost_usd: float | None = None   # None = disabled
+    max_wall_time_s: float | None = None  # None = disabled
+    budget_soft_alert: float = 0.80
+
+    # Circuit breaker
+    cb_enabled: bool = True
+    cb_failure_threshold: int = 5
+    cb_cooldown_seconds: float = 60.0
+    cb_half_open_max_calls: int = 2
+
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    model_config = {"frozen": True}

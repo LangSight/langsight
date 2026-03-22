@@ -697,6 +697,74 @@ async def seed_demo_data(storage: Any, project_id: str) -> None:
 
         logger.info("demo_seed.prevention_layer", sessions=len(prevention_sessions), spans=prevention_span_count)
 
+    # ── 7. Prevention config (dashboard-managed thresholds) ──────────────────
+    if hasattr(storage, "upsert_prevention_config"):
+        from langsight.models import PreventionConfig
+
+        _PREVENTION_CONFIGS = [
+            {
+                "agent_name": "*",
+                "loop_enabled": True,
+                "loop_threshold": 3,
+                "loop_action": "terminate",
+                "max_steps": None,
+                "max_cost_usd": None,
+                "max_wall_time_s": None,
+                "cb_enabled": True,
+                "cb_failure_threshold": 5,
+                "cb_cooldown_seconds": 60.0,
+                "cb_half_open_max_calls": 2,
+            },
+            {
+                "agent_name": "orchestrator",
+                "loop_threshold": 3,
+                "max_steps": 25,
+                "max_cost_usd": 1.00,
+            },
+            {
+                "agent_name": "support-agent",
+                "loop_threshold": 5,
+                "loop_action": "warn",
+                "max_steps": 15,
+                "max_cost_usd": 0.50,
+            },
+            {
+                "agent_name": "billing-agent",
+                "loop_threshold": 3,
+                "max_steps": 10,
+                "max_cost_usd": 0.25,
+                "cb_failure_threshold": 3,
+                "cb_cooldown_seconds": 30.0,
+            },
+            {
+                "agent_name": "data-analyst",
+                "loop_threshold": 3,
+                "loop_action": "warn",
+                "max_steps": 50,
+                "max_cost_usd": 2.00,
+            },
+        ]
+        pc_count = 0
+        for pc_data in _PREVENTION_CONFIGS:
+            defaults = {
+                "loop_enabled": True, "loop_threshold": 3, "loop_action": "terminate",
+                "max_steps": None, "max_cost_usd": None, "max_wall_time_s": None,
+                "budget_soft_alert": 0.80, "cb_enabled": True,
+                "cb_failure_threshold": 5, "cb_cooldown_seconds": 60.0, "cb_half_open_max_calls": 2,
+            }
+            defaults.update(pc_data)
+            try:
+                pc = PreventionConfig(
+                    id=uuid.uuid4().hex,
+                    project_id=project_id,
+                    **defaults,  # type: ignore[arg-type]
+                )
+                await storage.upsert_prevention_config(pc)
+                pc_count += 1
+            except Exception:  # noqa: BLE001
+                pass
+        logger.info("demo_seed.prevention_configs", count=pc_count)
+
     logger.info(
         "demo_seed.complete",
         project_id=project_id,

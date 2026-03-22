@@ -26,6 +26,7 @@ from langsight.api.routers import (
     health,
     lineage,
     live,
+    prevention_config,
     projects,
     reliability,
     security,
@@ -385,6 +386,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     app.include_router(health.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(reliability.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(security.router, prefix="/api", dependencies=_auth_dep)
+    # prevention_config MUST be registered before projects — its /api/projects/prevention-config
+    # route would otherwise be swallowed by /api/projects/{project_id} from the projects router.
+    app.include_router(prevention_config.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(projects.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(slos.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(traces.router, prefix="/api", dependencies=_auth_dep)

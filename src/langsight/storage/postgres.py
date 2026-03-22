@@ -15,6 +15,7 @@ from langsight.models import (
     HealthCheckResult,
     InviteToken,
     ModelPricing,
+    PreventionConfig,
     Project,
     ProjectMember,
     ProjectRole,
@@ -259,6 +260,32 @@ _DDL_STATEMENTS = [
     """,
     """
     CREATE INDEX IF NOT EXISTS idx_server_tools_server ON server_tools(server_name)
+    """,
+    # v0.3 Prevention Config — dashboard-managed thresholds per agent
+    """
+    CREATE TABLE IF NOT EXISTS prevention_config (
+        id                     TEXT             PRIMARY KEY,
+        project_id             TEXT             NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        agent_name             TEXT             NOT NULL,
+        loop_enabled           BOOLEAN          NOT NULL DEFAULT TRUE,
+        loop_threshold         INTEGER          NOT NULL DEFAULT 3,
+        loop_action            TEXT             NOT NULL DEFAULT 'terminate',
+        max_steps              INTEGER,
+        max_cost_usd           DOUBLE PRECISION,
+        max_wall_time_s        DOUBLE PRECISION,
+        budget_soft_alert      DOUBLE PRECISION NOT NULL DEFAULT 0.80,
+        cb_enabled             BOOLEAN          NOT NULL DEFAULT TRUE,
+        cb_failure_threshold   INTEGER          NOT NULL DEFAULT 5,
+        cb_cooldown_seconds    DOUBLE PRECISION NOT NULL DEFAULT 60.0,
+        cb_half_open_max_calls INTEGER          NOT NULL DEFAULT 2,
+        created_at             TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
+        updated_at             TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
+        UNIQUE (project_id, agent_name)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_prevention_config_project
+        ON prevention_config (project_id, agent_name)
     """,
 ]
 
@@ -956,6 +983,102 @@ class PostgresBackend:
         return [dict(r) for r in rows]
 
     # ---------------------------------------------------------------------------
+    # v0.3 Prevention Config — dashboard-managed prevention thresholds per agent
+    # ---------------------------------------------------------------------------
+
+    async def list_prevention_configs(self, project_id: str) -> list[PreventionConfig]:
+        """Return all prevention configs for a project, ordered by agent_name."""
+        rows = await self._pool.fetch(
+            "SELECT * FROM prevention_config WHERE project_id = $1 ORDER BY agent_name",
+            project_id,
+        )
+        return [_row_to_prevention_config(r) for r in rows]
+
+    async def get_prevention_config(
+        self, agent_name: str, project_id: str
+    ) -> PreventionConfig | None:
+        """Return config for this specific agent, or None if not configured."""
+        row = await self._pool.fetchrow(
+            "SELECT * FROM prevention_config WHERE project_id = $1 AND agent_name = $2",
+            project_id,
+            agent_name,
+        )
+        return _row_to_prevention_config(row) if row else None
+
+    async def get_effective_prevention_config(
+        self, agent_name: str, project_id: str
+    ) -> PreventionConfig | None:
+        """Return agent-specific config, falling back to project default ('*')."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT * FROM prevention_config
+            WHERE project_id = $1 AND agent_name = ANY(ARRAY[$2, '*'])
+            ORDER BY CASE WHEN agent_name = $2 THEN 0 ELSE 1 END
+            LIMIT 1
+            """,
+            project_id,
+            agent_name,
+        )
+        return _row_to_prevention_config(row) if row else None
+
+    async def upsert_prevention_config(self, config: PreventionConfig) -> PreventionConfig:
+        """Create or update prevention config for an agent."""
+        now = datetime.now(UTC)
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO prevention_config (
+                id, project_id, agent_name,
+                loop_enabled, loop_threshold, loop_action,
+                max_steps, max_cost_usd, max_wall_time_s, budget_soft_alert,
+                cb_enabled, cb_failure_threshold, cb_cooldown_seconds, cb_half_open_max_calls,
+                created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
+            ON CONFLICT (project_id, agent_name) DO UPDATE SET
+                loop_enabled           = EXCLUDED.loop_enabled,
+                loop_threshold         = EXCLUDED.loop_threshold,
+                loop_action            = EXCLUDED.loop_action,
+                max_steps              = EXCLUDED.max_steps,
+                max_cost_usd           = EXCLUDED.max_cost_usd,
+                max_wall_time_s        = EXCLUDED.max_wall_time_s,
+                budget_soft_alert      = EXCLUDED.budget_soft_alert,
+                cb_enabled             = EXCLUDED.cb_enabled,
+                cb_failure_threshold   = EXCLUDED.cb_failure_threshold,
+                cb_cooldown_seconds    = EXCLUDED.cb_cooldown_seconds,
+                cb_half_open_max_calls = EXCLUDED.cb_half_open_max_calls,
+                updated_at             = EXCLUDED.updated_at
+            RETURNING *
+            """,
+            config.id,
+            config.project_id,
+            config.agent_name,
+            config.loop_enabled,
+            config.loop_threshold,
+            config.loop_action,
+            config.max_steps,
+            config.max_cost_usd,
+            config.max_wall_time_s,
+            config.budget_soft_alert,
+            config.cb_enabled,
+            config.cb_failure_threshold,
+            config.cb_cooldown_seconds,
+            config.cb_half_open_max_calls,
+            now,
+        )
+        return _row_to_prevention_config(row)
+
+    async def delete_prevention_config(
+        self, agent_name: str, project_id: str
+    ) -> bool:
+        """Delete config for this agent. Returns True if found and deleted."""
+        result: str = await self._pool.execute(
+            "DELETE FROM prevention_config WHERE project_id = $1 AND agent_name = $2",
+            project_id,
+            agent_name,
+        )
+        return result != "DELETE 0"
+
+    # ---------------------------------------------------------------------------
     # v0.3 Session health tags — not stored in Postgres (ClickHouse handles these)
     # Stubs satisfy the StorageBackend protocol when Postgres is used standalone.
     # ---------------------------------------------------------------------------
@@ -1099,6 +1222,27 @@ def _row_to_result(row: asyncpg.Record) -> HealthCheckResult:
         schema_hash=row["schema_hash"],
         error=row["error"],
         checked_at=row["checked_at"],
+    )
+
+
+def _row_to_prevention_config(row: asyncpg.Record) -> PreventionConfig:
+    return PreventionConfig(
+        id=row["id"],
+        project_id=row["project_id"],
+        agent_name=row["agent_name"],
+        loop_enabled=bool(row["loop_enabled"]),
+        loop_threshold=int(row["loop_threshold"]),
+        loop_action=str(row["loop_action"]),
+        max_steps=int(row["max_steps"]) if row["max_steps"] is not None else None,
+        max_cost_usd=float(row["max_cost_usd"]) if row["max_cost_usd"] is not None else None,
+        max_wall_time_s=float(row["max_wall_time_s"]) if row["max_wall_time_s"] is not None else None,
+        budget_soft_alert=float(row["budget_soft_alert"]),
+        cb_enabled=bool(row["cb_enabled"]),
+        cb_failure_threshold=int(row["cb_failure_threshold"]),
+        cb_cooldown_seconds=float(row["cb_cooldown_seconds"]),
+        cb_half_open_max_calls=int(row["cb_half_open_max_calls"]),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
     )
 
 

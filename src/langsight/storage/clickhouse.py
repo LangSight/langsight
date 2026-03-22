@@ -30,7 +30,7 @@ from typing import Any
 import clickhouse_connect
 import structlog
 
-from langsight.models import HealthCheckResult, ServerStatus
+from langsight.models import HealthCheckResult, PreventionConfig, ServerStatus
 from langsight.sdk.models import ToolCallSpan
 
 logger = structlog.get_logger()
@@ -1017,6 +1017,36 @@ class ClickHouseBackend:
 
         cols = ["from_agent", "to_agent", "handoff_count", "session_count"]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+    # ---------------------------------------------------------------------------
+    # v0.3 Prevention Config — no-ops (lives in Postgres, not ClickHouse)
+    # ---------------------------------------------------------------------------
+
+    async def list_prevention_configs(self, project_id: str) -> list[PreventionConfig]:
+        """No-op: prevention config lives in Postgres."""
+        return []
+
+    async def get_prevention_config(
+        self, agent_name: str, project_id: str
+    ) -> PreventionConfig | None:
+        """No-op: prevention config lives in Postgres."""
+        return None
+
+    async def get_effective_prevention_config(
+        self, agent_name: str, project_id: str
+    ) -> PreventionConfig | None:
+        """No-op: prevention config lives in Postgres."""
+        return None
+
+    async def upsert_prevention_config(self, config: PreventionConfig) -> PreventionConfig:
+        """No-op: prevention config lives in Postgres."""
+        return config
+
+    async def delete_prevention_config(
+        self, agent_name: str, project_id: str
+    ) -> bool:
+        """No-op: prevention config lives in Postgres."""
+        return False
 
     # ---------------------------------------------------------------------------
     # v0.3 Session health tags

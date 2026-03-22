@@ -217,7 +217,7 @@ class LangSightClient:
         """
         effective_redact = redact_payloads if redact_payloads is not None else self._redact_payloads
         effective_project = project_id if project_id is not None else self._project_id
-        return MCPClientProxy(
+        proxy = MCPClientProxy(
             mcp_client,
             langsight=self,
             server_name=server_name,
@@ -228,6 +228,13 @@ class LangSightClient:
             redact_payloads=effective_redact,
             project_id=effective_project,
         )
+        # Kick off async remote config fetch (fire-and-forget, never blocks wrap())
+        if agent_name:
+            try:
+                asyncio.create_task(self._apply_remote_config(agent_name, effective_project))
+            except RuntimeError:
+                pass  # no event loop (e.g. sync context) — constructor defaults apply
+        return proxy
 
     async def send_span(self, span: ToolCallSpan) -> None:
         """Buffer a span for batched delivery. Never blocks, never raises.
@@ -264,6 +271,84 @@ class LangSightClient:
         batch, self._buffer = self._buffer, []
         await self._post_spans(batch)
 
+    async def _fetch_prevention_config(
+        self, agent_name: str, project_id: str | None
+    ) -> dict[str, Any] | None:
+        """Fetch prevention config from the API. Returns None on any failure (fail-open)."""
+        try:
+            from urllib.parse import quote
+            http = await self._get_http()
+            # safe='' ensures ALL special chars (including /) are percent-encoded
+            safe_agent = quote(agent_name, safe="")
+            url = f"{self._url}/api/agents/{safe_agent}/prevention-config"
+            if project_id:
+                url = f"{url}?project_id={quote(project_id, safe='')}"
+            resp = await http.get(url)
+            if resp.status_code == 200:
+                return resp.json()
+        except Exception:  # noqa: BLE001
+            pass  # offline or unreachable — constructor defaults remain active
+        return None
+
+    async def _apply_remote_config(
+        self, agent_name: str, project_id: str | None
+    ) -> None:
+        """Fetch and apply remote prevention config, overriding constructor defaults.
+
+        Called as a fire-and-forget background task from wrap(). If the API is
+        unreachable, constructor defaults remain active (fail-open).
+        """
+        config = await self._fetch_prevention_config(agent_name, project_id)
+        if not config:
+            return
+
+        # Override loop config
+        loop_enabled = config.get("loop_enabled")
+        if loop_enabled is not None:
+            if loop_enabled:
+                self._loop_config = LoopDetectorConfig(
+                    threshold=int(config.get("loop_threshold", 3)),
+                    action=LoopAction(config.get("loop_action", "terminate")),
+                )
+            else:
+                self._loop_config = None
+
+        # Override budget config
+        has_any_limit = any(
+            config.get(k) is not None
+            for k in ("max_steps", "max_cost_usd", "max_wall_time_s")
+        )
+        if has_any_limit:
+            self._budget_config = BudgetConfig(
+                max_steps=config.get("max_steps"),
+                max_cost_usd=config.get("max_cost_usd"),
+                max_wall_time_s=config.get("max_wall_time_s"),
+                soft_alert_fraction=float(config.get("budget_soft_alert", 0.80)),
+            )
+        elif "max_steps" in config and config["max_steps"] is None:
+            # Explicitly cleared in dashboard
+            self._budget_config = None
+
+        # Override circuit breaker config
+        cb_enabled = config.get("cb_enabled")
+        if cb_enabled is not None:
+            if cb_enabled:
+                self._cb_default_config = CircuitBreakerConfig(
+                    failure_threshold=int(config.get("cb_failure_threshold", 5)),
+                    cooldown_seconds=float(config.get("cb_cooldown_seconds", 60.0)),
+                    half_open_max_calls=int(config.get("cb_half_open_max_calls", 2)),
+                )
+            else:
+                self._cb_default_config = None
+
+        logger.debug(
+            "sdk.remote_config_applied",
+            agent=agent_name,
+            loop=self._loop_config is not None,
+            budget=self._budget_config is not None,
+            circuit_breaker=self._cb_default_config is not None,
+        )
+
     async def close(self) -> None:
         """Flush remaining spans, cancel the flush loop, and close the HTTP client."""
         if self._flush_task and not self._flush_task.done():
@@ -292,7 +377,7 @@ class LangSightClient:
         url = f"{self._url}{endpoint}"
         if project_id:
             from urllib.parse import quote
-            url = f"{url}?project_id={quote(project_id)}"
+            url = f"{url}?project_id={quote(project_id, safe='')}"
         payload: dict[str, object] = {"tools": tools}
         try:
             http = await self._get_http()

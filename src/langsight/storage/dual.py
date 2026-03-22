@@ -32,6 +32,7 @@ from langsight.models import (
     HealthCheckResult,
     InviteToken,
     ModelPricing,
+    PreventionConfig,
     Project,
     ProjectMember,
     User,
@@ -135,6 +136,29 @@ class DualStorage:
 
     async def save_tool_call_spans(self, spans: list[ToolCallSpan]) -> None:
         return await self._analytics.save_tool_call_spans(spans)
+
+    # v0.3 Prevention Config → Postgres
+
+    async def list_prevention_configs(self, project_id: str) -> list[PreventionConfig]:
+        return await self._meta.list_prevention_configs(project_id)
+
+    async def get_prevention_config(
+        self, agent_name: str, project_id: str
+    ) -> PreventionConfig | None:
+        return await self._meta.get_prevention_config(agent_name, project_id)
+
+    async def get_effective_prevention_config(
+        self, agent_name: str, project_id: str
+    ) -> PreventionConfig | None:
+        return await self._meta.get_effective_prevention_config(agent_name, project_id)
+
+    async def upsert_prevention_config(self, config: PreventionConfig) -> PreventionConfig:
+        return await self._meta.upsert_prevention_config(config)
+
+    async def delete_prevention_config(
+        self, agent_name: str, project_id: str
+    ) -> bool:
+        return await self._meta.delete_prevention_config(agent_name, project_id)
 
     # v0.3 Session health tags → ClickHouse
 

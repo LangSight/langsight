@@ -8,6 +8,7 @@ from langsight.models import (
     HealthCheckResult,
     InviteToken,
     ModelPricing,
+    PreventionConfig,
     Project,
     ProjectMember,
     User,
@@ -290,6 +291,34 @@ class StorageBackend(Protocol):
 
     async def get_server_tools(self, server_name: str, project_id: str | None = None) -> list[dict[str, object]]:
         """Get all declared tools for a server, scoped to project."""
+        ...
+
+    # ── v0.3 Prevention Config ───────────────────────────────────────────────
+
+    async def list_prevention_configs(self, project_id: str) -> list[PreventionConfig]:
+        """Return all prevention configs for a project, ordered by agent_name."""
+        ...
+
+    async def get_prevention_config(
+        self, agent_name: str, project_id: str
+    ) -> PreventionConfig | None:
+        """Return config for this specific agent, or None if not configured."""
+        ...
+
+    async def get_effective_prevention_config(
+        self, agent_name: str, project_id: str
+    ) -> PreventionConfig | None:
+        """Return agent-specific config, falling back to project default ('*')."""
+        ...
+
+    async def upsert_prevention_config(self, config: PreventionConfig) -> PreventionConfig:
+        """Create or update prevention config for an agent."""
+        ...
+
+    async def delete_prevention_config(
+        self, agent_name: str, project_id: str
+    ) -> bool:
+        """Delete config for this agent. Returns True if found and deleted."""
         ...
 
     # ── v0.3 Session health tags ─────────────────────────────────────────────
