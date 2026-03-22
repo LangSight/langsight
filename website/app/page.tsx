@@ -232,12 +232,21 @@ const TERMINAL_LINES = [
 
 function AnimatedTerminal() {
   const [visible, setVisible] = useState(0);
+  const [started, setStarted] = useState(false);
+
+  // Defer animation until after hydration to avoid blocking main thread on load
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setStarted(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   useEffect(() => {
-    TERMINAL_LINES.forEach((line, i) => {
-      setTimeout(() => setVisible(i + 1), line.delay + 800);
-    });
-  }, []);
+    if (!started) return;
+    const timers = TERMINAL_LINES.map((line, i) =>
+      setTimeout(() => setVisible(i + 1), line.delay + 800)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [started]);
 
   return (
     <div className="terminal w-full">

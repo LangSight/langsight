@@ -11,8 +11,8 @@
   --border: #E4E4E7;
   --border-dim: #F0F0F2;
   --text: #09090B;
-  --muted: #52525B;
-  --dimmer: #A1A1AA;
+  --muted: #3F3F46;
+  --dimmer: #71717A;
   --indigo: #14B8A6;
   --indigo-dim: rgba(20,184,166,0.08);
   --indigo-glow: rgba(20,184,166,0.10);
@@ -37,8 +37,8 @@
   --border: #27272A;
   --border-dim: #1C1C1F;
   --text: #FAFAFA;
-  --muted: #71717A;
-  --dimmer: #3F3F46;
+  --muted: #A1A1AA;
+  --dimmer: #52525B;
   --indigo: #2DD4BF;
   --indigo-dim: rgba(45,212,191,0.10);
   --indigo-glow: rgba(45,212,191,0.18);
@@ -159,10 +159,12 @@ body {
   opacity: 0;
   transform: translateY(20px);
   transition: opacity 0.5s ease, transform 0.5s ease;
+  will-change: opacity, transform;
 }
 [data-reveal].visible {
   opacity: 1;
   transform: translateY(0);
+  will-change: auto;
 }
 
 /* ── Hero entry animations ──────────────────────────────────── */
@@ -170,7 +172,10 @@ body {
   from { opacity: 0; transform: translateY(18px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.fade-up { animation: fadeUp 0.65s cubic-bezier(0.16,1,0.3,1) both; }
+.fade-up {
+  animation: fadeUp 0.65s cubic-bezier(0.16,1,0.3,1) both;
+  will-change: opacity, transform;
+}
 .delay-1 { animation-delay: 0.08s; }
 .delay-2 { animation-delay: 0.16s; }
 .delay-3 { animation-delay: 0.24s; }
@@ -179,14 +184,14 @@ body {
 
 /* ── Cursor blink ───────────────────────────────────────────── */
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-.cursor { animation: blink 1s step-end infinite; }
+.cursor { animation: blink 1s step-end infinite; will-change: opacity; }
 
 /* ── Glow pulse (hero badge dot) ────────────────────────────── */
 @keyframes pulse-dot {
   0%, 100% { box-shadow: 0 0 0 0 var(--indigo-strong); }
   50%       { box-shadow: 0 0 0 5px transparent; }
 }
-.pulse-dot { animation: pulse-dot 2s ease infinite; }
+.pulse-dot { animation: pulse-dot 2s ease infinite; will-change: box-shadow; }
 
 /* ── Shimmer (skeleton loader) ──────────────────────────────── */
 @keyframes shimmer {
