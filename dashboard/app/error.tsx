@@ -41,7 +41,7 @@ export default function RootError({
         style={{
           padding: "0.5rem 1.25rem",
           borderRadius: "0.5rem",
-          background: "#6366F1",
+          background: "#14B8A6",
           color: "#fff",
           border: "none",
           cursor: "pointer",

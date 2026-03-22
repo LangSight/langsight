@@ -262,7 +262,7 @@ export default function OverviewPage() {
               sub={sessFailed > 0 ? `${sessFailed} with failures` : "all clean"}
               icon={GitBranch}
               trend={spark}
-              color="#6366f1"
+              color="#14B8A6"
               href="/sessions"
             />
             <MetricCard

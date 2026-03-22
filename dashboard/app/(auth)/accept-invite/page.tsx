@@ -22,8 +22,10 @@ function BrandPanel() {
           className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg"
           style={{ background: "hsl(var(--primary))" }}
         >
-          <svg width="16" height="16" viewBox="0 0 14 14" fill="none">
-            <path d="M2 7h10M7 2v10M4 4l6 6M10 4l-6 6" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="9" stroke="white" strokeWidth="2.5" fill="none"/>
+            <circle cx="12" cy="12" r="2.5" fill="white"/>
+            <line x1="18" y1="6" x2="23" y2="1" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
           </svg>
         </div>
         <span className="font-bold text-[15px] text-white">LangSight</span>
@@ -274,8 +276,10 @@ function AcceptInviteInner() {
             className="w-7 h-7 rounded-lg flex items-center justify-center"
             style={{ background: "hsl(var(--primary))" }}
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M2 7h10M7 2v10M4 4l6 6M10 4l-6 6" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="9" stroke="white" strokeWidth="2.5" fill="none"/>
+              <circle cx="12" cy="12" r="2.5" fill="white"/>
+              <line x1="18" y1="6" x2="23" y2="1" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
             </svg>
           </div>
           <span className="font-bold text-[14px] text-foreground">LangSight</span>

@@ -19,10 +19,10 @@ import type { ProjectResponse } from "@/lib/types";
 
 /* ── Nav config ─────────────────────────────────────────────── */
 const PRIMARY_NAV = [
-  { href: "/",         label: "Overview",     icon: LayoutDashboard, color: "#6366f1" },
-  { href: "/sessions", label: "Sessions",     icon: GitBranch,       color: "#8b5cf6" },
+  { href: "/",         label: "Overview",     icon: LayoutDashboard, color: "#14B8A6" },
+  { href: "/sessions", label: "Sessions",     icon: GitBranch,       color: "#0EA5E9" },
   { href: "/agents",   label: "Agents",       icon: Bot,             color: "#06b6d4" },
-  { href: "/servers",  label: "MCP Servers",  icon: Server,          color: "#8b5cf6" },
+  { href: "/servers",  label: "MCP Servers",  icon: Server,          color: "#0EA5E9" },
   { href: "/costs",    label: "Costs",        icon: DollarSign,      color: "#10b981" },
 ];
 
@@ -221,11 +221,11 @@ function UserMenu() {
 
   // Generate a consistent gradient from the user's initials
   const gradients = [
-    "linear-gradient(135deg, #6366f1, #8b5cf6)",
+    "linear-gradient(135deg, #14B8A6, #06b6d4)",
     "linear-gradient(135deg, #06b6d4, #3b82f6)",
     "linear-gradient(135deg, #10b981, #06b6d4)",
     "linear-gradient(135deg, #f59e0b, #ef4444)",
-    "linear-gradient(135deg, #8b5cf6, #ec4899)",
+    "linear-gradient(135deg, #0EA5E9, #ec4899)",
   ];
   const avatarGradient = gradients[(initials.charCodeAt(0) ?? 0) % gradients.length];
 
@@ -356,15 +356,12 @@ export function Sidebar() {
         {/* Logo mark */}
         <div
           className="w-7 h-7 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0"
-          style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
+          style={{ background: "#14B8A6" }}
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path
-              d="M2 7h10M7 2v10M4 4l6 6M10 4l-6 6"
-              stroke="white"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-            />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="9" stroke="white" strokeWidth="2.5" fill="none"/>
+            <circle cx="12" cy="12" r="2.5" fill="white"/>
+            <line x1="18" y1="6" x2="23" y2="1" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
           </svg>
         </div>
 
@@ -464,8 +461,8 @@ export function Sidebar() {
           <span
             className="nav-icon"
             style={{
-              ...(isActive("/settings") ? { background: "rgba(99,102,241,0.15)" } : {}),
-              color: isActive("/settings") ? "#6366f1" : undefined,
+              ...(isActive("/settings") ? { background: "rgba(20,184,166,0.15)" } : {}),
+              color: isActive("/settings") ? "#14B8A6" : undefined,
             }}
           >
             <Settings size={15} />

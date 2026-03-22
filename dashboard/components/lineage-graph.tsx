@@ -60,8 +60,8 @@ const MINIMAP_H = 90;
 
 /* ── Colors ────────────────────────────────────────────────── */
 const C_EDGE = "rgba(148,163,184,0.55)";
-const C_HANDOFF = "rgba(99,102,241,0.7)";
-const C_SELECTED = "#818cf8";
+const C_HANDOFF = "rgba(20,184,166,0.7)";
+const C_SELECTED = "#2DD4BF";
 
 /* ── Path helpers ──────────────────────────────────────────── */
 function bezier(x1: number, y1: number, x2: number, y2: number) {
@@ -256,12 +256,12 @@ export function LineageGraph({
     >
       <svg width="100%" height="100%" style={{ position: "absolute", top: 0, left: 0 }}>
         <defs>
-          {[{ id: "arrow-gray", fill: "rgba(148,163,184,0.7)" }, { id: "arrow-indigo", fill: "rgba(99,102,241,0.85)" }, { id: "arrow-sel", fill: C_SELECTED }].map(({ id, fill }) => (
+          {[{ id: "arrow-gray", fill: "rgba(148,163,184,0.7)" }, { id: "arrow-teal", fill: "rgba(20,184,166,0.85)" }, { id: "arrow-sel", fill: C_SELECTED }].map(({ id, fill }) => (
             <marker key={id} id={id} viewBox={`0 0 ${ARROW_SIZE} ${ARROW_SIZE}`} refX={ARROW_SIZE} refY={ARROW_SIZE / 2} markerWidth={ARROW_SIZE} markerHeight={ARROW_SIZE} orient="auto-start-reverse">
               <path d={`M 0 0 L ${ARROW_SIZE} ${ARROW_SIZE / 2} L 0 ${ARROW_SIZE} Z`} fill={fill} />
             </marker>
           ))}
-          <filter id="glow-pri" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="6" result="b" /><feFlood floodColor="#6366f1" floodOpacity="0.3" /><feComposite in2="b" operator="in" /><feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+          <filter id="glow-pri" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="6" result="b" /><feFlood floodColor="#14B8A6" floodOpacity="0.3" /><feComposite in2="b" operator="in" /><feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge></filter>
           <filter id="glow-err" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5" result="b" /><feFlood floodColor="#ef4444" floodOpacity="0.25" /><feComposite in2="b" operator="in" /><feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge></filter>
           <filter id="glow-search" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5" result="b" /><feFlood floodColor="#f59e0b" floodOpacity="0.35" /><feComposite in2="b" operator="in" /><feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge></filter>
         </defs>
@@ -284,14 +284,14 @@ export function LineageGraph({
               let d: string, lx: number, ly: number;
               if (self) { d = selfLoop(sp.x, sp.y, NODE_W, sH); lx = sp.x + NODE_W + 45; ly = sp.y + sH / 2; }
               else { const x1 = sp.x + NODE_W, y1 = sp.y + sH / 2, x2 = tp.x, y2 = tp.y + tH / 2; d = bezier(x1, y1, x2, y2); lx = (x1 + x2) / 2; ly = (y1 + y2) / 2 - 10; }
-              const mk = isSel ? "url(#arrow-sel)" : ho ? "url(#arrow-indigo)" : "url(#arrow-gray)";
+              const mk = isSel ? "url(#arrow-sel)" : ho ? "url(#arrow-teal)" : "url(#arrow-gray)";
               return (
                 <g key={`e-${i}`} opacity={op}>
                   <path d={d} fill="none" stroke="transparent" strokeWidth={16} className="cursor-pointer"
                     onClick={(e) => { e.stopPropagation(); doSelect({ type: "edge", edgeId: eid, source: edge.source, target: edge.target }); }}
                     onMouseEnter={(e) => setHoveredEdge({ edge, x: e.clientX, y: e.clientY })} onMouseLeave={() => setHoveredEdge(null)} />
                   <path d={d} fill="none" stroke={color} strokeWidth={w} strokeDasharray={ho ? "6,4" : isBack ? "4,3" : "none"} markerEnd={mk} className="pointer-events-none" style={{ transition: "stroke 0.2s" }} />
-                  {!isBack && !self && <path d={d} fill="none" stroke={isSel ? "rgba(129,140,248,0.4)" : "rgba(148,163,184,0.12)"} strokeWidth={isSel ? 4 : 2} strokeDasharray="4,12" className="pointer-events-none edge-flow-anim" />}
+                  {!isBack && !self && <path d={d} fill="none" stroke={isSel ? "rgba(45,212,191,0.4)" : "rgba(148,163,184,0.12)"} strokeWidth={isSel ? 4 : 2} strokeDasharray="4,12" className="pointer-events-none edge-flow-anim" />}
                   {edge.label && (() => {
                     const canExpandEdge = edge.edgeId && onToggleEdge;
                     const isEdgeExp = edge.edgeId ? expandedEdges?.has(edge.edgeId) : false;
@@ -384,7 +384,7 @@ export function LineageGraph({
                       style={{
                         background: isSel ? "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.04) 100%)" : "hsl(var(--card))",
                         border: isSel ? "1.5px solid hsl(var(--primary) / 0.6)" : node.hasError ? "1px solid rgba(239,68,68,0.25)" : "1px solid hsl(var(--border))",
-                        boxShadow: isSel ? "0 0 20px rgba(99,102,241,0.15), 0 4px 12px rgba(0,0,0,0.15)" : isHov ? "0 8px 24px rgba(0,0,0,0.18), 0 0 0 1px hsl(var(--primary) / 0.15)" : "0 2px 8px rgba(0,0,0,0.1)",
+                        boxShadow: isSel ? "0 0 20px rgba(20,184,166,0.15), 0 4px 12px rgba(0,0,0,0.15)" : isHov ? "0 8px 24px rgba(0,0,0,0.18), 0 0 0 1px hsl(var(--primary) / 0.15)" : "0 2px 8px rgba(0,0,0,0.1)",
                         transition: "box-shadow 0.2s ease, border-color 0.2s ease",
                         backdropFilter: "blur(8px)",
                       }}
