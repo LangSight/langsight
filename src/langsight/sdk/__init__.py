@@ -14,6 +14,12 @@ Usage:
 from __future__ import annotations
 
 from langsight.sdk.client import LangSightClient, MCPClientProxy
-from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+from langsight.sdk.models import PreventionEvent, ToolCallSpan, ToolCallStatus
 
-__all__ = ["LangSightClient", "MCPClientProxy", "ToolCallSpan", "ToolCallStatus"]
+__all__ = [
+    "LangSightClient",
+    "MCPClientProxy",
+    "PreventionEvent",
+    "ToolCallSpan",
+    "ToolCallStatus",
+]

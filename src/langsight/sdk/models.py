@@ -12,6 +12,7 @@ class ToolCallStatus(StrEnum):
     SUCCESS = "success"
     ERROR = "error"
     TIMEOUT = "timeout"
+    PREVENTED = "prevented"  # v0.3 — call blocked by loop/budget/circuit breaker
 
 
 # Span types for multi-agent tracing
@@ -175,3 +176,28 @@ class ToolCallSpan(BaseModel):
             parent_span_id=parent_span_id,
             span_type="handoff",
         )
+
+
+# ---------------------------------------------------------------------------
+# v0.3 Prevention events
+# ---------------------------------------------------------------------------
+
+
+class PreventionEvent(BaseModel):
+    """SDK-originated prevention event sent to the API for alerting.
+
+    Emitted when the SDK blocks a tool call (loop, budget, circuit breaker)
+    or when a soft budget threshold is crossed.
+    """
+
+    event_type: Literal[
+        "loop_detected",
+        "budget_warning",
+        "budget_exceeded",
+        "circuit_breaker_open",
+        "circuit_breaker_recovered",
+    ]
+    session_id: str | None = None
+    server_name: str | None = None
+    tool_name: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)

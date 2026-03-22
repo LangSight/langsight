@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from langsight.sdk.circuit_breaker import CircuitBreakerConfig
+
 
 class ServerStatus(StrEnum):
     UP = "up"
@@ -32,6 +34,7 @@ class MCPServer(BaseModel):
     env: dict[str, str] = Field(default_factory=dict)
     tags: list[str] = Field(default_factory=list)
     timeout_seconds: int = 5
+    circuit_breaker: CircuitBreakerConfig | None = None  # v0.3 per-server override
 
     model_config = {"frozen": True}
 
