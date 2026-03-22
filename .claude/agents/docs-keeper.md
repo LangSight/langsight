@@ -19,7 +19,7 @@ You are the documentation guardian for LangSight. Your job is to ensure that eve
 | `README.md` | Quickstart, installation, usage | Any user-facing change |
 
 ### User-facing Mintlify docs site (`docs-site/`)
-**This is the live public documentation at docs.langsight.io — auto-deploys on every commit. Always update these alongside internal docs.**
+**This is the live public documentation at docs.langsight.dev — auto-deploys on every commit. Always update these alongside internal docs.**
 
 | File | What it covers | Update trigger |
 |---|---|---|

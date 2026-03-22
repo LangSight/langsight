@@ -19,7 +19,7 @@ async function gotoWithAuth(page: Page, path: string): Promise<void> {
   await mockApiRoutes(page);
   await page.goto(path);
   if (page.url().includes("/login")) {
-    await page.fill('[id="email"]', "admin@langsight.io");
+    await page.fill('[id="email"]', "admin@langsight.dev");
     await page.fill('[id="password"]', "demo123");
     await page.getByRole("button", { name: /sign in/i }).click();
     await page.waitForURL("**/*", { timeout: 10_000 });
@@ -43,7 +43,7 @@ test.describe("Error boundary — API 500 errors", () => {
 
     await page.goto("/");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("**/*", { timeout: 10_000 });
@@ -73,7 +73,7 @@ test.describe("Error boundary — API 500 errors", () => {
 
     await page.goto("/sessions");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("**/*", { timeout: 10_000 });
@@ -101,7 +101,7 @@ test.describe("Error boundary — API 500 errors", () => {
 
     await page.goto("/health");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("**/*", { timeout: 10_000 });
@@ -137,7 +137,7 @@ test.describe("Error boundary — malformed responses", () => {
 
     await page.goto("/");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("**/*", { timeout: 10_000 });
@@ -171,7 +171,7 @@ test.describe("Error boundary — malformed responses", () => {
 
     await page.goto("/sessions");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("**/*", { timeout: 10_000 });
@@ -235,7 +235,7 @@ test.describe("Error boundary — network failures", () => {
 
     await page.goto("/");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("**/*", { timeout: 10_000 });
@@ -346,7 +346,7 @@ test.describe("Error boundary — large data sets", () => {
 
     await page.goto("/sessions");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("**/*", { timeout: 10_000 });

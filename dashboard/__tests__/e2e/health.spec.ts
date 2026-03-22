@@ -22,7 +22,7 @@ async function gotoHealth(page: Page): Promise<void> {
   await page.goto("/health");
   // If redirected to /login, sign in
   if (page.url().includes("/login")) {
-    await page.fill('[id="email"]', "admin@langsight.io");
+    await page.fill('[id="email"]', "admin@langsight.dev");
     await page.fill('[id="password"]', "demo123");
     await page.getByRole("button", { name: /sign in/i }).click();
     await page.waitForURL("**/*", { timeout: 10_000 });
@@ -152,7 +152,7 @@ test.describe("Health page — alert banner", () => {
 
     await page.goto("/health");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("**/*", { timeout: 10_000 });
@@ -419,7 +419,7 @@ test.describe("Health page — empty state", () => {
 
     await page.goto("/health");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("**/*", { timeout: 10_000 });
@@ -450,7 +450,7 @@ test.describe("Health page — empty state", () => {
 
     await page.goto("/health");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("**/*", { timeout: 10_000 });

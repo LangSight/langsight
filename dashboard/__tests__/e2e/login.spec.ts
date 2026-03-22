@@ -80,7 +80,7 @@ test.describe("Login page", () => {
   test("signs in with valid credentials and redirects to /", async ({
     page,
   }) => {
-    await page.fill('[id="email"]', "admin@langsight.io");
+    await page.fill('[id="email"]', "admin@langsight.dev");
     await page.fill('[id="password"]', "demo123");
     await page.getByRole("button", { name: /sign in/i }).click();
 
@@ -99,7 +99,7 @@ test.describe("Login page", () => {
       });
     });
 
-    await page.fill('[id="email"]', "admin@langsight.io");
+    await page.fill('[id="email"]', "admin@langsight.dev");
     await page.fill('[id="password"]', "demo123");
     await page.getByRole("button", { name: /sign in/i }).click();
 

@@ -146,7 +146,7 @@ describe("Sidebar — user menu", () => {
 
   it("shows signed-in user email", () => {
     renderSidebar();
-    expect(screen.getByText("admin@langsight.io")).toBeInTheDocument();
+    expect(screen.getByText("admin@langsight.dev")).toBeInTheDocument();
   });
 
   it("opens user menu on click", async () => {

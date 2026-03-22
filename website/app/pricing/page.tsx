@@ -137,7 +137,7 @@ const FAQ = [
   },
   {
     q: "How do I get support?",
-    a: "GitHub Issues for bugs and feature requests. GitHub Discussions for questions. We respond to all issues. For production deployments, docs.langsight.io covers every deployment scenario.",
+    a: "GitHub Issues for bugs and feature requests. GitHub Discussions for questions. We respond to all issues. For production deployments, docs.langsight.dev covers every deployment scenario.",
   },
 ];
 

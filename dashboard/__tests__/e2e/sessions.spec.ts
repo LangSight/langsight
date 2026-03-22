@@ -22,7 +22,7 @@ async function gotoSessions(page: Page): Promise<void> {
   await mockApiRoutes(page);
   await page.goto("/sessions");
   if (page.url().includes("/login")) {
-    await page.fill('[id="email"]', "admin@langsight.io");
+    await page.fill('[id="email"]', "admin@langsight.dev");
     await page.fill('[id="password"]', "demo123");
     await page.getByRole("button", { name: /sign in/i }).click();
     await page.waitForURL("**/*", { timeout: 10_000 });
@@ -34,7 +34,7 @@ async function gotoSessionDetail(page: Page, sessionId: string): Promise<void> {
   await mockApiRoutes(page);
   await page.goto(`/sessions/${sessionId}`);
   if (page.url().includes("/login")) {
-    await page.fill('[id="email"]', "admin@langsight.io");
+    await page.fill('[id="email"]', "admin@langsight.dev");
     await page.fill('[id="password"]', "demo123");
     await page.getByRole("button", { name: /sign in/i }).click();
     await page.waitForURL("**/*", { timeout: 10_000 });
@@ -335,7 +335,7 @@ test.describe("Sessions list — empty state", () => {
 
     await page.goto("/sessions");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("**/*", { timeout: 10_000 });
@@ -376,7 +376,7 @@ test.describe("Sessions list — empty state", () => {
 
     await page.goto("/sessions");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("**/*", { timeout: 10_000 });
@@ -423,7 +423,7 @@ test.describe("Sessions list — API error", () => {
 
     await page.goto("/sessions");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("**/*", { timeout: 10_000 });

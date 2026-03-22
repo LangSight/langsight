@@ -26,7 +26,7 @@ async function gotoOverview(page: Page): Promise<void> {
   await mockApiRoutes(page);
   await page.goto("/");
   if (page.url().includes("/login")) {
-    await page.fill('[id="email"]', "admin@langsight.io");
+    await page.fill('[id="email"]', "admin@langsight.dev");
     await page.fill('[id="password"]', "demo123");
     await page.getByRole("button", { name: /sign in/i }).click();
     await page.waitForURL("/", { timeout: 10_000 });
@@ -147,7 +147,7 @@ test.describe("Overview — system status", () => {
 
     await page.goto("/");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("/", { timeout: 10_000 });
@@ -323,7 +323,7 @@ test.describe("Overview — empty state", () => {
 
     await page.goto("/");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("/", { timeout: 10_000 });
@@ -356,7 +356,7 @@ test.describe("Overview — empty state", () => {
 
     await page.goto("/");
     if (page.url().includes("/login")) {
-      await page.fill('[id="email"]', "admin@langsight.io");
+      await page.fill('[id="email"]', "admin@langsight.dev");
       await page.fill('[id="password"]', "demo123");
       await page.getByRole("button", { name: /sign in/i }).click();
       await page.waitForURL("/", { timeout: 10_000 });

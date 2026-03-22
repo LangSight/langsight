@@ -19,7 +19,7 @@ import { type Page, type Route } from "@playwright/test";
 export const MOCK_USER = {
   id: "usr_test_001",
   name: "Admin User",
-  email: "admin@langsight.io",
+  email: "admin@langsight.dev",
   role: "admin",
 };
 
@@ -307,7 +307,7 @@ export const MOCK_API_KEYS = [
 export const MOCK_USERS = [
   {
     id: "usr_test_001",
-    email: "admin@langsight.io",
+    email: "admin@langsight.dev",
     role: "admin",
     active: true,
     created_at: new Date(Date.now() - 604800_000).toISOString(),
@@ -315,7 +315,7 @@ export const MOCK_USERS = [
   },
   {
     id: "usr_test_002",
-    email: "viewer@langsight.io",
+    email: "viewer@langsight.dev",
     role: "viewer",
     active: true,
     created_at: new Date(Date.now() - 172800_000).toISOString(),
@@ -633,7 +633,7 @@ export async function mockApiRoutes(page: Page): Promise<void> {
  */
 export async function signInWithMocks(page: Page): Promise<void> {
   await page.goto("/login");
-  await page.fill('[id="email"]', "admin@langsight.io");
+  await page.fill('[id="email"]', "admin@langsight.dev");
   await page.fill('[id="password"]', "demo123");
   await page.getByRole("button", { name: /sign in/i }).click();
   // Wait for navigation to complete — either to / or the page stays on /login

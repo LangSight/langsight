@@ -14,7 +14,7 @@ async function authenticatedGoto(page: Page, path: string): Promise<void> {
   await page.goto(path);
   // If redirected to /login, perform sign-in with mocked auth
   if (page.url().includes("/login")) {
-    await page.fill('[id="email"]', "admin@langsight.io");
+    await page.fill('[id="email"]', "admin@langsight.dev");
     await page.fill('[id="password"]', "demo123");
     await page.getByRole("button", { name: /sign in/i }).click();
     await page.waitForURL("**/*", { timeout: 10_000 });

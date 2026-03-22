@@ -378,7 +378,7 @@ Pre-production security hardening required before 0.2.0 can be positioned as pro
 - S.10: Split `GET /api/status` into `/readiness` and `/liveness` for correct Kubernetes probe behavior
 
 ### Planned (Phase 4 remaining — manual deployment steps)
-- R.4: Mintlify deployment — connect `docs-site/` on mintlify.com dashboard to `docs.langsight.io`
+- R.4: Mintlify deployment — connect `docs-site/` on mintlify.com dashboard to `docs.langsight.dev`
 - Phase 4 website Vercel deployment — connect `website/` repo on vercel.com
 
 ---

@@ -17,7 +17,7 @@ function getPlaywrightSession(): Session & { userId: string; userRole: string } 
     user: {
       id: "usr_test_001",
       name: "Admin User",
-      email: "admin@langsight.io",
+      email: "admin@langsight.dev",
       role: "admin",
     },
     expires: new Date(Date.now() + 86_400_000).toISOString(),

@@ -28,7 +28,7 @@ jest.mock("next/navigation", () => ({
 jest.mock("next-auth/react", () => ({
   useSession: () => ({
     data: {
-      user: { name: "Admin User", email: "admin@langsight.io" },
+      user: { name: "Admin User", email: "admin@langsight.dev" },
       expires: "2099-01-01",
     },
     status: "authenticated",

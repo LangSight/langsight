@@ -175,7 +175,7 @@ import { test, expect } from "@playwright/test";
 // Auth helper — reuse across tests
 async function signIn(page: Page) {
   await page.goto("/login");
-  await page.fill('[id="email"]', "admin@langsight.io");
+  await page.fill('[id="email"]', "admin@langsight.dev");
   await page.fill('[id="password"]', "demo123");
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForURL("/", { timeout: 10_000 });
