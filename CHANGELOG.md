@@ -7,6 +7,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.3.5] - 2026-03-23 — Graceful Shutdown Flush for LangSightClient
+
+### Fixed
+
+- **Buffered spans lost on process exit** (`src/langsight/sdk/client.py`): `LangSightClient` now registers an `atexit` handler that flushes any in-flight buffered spans in a background thread when the process exits. Users no longer need `async with LangSightClient()` or an explicit `await client.close()` call to guarantee delivery. This also eliminates the `Event loop is closed` `RuntimeWarning` that appeared in LangChain and LangGraph integrations during normal process teardown.
+
+---
+
 ## [0.3.4] - 2026-03-23 — project_id Stamping Fix for Integrations
 
 ### Fixed
