@@ -54,14 +54,23 @@ _MODELS = [
 ]
 
 _SAMPLE_INPUTS: dict[str, dict[str, Any]] = {
-    "query": {"sql": "SELECT id, name, status FROM orders WHERE created_at > '2026-03-01' LIMIT 50"},
+    "query": {
+        "sql": "SELECT id, name, status FROM orders WHERE created_at > '2026-03-01' LIMIT 50"
+    },
     "list_tables": {},
     "describe_table": {"table_name": "orders"},
     "get_row_count": {"table_name": "customers"},
     "get_issue": {"issue_key": "PROJ-142"},
-    "create_issue": {"project": "PROJ", "summary": "Agent-detected anomaly in billing pipeline", "type": "Bug"},
+    "create_issue": {
+        "project": "PROJ",
+        "summary": "Agent-detected anomaly in billing pipeline",
+        "type": "Bug",
+    },
     "search_issues": {"jql": "assignee = currentUser() AND status = Open"},
-    "send_message": {"channel": "#ops-alerts", "text": "Billing pipeline recovered after 12m downtime"},
+    "send_message": {
+        "channel": "#ops-alerts",
+        "text": "Billing pipeline recovered after 12m downtime",
+    },
     "list_channels": {},
     "get_thread": {"channel": "#support", "ts": "1711234567.000100"},
     "list_objects": {"bucket": "agent-artifacts", "prefix": "reports/2026-03/"},
@@ -86,10 +95,14 @@ def _h(status: str, latency: float | None = None, error: str | None = None) -> _
 _HEALTH_PROFILES: dict[str, list[_HealthRow]] = {
     # (status, latency_ms, error)
     "postgres-mcp": [_h("up", 31.0)] * 20 + [_h("up", 45.0)] * 5 + [_h("degraded", 1240.0)] * 2,
-    "jira-mcp": [_h("up", 89.0)] * 15 + [_h("down", error="Connection refused")] * 3 + [_h("up", 95.0)] * 5,
+    "jira-mcp": [_h("up", 89.0)] * 15
+    + [_h("down", error="Connection refused")] * 3
+    + [_h("up", 95.0)] * 5,
     "slack-mcp": [_h("up", 72.0)] * 18 + [_h("degraded", 980.0)] * 4 + [_h("up", 65.0)] * 3,
     "s3-mcp": [_h("up", 120.0)] * 22 + [_h("up", 150.0)] * 3,
-    "github-mcp": [_h("up", 55.0)] * 12 + [_h("down", error="Rate limited (403)")] * 2 + [_h("up", 60.0)] * 8,
+    "github-mcp": [_h("up", 55.0)] * 12
+    + [_h("down", error="Rate limited (403)")] * 2
+    + [_h("up", 60.0)] * 8,
 }
 
 
@@ -121,20 +134,22 @@ def _generate_session(project_id: str, idx: int) -> list[dict[str, Any]]:
             sub_agent = random.choice(["billing-agent", "support-agent"])
             handoff_id = str(uuid.uuid4())
             lat = random.uniform(1, 5)
-            spans.append({
-                "span_id": handoff_id,
-                "span_type": "handoff",
-                "trace_id": trace_id,
-                "session_id": session_id,
-                "server_name": agent,
-                "tool_name": f"-> {sub_agent}",
-                "started_at": (base_time + timedelta(milliseconds=elapsed)).isoformat(),
-                "ended_at": (base_time + timedelta(milliseconds=elapsed + lat)).isoformat(),
-                "latency_ms": round(lat, 2),
-                "status": "success",
-                "agent_name": agent,
-                "project_id": project_id,
-            })
+            spans.append(
+                {
+                    "span_id": handoff_id,
+                    "span_type": "handoff",
+                    "trace_id": trace_id,
+                    "session_id": session_id,
+                    "server_name": agent,
+                    "tool_name": f"-> {sub_agent}",
+                    "started_at": (base_time + timedelta(milliseconds=elapsed)).isoformat(),
+                    "ended_at": (base_time + timedelta(milliseconds=elapsed + lat)).isoformat(),
+                    "latency_ms": round(lat, 2),
+                    "status": "success",
+                    "agent_name": agent,
+                    "project_id": project_id,
+                }
+            )
             elapsed += lat
             continue
 
@@ -154,13 +169,15 @@ def _generate_session(project_id: str, idx: int) -> list[dict[str, Any]]:
             status, error, lat = "timeout", f"Tool '{tool}' timed out after 5000ms", 5000.0
         elif roll < 0.07:
             status = "error"
-            error = random.choice([
-                f"Connection refused: {server}",
-                f"Permission denied on {tool}",
-                "Invalid input: missing required field 'id'",
-                "Rate limited by upstream API",
-                f"Table 'orders' not found in {server}",
-            ])
+            error = random.choice(
+                [
+                    f"Connection refused: {server}",
+                    f"Permission denied on {tool}",
+                    "Invalid input: missing required field 'id'",
+                    "Rate limited by upstream API",
+                    f"Table 'orders' not found in {server}",
+                ]
+            )
         else:
             status, error = "success", None
 
@@ -216,15 +233,17 @@ def _generate_health_results() -> list[dict[str, Any]]:
 
         for i, (status, latency, error) in enumerate(profiles):
             checked_at = now - timedelta(hours=48) + timedelta(hours=i * (48 / len(profiles)))
-            results.append({
-                "server_name": server_name,
-                "status": status,
-                "latency_ms": latency,
-                "tools_count": tool_count,
-                "schema_hash": schema_hash,
-                "checked_at": checked_at.isoformat(),
-                "error": error,
-            })
+            results.append(
+                {
+                    "server_name": server_name,
+                    "status": status,
+                    "latency_ms": latency,
+                    "tools_count": tool_count,
+                    "schema_hash": schema_hash,
+                    "checked_at": checked_at.isoformat(),
+                    "error": error,
+                }
+            )
 
     return results
 
@@ -315,14 +334,32 @@ def _generate_prevention_sessions(project_id: str) -> list[tuple[str, list[dict[
     base = now - timedelta(hours=2)
     spans: list[dict[str, Any]] = [
         # Two successful calls with identical args
-        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="query",
-                   agent="support-agent", project_id=project_id, base_time=base,
-                   elapsed_ms=0, latency_ms=35.0, status="success",
-                   input_args={"sql": "SELECT id FROM orders WHERE status = 'pending'"}),
-        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="query",
-                   agent="support-agent", project_id=project_id, base_time=base,
-                   elapsed_ms=150, latency_ms=33.0, status="success",
-                   input_args={"sql": "SELECT id FROM orders WHERE status = 'pending'"}),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="postgres-mcp",
+            tool="query",
+            agent="support-agent",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=0,
+            latency_ms=35.0,
+            status="success",
+            input_args={"sql": "SELECT id FROM orders WHERE status = 'pending'"},
+        ),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="postgres-mcp",
+            tool="query",
+            agent="support-agent",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=150,
+            latency_ms=33.0,
+            status="success",
+            input_args={"sql": "SELECT id FROM orders WHERE status = 'pending'"},
+        ),
         # Third identical call — PREVENTED (loop detected)
         {
             "span_id": str(uuid.uuid4()),
@@ -349,15 +386,42 @@ def _generate_prevention_sessions(project_id: str) -> list[tuple[str, list[dict[
     trace_id = f"trace-{uuid.uuid4().hex[:8]}"
     base = now - timedelta(hours=5)
     spans = [
-        _make_span(session_id=sess_id, trace_id=trace_id, server="jira-mcp", tool="search_issues",
-                   agent="orchestrator", project_id=project_id, base_time=base,
-                   elapsed_ms=0, latency_ms=90.0, status="success"),
-        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="query",
-                   agent="orchestrator", project_id=project_id, base_time=base,
-                   elapsed_ms=200, latency_ms=42.0, status="success"),
-        _make_span(session_id=sess_id, trace_id=trace_id, server="slack-mcp", tool="send_message",
-                   agent="orchestrator", project_id=project_id, base_time=base,
-                   elapsed_ms=400, latency_ms=65.0, status="success"),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="jira-mcp",
+            tool="search_issues",
+            agent="orchestrator",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=0,
+            latency_ms=90.0,
+            status="success",
+        ),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="postgres-mcp",
+            tool="query",
+            agent="orchestrator",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=200,
+            latency_ms=42.0,
+            status="success",
+        ),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="slack-mcp",
+            tool="send_message",
+            agent="orchestrator",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=400,
+            latency_ms=65.0,
+            status="success",
+        ),
         # 4th call hits max_steps=3 — PREVENTED
         {
             "span_id": str(uuid.uuid4()),
@@ -385,14 +449,32 @@ def _generate_prevention_sessions(project_id: str) -> list[tuple[str, list[dict[
     base = now - timedelta(hours=8)
     spans = [
         # Two real failures that open the circuit
-        _make_span(session_id=sess_id, trace_id=trace_id, server="jira-mcp", tool="get_issue",
-                   agent="billing-agent", project_id=project_id, base_time=base,
-                   elapsed_ms=0, latency_ms=5000.0, status="error",
-                   error="Connection refused: jira-mcp — upstream at jira.example.com returned 503"),
-        _make_span(session_id=sess_id, trace_id=trace_id, server="jira-mcp", tool="get_issue",
-                   agent="billing-agent", project_id=project_id, base_time=base,
-                   elapsed_ms=5100, latency_ms=5000.0, status="error",
-                   error="Connection refused: jira-mcp — upstream at jira.example.com returned 503"),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="jira-mcp",
+            tool="get_issue",
+            agent="billing-agent",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=0,
+            latency_ms=5000.0,
+            status="error",
+            error="Connection refused: jira-mcp — upstream at jira.example.com returned 503",
+        ),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="jira-mcp",
+            tool="get_issue",
+            agent="billing-agent",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=5100,
+            latency_ms=5000.0,
+            status="error",
+            error="Connection refused: jira-mcp — upstream at jira.example.com returned 503",
+        ),
         # Third call — circuit is open, PREVENTED without hitting server
         {
             "span_id": str(uuid.uuid4()),
@@ -420,18 +502,45 @@ def _generate_prevention_sessions(project_id: str) -> list[tuple[str, list[dict[
     base = now - timedelta(hours=12)
     spans = [
         # First attempt fails
-        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="query",
-                   agent="data-analyst", project_id=project_id, base_time=base,
-                   elapsed_ms=0, latency_ms=5000.0, status="timeout",
-                   error="Tool 'query' timed out after 5000ms"),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="postgres-mcp",
+            tool="query",
+            agent="data-analyst",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=0,
+            latency_ms=5000.0,
+            status="timeout",
+            error="Tool 'query' timed out after 5000ms",
+        ),
         # Retry succeeds
-        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="query",
-                   agent="data-analyst", project_id=project_id, base_time=base,
-                   elapsed_ms=5200, latency_ms=38.0, status="success",
-                   input_args={"sql": "SELECT count(*) FROM orders"}),
-        _make_span(session_id=sess_id, trace_id=trace_id, server="s3-mcp", tool="put_object",
-                   agent="data-analyst", project_id=project_id, base_time=base,
-                   elapsed_ms=5400, latency_ms=125.0, status="success"),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="postgres-mcp",
+            tool="query",
+            agent="data-analyst",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=5200,
+            latency_ms=38.0,
+            status="success",
+            input_args={"sql": "SELECT count(*) FROM orders"},
+        ),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="s3-mcp",
+            tool="put_object",
+            agent="data-analyst",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=5400,
+            latency_ms=125.0,
+            status="success",
+        ),
     ]
     sessions.append((sess_id, spans))
 
@@ -442,13 +551,31 @@ def _generate_prevention_sessions(project_id: str) -> list[tuple[str, list[dict[
     trace_id = f"trace-{uuid.uuid4().hex[:8]}"
     base = now - timedelta(hours=18)
     spans = [
-        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="list_tables",
-                   agent="data-analyst", project_id=project_id, base_time=base,
-                   elapsed_ms=0, latency_ms=28.0, status="success"),
-        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="query",
-                   agent="data-analyst", project_id=project_id, base_time=base,
-                   elapsed_ms=100, latency_ms=42.0, status="error",
-                   error="schema drift detected: column 'billing_status' not found — tool schema changed"),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="postgres-mcp",
+            tool="list_tables",
+            agent="data-analyst",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=0,
+            latency_ms=28.0,
+            status="success",
+        ),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="postgres-mcp",
+            tool="query",
+            agent="data-analyst",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=100,
+            latency_ms=42.0,
+            status="error",
+            error="schema drift detected: column 'billing_status' not found — tool schema changed",
+        ),
     ]
     sessions.append((sess_id, spans))
 
@@ -457,15 +584,42 @@ def _generate_prevention_sessions(project_id: str) -> list[tuple[str, list[dict[
     trace_id = f"trace-{uuid.uuid4().hex[:8]}"
     base = now - timedelta(hours=1)
     spans = [
-        _make_span(session_id=sess_id, trace_id=trace_id, server="postgres-mcp", tool="query",
-                   agent="support-agent", project_id=project_id, base_time=base,
-                   elapsed_ms=0, latency_ms=31.0, status="success"),
-        _make_span(session_id=sess_id, trace_id=trace_id, server="jira-mcp", tool="create_issue",
-                   agent="support-agent", project_id=project_id, base_time=base,
-                   elapsed_ms=150, latency_ms=88.0, status="success"),
-        _make_span(session_id=sess_id, trace_id=trace_id, server="slack-mcp", tool="send_message",
-                   agent="support-agent", project_id=project_id, base_time=base,
-                   elapsed_ms=350, latency_ms=67.0, status="success"),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="postgres-mcp",
+            tool="query",
+            agent="support-agent",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=0,
+            latency_ms=31.0,
+            status="success",
+        ),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="jira-mcp",
+            tool="create_issue",
+            agent="support-agent",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=150,
+            latency_ms=88.0,
+            status="success",
+        ),
+        _make_span(
+            session_id=sess_id,
+            trace_id=trace_id,
+            server="slack-mcp",
+            tool="send_message",
+            agent="support-agent",
+            project_id=project_id,
+            base_time=base,
+            elapsed_ms=350,
+            latency_ms=67.0,
+            status="success",
+        ),
     ]
     sessions.append((sess_id, spans))
 
@@ -508,27 +662,29 @@ async def seed_demo_data(storage: Any, project_id: str) -> None:
             for s in raw_spans:
                 started = datetime.fromisoformat(s["started_at"])
                 ended = datetime.fromisoformat(s["ended_at"])
-                models.append(ToolCallSpan(
-                    span_id=s["span_id"],
-                    parent_span_id=s.get("parent_span_id"),
-                    span_type=s.get("span_type", "tool_call"),
-                    trace_id=s.get("trace_id"),
-                    session_id=s.get("session_id"),
-                    server_name=s["server_name"],
-                    tool_name=s["tool_name"],
-                    started_at=started,
-                    ended_at=ended,
-                    latency_ms=s["latency_ms"],
-                    status=s["status"],
-                    error=s.get("error"),
-                    agent_name=s.get("agent_name"),
-                    project_id=s.get("project_id"),
-                    input_args=s.get("input_args"),
-                    output_result=s.get("output_result"),
-                    model_id=s.get("model_id"),
-                    input_tokens=s.get("input_tokens"),
-                    output_tokens=s.get("output_tokens"),
-                ))
+                models.append(
+                    ToolCallSpan(
+                        span_id=s["span_id"],
+                        parent_span_id=s.get("parent_span_id"),
+                        span_type=s.get("span_type", "tool_call"),
+                        trace_id=s.get("trace_id"),
+                        session_id=s.get("session_id"),
+                        server_name=s["server_name"],
+                        tool_name=s["tool_name"],
+                        started_at=started,
+                        ended_at=ended,
+                        latency_ms=s["latency_ms"],
+                        status=s["status"],
+                        error=s.get("error"),
+                        agent_name=s.get("agent_name"),
+                        project_id=s.get("project_id"),
+                        input_args=s.get("input_args"),
+                        output_result=s.get("output_result"),
+                        model_id=s.get("model_id"),
+                        input_tokens=s.get("input_tokens"),
+                        output_tokens=s.get("output_tokens"),
+                    )
+                )
             try:
                 await storage.save_tool_call_spans(models)
                 total_spans += len(models)
@@ -658,24 +814,26 @@ async def seed_demo_data(storage: Any, project_id: str) -> None:
             for s in raw_spans:
                 started = datetime.fromisoformat(s["started_at"])
                 ended = datetime.fromisoformat(s["ended_at"])
-                models.append(ToolCallSpan(
-                    span_id=s["span_id"],
-                    parent_span_id=s.get("parent_span_id"),
-                    span_type=s.get("span_type", "tool_call"),
-                    trace_id=s.get("trace_id"),
-                    session_id=s.get("session_id"),
-                    server_name=s["server_name"],
-                    tool_name=s["tool_name"],
-                    started_at=started,
-                    ended_at=ended,
-                    latency_ms=s["latency_ms"],
-                    status=s["status"],
-                    error=s.get("error"),
-                    agent_name=s.get("agent_name"),
-                    project_id=s.get("project_id"),
-                    input_args=s.get("input_args"),
-                    output_result=s.get("output_result"),
-                ))
+                models.append(
+                    ToolCallSpan(
+                        span_id=s["span_id"],
+                        parent_span_id=s.get("parent_span_id"),
+                        span_type=s.get("span_type", "tool_call"),
+                        trace_id=s.get("trace_id"),
+                        session_id=s.get("session_id"),
+                        server_name=s["server_name"],
+                        tool_name=s["tool_name"],
+                        started_at=started,
+                        ended_at=ended,
+                        latency_ms=s["latency_ms"],
+                        status=s["status"],
+                        error=s.get("error"),
+                        agent_name=s.get("agent_name"),
+                        project_id=s.get("project_id"),
+                        input_args=s.get("input_args"),
+                        output_result=s.get("output_result"),
+                    )
+                )
             try:
                 await storage.save_tool_call_spans(models)
                 prevention_span_count += len(models)
@@ -695,7 +853,11 @@ async def seed_demo_data(storage: Any, project_id: str) -> None:
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("demo_seed.health_tag_error", session=sess_id, error=str(exc))
 
-        logger.info("demo_seed.prevention_layer", sessions=len(prevention_sessions), spans=prevention_span_count)
+        logger.info(
+            "demo_seed.prevention_layer",
+            sessions=len(prevention_sessions),
+            spans=prevention_span_count,
+        )
 
     # ── 7. Prevention config (dashboard-managed thresholds) ──────────────────
     if hasattr(storage, "upsert_prevention_config"):
@@ -747,10 +909,17 @@ async def seed_demo_data(storage: Any, project_id: str) -> None:
         pc_count = 0
         for pc_data in _PREVENTION_CONFIGS:
             defaults = {
-                "loop_enabled": True, "loop_threshold": 3, "loop_action": "terminate",
-                "max_steps": None, "max_cost_usd": None, "max_wall_time_s": None,
-                "budget_soft_alert": 0.80, "cb_enabled": True,
-                "cb_failure_threshold": 5, "cb_cooldown_seconds": 60.0, "cb_half_open_max_calls": 2,
+                "loop_enabled": True,
+                "loop_threshold": 3,
+                "loop_action": "terminate",
+                "max_steps": None,
+                "max_cost_usd": None,
+                "max_wall_time_s": None,
+                "budget_soft_alert": 0.80,
+                "cb_enabled": True,
+                "cb_failure_threshold": 5,
+                "cb_cooldown_seconds": 60.0,
+                "cb_half_open_max_calls": 2,
             }
             defaults.update(pc_data)
             try:
