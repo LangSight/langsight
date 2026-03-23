@@ -35,6 +35,15 @@ export function timeAgo(iso: string): string {
   return `${Math.floor(secs / 86400)}d ago`;
 }
 
+export function formatExact(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false, timeZoneName: "short",
+  });
+}
+
 export const STATUS_COLOR: Record<ServerStatus, string> = {
   up:       "text-emerald-400",
   degraded: "text-yellow-400",

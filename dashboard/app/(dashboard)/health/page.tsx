@@ -6,6 +6,7 @@ import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { RefreshCw, AlertTriangle, Search, ChevronRight, Server as ServerIcon } from "lucide-react";
 import { fetcher, triggerHealthCheck, getServerHistory } from "@/lib/api";
 import { cn, STATUS_BG, timeAgo, formatLatency } from "@/lib/utils";
+import { Timestamp } from "@/components/timestamp";
 import { toast } from "sonner";
 import type { HealthResult } from "@/lib/types";
 
@@ -22,7 +23,7 @@ function UptimeDots({ history }: { history: HealthResult[] }) {
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50">
               <div className="rounded-md px-2 py-1 text-[9px] whitespace-nowrap shadow-lg" style={{ background: "hsl(var(--card-raised))", border: "1px solid hsl(var(--border))" }}>
                 <span className="font-semibold" style={{ color }}>{h.status}</span>
-                <span className="text-muted-foreground ml-1.5">{timeAgo(h.checked_at)}</span>
+                <span className="text-muted-foreground ml-1.5"><Timestamp iso={h.checked_at} compact /></span>
                 {h.latency_ms != null && <span className="text-muted-foreground ml-1.5" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(h.latency_ms)}ms</span>}
               </div>
             </div>
@@ -113,7 +114,7 @@ function ExpandedHistory({ serverName }: { serverName: string }) {
           <tbody>
             {history.slice(0, 15).map((h, i) => (
               <tr key={i} className="hover:bg-accent/20 transition-colors" style={{ borderBottom: "1px solid hsl(var(--border) / 0.5)" }}>
-                <td className="px-5 py-1.5 text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{timeAgo(h.checked_at)}</td>
+                <td className="px-5 py-1.5 text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}><Timestamp iso={h.checked_at} /></td>
                 <td className="px-5 py-1.5">
                   <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full border font-semibold", STATUS_BG[h.status as keyof typeof STATUS_BG])}>{h.status}</span>
                 </td>
@@ -160,7 +161,7 @@ function ServerRow({ server, expanded, onToggle }: {
         <span className="text-[11px] text-muted-foreground w-8 text-center flex-shrink-0">{server.tools_count ?? "—"}</span>
 
         {/* Checked */}
-        <span className="text-[10px] text-muted-foreground w-16 text-right flex-shrink-0">{timeAgo(server.checked_at)}</span>
+        <span className="text-[10px] text-muted-foreground w-16 text-right flex-shrink-0"><Timestamp iso={server.checked_at} compact /></span>
 
         {/* Chevron */}
         <ChevronRight size={14} className={cn("text-muted-foreground flex-shrink-0 transition-transform", expanded && "rotate-90")} />

@@ -18,6 +18,7 @@ import { fetcher, getSessionTrace, compareSessions, replaySession } from "@/lib/
 import { useProject } from "@/lib/project-context";
 import { buildSessionGraph, type SessionGraphResult } from "@/lib/session-graph";
 import { cn, timeAgo, formatDuration, CALL_STATUS_COLOR, SPAN_TYPE_ICON } from "@/lib/utils";
+import { Timestamp } from "@/components/timestamp";
 import type { AgentSession, SessionTrace, SpanNode, SessionComparison, DiffEntry, PathMetrics, ServerCallerInfo } from "@/lib/types";
 
 /* ── Build session graph from trace spans (with per-path attribution) ── */
@@ -301,7 +302,10 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
                       color: isError ? "#ef4444" : "#10b981",
                     }}>{isError ? "error" : "success"}</span>
                   </div>
-                  <span className="text-[12px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(s.latency_ms ?? 0)}ms</span>
+                  <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                    <span className="text-[12px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(s.latency_ms ?? 0)}ms</span>
+                    {s.started_at && <span className="text-[10px] text-muted-foreground" style={{ opacity: 0.6 }}><Timestamp iso={s.started_at} compact /></span>}
+                  </div>
                 </summary>
                 <div className="px-3.5 pb-3.5 space-y-2.5" style={{ borderTop: "1px solid hsl(var(--border))" }}>
                   {s.error && (
@@ -484,7 +488,10 @@ function SessionEdgeDetail({
                     color: isErr ? "#ef4444" : "#10b981",
                   }}>{isErr ? "error" : "success"}</span>
                 </div>
-                <span className="text-[12px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(s.latency_ms ?? 0)}ms</span>
+                <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                  <span className="text-[12px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(s.latency_ms ?? 0)}ms</span>
+                  {s.started_at && <span className="text-[10px] text-muted-foreground" style={{ opacity: 0.6 }}><Timestamp iso={s.started_at} compact /></span>}
+                </div>
               </summary>
               <div className="px-3.5 pb-3.5 space-y-2.5" style={{ borderTop: "1px solid hsl(var(--border))" }}>
                 {s.error && (
@@ -625,12 +632,15 @@ function SpanRow({ span, depth = 0, onViewPayload }: { span: SpanNode; depth?: n
         <td className="py-2.5 pr-3 text-[12px] text-right text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>
           {span.latency_ms ? `${span.latency_ms.toFixed(0)}ms` : "—"}
         </td>
+        <td className="py-2.5 pr-3 text-[11px] text-muted-foreground">
+          {span.started_at ? <Timestamp iso={span.started_at} compact /> : "—"}
+        </td>
         <td className="py-2.5 text-[11px] text-red-500 truncate max-w-xs">{span.error?.slice(0, 80) ?? ""}</td>
       </tr>
 
       {detailOpen && hasPayload && (
         <tr style={{ background: "hsl(var(--muted) / 0.4)" }}>
-          <td colSpan={5} className="px-4 pb-4 pt-2" style={{ paddingLeft: `${depth * 20 + 32}px` }}>
+          <td colSpan={6} className="px-4 pb-4 pt-2" style={{ paddingLeft: `${depth * 20 + 32}px` }}>
             {isLlmSpan ? (
               <>
                 <PayloadPanel label="Prompt" json={span.llm_input ?? null} onViewFull={span.llm_input ? () => onViewPayload?.(`Prompt — ${span.tool_name}`, [{ label: "JSON", json: span.llm_input ?? null }]) : undefined} />
@@ -813,7 +823,7 @@ function ComparePicker({
                 </div>
                 <div className="flex items-center gap-1 text-[11px] text-muted-foreground flex-shrink-0">
                   <Clock size={11} />
-                  {timeAgo(s.first_call_at)}
+                  <Timestamp iso={s.first_call_at} compact />
                 </div>
               </button>
             ))}
@@ -1098,7 +1108,7 @@ export default function SessionDetailPage() {
                 {session && (
                   <>
                     <span>·</span>
-                    <span className="flex items-center gap-1"><Clock size={11} />{timeAgo(session.first_call_at)}</span>
+                    <span className="flex items-center gap-1"><Clock size={11} /><Timestamp iso={session.first_call_at} /></span>
                   </>
                 )}
               </div>
@@ -1331,7 +1341,7 @@ export default function SessionDetailPage() {
                       className="sticky top-0 z-10"
                       style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card-raised))" }}
                     >
-                      {["Span", "Agent", "Status", "Latency", "Error"].map((h) => (
+                      {["Span", "Agent", "Status", "Latency", "Time", "Error"].map((h) => (
                         <th
                           key={h}
                           className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide"

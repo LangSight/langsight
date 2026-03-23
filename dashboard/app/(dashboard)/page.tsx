@@ -12,6 +12,7 @@ import {
 import { fetcher, triggerHealthCheck } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatLatency } from "@/lib/utils";
+import { Timestamp } from "@/components/timestamp";
 import { toast } from "sonner";
 import Link from "next/link";
 import type { HealthResult, AgentSession, AnomalyResult, SLOStatus } from "@/lib/types";
@@ -143,7 +144,7 @@ function SessionRow({ session }: { session: AgentSession }) {
             {session.session_id.slice(0, 18)}…
           </span>
           <span className="text-[11px] text-muted-foreground">
-            {session.agent_name || "unknown"} · {timeAgo(session.first_call_at)}
+            {session.agent_name || "unknown"} · <Timestamp iso={session.first_call_at} compact />
           </span>
         </div>
       </div>
@@ -413,7 +414,7 @@ export default function OverviewPage() {
                         {s.server_name}
                       </span>
                       <span className="text-[11px] text-muted-foreground">
-                        {s.tools_count} tools · {formatLatency(s.latency_ms)} · {timeAgo(s.checked_at)}
+                        {s.tools_count} tools · {formatLatency(s.latency_ms)} · <Timestamp iso={s.checked_at} compact />
                       </span>
                     </div>
                   </div>

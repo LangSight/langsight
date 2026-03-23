@@ -12,6 +12,7 @@ import {
 import { fetcher } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatDuration } from "@/lib/utils";
+import { Timestamp } from "@/components/timestamp";
 import type { AgentSession, HealthTag } from "@/lib/types";
 import { HealthTagBadge } from "@/components/health-tag-badge";
 
@@ -334,7 +335,7 @@ export default function SessionsPage() {
                       <td className="px-4 py-3 text-[12px] text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Clock size={11} />
-                          {timeAgo(s.first_call_at)}
+                          <Timestamp iso={s.first_call_at} />
                         </div>
                       </td>
                     </tr>

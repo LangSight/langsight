@@ -13,6 +13,7 @@ import {
 import { fetcher, getCostsBreakdown, listAgentMetadata, upsertAgentMetadata } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, formatDuration, timeAgo } from "@/lib/utils";
+import { Timestamp } from "@/components/timestamp";
 import { LineageGraph as LineageGraphComponent, type GraphNode, type GraphEdge } from "@/components/lineage-graph";
 import { AgentTopology } from "@/components/agent-topology";
 import { EditableTextarea, EditableText, EditableTags, EditableUrl } from "@/components/editable-field";
@@ -224,7 +225,7 @@ function AgentTable({ agents, metaByName, onSelect, hours }: { agents: AgentSumm
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-[11px] text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{agent.total_cost_usd > 0 ? formatUsd(agent.total_cost_usd) : <span className="opacity-30">—</span>}</td>
-                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground">{timeAgo(agent.latest_started_at)}</td>
+                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground"><Timestamp iso={agent.latest_started_at} /></td>
                 </tr>
               );
             })}
@@ -479,7 +480,7 @@ export default function AgentsPage() {
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_COLOR[selected.status] }} />
                         <span className="text-[11px]" style={{ color: STATUS_COLOR[selected.status] }}>{selected.status}</span>
-                        <span className="text-[10px] text-muted-foreground">· {selected.sessions} sessions · {timeAgo(selected.latest_started_at)}</span>
+                        <span className="text-[10px] text-muted-foreground">· {selected.sessions} sessions · <Timestamp iso={selected.latest_started_at} compact /></span>
                       </div>
                     </div>
                     <button onClick={() => setSelectedAgent(null)} className="p-1.5 rounded hover:bg-accent/60 text-muted-foreground hover:text-foreground transition-colors">
@@ -535,7 +536,7 @@ export default function AgentsPage() {
                             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">Health Summary</p>
                             <div className="space-y-2">
                               <div className="flex items-center justify-between text-[11px]"><span className="text-muted-foreground">Error Rate</span><span className="font-semibold" style={{ fontFamily: "var(--font-geist-mono)", color: selected.error_rate > 0.05 ? "#ef4444" : "#22c55e" }}>{(selected.error_rate * 100).toFixed(1)}%</span></div>
-                              <div className="flex items-center justify-between text-[11px]"><span className="text-muted-foreground">Last Active</span><span className="font-medium text-foreground">{timeAgo(selected.latest_started_at)}</span></div>
+                              <div className="flex items-center justify-between text-[11px]"><span className="text-muted-foreground">Last Active</span><span className="font-medium text-foreground"><Timestamp iso={selected.latest_started_at} /></span></div>
                               <div className="flex items-center justify-between text-[11px]"><span className="text-muted-foreground">Sessions ({hours}h)</span><span className="font-semibold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{selected.sessions}</span></div>
                               {selected.servers_used.length > 0 && (
                                 <div><span className="text-[11px] text-muted-foreground">Servers</span>
@@ -610,7 +611,7 @@ export default function AgentsPage() {
                                 <span>{s.tool_calls} calls</span>
                                 {s.failed_calls > 0 && <span style={{ color: "#ef4444" }}>{s.failed_calls} failed</span>}
                                 <span style={{ fontFamily: "var(--font-geist-mono)" }}>{formatDuration(s.duration_ms)}</span>
-                                <span>{timeAgo(s.first_call_at)}</span>
+                                <span><Timestamp iso={s.first_call_at} compact /></span>
                                 <ChevronRight size={12} />
                               </div>
                             </Link>

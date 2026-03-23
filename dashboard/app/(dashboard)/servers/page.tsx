@@ -13,6 +13,7 @@ import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { fetcher, triggerHealthCheck, getServerHistory, listServerMetadata, upsertServerMetadata } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatLatency, STATUS_BG } from "@/lib/utils";
+import { Timestamp } from "@/components/timestamp";
 import { toast } from "sonner";
 import { EditableTextarea, EditableText, EditableTags, EditableUrl } from "@/components/editable-field";
 import type { HealthResult, ServerMetadata, LineageGraph, ToolReliability } from "@/lib/types";
@@ -207,7 +208,7 @@ function ServerTable({ servers, metaByName, historyCache, onSelect, onRunCheck, 
                     {upPct !== null ? <span className="text-[11px] font-semibold" style={{ fontFamily: "var(--font-geist-mono)", color: upPct > 95 ? "#22c55e" : upPct > 80 ? "#eab308" : "#ef4444" }}>{upPct.toFixed(0)}%</span> : <span className="text-[11px] text-muted-foreground">—</span>}
                   </td>
                   <td className="px-3 py-2.5 text-[11px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{server.tools_count ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground">{timeAgo(server.checked_at)}</td>
+                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground"><Timestamp iso={server.checked_at} /></td>
                 </tr>
               );
             })}
@@ -313,7 +314,7 @@ function HealthHistoryPanel({ serverName }: { serverName: string }) {
         {history.slice(0, 15).map((h, i) => (
           <div key={i} className="flex items-center gap-3 rounded-lg px-3 py-1.5 text-[10px]" style={{ background: "hsl(var(--muted) / 0.5)" }}>
             <StatusDot status={h.status} />
-            <span className="text-muted-foreground w-16 flex-shrink-0">{timeAgo(h.checked_at)}</span>
+            <span className="text-muted-foreground w-16 flex-shrink-0"><Timestamp iso={h.checked_at} compact /></span>
             <span className="font-semibold text-foreground w-12" style={{ fontFamily: "var(--font-geist-mono)" }}>{formatLatency(h.latency_ms)}</span>
             {h.error && <span className="text-red-400 truncate">{h.error}</span>}
           </div>
@@ -417,7 +418,7 @@ export default function ServersPage() {
                       <div className="flex items-center gap-2 mt-0.5">
                         <StatusDot status={selected.status} pulse />
                         <span className="text-[11px]" style={{ color: STATUS_COLOR[selected.status] }}>{selected.status}</span>
-                        <span className="text-[10px] text-muted-foreground">· {selected.tools_count ?? 0} tools · checked {timeAgo(selected.checked_at)}</span>
+                        <span className="text-[10px] text-muted-foreground">· {selected.tools_count ?? 0} tools · checked <Timestamp iso={selected.checked_at} compact /></span>
                         {selected.latency_ms && <span className="text-[10px] font-semibold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(selected.latency_ms)}ms</span>}
                       </div>
                     </div>

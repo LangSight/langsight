@@ -13,6 +13,7 @@ import {
 import { fetcher, getApiKeys, createApiKey, revokeApiKey, listUsers, inviteUser, deactivateUser, updateUserRole, listModelPricing, createModelPricing, updateModelPricing, deactivateModelPricing, listProjects, createProject, deleteProject, listProjectMembers, addProjectMember, removeProjectMember, getAlertsConfig, saveAlertsConfig, testSlackWebhook, getAuditLogs, listPreventionConfigs, savePreventionConfig, deletePreventionConfig, saveProjectPreventionConfig, listAgentMetadata } from "@/lib/api";
 import type { ApiKeyResponse, ApiKeyCreatedResponse, ApiStatus, DashboardUser, InviteResponse, ModelPricingEntry, ProjectResponse, ProjectMember, PreventionConfig, PreventionConfigUpdate, AgentMetadata } from "@/lib/types";
 import { cn, timeAgo } from "@/lib/utils";
+import { Timestamp } from "@/components/timestamp";
 import { toast } from "sonner";
 
 function Skeleton({ className }: { className?: string }) {
@@ -683,7 +684,7 @@ function ApiKeysSection() {
                     {new Date(k.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-3" style={{ color: "hsl(var(--muted-foreground))" }}>
-                    {k.last_used_at ? timeAgo(k.last_used_at) : <span className="italic">Never</span>}
+                    {k.last_used_at ? <Timestamp iso={k.last_used_at} compact /> : <span className="italic">Never</span>}
                   </td>
                   <td className="px-6 py-3">
                     {k.revoked_at ? (
@@ -916,7 +917,7 @@ function UsersSection() {
                     </button>
                   </td>
                   <td className="px-6 py-3" style={{ color: "hsl(var(--muted-foreground))" }}>
-                    {u.last_login_at ? timeAgo(u.last_login_at) : <span className="italic">Never</span>}
+                    {u.last_login_at ? <Timestamp iso={u.last_login_at} compact /> : <span className="italic">Never</span>}
                   </td>
                   <td className="px-6 py-3">
                     {u.active ? (
@@ -1612,7 +1613,7 @@ function AuditLogsSection() {
                 {events.map(e => (
                   <tr key={e.id} className="hover:bg-accent/30 transition-colors">
                     <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
-                      {timeAgo(e.timestamp)}
+                      <Timestamp iso={e.timestamp} />
                     </td>
                     <td className="px-4 py-2.5">
                       <code
