@@ -40,10 +40,6 @@ logger = structlog.get_logger()
 # ---------------------------------------------------------------------------
 
 _DDL = [
-    # Migration: add project_id to mcp_health_results for existing installations.
-    # ALTER ADD COLUMN IF NOT EXISTS is idempotent — safe to run on every startup.
-    # Fresh installs get the column directly from the CREATE TABLE below.
-    "ALTER TABLE IF EXISTS mcp_health_results ADD COLUMN IF NOT EXISTS project_id String DEFAULT ''",
     # Health check results — full fidelity, 90-day TTL
     """
     CREATE TABLE IF NOT EXISTS mcp_health_results (
@@ -62,6 +58,9 @@ _DDL = [
     TTL toDateTime(checked_at) + INTERVAL 90 DAY
     SETTINGS index_granularity = 8192
     """,
+    # Migration: backfill project_id on existing mcp_health_results rows.
+    # Runs after CREATE so the table always exists. IF NOT EXISTS is idempotent.
+    "ALTER TABLE mcp_health_results ADD COLUMN IF NOT EXISTS project_id String DEFAULT ''",
     # Tool call spans from the SDK / OTLP — 90-day TTL
     # parent_span_id enables multi-agent tree reconstruction
     # span_type: tool_call | agent | handoff
