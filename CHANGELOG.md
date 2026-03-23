@@ -7,6 +7,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.3.7] - 2026-03-23 — Reliable Span Delivery on Flush Failure
+
+### Fixed
+
+- **`_post_spans()` now returns `bool`** (`src/langsight/sdk/client.py`): the method returns `True` on a successful HTTP delivery and `False` on any failure, instead of returning `None` unconditionally. This makes the return value testable and lets callers distinguish success from failure without catching exceptions.
+- **`flush()` rescues spans on send failure** (`src/langsight/sdk/client.py`): when `_post_spans()` returns `False`, `flush()` prepends the batch back to the front of the internal buffer. The `atexit` handler therefore has a second chance to deliver those spans in its own thread, ensuring no spans are silently dropped when the event loop closes during process teardown.
+
+---
+
 ## [0.3.6] - 2026-03-23 — Tool Input/Output Capture and Flush Reliability
 
 ### Added
