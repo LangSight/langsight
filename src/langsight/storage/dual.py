@@ -308,9 +308,6 @@ class DualStorage:
     async def delete_slo(self, slo_id: str, project_id: str | None = None) -> bool:
         return await self._meta.delete_slo(slo_id, project_id=project_id)
 
-    async def delete_slo(self, slo_id: str) -> bool:
-        return await self._meta.delete_slo(slo_id)
-
     # Alert config → Postgres
 
     async def get_alert_config(self) -> dict[str, Any] | None:

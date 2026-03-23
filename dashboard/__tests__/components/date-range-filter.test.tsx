@@ -21,12 +21,12 @@ import { DateRangeFilter } from "@/components/date-range-filter";
 
 /* ── Default props ─────────────────────────────────────────── */
 const defaultProps = {
-  activeHours: 24,
+  activeHours: 24 as number | null,
   onPreset: jest.fn(),
   onCustomRange: jest.fn(),
   onClearCustom: jest.fn(),
-  customFrom: null,
-  customTo: null,
+  customFrom: null as string | null,
+  customTo: null as string | null,
 };
 
 function renderFilter(overrides: Partial<typeof defaultProps> = {}) {

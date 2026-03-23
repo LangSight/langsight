@@ -211,10 +211,6 @@ class StorageBackend(Protocol):
         """Delete an SLO. When project_id is set, only deletes within that project."""
         ...
 
-    async def delete_slo(self, slo_id: str) -> bool:
-        """Delete an SLO. Returns True if found and deleted."""
-        ...
-
     # ── Alert config ─────────────────────────────────────────────────────────
 
     async def get_alert_config(self) -> dict[str, Any] | None:
