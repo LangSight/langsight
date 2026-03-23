@@ -6,16 +6,25 @@ description: "Graph-aware tracing — see which node called which tool."
 ## Install
 
 ```bash
-pip install langsight langchain langgraph
+pip install langsight langgraph
 ```
+
+<Note>
+  `langchain-core` ships with `langgraph` — you don't need the full `langchain` package. LangSight's callback will find `BaseCallbackHandler` in `langchain-core` automatically.
+</Note>
 
 ## Setup
 
 ```python
+import os
 from langsight.sdk import LangSightClient
 from langsight.integrations.langgraph import LangSightLangGraphCallback
 
-client = LangSightClient(url="http://localhost:8000")
+client = LangSightClient(
+    url=os.getenv("LANGSIGHT_URL", "http://localhost:8000"),
+    api_key=os.getenv("LANGSIGHT_API_KEY"),
+    project_id=os.getenv("LANGSIGHT_PROJECT_ID"),  # copy from Settings → Projects
+)
 callback = LangSightLangGraphCallback(
     client=client,
     agent_name="my-graph",

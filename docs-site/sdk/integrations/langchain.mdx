@@ -8,8 +8,16 @@ A single callback handler covers LangChain and every framework built on top of i
 ## Installation
 
 ```bash
+# LangGraph users (lightweight — langchain-core comes with langgraph)
+pip install langsight langgraph
+
+# LangChain users (full package)
 pip install langsight langchain
 ```
+
+<Note>
+  `langchain-core` is sufficient — it ships `BaseCallbackHandler` and is installed automatically with `langgraph`. The full `langchain` package is only needed if you use `langchain` directly.
+</Note>
 
 ## Setup
 
@@ -30,6 +38,40 @@ callback = LangSightLangChainCallback(
     session_id="sess-abc123",      # optional — groups calls into a session
 )
 ```
+
+## Sending data to a project
+
+Every span must be tagged with a `project_id` so it appears in the right project dashboard. Get your project ID from **Settings → Projects** (click the ID pill to copy), then pass it to the client:
+
+```python
+import os
+from langsight.sdk import LangSightClient
+
+client = LangSightClient(
+    url=os.getenv("LANGSIGHT_URL", "http://localhost:8000"),
+    api_key=os.getenv("LANGSIGHT_API_KEY"),
+    project_id=os.getenv("LANGSIGHT_PROJECT_ID"),  # copy from Settings → Projects
+)
+```
+
+Or fetch your project ID via the API:
+
+```bash
+curl http://localhost:8000/api/projects \
+  -H "X-API-Key: your-api-key" | python3 -m json.tool
+```
+
+Add to your `.env`:
+
+```
+LANGSIGHT_URL=http://localhost:8000
+LANGSIGHT_API_KEY=lsk_your_key_here
+LANGSIGHT_PROJECT_ID=abc123def456...
+```
+
+<Info>
+  The API key authenticates you globally. The `project_id` is what tags every span and routes it to the right project. Without it, spans are stored with no project and won't appear in any project dashboard.
+</Info>
 
 ## LangChain agents
 

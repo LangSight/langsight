@@ -11,7 +11,7 @@ Use projects to separate environments (production vs staging), teams (platform v
 
 ## Default project
 
-On first run, LangSight creates a "Default" project automatically. The Default project ID is `default`. You can rename it in **Settings → Projects**.
+On first run, LangSight creates a **Sample Project** with demo data so you can explore the dashboard immediately. Create your own project via the sidebar → **New Project**.
 
 ## Creating projects
 
@@ -30,20 +30,48 @@ X-API-Key: lsk_your_key
 }
 ```
 
+## Finding your project ID
+
+The project ID is required to tag SDK spans to the right project.
+
+**From the dashboard**: Settings → Projects → click the `abc12345…` pill next to the project name. The full ID copies to clipboard.
+
+**From the API**:
+
+```bash
+curl http://localhost:8000/api/projects \
+  -H "X-API-Key: your-api-key"
+```
+
+Response:
+```json
+[
+  { "id": "abc123def456...", "name": "IRIS", "slug": "iris" },
+  { "id": "xyz789...", "name": "Sample Project", "slug": "sample-project" }
+]
+```
+
+Copy the `id` value for your project into your SDK config or `.env`:
+```
+LANGSIGHT_PROJECT_ID=abc123def456...
+```
+
 ## Sending spans to a project
 
 Set `project_id` on `LangSightClient`:
 
 ```python
+import os
 from langsight.sdk import LangSightClient
 
 client = LangSightClient(
-    url="http://localhost:8000",
-    project_id="production",
+    url=os.getenv("LANGSIGHT_URL", "http://localhost:8000"),
+    api_key=os.getenv("LANGSIGHT_API_KEY"),
+    project_id=os.getenv("LANGSIGHT_PROJECT_ID"),
 )
 ```
 
-All spans from this client are tagged with `project_id="production"`.
+All spans from this client are tagged with the configured `project_id`.
 
 You can also set `project_id` per span in the SDK or via the API:
 
