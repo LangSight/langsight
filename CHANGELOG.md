@@ -7,6 +7,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.3.4] - 2026-03-23 — project_id Stamping Fix for Integrations
+
+### Fixed
+
+- **`project_id` missing on all integration spans** (`src/langsight/integrations/base.py`): `_record()` now stamps `project_id` from `client._project_id` on every span before dispatch. Without this fix, all spans produced by LangChain/LangGraph callbacks landed in ClickHouse with `project_id=""` and were invisible to the project dashboard.
+- **`project_id` missing on tool spans** (`src/langsight/integrations/langgraph.py`): `on_tool_end` and `on_tool_error` handlers now also stamp `project_id`, consistent with the base fix above.
+- **`Event loop is closed` warnings on shutdown** (`src/langsight/integrations/langchain.py`, `src/langsight/integrations/langgraph.py`): `_fire_and_forget()` now checks `loop.is_running() and not loop.is_closed()` before calling `create_task`, eliminating the spurious `RuntimeWarning` that appeared when the event loop had already shut down during process teardown.
+
+---
+
 ## [0.3.3] - 2026-03-23 — LangChain-Core Compatibility Fix
 
 ### Fixed
