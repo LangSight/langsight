@@ -28,7 +28,10 @@ export interface GraphNode {
   isCollapsible?: boolean;
   collapsedCount?: number;
   expandableEdgeId?: string;
+  expandItemCount?: number;
   toolNames?: string[];
+  repeatCallName?: string;
+  repeatCallCount?: number;
 }
 
 export interface GraphEdge {
@@ -75,7 +78,7 @@ function selfLoop(x: number, y: number, w: number, h: number) {
 
 /* ── Layout ────────────────────────────────────────────────── */
 function nodeH(n: GraphNode, base: number) {
-  return n.expandableEdgeId && n.toolNames && n.toolNames.length >= 2 ? base + TOOL_EXPAND_ROW_H : base;
+  return n.expandableEdgeId && (n.expandItemCount ?? 0) >= 2 ? base + TOOL_EXPAND_ROW_H : base;
 }
 
 function layout(nodes: GraphNode[], edges: GraphEdge[], baseH: number) {
@@ -166,6 +169,27 @@ export function LineageGraph({
   const prevLen = useRef(nodes.length);
   if (nodes.length !== prevLen.current) { prevLen.current = nodes.length; if (nodeOffsets.size > 0) setNodeOffsets(new Map()); }
 
+  /* ── Fit & center ── */
+  const fitToCenter = useCallback(() => {
+    if (!containerSize.w || !containerSize.h || !base.w || !base.h) return;
+    const fitZoom = Math.min(containerSize.w / base.w, containerSize.h / base.h, 1.2);
+    const fitPanX = (containerSize.w - base.w * fitZoom) / 2;
+    const fitPanY = (containerSize.h - base.h * fitZoom) / 2;
+    setZoom(fitZoom);
+    setPan({ x: fitPanX, y: fitPanY });
+    setNodeOffsets(new Map());
+  }, [containerSize.w, containerSize.h, base.w, base.h]);
+
+  // Auto-center on first render when layout + container size are both known
+  const hasFitted = useRef(false);
+  useEffect(() => {
+    if (hasFitted.current) return;
+    if (containerSize.w > 0 && containerSize.h > 0 && nodes.length > 0 && base.w > 0) {
+      hasFitted.current = true;
+      fitToCenter();
+    }
+  }, [containerSize.w, containerSize.h, nodes.length, base.w, fitToCenter]);
+
   /* ── Search ── */
   const matchIds = useMemo(() => {
     if (!searchQ.trim()) return null;
@@ -211,7 +235,7 @@ export function LineageGraph({
         case "Escape": doSelectRef.current(null); setSearchQ(""); setShowErrors(false); break;
         case "+": case "=": e.preventDefault(); setZoom((z) => Math.min(2.5, z * 1.15)); break;
         case "-": e.preventDefault(); setZoom((z) => Math.max(0.25, z * 0.85)); break;
-        case "f": e.preventDefault(); setZoom(1); setPan({ x: 0, y: 0 }); setNodeOffsets(new Map()); break;
+        case "f": e.preventDefault(); fitToCenter(); break;
         case "/": e.preventDefault(); searchRef.current?.focus(); break;
         case "e": e.preventDefault(); setShowErrors((v) => !v); break;
       }
@@ -296,13 +320,13 @@ export function LineageGraph({
                     const canExpandEdge = edge.edgeId && onToggleEdge;
                     const isEdgeExp = edge.edgeId ? expandedEdges?.has(edge.edgeId) : false;
                     const tgtNode = nodes.find((n) => n.id === edge.target);
-                    const hasMultiTools = tgtNode?.toolNames && tgtNode.toolNames.length >= 2;
+                    const hasMultiCalls = (tgtNode?.expandItemCount ?? 0) >= 2;
                     // Also check for group expand on target node
                     const tgtCollapsible = tgtNode?.isCollapsible && tgtNode?.collapsedCount != null && onToggleGroup;
                     const tgtGid = tgtNode?.groupId ?? tgtNode?.id ?? "";
                     const tgtGroupExp = expandedGroups?.has(tgtGid);
                     // Show per-tool button if edge has multi tools
-                    const showToolBtn = canExpandEdge && hasMultiTools;
+                    const showToolBtn = canExpandEdge && hasMultiCalls;
                     // Show group button if target is collapsible and NOT yet expanded
                     const showGroupBtn = tgtCollapsible && !tgtGroupExp;
                     // Show either tool or group button (prioritize group)
@@ -368,8 +392,11 @@ export function LineageGraph({
               const op = nodeOpacity(node.id, node.hasError);
               const searchMatch = matchIds !== null && matchIds.has(node.id);
               const glow = searchMatch ? "url(#glow-search)" : isSel ? "url(#glow-pri)" : node.hasError && !isSel ? "url(#glow-err)" : undefined;
-              const canExpTool = node.expandableEdgeId && node.toolNames && node.toolNames.length >= 2;
-              const isToolExp = node.expandableEdgeId ? expandedEdges?.has(node.expandableEdgeId) : false;
+              const canExpandCalls = node.expandableEdgeId && (node.expandItemCount ?? 0) >= 2;
+              const isCallsExpanded = node.expandableEdgeId ? expandedEdges?.has(node.expandableEdgeId) : false;
+              const expandPreview = node.repeatCallCount && node.repeatCallName
+                ? `repeated ${node.repeatCallName} ${node.repeatCallCount}×`
+                : node.toolNames?.slice(0, 2).join(", ");
 
               return (
                 <g key={node.id} filter={glow} opacity={op} style={{ transition: "opacity 0.3s, filter 0.3s" }}>
@@ -380,54 +407,75 @@ export function LineageGraph({
                     onMouseEnter={() => setHoveredNode(node.id)}
                     onMouseLeave={() => setHoveredNode(null)}
                   >
-                    <div className="w-full h-full rounded-xl px-3.5 flex flex-col justify-center"
+                    <div className="w-full h-full rounded-xl px-4 flex flex-col justify-center"
                       style={{
-                        background: isSel ? "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.04) 100%)" : "hsl(var(--card))",
-                        border: isSel ? "1.5px solid hsl(var(--primary) / 0.6)" : node.hasError ? "1px solid rgba(239,68,68,0.25)" : "1px solid hsl(var(--border))",
-                        boxShadow: isSel ? "0 0 20px rgba(20,184,166,0.15), 0 4px 12px rgba(0,0,0,0.15)" : isHov ? "0 8px 24px rgba(0,0,0,0.18), 0 0 0 1px hsl(var(--primary) / 0.15)" : "0 2px 8px rgba(0,0,0,0.1)",
-                        transition: "box-shadow 0.2s ease, border-color 0.2s ease",
-                        backdropFilter: "blur(8px)",
+                        background: isSel
+                          ? "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.06) 100%)"
+                          : isAgent
+                            ? "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.02) 100%)"
+                            : "hsl(var(--card))",
+                        border: isSel ? "1.5px solid hsl(var(--primary) / 0.6)" : node.hasError ? "1px solid rgba(239,68,68,0.3)" : "1px solid hsl(var(--border))",
+                        boxShadow: isSel
+                          ? "0 0 24px rgba(20,184,166,0.18), 0 8px 16px rgba(0,0,0,0.12)"
+                          : isHov
+                            ? "0 8px 28px rgba(0,0,0,0.16), 0 0 0 1px hsl(var(--primary) / 0.18)"
+                            : "0 2px 10px rgba(0,0,0,0.08), 0 0 0 0.5px hsl(var(--border))",
+                        transition: "all 0.2s ease",
+                        backdropFilter: "blur(12px)",
                       }}
                     >
-                      {/* Row 1 */}
+                      {/* Row 1 — identity */}
                       <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                          style={{ background: isAgent ? "linear-gradient(135deg, hsl(var(--primary) / 0.12), hsl(var(--primary) / 0.06))" : "linear-gradient(135deg, rgba(100,116,139,0.12), rgba(100,116,139,0.05))", border: isAgent ? "1px solid hsl(var(--primary) / 0.15)" : "1px solid rgba(100,116,139,0.12)" }}>
-                          {isAgent ? <Bot size={13} style={{ color: "hsl(var(--primary))" }} /> : <Server size={13} className="text-muted-foreground" />}
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{
+                            background: isAgent
+                              ? "linear-gradient(135deg, hsl(var(--primary) / 0.15), hsl(var(--primary) / 0.06))"
+                              : "linear-gradient(135deg, rgba(100,116,139,0.14), rgba(100,116,139,0.05))",
+                            border: isAgent ? "1px solid hsl(var(--primary) / 0.2)" : "1px solid rgba(100,116,139,0.15)",
+                          }}>
+                          {isAgent ? <Bot size={14} style={{ color: "hsl(var(--primary))" }} /> : <Server size={14} className="text-muted-foreground" />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] font-bold text-foreground truncate">{node.label}</span>
-                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: node.hasError ? "#ef4444" : "#10b981", boxShadow: node.hasError ? "0 0 6px rgba(239,68,68,0.4)" : "0 0 4px rgba(16,185,129,0.3)" }} />
+                            <span className="text-[12px] font-bold text-foreground truncate" style={{ letterSpacing: "-0.01em" }}>{node.label}</span>
+                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{
+                              background: node.hasError ? "#ef4444" : "#10b981",
+                              boxShadow: node.hasError ? "0 0 8px rgba(239,68,68,0.5)" : "0 0 6px rgba(16,185,129,0.35)",
+                              animation: node.hasError ? "pulse 2s ease-in-out infinite" : undefined,
+                            }} />
                           </div>
-                          <span className="text-[9px] text-muted-foreground block truncate" style={{ marginTop: 1 }}>
+                          <span className="text-[10px] text-muted-foreground block truncate" style={{ marginTop: 1 }}>
                             {isAgent ? "Agent" : "MCP Server"}{node.splitLabel ? ` \u00b7 ${node.splitLabel}` : ""}
                           </span>
                         </div>
-                        {/* No node-level expand/collapse — handled on edges */}
                       </div>
-                      {/* Row 2: metrics */}
+                      {/* Row 2: metric pills */}
                       {hasMet && (
-                        <div className="flex items-center gap-1.5 mt-1.5">
-                          {node.callCount != null && node.callCount > 0 && <span className="text-[8px] px-1.5 py-[2px] rounded-md" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)", border: "0.5px solid hsl(var(--border))" }}>{node.callCount} calls</span>}
-                          {node.errorCount != null && node.errorCount > 0 && <span className="text-[8px] px-1.5 py-[2px] rounded-md" style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", fontFamily: "var(--font-geist-mono)", border: "0.5px solid rgba(239,68,68,0.15)" }}>{node.errorCount} err</span>}
-                          {node.avgLatencyMs != null && <span className="text-[8px] px-1.5 py-[2px] rounded-md" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)", border: "0.5px solid hsl(var(--border))" }}>{Math.round(node.avgLatencyMs)}ms</span>}
-                          {errRate > 0 && <div className="flex-1 h-[3px] rounded-full overflow-hidden ml-1" style={{ background: "hsl(var(--muted))", minWidth: 20, maxWidth: 40 }}><div className="h-full rounded-full" style={{ width: `${Math.min(100, errRate * 100)}%`, background: errRate > 0.5 ? "#ef4444" : errRate > 0.1 ? "#f59e0b" : "#10b981" }} /></div>}
+                        <div className="flex items-center gap-2 mt-2">
+                          {node.callCount != null && node.callCount > 0 && <span className="text-[9px] px-2 py-[3px] rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)", border: "0.5px solid hsl(var(--border))" }}>{node.callCount} calls</span>}
+                          {node.errorCount != null && node.errorCount > 0 && <span className="text-[9px] px-2 py-[3px] rounded-full" style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", fontFamily: "var(--font-geist-mono)", border: "0.5px solid rgba(239,68,68,0.18)" }}>{node.errorCount} err</span>}
+                          {node.avgLatencyMs != null && <span className="text-[9px] px-2 py-[3px] rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)", border: "0.5px solid hsl(var(--border))" }}>{Math.round(node.avgLatencyMs)}ms</span>}
+                          {node.repeatCallCount != null && node.repeatCallCount >= 2 && (
+                            <span className="text-[9px] px-2 py-[3px] rounded-full" style={{ background: "rgba(245,158,11,0.10)", color: "#b45309", fontFamily: "var(--font-geist-mono)", border: "0.5px solid rgba(245,158,11,0.28)" }}>
+                              repeat {node.repeatCallCount}×
+                            </span>
+                          )}
+                          {errRate > 0 && <div className="flex-1 h-[4px] rounded-full overflow-hidden ml-1" style={{ background: "hsl(var(--muted))", minWidth: 24, maxWidth: 44 }}><div className="h-full rounded-full" style={{ width: `${Math.min(100, errRate * 100)}%`, background: errRate > 0.5 ? "#ef4444" : errRate > 0.1 ? "#f59e0b" : "#10b981" }} /></div>}
                         </div>
                       )}
-                      {/* Row 3: tool expand */}
-                      {canExpTool && !isToolExp && (
-                        <button className="flex items-center gap-1 mt-1 w-full text-left" style={{ fontSize: 8, color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}
+                      {/* Row 3: call expand */}
+                      {canExpandCalls && !isCallsExpanded && (
+                        <button className="flex items-center gap-1 mt-1.5 w-full text-left hover:underline" style={{ fontSize: 9, color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}
                           onClick={(e) => { e.stopPropagation(); onToggleEdge?.(node.expandableEdgeId!); }}>
-                          <span style={{ fontSize: 7 }}>{"\u25BE"}</span>
-                          <span>{node.toolNames!.length} tools</span>
-                          <span className="text-muted-foreground truncate" style={{ fontSize: 7 }}>{node.toolNames!.slice(0, 2).join(", ")}{node.toolNames!.length > 2 ? "..." : ""}</span>
+                          <span style={{ fontSize: 8 }}>{"\u25BE"}</span>
+                          <span>{node.expandItemCount} calls</span>
+                          {expandPreview && <span className="text-muted-foreground truncate" style={{ fontSize: 8 }}>{expandPreview}</span>}
                         </button>
                       )}
-                      {canExpTool && isToolExp && (
-                        <button className="flex items-center gap-1 mt-1" style={{ fontSize: 8, color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}
+                      {canExpandCalls && isCallsExpanded && (
+                        <button className="flex items-center gap-1 mt-1.5 hover:underline" style={{ fontSize: 9, color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}
                           onClick={(e) => { e.stopPropagation(); onToggleEdge?.(node.expandableEdgeId!); }}>
-                          <span style={{ fontSize: 7 }}>{"\u25B4"}</span><span>collapse tools</span>
+                          <span style={{ fontSize: 8 }}>{"\u25B4"}</span><span>collapse calls</span>
                         </button>
                       )}
                     </div>
@@ -440,7 +488,8 @@ export function LineageGraph({
       </svg>
 
       {/* ── Toolbar ── */}
-      <div className="graph-toolbar absolute top-3 left-3 right-3 flex items-center gap-2 z-10" style={{ pointerEvents: "none" }}>
+      <div className="graph-toolbar absolute top-3 left-3 right-3 flex items-center gap-2 z-10 rounded-xl px-2 py-1.5"
+        style={{ pointerEvents: "none", background: "hsl(var(--card) / 0.85)", backdropFilter: "blur(14px)", border: "1px solid hsl(var(--border))", boxShadow: "0 2px 12px rgba(0,0,0,0.08)" }}>
         {/* Search */}
         <div className="relative flex-shrink-0" style={{ pointerEvents: "auto", width: 200 }}>
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -453,26 +502,27 @@ export function LineageGraph({
         {/* Expand / Collapse all */}
         {onExpandAll && onCollapseAll && (
           <div className="flex items-center gap-1 flex-shrink-0" style={{ pointerEvents: "auto" }}>
-            <button onClick={() => onExpandAll()} className="px-2 h-[26px] rounded text-[9px] text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} onMouseDown={(e) => e.stopPropagation()}>Expand all</button>
-            <button onClick={() => onCollapseAll()} className="px-2 h-[26px] rounded text-[9px] text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} onMouseDown={(e) => e.stopPropagation()}>Collapse all</button>
+            <button onClick={() => onExpandAll()} className="px-2.5 h-[28px] rounded-lg text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} onMouseDown={(e) => e.stopPropagation()}>Expand all</button>
+            <button onClick={() => onCollapseAll()} className="px-2.5 h-[28px] rounded-lg text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} onMouseDown={(e) => e.stopPropagation()}>Collapse all</button>
           </div>
         )}
 
         {/* Error toggle */}
         <button onClick={() => setShowErrors((v) => !v)}
-          className={cn("h-[26px] px-2 rounded text-[9px] flex items-center gap-1 transition-colors flex-shrink-0", showErrors ? "text-red-400" : "text-muted-foreground hover:text-foreground hover:bg-accent/60")}
-          style={{ pointerEvents: "auto", background: showErrors ? "rgba(239,68,68,0.08)" : "hsl(var(--card))", border: showErrors ? "1px solid rgba(239,68,68,0.2)" : "1px solid hsl(var(--border))" }}
+          className={cn("h-[28px] px-2.5 rounded-lg text-[10px] font-medium flex items-center gap-1.5 transition-colors flex-shrink-0", showErrors ? "text-red-400" : "text-muted-foreground hover:text-foreground hover:bg-accent/60")}
+          style={{ pointerEvents: "auto", background: showErrors ? "rgba(239,68,68,0.08)" : "hsl(var(--card))", border: showErrors ? "1px solid rgba(239,68,68,0.25)" : "1px solid hsl(var(--border))" }}
           onMouseDown={(e) => e.stopPropagation()}>
-          <AlertCircle size={10} />Failures
+          {showErrors && <span className="w-1.5 h-1.5 rounded-full bg-red-400" style={{ animation: "pulse 2s ease-in-out infinite" }} />}
+          <AlertCircle size={11} />Failures
         </button>
 
         {/* Zoom — right side */}
-        <div className="flex items-center gap-2 ml-auto flex-shrink-0" style={{ pointerEvents: "auto" }}>
-          <button onClick={() => setZoom((z) => Math.max(0.25, z * 0.8))} className="w-6 h-6 rounded flex items-center justify-center text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} onMouseDown={(e) => e.stopPropagation()}>{"\u2212"}</button>
+        <div className="flex items-center gap-1.5 ml-auto flex-shrink-0 rounded-lg px-1.5 py-0.5" style={{ pointerEvents: "auto", background: "hsl(var(--muted) / 0.5)", border: "1px solid hsl(var(--border))" }}>
+          <button onClick={() => setZoom((z) => Math.max(0.25, z * 0.8))} className="w-7 h-7 rounded-lg flex items-center justify-center text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" onMouseDown={(e) => e.stopPropagation()}>{"\u2212"}</button>
           <input type="range" min={25} max={250} value={Math.round(zoom * 100)} onChange={(e) => setZoom(Number(e.target.value) / 100)} className="w-20 h-1 cursor-pointer" onMouseDown={(e) => e.stopPropagation()} />
-          <span className="text-[10px] text-muted-foreground w-8 text-center" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(zoom * 100)}%</span>
-          <button onClick={() => setZoom((z) => Math.min(2.5, z * 1.2))} className="w-6 h-6 rounded flex items-center justify-center text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} onMouseDown={(e) => e.stopPropagation()}>+</button>
-          <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setNodeOffsets(new Map()); }} className="px-2 h-6 rounded text-[9px] text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} onMouseDown={(e) => e.stopPropagation()}>Fit</button>
+          <span className="text-[11px] text-muted-foreground w-9 text-center" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(zoom * 100)}%</span>
+          <button onClick={() => setZoom((z) => Math.min(2.5, z * 1.2))} className="w-7 h-7 rounded-lg flex items-center justify-center text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" onMouseDown={(e) => e.stopPropagation()}>+</button>
+          <button onClick={() => fitToCenter()} className="px-2.5 h-7 rounded-lg text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" onMouseDown={(e) => e.stopPropagation()}>Fit</button>
         </div>
       </div>
 
@@ -490,17 +540,20 @@ export function LineageGraph({
 
       {/* ── Minimap ── */}
       {minimap && containerSize.w > 0 && (
-        <div className="absolute bottom-3 right-3 rounded-lg overflow-hidden z-10"
-          style={{ width: MINIMAP_W, height: MINIMAP_H, background: "hsl(var(--card) / 0.9)", border: "1px solid hsl(var(--border))", backdropFilter: "blur(8px)", boxShadow: "0 2px 8px rgba(0,0,0,0.12)", cursor: "pointer" }}
+        <div className="absolute bottom-4 right-4 rounded-xl overflow-hidden z-10"
+          style={{ width: MINIMAP_W + 4, height: MINIMAP_H + 18, background: "hsl(var(--card) / 0.92)", border: "1px solid hsl(var(--border))", backdropFilter: "blur(14px)", boxShadow: "0 4px 20px rgba(0,0,0,0.18)", cursor: "pointer", padding: 2 }}
           onMouseDown={(e) => {
             e.stopPropagation();
             const rect = e.currentTarget.getBoundingClientRect();
-            const gx = (e.clientX - rect.left) / minimap.s + minimap.mnx, gy = (e.clientY - rect.top) / minimap.s + minimap.mny;
+            const gx = (e.clientX - rect.left - 2) / minimap.s + minimap.mnx, gy = (e.clientY - rect.top - 16) / minimap.s + minimap.mny;
             setPan({ x: -(gx + base.offX) * zoom + containerSize.w / 2, y: -(gy + base.offY) * zoom + containerSize.h / 2 });
           }}>
+          <div className="flex items-center justify-center py-0.5">
+            <span className="text-[8px] font-semibold uppercase tracking-widest text-muted-foreground" style={{ letterSpacing: "0.1em" }}>Overview</span>
+          </div>
           <svg width={MINIMAP_W} height={MINIMAP_H}>
-            {nodes.map((n) => { const p = positions.get(n.id); if (!p || !minimap) return null; const nh = base.heights.get(n.id) ?? baseH; return <rect key={n.id} x={(p.x + base.offX - minimap.mnx) * minimap.s} y={(p.y + base.offY - minimap.mny) * minimap.s} width={NODE_W * minimap.s} height={nh * minimap.s} rx={1} fill={n.hasError ? "#ef4444" : n.type === "agent" ? "hsl(var(--primary))" : "rgba(148,163,184,0.6)"} opacity={0.8} />; })}
-            {(() => { const vx = (-pan.x / zoom - base.offX - minimap.mnx) * minimap.s, vy = (-pan.y / zoom - base.offY - minimap.mny) * minimap.s, vw = (containerSize.w / zoom) * minimap.s, vh = (containerSize.h / zoom) * minimap.s; return <rect x={vx} y={vy} width={vw} height={vh} fill="hsl(var(--primary) / 0.1)" stroke="hsl(var(--primary))" strokeWidth={1} rx={2} />; })()}
+            {nodes.map((n) => { const p = positions.get(n.id); if (!p || !minimap) return null; const nh = base.heights.get(n.id) ?? baseH; return <rect key={n.id} x={(p.x + base.offX - minimap.mnx) * minimap.s} y={(p.y + base.offY - minimap.mny) * minimap.s} width={NODE_W * minimap.s} height={nh * minimap.s} rx={2} fill={n.hasError ? "#ef4444" : n.type === "agent" ? "hsl(var(--primary))" : "rgba(148,163,184,0.6)"} opacity={0.8} />; })}
+            {(() => { const vx = (-pan.x / zoom - base.offX - minimap.mnx) * minimap.s, vy = (-pan.y / zoom - base.offY - minimap.mny) * minimap.s, vw = (containerSize.w / zoom) * minimap.s, vh = (containerSize.h / zoom) * minimap.s; return <rect x={vx} y={vy} width={vw} height={vh} fill="hsl(var(--primary) / 0.1)" stroke="hsl(var(--primary))" strokeWidth={1.5} rx={2} />; })()}
           </svg>
         </div>
       )}
