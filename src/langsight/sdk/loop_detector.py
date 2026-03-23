@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import deque
+from collections.abc import Mapping, Sequence, Set
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Literal
@@ -61,9 +62,111 @@ def _hash_args(arguments: dict[str, Any] | None) -> str:
         return "empty"
     try:
         canonical = json.dumps(arguments, sort_keys=True, default=str)
-    except (TypeError, ValueError):
-        canonical = str(arguments)
-    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
+        return hashlib.sha256(canonical.encode()).hexdigest()[:16]
+    except (RecursionError, TypeError, ValueError):
+        return _hash_args_iterative(arguments)
+
+
+def _hash_args_iterative(arguments: object) -> str:
+    """Iterative structural hash fallback for deeply nested or cyclic arguments."""
+    hasher = hashlib.sha256()
+    active_containers: set[int] = set()
+    stack: list[tuple[str, object]] = [("value", arguments)]
+
+    while stack:
+        kind, obj = stack.pop()
+
+        if kind == "container_end":
+            assert isinstance(obj, int)
+            active_containers.discard(obj)
+            continue
+
+        if kind == "token":
+            assert isinstance(obj, bytes)
+            hasher.update(obj)
+            continue
+
+        if kind == "key":
+            _update_hash_scalar(hasher, obj, prefix="k")
+            continue
+
+        if obj is None:
+            hasher.update(b"n;")
+        elif isinstance(obj, bool):
+            hasher.update(f"b:{int(obj)};".encode())
+        elif isinstance(obj, int):
+            hasher.update(f"i:{obj};".encode())
+        elif isinstance(obj, float):
+            hasher.update(f"f:{obj!r};".encode())
+        elif isinstance(obj, str):
+            hasher.update(b"s:")
+            hasher.update(json.dumps(obj, ensure_ascii=False).encode())
+            hasher.update(b";")
+        elif isinstance(obj, bytes):
+            hasher.update(b"y:")
+            hasher.update(obj.hex().encode())
+            hasher.update(b";")
+        elif isinstance(obj, Mapping):
+            container_id = id(obj)
+            if container_id in active_containers:
+                hasher.update(b"cycle:dict;")
+                continue
+
+            active_containers.add(container_id)
+            hasher.update(b"d{")
+            stack.append(("container_end", container_id))
+            stack.append(("token", b"}"))
+            items = sorted(obj.items(), key=lambda item: _sort_token(item[0]))
+            for key, value in reversed(items):
+                stack.append(("value", value))
+                stack.append(("key", key))
+        elif isinstance(obj, Sequence) and not isinstance(obj, (str, bytes, bytearray)):
+            container_id = id(obj)
+            if container_id in active_containers:
+                hasher.update(b"cycle:seq;")
+                continue
+
+            active_containers.add(container_id)
+            hasher.update(b"l[")
+            stack.append(("container_end", container_id))
+            stack.append(("token", b"]"))
+            for item in reversed(list(obj)):
+                stack.append(("value", item))
+        elif isinstance(obj, Set) and not isinstance(obj, (str, bytes, bytearray)):
+            container_id = id(obj)
+            if container_id in active_containers:
+                hasher.update(b"cycle:set;")
+                continue
+
+            active_containers.add(container_id)
+            hasher.update(b"set{")
+            stack.append(("container_end", container_id))
+            stack.append(("token", b"}"))
+            values = sorted(obj, key=_sort_token)
+            for item in reversed(values):
+                stack.append(("value", item))
+        else:
+            _update_hash_scalar(hasher, obj, prefix="r")
+
+    return hasher.hexdigest()[:16]
+
+
+def _update_hash_scalar(hasher: hashlib._Hash, value: object, *, prefix: str) -> None:
+    hasher.update(prefix.encode())
+    hasher.update(b":")
+    hasher.update(_safe_repr(value).encode("utf-8", errors="backslashreplace"))
+    hasher.update(b";")
+
+
+def _sort_token(value: object) -> str:
+    return f"{type(value).__module__}.{type(value).__qualname__}:{_safe_repr(value)}"
+
+
+def _safe_repr(value: object) -> str:
+    try:
+        return repr(value)
+    except Exception:  # noqa: BLE001
+        return f"<unreprable {type(value).__module__}.{type(value).__qualname__}>"
 
 
 def _hash_error(error: str | None) -> str | None:
