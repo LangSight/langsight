@@ -737,6 +737,7 @@ async def seed_demo_data(storage: Any, project_id: str) -> None:
             try:
                 slo = AgentSLO(
                     id=slo_data["id"],
+                    project_id=project_id,
                     agent_name=slo_data["agent_name"],
                     metric=SLOMetric(slo_data["metric"]),
                     target=slo_data["target"],
@@ -801,6 +802,67 @@ async def seed_demo_data(storage: Any, project_id: str) -> None:
             except Exception:  # noqa: BLE001
                 pass
         logger.info("demo_seed.agent_metadata", count=meta_count)
+
+    # ── 5b. Server metadata (catalog) — required for Tools & MCPs panel ───────
+    if hasattr(storage, "upsert_server_metadata"):
+        _SERVER_METADATA = [
+            {
+                "server_name": "postgres-mcp",
+                "description": "PostgreSQL MCP server — query, list_tables, describe_table, row counts.",
+                "owner": "Data Engineering",
+                "tags": ["production", "database", "critical"],
+                "transport": "stdio",
+                "runbook_url": "https://wiki.example.com/mcps/postgres-mcp",
+            },
+            {
+                "server_name": "jira-mcp",
+                "description": "Jira MCP server — create/search issues, manage tickets.",
+                "owner": "Platform Team",
+                "tags": ["production", "project-management"],
+                "transport": "sse",
+                "runbook_url": "https://wiki.example.com/mcps/jira-mcp",
+            },
+            {
+                "server_name": "slack-mcp",
+                "description": "Slack MCP server — send messages, list channels, read threads.",
+                "owner": "Platform Team",
+                "tags": ["production", "communication"],
+                "transport": "sse",
+                "runbook_url": "",
+            },
+            {
+                "server_name": "s3-mcp",
+                "description": "AWS S3 MCP server — list buckets, read/put objects.",
+                "owner": "Infrastructure",
+                "tags": ["production", "storage", "aws"],
+                "transport": "stdio",
+                "runbook_url": "",
+            },
+            {
+                "server_name": "github-mcp",
+                "description": "GitHub MCP server — PRs, commits, comments.",
+                "owner": "Platform Team",
+                "tags": ["production", "source-control"],
+                "transport": "sse",
+                "runbook_url": "",
+            },
+        ]
+        server_meta_count = 0
+        for m in _SERVER_METADATA:
+            try:
+                await storage.upsert_server_metadata(
+                    server_name=m["server_name"],
+                    description=m["description"],
+                    owner=m["owner"],
+                    tags=m["tags"],
+                    transport=m["transport"],
+                    runbook_url=m["runbook_url"],
+                    project_id=project_id,
+                )
+                server_meta_count += 1
+            except Exception:  # noqa: BLE001
+                pass
+        logger.info("demo_seed.server_metadata", count=server_meta_count)
 
     # ── 6. v0.3 Prevention layer sessions ────────────────────────────────────
     if hasattr(storage, "save_tool_call_spans"):
