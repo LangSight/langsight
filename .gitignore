@@ -65,3 +65,4 @@ logs/
 credentials.json
 dashboard/test-results/
 dashboard/playwright-report/
+assets/package.json
