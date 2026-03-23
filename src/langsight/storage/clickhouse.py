@@ -259,6 +259,7 @@ class ClickHouseBackend:
                     result.schema_hash,
                     result.error,
                     result.checked_at,
+                    result.project_id,
                 ]
             ],
             column_names=[
@@ -269,6 +270,7 @@ class ClickHouseBackend:
                 "schema_hash",
                 "error",
                 "checked_at",
+                "project_id",
             ],
         )
         logger.debug("storage.clickhouse.health_saved", server=result.server_name)
@@ -305,18 +307,29 @@ class ClickHouseBackend:
         self,
         server_name: str,
         limit: int = 10,
+        project_id: str | None = None,
     ) -> list[HealthCheckResult]:
-        """Return the N most recent health results, newest first."""
+        """Return the N most recent health results, newest first.
+
+        When project_id is set, returns only results for that project OR
+        global results (project_id='') so CLI-triggered checks are always visible.
+        """
+        params: dict[str, Any] = {"server_name": server_name, "limit": limit}
+        project_filter = ""
+        if project_id:
+            project_filter = "AND (project_id = {project_id:String} OR project_id = '')"
+            params["project_id"] = project_id
         result = await self._client.query(
-            """
+            f"""
             SELECT server_name, status, latency_ms, tools_count,
-                   schema_hash, error, checked_at
+                   schema_hash, error, checked_at, project_id
             FROM mcp_health_results
-            WHERE server_name = {server_name:String}
+            WHERE server_name = {{server_name:String}}
+            {project_filter}
             ORDER BY checked_at DESC
-            LIMIT {limit:UInt32}
+            LIMIT {{limit:UInt32}}
             """,
-            parameters={"server_name": server_name, "limit": limit},
+            parameters=params,
         )
         return [_row_to_result(row) for row in result.result_rows]
 
@@ -636,8 +649,12 @@ class ClickHouseBackend:
         self,
         session_a: str,
         session_b: str,
+        project_id: str | None = None,
     ) -> dict[str, Any]:
         """Fetch both session traces and compute a diff.
+
+        project_id is enforced at the storage level — each session is fetched
+        with the project filter so cross-project comparisons return empty spans.
 
         Returns:
           session_a: flat span list for session A
@@ -648,8 +665,8 @@ class ClickHouseBackend:
         import asyncio
 
         spans_a, spans_b = await asyncio.gather(
-            self.get_session_trace(session_a),
-            self.get_session_trace(session_b),
+            self.get_session_trace(session_a, project_id=project_id),
+            self.get_session_trace(session_b, project_id=project_id),
         )
 
         diff, summary = _diff_spans(spans_a, spans_b)
@@ -1195,7 +1212,8 @@ def _diff_spans(
 
 
 def _row_to_result(row: Any) -> HealthCheckResult:
-    server_name, status, latency_ms, tools_count, schema_hash, error, checked_at = row
+    server_name, status, latency_ms, tools_count, schema_hash, error, checked_at, *rest = row
+    project_id = rest[0] if rest else ""
     return HealthCheckResult(
         server_name=server_name,
         status=ServerStatus(status),
@@ -1204,4 +1222,5 @@ def _row_to_result(row: Any) -> HealthCheckResult:
         schema_hash=schema_hash,
         error=error,
         checked_at=checked_at if checked_at.tzinfo else checked_at.replace(tzinfo=UTC),
+        project_id=project_id or "",
     )

@@ -46,7 +46,7 @@ async def list_servers_health(
 
     visible = [s for s in config.servers if allowed is None or s.name in allowed]
     histories = await asyncio.gather(
-        *(storage.get_health_history(s.name, limit=1) for s in visible)
+        *(storage.get_health_history(s.name, limit=1, project_id=project_id) for s in visible)
     )
     return [h[0] for h in histories if h]
 

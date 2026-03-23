@@ -710,6 +710,7 @@ async def seed_demo_data(storage: Any, project_id: str) -> None:
                     schema_hash=h["schema_hash"],
                     checked_at=datetime.fromisoformat(h["checked_at"]),
                     error=h["error"],
+                    project_id=project_id,
                 )
                 await storage.save_health_result(result)
                 health_count += 1

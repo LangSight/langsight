@@ -58,6 +58,7 @@ class HealthCheckResult(BaseModel):
     schema_hash: str | None = None
     checked_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     error: str | None = None
+    project_id: str = ""  # empty = global health check (CLI/monitor), project id = project-scoped
 
 
 class ModelPricing(BaseModel):

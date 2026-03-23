@@ -213,7 +213,7 @@ async def compare_sessions(
             detail="Session IDs must be different.",
         )
 
-    result = await storage.compare_sessions(a, b)
+    result = await storage.compare_sessions(a, b, project_id=project_id)
 
     # Project isolation: if a project filter is active, both sessions must belong to it.
     # Spans with no project_id (ingested before project tagging was introduced) are
