@@ -78,7 +78,7 @@ async def get_slo_status(
     if not hasattr(storage, "list_slos"):
         return []
 
-    slos = await storage.list_slos()
+    slos = await storage.list_slos(project_id=project_id)
     evaluator = SLOEvaluator(storage)
     evaluations = await evaluator.evaluate_all(slos, project_id=project_id)
 

@@ -199,8 +199,8 @@ class StorageBackend(Protocol):
         """Persist a new SLO definition."""
         ...
 
-    async def list_slos(self) -> list[AgentSLO]:
-        """Return all SLO definitions."""
+    async def list_slos(self, project_id: str | None = None) -> list[AgentSLO]:
+        """Return SLO definitions. When project_id is set, returns only that project's SLOs."""
         ...
 
     async def get_slo(self, slo_id: str) -> AgentSLO | None:

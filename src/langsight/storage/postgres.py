@@ -151,6 +151,7 @@ _DDL_STATEMENTS = [
     """
     CREATE TABLE IF NOT EXISTS agent_slos (
         id           TEXT        PRIMARY KEY,
+        project_id   TEXT        NOT NULL DEFAULT '',
         agent_name   TEXT        NOT NULL,
         metric       TEXT        NOT NULL,
         target       DOUBLE PRECISION NOT NULL,
@@ -158,6 +159,8 @@ _DDL_STATEMENTS = [
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
     """,
+    "ALTER TABLE agent_slos ADD COLUMN IF NOT EXISTS project_id TEXT NOT NULL DEFAULT ''",
+    "CREATE INDEX IF NOT EXISTS idx_agent_slos_project ON agent_slos(project_id)",
     """
     CREATE TABLE IF NOT EXISTS alert_config (
         id            TEXT        PRIMARY KEY DEFAULT 'singleton',
@@ -730,10 +733,11 @@ class PostgresBackend:
     async def create_slo(self, slo: AgentSLO) -> None:
         await self._pool.execute(
             """
-            INSERT INTO agent_slos (id, agent_name, metric, target, window_hours, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO agent_slos (id, project_id, agent_name, metric, target, window_hours, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
             slo.id,
+            slo.project_id,
             slo.agent_name,
             slo.metric.value,
             slo.target,
@@ -742,8 +746,14 @@ class PostgresBackend:
         )
         logger.info("storage.postgres.slo_created", id=slo.id, agent=slo.agent_name)
 
-    async def list_slos(self) -> list[AgentSLO]:
-        rows = await self._pool.fetch("SELECT * FROM agent_slos ORDER BY created_at DESC")
+    async def list_slos(self, project_id: str | None = None) -> list[AgentSLO]:
+        if project_id:
+            rows = await self._pool.fetch(
+                "SELECT * FROM agent_slos WHERE project_id = $1 ORDER BY created_at DESC",
+                project_id,
+            )
+        else:
+            rows = await self._pool.fetch("SELECT * FROM agent_slos ORDER BY created_at DESC")
         return [_row_to_slo(r) for r in rows]
 
     async def get_slo(self, slo_id: str) -> AgentSLO | None:
@@ -1362,6 +1372,7 @@ def _row_to_invite(row: asyncpg.Record) -> InviteToken:
 def _row_to_slo(row: asyncpg.Record) -> AgentSLO:
     return AgentSLO(
         id=row["id"],
+        project_id=row.get("project_id", "") or "",
         agent_name=row["agent_name"],
         metric=SLOMetric(row["metric"]),
         target=float(row["target"]),

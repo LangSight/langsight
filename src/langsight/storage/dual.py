@@ -299,8 +299,8 @@ class DualStorage:
     async def create_slo(self, slo: AgentSLO) -> None:
         return await self._meta.create_slo(slo)
 
-    async def list_slos(self) -> list[AgentSLO]:
-        return await self._meta.list_slos()
+    async def list_slos(self, project_id: str | None = None) -> list[AgentSLO]:
+        return await self._meta.list_slos(project_id=project_id)
 
     async def get_slo(self, slo_id: str) -> AgentSLO | None:
         return await self._meta.get_slo(slo_id)

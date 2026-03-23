@@ -168,21 +168,25 @@ function SessionRow({ session }: { session: AgentSession }) {
 
 /* ── Page ───────────────────────────────────────────────────── */
 export default function OverviewPage() {
-  const { activeProject } = useProject();
+  const { activeProject, isLoading: projectLoading } = useProject();
   const p = activeProject ? `&project_id=${activeProject.id}` : "";
+
+  // Suspend all fetches until project context is resolved — prevents a flash
+  // of cross-project data (e.g. sample project servers appearing in a new project).
+  const ready = !projectLoading;
 
   const { data: servers, isLoading: serversLoading, mutate } =
     useSWR<HealthResult[]>(
-      activeProject ? `/api/health/servers?project_id=${activeProject.id}` : "/api/health/servers",
+      ready ? (activeProject ? `/api/health/servers?project_id=${activeProject.id}` : "/api/health/servers") : null,
       fetcher,
       { refreshInterval: 30_000 },
     );
   const { data: sessions, isLoading: sessionsLoading } =
-    useSWR<AgentSession[]>(`/api/agents/sessions?hours=24&limit=8${p}`, fetcher, { refreshInterval: 30_000 });
+    useSWR<AgentSession[]>(ready ? `/api/agents/sessions?hours=24&limit=8${p}` : null, fetcher, { refreshInterval: 30_000 });
   const { data: anomalies } =
-    useSWR<AnomalyResult[]>(`/api/reliability/anomalies?current_hours=1&z_threshold=2${p}`, fetcher, { refreshInterval: 60_000 });
+    useSWR<AnomalyResult[]>(ready ? `/api/reliability/anomalies?current_hours=1&z_threshold=2${p}` : null, fetcher, { refreshInterval: 60_000 });
   const { data: sloStatuses } =
-    useSWR<SLOStatus[]>(`/api/slos/status${p ? `?${p.slice(1)}` : ""}`, fetcher, { refreshInterval: 60_000 });
+    useSWR<SLOStatus[]>(ready ? `/api/slos/status${p ? `?${p.slice(1)}` : ""}` : null, fetcher, { refreshInterval: 60_000 });
   const [checking, setChecking] = useState(false);
 
   const up       = servers?.filter((s) => s.status === "up").length ?? 0;

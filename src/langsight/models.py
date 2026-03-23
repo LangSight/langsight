@@ -179,6 +179,7 @@ class AgentSLO(BaseModel):
     """
 
     id: str  # uuid4 hex — assigned on creation
+    project_id: str = ""  # empty string = global/unscoped (pre-v0.3.2 rows)
     agent_name: str
     metric: SLOMetric
     target: float  # success_rate: percentage 0-100 | latency_p99: milliseconds
