@@ -299,7 +299,9 @@ class DebuggableSupportProject:
                 f"{customer_id}: {request} "
                 f"Refund status={refund['status']} amount={refund['amount']}."
             )
-        return f"{customer_id}: {request} Escalated because automated refund flow failed ({outcome})."
+        return (
+            f"{customer_id}: {request} Escalated because automated refund flow failed ({outcome})."
+        )
 
     def _build_diagnostics(self, spans: list[ToolCallSpan]) -> DebugDiagnostics:
         error_spans = [span for span in spans if span.status == ToolCallStatus.ERROR]

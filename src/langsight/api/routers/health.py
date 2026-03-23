@@ -67,7 +67,9 @@ async def get_server_health(
     if project_id:
         allowed = await _project_server_names(storage, project_id)
         if server_name not in allowed:
-            raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Server not found.")
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND, detail="Server not found."
+            )
     history = await storage.get_health_history(server_name, limit=1)
     if not history:
         raise HTTPException(
@@ -92,7 +94,9 @@ async def get_server_history(
     if project_id:
         allowed = await _project_server_names(storage, project_id)
         if server_name not in allowed:
-            raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Server not found.")
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND, detail="Server not found."
+            )
     return await storage.get_health_history(server_name, limit=limit)
 
 

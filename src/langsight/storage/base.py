@@ -249,13 +249,20 @@ class StorageBackend(Protocol):
         """List all agent metadata records."""
         ...
 
-    async def get_agent_metadata(self, agent_name: str, project_id: str | None = None) -> dict[str, Any] | None:
+    async def get_agent_metadata(
+        self, agent_name: str, project_id: str | None = None
+    ) -> dict[str, Any] | None:
         """Get metadata for one agent by name."""
         ...
 
     async def upsert_agent_metadata(
-        self, agent_name: str, description: str, owner: str,
-        tags: list[str], status: str, runbook_url: str,
+        self,
+        agent_name: str,
+        description: str,
+        owner: str,
+        tags: list[str],
+        status: str,
+        runbook_url: str,
         project_id: str | None = None,
     ) -> dict[str, Any]:
         """Create or update agent metadata."""
@@ -269,13 +276,21 @@ class StorageBackend(Protocol):
         """List all server metadata records."""
         ...
 
-    async def get_server_metadata(self, server_name: str, project_id: str | None = None) -> dict[str, Any] | None:
+    async def get_server_metadata(
+        self, server_name: str, project_id: str | None = None
+    ) -> dict[str, Any] | None:
         """Get metadata for one server by name."""
         ...
 
     async def upsert_server_metadata(
-        self, *, server_name: str, description: str = "", owner: str = "",
-        tags: list[str] | None = None, transport: str = "", runbook_url: str = "",
+        self,
+        *,
+        server_name: str,
+        description: str = "",
+        owner: str = "",
+        tags: list[str] | None = None,
+        transport: str = "",
+        runbook_url: str = "",
         project_id: str | None = None,
     ) -> dict[str, Any]:
         """Create or update server metadata."""
@@ -285,11 +300,15 @@ class StorageBackend(Protocol):
         """Delete server metadata scoped to project."""
         ...
 
-    async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]], project_id: str | None = None) -> None:
+    async def upsert_server_tools(
+        self, server_name: str, tools: list[dict[str, object]], project_id: str | None = None
+    ) -> None:
         """Upsert declared tools for a server (from SDK list_tools() interception)."""
         ...
 
-    async def get_server_tools(self, server_name: str, project_id: str | None = None) -> list[dict[str, object]]:
+    async def get_server_tools(
+        self, server_name: str, project_id: str | None = None
+    ) -> list[dict[str, object]]:
         """Get all declared tools for a server, scoped to project."""
         ...
 
@@ -315,9 +334,7 @@ class StorageBackend(Protocol):
         """Create or update prevention config for an agent."""
         ...
 
-    async def delete_prevention_config(
-        self, agent_name: str, project_id: str
-    ) -> bool:
+    async def delete_prevention_config(self, agent_name: str, project_id: str) -> bool:
         """Delete config for this agent. Returns True if found and deleted."""
         ...
 

@@ -17,11 +17,16 @@ from __future__ import annotations
 
 import time
 from enum import StrEnum
+from typing import Protocol
 
 import structlog
 from pydantic import BaseModel
 
 logger = structlog.get_logger()
+
+
+class _MonotonicClock(Protocol):
+    def monotonic(self) -> float: ...
 
 
 class CircuitBreakerState(StrEnum):
@@ -50,7 +55,7 @@ class CircuitBreaker:
         server_name: str,
         config: CircuitBreakerConfig,
         *,
-        _clock: object | None = None,
+        _clock: _MonotonicClock | None = None,
     ) -> None:
         self._server_name = server_name
         self._config = config
@@ -64,7 +69,7 @@ class CircuitBreaker:
 
     def _now(self) -> float:
         if self._clock is not None:
-            return self._clock.monotonic()  # type: ignore[union-attr]
+            return self._clock.monotonic()
         return time.monotonic()
 
     @property

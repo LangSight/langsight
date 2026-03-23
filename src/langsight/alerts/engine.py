@@ -220,7 +220,11 @@ class AlertEngine:
 
     @staticmethod
     def _prevention_message(
-        event_type: str, server: str, tool: str, session: str, details: dict[str, object],
+        event_type: str,
+        server: str,
+        tool: str,
+        session: str,
+        details: dict[str, object],
     ) -> str:
         if event_type == "loop_detected":
             pattern = details.get("pattern", "unknown")
@@ -234,8 +238,7 @@ class AlertEngine:
             limit = details.get("limit_type", "unknown")
             pct = details.get("threshold_pct", 0.8)
             return (
-                f"Session on '{server}' has reached {pct:.0%} of {limit} budget. "
-                f"Session: {session}"
+                f"Session on '{server}' has reached {pct:.0%} of {limit} budget. Session: {session}"
             )
         if event_type == "budget_exceeded":
             limit = details.get("limit_type", "unknown")

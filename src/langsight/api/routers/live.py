@@ -13,6 +13,8 @@ The dashboard connects via EventSource and receives events like:
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+
 from fastapi import APIRouter, Request
 from starlette.responses import StreamingResponse
 
@@ -39,7 +41,7 @@ async def live_events(request: Request) -> StreamingResponse:
     """
     broadcaster = request.app.state.broadcaster
 
-    async def event_generator():  # type: ignore[no-untyped-def]
+    async def event_generator() -> AsyncGenerator[str, None]:
         ACTIVE_SSE.inc()
         try:
             async for event in broadcaster.subscribe():

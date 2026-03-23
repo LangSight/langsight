@@ -21,7 +21,7 @@ Usage in main.py:
 from __future__ import annotations
 
 import time
-from typing import Any
+from collections.abc import Awaitable, Callable
 
 from fastapi import APIRouter, Request, Response
 from prometheus_client import (
@@ -99,7 +99,11 @@ _SKIP_PATHS = {"/metrics", "/api/liveness", "/api/readiness"}
 class PrometheusMiddleware(BaseHTTPMiddleware):
     """Record request count and duration for every API call."""
 
-    async def dispatch(self, request: Request, call_next: Any) -> StarletteResponse:
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[StarletteResponse]],
+    ) -> StarletteResponse:
         path = request.url.path
         if path in _SKIP_PATHS:
             return await call_next(request)

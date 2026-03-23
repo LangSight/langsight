@@ -59,6 +59,8 @@ def _login_rate_key(request: Request) -> str:
             # X-Forwarded-For: client, proxy1, proxy2 — first entry is the real client
             return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
+
+
 router = APIRouter(prefix="/users", tags=["users"])
 # Public endpoints — no API key required (used during login and invite acceptance)
 public_router = APIRouter(prefix="/users", tags=["users"])
@@ -213,7 +215,9 @@ async def invite_user(
 
     client_ip = request.client.host if request.client else "unknown"
     masked_email = _mask_email(body.email)
-    logger.info("audit.user.invite_created", email=masked_email, role=body.role.value, client_ip=client_ip)
+    logger.info(
+        "audit.user.invite_created", email=masked_email, role=body.role.value, client_ip=client_ip
+    )
     append_audit(
         "user.invite_created",
         inviter_id,
@@ -300,7 +304,9 @@ async def accept_invite(
 
     client_ip = request.client.host if request.client else "unknown"
     masked_email = _mask_email(user.email)
-    logger.info("audit.user.account_created", email=masked_email, role=user.role.value, client_ip=client_ip)
+    logger.info(
+        "audit.user.account_created", email=masked_email, role=user.role.value, client_ip=client_ip
+    )
     append_audit(
         "user.account_created",
         user.id,
@@ -354,7 +360,9 @@ async def update_role(
         raise HTTPException(status_code=404, detail="User not found.")
 
     client_ip = request.client.host if request.client else "unknown"
-    logger.info("audit.user.role_changed", user_id=user_id, new_role=body.role.value, client_ip=client_ip)
+    logger.info(
+        "audit.user.role_changed", user_id=user_id, new_role=body.role.value, client_ip=client_ip
+    )
     append_audit(
         "user.role_changed",
         user_id,

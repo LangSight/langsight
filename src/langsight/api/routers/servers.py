@@ -1,4 +1,5 @@
 """MCP Server catalog API — metadata CRUD, mirroring agents metadata pattern."""
+
 from __future__ import annotations
 
 import json
@@ -64,7 +65,11 @@ async def get_server_metadata(
     return _coerce(row)
 
 
-@router.put("/metadata/{server_name}", response_model=ServerMetadataResponse, status_code=http_status.HTTP_200_OK)
+@router.put(
+    "/metadata/{server_name}",
+    response_model=ServerMetadataResponse,
+    status_code=http_status.HTTP_200_OK,
+)
 async def upsert_server_metadata(
     server_name: str,
     body: ServerMetadataUpdate,
@@ -98,6 +103,7 @@ async def delete_server_metadata(
 
 
 # ── Tool schema capture (from SDK list_tools() interception) ─────────────────
+
 
 class ToolSchemaPayload(BaseModel):
     tools: list[dict[str, Any]]

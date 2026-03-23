@@ -981,7 +981,14 @@ class ClickHouseBackend:
             parameters=params,
         )
 
-        cols = ["agent_name", "server_name", "call_count", "error_count", "avg_latency_ms", "session_count"]
+        cols = [
+            "agent_name",
+            "server_name",
+            "call_count",
+            "error_count",
+            "avg_latency_ms",
+            "session_count",
+        ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
     async def _lineage_handoff_edges(
@@ -1042,9 +1049,7 @@ class ClickHouseBackend:
         """No-op: prevention config lives in Postgres."""
         return config
 
-    async def delete_prevention_config(
-        self, agent_name: str, project_id: str
-    ) -> bool:
+    async def delete_prevention_config(self, agent_name: str, project_id: str) -> bool:
         """No-op: prevention config lives in Postgres."""
         return False
 

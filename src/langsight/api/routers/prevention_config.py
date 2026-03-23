@@ -64,7 +64,7 @@ class PreventionConfigResponse(BaseModel):
     cb_cooldown_seconds: float
     cb_half_open_max_calls: int
     is_default: bool  # True when this came from the "*" project default
-    updated_at: str   # ISO 8601
+    updated_at: str  # ISO 8601
 
 
 # ---------------------------------------------------------------------------
@@ -105,10 +105,14 @@ async def get_prevention_config(
     Returns 404 when no config is set — SDK falls back to constructor defaults.
     """
     if not project_id or not hasattr(storage, "get_effective_prevention_config"):
-        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="No prevention config found.")
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="No prevention config found."
+        )
     config = await storage.get_effective_prevention_config(agent_name, project_id)
     if not config:
-        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="No prevention config found.")
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="No prevention config found."
+        )
     return _to_response(config)
 
 
@@ -126,7 +130,9 @@ async def upsert_prevention_config(
 ) -> PreventionConfigResponse:
     """Upsert prevention thresholds for an agent. SDK will pick these up on next wrap()."""
     if not project_id:
-        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Project required.")
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST, detail="Project required."
+        )
     if not hasattr(storage, "upsert_prevention_config"):
         raise HTTPException(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -172,7 +178,9 @@ async def delete_prevention_config(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Not found.")
     found = await storage.delete_prevention_config(agent_name, project_id)
     if not found:
-        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="No config found for this agent.")
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="No config found for this agent."
+        )
 
 
 @router.get(
@@ -190,7 +198,9 @@ async def get_project_prevention_config(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Not found.")
     config = await storage.get_prevention_config(_DEFAULT_AGENT, project_id)
     if not config:
-        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="No project default set.")
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="No project default set."
+        )
     return _to_response(config)
 
 
@@ -207,7 +217,9 @@ async def upsert_project_prevention_config(
 ) -> PreventionConfigResponse:
     """Upsert project-level defaults applied to all agents without a specific config."""
     if not project_id:
-        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Project required.")
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST, detail="Project required."
+        )
     if not hasattr(storage, "upsert_prevention_config"):
         raise HTTPException(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,

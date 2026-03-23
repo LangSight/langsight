@@ -61,6 +61,7 @@ def invalidate_api_key_cache() -> None:
     global _HAS_DB_KEYS_CACHE  # noqa: PLW0603
     _HAS_DB_KEYS_CACHE = (False, 0.0)
 
+
 # Header scheme — clients send:  X-API-Key: <key>
 # SDK clients may send:          Authorization: Bearer <key>
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)

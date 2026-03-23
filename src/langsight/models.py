@@ -258,12 +258,12 @@ class PreventionConfig(BaseModel):
 
     # Loop detection
     loop_enabled: bool = True
-    loop_threshold: int = 3       # same tool+args N times = loop
+    loop_threshold: int = 3  # same tool+args N times = loop
     loop_action: str = "terminate"  # "terminate" | "warn"
 
     # Budget guardrails
-    max_steps: int | None = None        # None = disabled
-    max_cost_usd: float | None = None   # None = disabled
+    max_steps: int | None = None  # None = disabled
+    max_cost_usd: float | None = None  # None = disabled
     max_wall_time_s: float | None = None  # None = disabled
     budget_soft_alert: float = 0.80
 

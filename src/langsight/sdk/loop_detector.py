@@ -131,9 +131,7 @@ class LoopDetector:
             )
         )
 
-    def _check_repetition(
-        self, tool_name: str, args_hash: str
-    ) -> LoopDetection | None:
+    def _check_repetition(self, tool_name: str, args_hash: str) -> LoopDetection | None:
         """Count consecutive identical calls at the tail of the window."""
         count = 0
         for record in reversed(self._recent):
@@ -152,9 +150,7 @@ class LoopDetector:
             )
         return None
 
-    def _check_ping_pong(
-        self, tool_name: str, args_hash: str
-    ) -> LoopDetection | None:
+    def _check_ping_pong(self, tool_name: str, args_hash: str) -> LoopDetection | None:
         """Detect alternating A→B→A→B→A pattern.
 
         For threshold=3: history must be [A,B,A,B] and proposed is A.
@@ -187,9 +183,7 @@ class LoopDetector:
             args_hash=args_hash,
         )
 
-    def _check_retry_without_progress(
-        self, tool_name: str, args_hash: str
-    ) -> LoopDetection | None:
+    def _check_retry_without_progress(self, tool_name: str, args_hash: str) -> LoopDetection | None:
         """Detect same tool failing with the same error repeatedly."""
         # Count consecutive errors with same tool+error at tail
         count = 0

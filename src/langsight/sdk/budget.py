@@ -14,13 +14,17 @@ Step count and wall time are checked pre-call.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
-from typing import Literal
+from dataclasses import dataclass
+from typing import Literal, Protocol
 
 import structlog
 from pydantic import BaseModel
 
 logger = structlog.get_logger()
+
+
+class _MonotonicClock(Protocol):
+    def monotonic(self) -> float: ...
 
 
 class BudgetConfig(BaseModel, frozen=True):
@@ -62,21 +66,19 @@ class SessionBudget:
         self,
         config: BudgetConfig,
         *,
-        _clock: object | None = None,
+        _clock: _MonotonicClock | None = None,
     ) -> None:
         self._config = config
         self._step_count: int = 0
         self._cumulative_cost_usd: float = 0.0
-        self._started_at: float = (
-            _clock.monotonic() if _clock is not None else time.monotonic()  # type: ignore[union-attr]
-        )
+        self._started_at: float = _clock.monotonic() if _clock is not None else time.monotonic()
         self._soft_warned: set[str] = set()
         self._clock = _clock
         self._cost_exceeded: bool = False
 
     def _now(self) -> float:
         if self._clock is not None:
-            return self._clock.monotonic()  # type: ignore[union-attr]
+            return self._clock.monotonic()
         return time.monotonic()
 
     @property
@@ -174,10 +176,7 @@ class SessionBudget:
                     )
                 )
 
-        if (
-            self._config.max_cost_usd is not None
-            and "max_cost_usd" not in self._soft_warned
-        ):
+        if self._config.max_cost_usd is not None and "max_cost_usd" not in self._soft_warned:
             threshold = self._config.max_cost_usd * fraction
             if self._cumulative_cost_usd >= threshold:
                 self._soft_warned.add("max_cost_usd")
@@ -190,10 +189,7 @@ class SessionBudget:
                     )
                 )
 
-        if (
-            self._config.max_wall_time_s is not None
-            and "max_wall_time_s" not in self._soft_warned
-        ):
+        if self._config.max_wall_time_s is not None and "max_wall_time_s" not in self._soft_warned:
             threshold = self._config.max_wall_time_s * fraction
             wall = self.wall_time_s
             if wall >= threshold:

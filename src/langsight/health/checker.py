@@ -113,7 +113,9 @@ class HealthChecker:
             return result
 
     async def check_many(
-        self, servers: list[MCPServer], global_timeout: float = 60.0,
+        self,
+        servers: list[MCPServer],
+        global_timeout: float = 60.0,
     ) -> list[HealthCheckResult]:
         """Check multiple MCP servers concurrently with a global timeout backstop.
 
@@ -128,14 +130,20 @@ class HealthChecker:
             )
             return list(results)
         except TimeoutError:
-            logger.error("health_checker.global_timeout", timeout=global_timeout, servers=len(servers))
+            logger.error(
+                "health_checker.global_timeout", timeout=global_timeout, servers=len(servers)
+            )
             # Return DOWN results for all servers
             now = datetime.now(UTC)
             return [
                 HealthCheckResult(
-                    server_name=s.name, status=ServerStatus.DOWN,
-                    latency_ms=None, tools_count=0, schema_hash=None,
-                    error=f"global timeout ({global_timeout}s)", checked_at=now,
+                    server_name=s.name,
+                    status=ServerStatus.DOWN,
+                    latency_ms=None,
+                    tools_count=0,
+                    schema_hash=None,
+                    error=f"global timeout ({global_timeout}s)",
+                    checked_at=now,
                 )
                 for s in servers
             ]

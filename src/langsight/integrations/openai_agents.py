@@ -89,9 +89,7 @@ class LangSightOpenAIHooks(BaseIntegration):
 
     # -- RunHooks protocol methods --
 
-    async def on_tool_start(
-        self, context: Any, agent: Any, tool: Any, **kwargs: Any
-    ) -> None:
+    async def on_tool_start(self, context: Any, agent: Any, tool: Any, **kwargs: Any) -> None:
         """Called when the agent begins executing a tool."""
         try:
             self._pending[self._tool_key(agent, tool)] = datetime.now(UTC)
@@ -131,9 +129,7 @@ class LangSightOpenAIHooks(BaseIntegration):
         except Exception:  # noqa: BLE001
             logger.debug("openai_agents.on_tool_error_failed", tool=str(tool))
 
-    async def on_handoff(
-        self, context: Any, from_agent: Any, to_agent: Any, **kwargs: Any
-    ) -> None:
+    async def on_handoff(self, context: Any, from_agent: Any, to_agent: Any, **kwargs: Any) -> None:
         """Called when one agent hands off to another."""
         try:
             handoff = ToolCallSpan.handoff_span(
@@ -152,7 +148,9 @@ class LangSightOpenAIHooks(BaseIntegration):
     async def on_agent_start(self, context: Any, agent: Any, **kwargs: Any) -> None:
         """Called when an agent begins a run."""
 
-    async def on_agent_end(self, context: Any, agent: Any, output: Any = None, **kwargs: Any) -> None:
+    async def on_agent_end(
+        self, context: Any, agent: Any, output: Any = None, **kwargs: Any
+    ) -> None:
         """Called when an agent completes a run."""
 
 

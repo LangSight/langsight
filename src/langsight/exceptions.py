@@ -57,8 +57,13 @@ class LoopDetectedError(LangSightError):
             f"({loop_count} repetitions, args_hash={args_hash})"
         )
 
-    def __reduce__(self) -> tuple:  # type: ignore[override]
-        return (self.__class__, (self.tool_name, self.loop_count, self.args_hash, self.pattern, self.session_id))
+    def __reduce__(
+        self,
+    ) -> tuple[type[LoopDetectedError], tuple[str, int, str, str, str | None]]:
+        return (
+            self.__class__,
+            (self.tool_name, self.loop_count, self.args_hash, self.pattern, self.session_id),
+        )
 
 
 class BudgetExceededError(LangSightError):
@@ -76,12 +81,16 @@ class BudgetExceededError(LangSightError):
         self.actual_value = actual_value
         self.session_id = session_id
         super().__init__(
-            f"Budget exceeded: {limit_type} limit is {limit_value}, "
-            f"actual is {actual_value}"
+            f"Budget exceeded: {limit_type} limit is {limit_value}, actual is {actual_value}"
         )
 
-    def __reduce__(self) -> tuple:  # type: ignore[override]
-        return (self.__class__, (self.limit_type, self.limit_value, self.actual_value, self.session_id))
+    def __reduce__(
+        self,
+    ) -> tuple[type[BudgetExceededError], tuple[str, float, float, str | None]]:
+        return (
+            self.__class__,
+            (self.limit_type, self.limit_value, self.actual_value, self.session_id),
+        )
 
 
 class CircuitBreakerOpenError(LangSightError):
@@ -95,5 +104,7 @@ class CircuitBreakerOpenError(LangSightError):
             f"{cooldown_remaining_s:.1f}s remaining in cooldown"
         )
 
-    def __reduce__(self) -> tuple:  # type: ignore[override]
+    def __reduce__(
+        self,
+    ) -> tuple[type[CircuitBreakerOpenError], tuple[str, float]]:
         return (self.__class__, (self.server_name, self.cooldown_remaining_s))

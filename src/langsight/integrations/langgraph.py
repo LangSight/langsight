@@ -114,11 +114,7 @@ class LangSightLangGraphCallback(BaseIntegration):
         **kwargs: Any,
     ) -> None:
         """Track which LangGraph node is currently executing."""
-        node_name = (
-            serialized.get("name")
-            or serialized.get("id", ["unknown"])[-1]
-            or "unknown"
-        )
+        node_name = serialized.get("name") or serialized.get("id", ["unknown"])[-1] or "unknown"
         key = str(run_id)
         self._active_nodes[key] = node_name
         self._current_node = node_name
@@ -160,11 +156,7 @@ class LangSightLangGraphCallback(BaseIntegration):
         **kwargs: Any,
     ) -> None:
         """Called when a tool call begins within a graph node."""
-        tool_name = (
-            serialized.get("name")
-            or serialized.get("id", ["unknown"])[-1]
-            or "unknown"
-        )
+        tool_name = serialized.get("name") or serialized.get("id", ["unknown"])[-1] or "unknown"
         self._pending[str(run_id)] = (tool_name, datetime.now(UTC), self._current_node)
 
     def on_tool_end(
@@ -219,9 +211,7 @@ class LangSightLangGraphCallback(BaseIntegration):
 
     # -- LLM lifecycle (optional — captures model usage) --
 
-    def on_llm_start(
-        self, serialized: dict[str, Any], prompts: list[str], **kwargs: Any
-    ) -> None:
+    def on_llm_start(self, serialized: dict[str, Any], prompts: list[str], **kwargs: Any) -> None:
         """No-op — can be extended to capture LLM spans."""
 
     def on_llm_end(self, response: Any, **kwargs: Any) -> None:

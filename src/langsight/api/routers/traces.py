@@ -69,14 +69,17 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
     broadcaster = getattr(request.app.state, "broadcaster", None)
     if broadcaster:
         for span in spans:
-            broadcaster.publish("span:new", {
-                "session_id": span.session_id,
-                "agent_name": span.agent_name,
-                "server_name": span.server_name,
-                "tool_name": span.tool_name,
-                "status": span.status,
-                "latency_ms": span.latency_ms,
-            })
+            broadcaster.publish(
+                "span:new",
+                {
+                    "session_id": span.session_id,
+                    "agent_name": span.agent_name,
+                    "server_name": span.server_name,
+                    "tool_name": span.tool_name,
+                    "status": span.status,
+                    "latency_ms": span.latency_ms,
+                },
+            )
 
     return {"accepted": len(spans)}
 

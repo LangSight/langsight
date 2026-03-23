@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import structlog
@@ -277,6 +277,7 @@ class LangSightClient:
         """Fetch prevention config from the API. Returns None on any failure (fail-open)."""
         try:
             from urllib.parse import quote
+
             http = await self._get_http()
             # safe='' ensures ALL special chars (including /) are percent-encoded
             safe_agent = quote(agent_name, safe="")
@@ -285,14 +286,12 @@ class LangSightClient:
                 url = f"{url}?project_id={quote(project_id, safe='')}"
             resp = await http.get(url)
             if resp.status_code == 200:
-                return resp.json()
+                return cast(dict[str, Any], resp.json())
         except Exception:  # noqa: BLE001
             pass  # offline or unreachable — constructor defaults remain active
         return None
 
-    async def _apply_remote_config(
-        self, agent_name: str, project_id: str | None
-    ) -> None:
+    async def _apply_remote_config(self, agent_name: str, project_id: str | None) -> None:
         """Fetch and apply remote prevention config, overriding constructor defaults.
 
         Called as a fire-and-forget background task from wrap(). If the API is
@@ -315,8 +314,7 @@ class LangSightClient:
 
         # Override budget config
         has_any_limit = any(
-            config.get(k) is not None
-            for k in ("max_steps", "max_cost_usd", "max_wall_time_s")
+            config.get(k) is not None for k in ("max_steps", "max_cost_usd", "max_wall_time_s")
         )
         if has_any_limit:
             self._budget_config = BudgetConfig(
@@ -377,6 +375,7 @@ class LangSightClient:
         url = f"{self._url}{endpoint}"
         if project_id:
             from urllib.parse import quote
+
             url = f"{url}?project_id={quote(project_id, safe='')}"
         payload: dict[str, object] = {"tools": tools}
         try:
@@ -479,11 +478,15 @@ class MCPClientProxy:
             tools_list = getattr(result, "tools", None) or result
             tools_payload = []
             for t in tools_list:
-                tools_payload.append({
-                    "name": getattr(t, "name", str(t)),
-                    "description": getattr(t, "description", "") or "",
-                    "input_schema": getattr(t, "inputSchema", None) or getattr(t, "input_schema", None) or {},
-                })
+                tools_payload.append(
+                    {
+                        "name": getattr(t, "name", str(t)),
+                        "description": getattr(t, "description", "") or "",
+                        "input_schema": getattr(t, "inputSchema", None)
+                        or getattr(t, "input_schema", None)
+                        or {},
+                    }
+                )
             record_coro = langsight.record_tool_schemas(server_name, tools_payload, project_id)
             try:
                 asyncio.create_task(record_coro)
@@ -518,8 +521,17 @@ class MCPClientProxy:
 
         # --- Pre-call prevention checks ---
         prevented = _check_prevention(
-            langsight, server_name, session_id, name, arguments,
-            started_at, trace_id, agent_name, parent_span_id, redact, project_id,
+            langsight,
+            server_name,
+            session_id,
+            name,
+            arguments,
+            started_at,
+            trace_id,
+            agent_name,
+            parent_span_id,
+            redact,
+            project_id,
         )
         if prevented is not None:
             span, exc = prevented
@@ -570,8 +582,13 @@ class MCPClientProxy:
             )
             # Post-call prevention updates (fail-open)
             _post_call_update(
-                langsight, server_name, session_id, name, arguments,
-                span, status,
+                langsight,
+                server_name,
+                session_id,
+                name,
+                arguments,
+                span,
+                status,
             )
             await langsight.send_span(span)
 
@@ -708,19 +725,13 @@ def _post_call_update(
     # Loop detector
     loop_det = langsight._get_loop_detector(session_id)
     if loop_det is not None:
-        loop_det.record_call(
-            tool_name, arguments, status.value, span.error
-        )
+        loop_det.record_call(tool_name, arguments, status.value, span.error)
 
     # Budget: increment step count and add cost if available
     budget = langsight._get_session_budget(session_id)
     if budget is not None:
         cost = 0.0
-        if (
-            span.input_tokens is not None
-            and span.output_tokens is not None
-            and span.model_id
-        ):
+        if span.input_tokens is not None and span.output_tokens is not None and span.model_id:
             pricing = langsight._pricing_table.get(span.model_id)
             if pricing:
                 input_price, output_price = pricing

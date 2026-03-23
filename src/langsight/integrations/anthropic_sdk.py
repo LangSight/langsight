@@ -113,7 +113,9 @@ class AnthropicToolTracer(BaseIntegration):
                     agent_name=self._agent_name,
                     session_id=self._session_id,
                     trace_id=self._trace_id,
-                    input_args=None if self._redact else (tool_input if isinstance(tool_input, dict) else None),
+                    input_args=None
+                    if self._redact
+                    else (tool_input if isinstance(tool_input, dict) else None),
                     model_id=model,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
@@ -147,6 +149,7 @@ class AnthropicToolTracer(BaseIntegration):
             result = await handler(**tool_input)
             try:
                 import json
+
                 output = json.dumps(result, default=str)
             except Exception:  # noqa: BLE001
                 output = str(result)
@@ -220,9 +223,7 @@ class LangSightClaudeAgentHooks(BaseIntegration):
         except Exception:  # noqa: BLE001
             pass
 
-    async def on_tool_end(
-        self, tool_name: str, tool_output: Any = None, **kwargs: Any
-    ) -> None:
+    async def on_tool_end(self, tool_name: str, tool_output: Any = None, **kwargs: Any) -> None:
         """Called when a tool execution completes."""
         try:
             started_at = self._pending.pop(tool_name, datetime.now(UTC))
@@ -235,9 +236,7 @@ class LangSightClaudeAgentHooks(BaseIntegration):
         except Exception:  # noqa: BLE001
             logger.debug("claude_agent.on_tool_end_failed", tool=tool_name)
 
-    async def on_tool_error(
-        self, tool_name: str, error: Any = None, **kwargs: Any
-    ) -> None:
+    async def on_tool_error(self, tool_name: str, error: Any = None, **kwargs: Any) -> None:
         """Called when a tool execution fails."""
         try:
             started_at = self._pending.pop(tool_name, datetime.now(UTC))
@@ -251,9 +250,7 @@ class LangSightClaudeAgentHooks(BaseIntegration):
         except Exception:  # noqa: BLE001
             logger.debug("claude_agent.on_tool_error_failed", tool=tool_name)
 
-    async def on_handoff(
-        self, from_agent: str, to_agent: str, **kwargs: Any
-    ) -> None:
+    async def on_handoff(self, from_agent: str, to_agent: str, **kwargs: Any) -> None:
         """Called when one agent delegates to another."""
         try:
             handoff = ToolCallSpan.handoff_span(

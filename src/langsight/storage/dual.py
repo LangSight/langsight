@@ -155,9 +155,7 @@ class DualStorage:
     async def upsert_prevention_config(self, config: PreventionConfig) -> PreventionConfig:
         return await self._meta.upsert_prevention_config(config)
 
-    async def delete_prevention_config(
-        self, agent_name: str, project_id: str
-    ) -> bool:
+    async def delete_prevention_config(self, agent_name: str, project_id: str) -> bool:
         return await self._meta.delete_prevention_config(agent_name, project_id)
 
     # v0.3 Session health tags → ClickHouse
@@ -169,7 +167,9 @@ class DualStorage:
         details: str | None = None,
         project_id: str | None = None,
     ) -> None:
-        return await self._analytics.save_session_health_tag(session_id, health_tag, details, project_id)
+        return await self._analytics.save_session_health_tag(
+            session_id, health_tag, details, project_id
+        )
 
     async def get_session_health_tag(self, session_id: str) -> str | None:
         return await self._analytics.get_session_health_tag(session_id)
@@ -349,11 +349,24 @@ class DualStorage:
     async def get_all_agent_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]:
         return await self._meta.get_all_agent_metadata(project_id=project_id)
 
-    async def get_agent_metadata(self, agent_name: str, project_id: str | None = None) -> dict[str, Any] | None:
+    async def get_agent_metadata(
+        self, agent_name: str, project_id: str | None = None
+    ) -> dict[str, Any] | None:
         return await self._meta.get_agent_metadata(agent_name, project_id=project_id)
 
-    async def upsert_agent_metadata(self, agent_name: str, description: str, owner: str, tags: list[str], status: str, runbook_url: str, project_id: str | None = None) -> dict[str, Any]:
-        return await self._meta.upsert_agent_metadata(agent_name, description, owner, tags, status, runbook_url, project_id)
+    async def upsert_agent_metadata(
+        self,
+        agent_name: str,
+        description: str,
+        owner: str,
+        tags: list[str],
+        status: str,
+        runbook_url: str,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._meta.upsert_agent_metadata(
+            agent_name, description, owner, tags, status, runbook_url, project_id
+        )
 
     async def delete_agent_metadata(self, agent_name: str, project_id: str | None = None) -> bool:
         return await self._meta.delete_agent_metadata(agent_name, project_id=project_id)
@@ -363,19 +376,43 @@ class DualStorage:
     async def get_all_server_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]:
         return await self._meta.get_all_server_metadata(project_id=project_id)
 
-    async def get_server_metadata(self, server_name: str, project_id: str | None = None) -> dict[str, Any] | None:
+    async def get_server_metadata(
+        self, server_name: str, project_id: str | None = None
+    ) -> dict[str, Any] | None:
         return await self._meta.get_server_metadata(server_name, project_id=project_id)
 
-    async def upsert_server_metadata(self, *, server_name: str, description: str = "", owner: str = "", tags: list[str] | None = None, transport: str = "", runbook_url: str = "", project_id: str | None = None) -> dict[str, Any]:
-        return await self._meta.upsert_server_metadata(server_name=server_name, description=description, owner=owner, tags=tags, transport=transport, runbook_url=runbook_url, project_id=project_id)
+    async def upsert_server_metadata(
+        self,
+        *,
+        server_name: str,
+        description: str = "",
+        owner: str = "",
+        tags: list[str] | None = None,
+        transport: str = "",
+        runbook_url: str = "",
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._meta.upsert_server_metadata(
+            server_name=server_name,
+            description=description,
+            owner=owner,
+            tags=tags,
+            transport=transport,
+            runbook_url=runbook_url,
+            project_id=project_id,
+        )
 
     async def delete_server_metadata(self, server_name: str, project_id: str | None = None) -> bool:
         return await self._meta.delete_server_metadata(server_name, project_id=project_id)
 
-    async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]], project_id: str | None = None) -> None:
+    async def upsert_server_tools(
+        self, server_name: str, tools: list[dict[str, object]], project_id: str | None = None
+    ) -> None:
         return await self._meta.upsert_server_tools(server_name, tools, project_id=project_id)
 
-    async def get_server_tools(self, server_name: str, project_id: str | None = None) -> list[dict[str, object]]:
+    async def get_server_tools(
+        self, server_name: str, project_id: str | None = None
+    ) -> list[dict[str, object]]:
         return await self._meta.get_server_tools(server_name, project_id=project_id)
 
     # ── ClickHouse extension methods ──────────────────────────────────────────

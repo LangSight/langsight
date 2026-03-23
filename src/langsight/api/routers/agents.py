@@ -156,8 +156,11 @@ async def list_sessions(
         return []
 
     rows = await storage.get_agent_sessions(
-        hours=hours, agent_name=agent_name, limit=limit,
-        project_id=project_id, health_tag=health_tag,
+        hours=hours,
+        agent_name=agent_name,
+        limit=limit,
+        project_id=project_id,
+        health_tag=health_tag,
     )
     return [
         AgentSession(
@@ -217,11 +220,13 @@ async def compare_sessions(
     # treated as belonging to any project — they are not rejected.
     if project_id:
         spans_a_in_project = [
-            s for s in result["spans_a"]
+            s
+            for s in result["spans_a"]
             if s.get("project_id") is None or s.get("project_id") == project_id
         ]
         spans_b_in_project = [
-            s for s in result["spans_b"]
+            s
+            for s in result["spans_b"]
             if s.get("project_id") is None or s.get("project_id") == project_id
         ]
         if result["spans_a"] and not spans_a_in_project:
@@ -420,6 +425,7 @@ async def list_agent_metadata(
         r["updated_at"] = str(r["updated_at"])
         if isinstance(r.get("tags"), str):
             import json
+
             r["tags"] = json.loads(r["tags"])
     return rows
 
@@ -438,6 +444,7 @@ async def get_agent_metadata(
     row["updated_at"] = str(row["updated_at"])
     if isinstance(row.get("tags"), str):
         import json
+
         row["tags"] = json.loads(row["tags"])
     return row
 
@@ -468,6 +475,7 @@ async def upsert_agent_metadata(
     row["updated_at"] = str(row["updated_at"])
     if isinstance(row.get("tags"), str):
         import json
+
         row["tags"] = json.loads(row["tags"])
     return row
 

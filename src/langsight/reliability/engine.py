@@ -123,7 +123,9 @@ class ReliabilityEngine:
             return []
 
         try:
-            rows = await self._storage.get_tool_reliability(server_name=server_name, hours=hours, project_id=project_id)
+            rows = await self._storage.get_tool_reliability(
+                server_name=server_name, hours=hours, project_id=project_id
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("reliability.query_error", error=str(exc))
             return []
@@ -217,7 +219,9 @@ class AnomalyDetector:
 
         try:
             baseline_rows, current_rows = await _gather(
-                self._storage.get_baseline_stats(baseline_hours=baseline_hours, project_id=project_id),
+                self._storage.get_baseline_stats(
+                    baseline_hours=baseline_hours, project_id=project_id
+                ),
                 self._storage.get_tool_reliability(hours=current_hours, project_id=project_id),
             )
         except Exception as exc:  # noqa: BLE001
@@ -314,7 +318,10 @@ class SLOEvaluator:
             key = (slo.agent_name, slo.window_hours)
             if key not in windows:
                 windows[key] = (
-                    await self._fetch_session_stats(slo.agent_name, slo.window_hours, project_id=project_id) or {}
+                    await self._fetch_session_stats(
+                        slo.agent_name, slo.window_hours, project_id=project_id
+                    )
+                    or {}
                 )
 
         results = []
@@ -351,14 +358,20 @@ class SLOEvaluator:
         return results
 
     async def _fetch_session_stats(
-        self, agent_name: str, window_hours: int, project_id: str | None = None,
+        self,
+        agent_name: str,
+        window_hours: int,
+        project_id: str | None = None,
     ) -> dict[str, Any] | None:
         """Fetch session summary stats for one agent over a time window."""
         if not hasattr(self._storage, "get_agent_sessions"):
             return None
         try:
             sessions = await self._storage.get_agent_sessions(
-                hours=window_hours, agent_name=agent_name, limit=10_000, project_id=project_id,
+                hours=window_hours,
+                agent_name=agent_name,
+                limit=10_000,
+                project_id=project_id,
             )
             if not sessions:
                 return None

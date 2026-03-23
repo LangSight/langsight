@@ -73,9 +73,7 @@ class ToolCallSpan(BaseModel):
     def _compute_latency(self) -> ToolCallSpan:
         """Auto-compute latency_ms from started_at/ended_at if not provided."""
         if self.latency_ms is None:
-            self.latency_ms = round(
-                (self.ended_at - self.started_at).total_seconds() * 1000, 2
-            )
+            self.latency_ms = round((self.ended_at - self.started_at).total_seconds() * 1000, 2)
         return self
 
     @classmethod
