@@ -48,17 +48,20 @@ logger = structlog.get_logger()
 def _fire_and_forget(coro: Any) -> None:
     """Schedule a coroutine from a synchronous LangChain callback.
 
-    Tries create_task if a loop is already running (async context).
-    Falls back to running in a daemon thread (sync/test context) to
-    avoid 'coroutine was never awaited' warnings.
+    Tries create_task if a loop is already running and not closing (async context).
+    Falls back to running in a daemon thread (sync/test context or loop teardown)
+    to avoid 'coroutine was never awaited' and 'Event loop is closed' warnings.
     """
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(coro)
+        if loop.is_running() and not loop.is_closed():
+            loop.create_task(coro)
+            return
     except RuntimeError:
-        # No running loop — run in a background thread so the coroutine is awaited
-        thread = threading.Thread(target=asyncio.run, args=(coro,), daemon=True)
-        thread.start()
+        pass
+    # No running loop or loop is closing — use a background thread
+    thread = threading.Thread(target=asyncio.run, args=(coro,), daemon=True)
+    thread.start()
 
 
 class LangSightLangChainCallback(BaseIntegration):

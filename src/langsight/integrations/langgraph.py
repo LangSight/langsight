@@ -52,10 +52,13 @@ def _fire_and_forget(coro: Any) -> None:
     """Schedule a coroutine from a synchronous LangChain/LangGraph callback."""
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(coro)
+        if loop.is_running() and not loop.is_closed():
+            loop.create_task(coro)
+            return
     except RuntimeError:
-        thread = threading.Thread(target=asyncio.run, args=(coro,), daemon=True)
-        thread.start()
+        pass
+    thread = threading.Thread(target=asyncio.run, args=(coro,), daemon=True)
+    thread.start()
 
 
 class LangSightLangGraphCallback(BaseIntegration):
