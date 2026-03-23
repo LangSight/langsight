@@ -2,9 +2,5 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "outputDirectory": "out",
-  "installCommand": "npm install",
-  "redirects": [
-    { "source": "/docs", "destination": "https://docs.langsight.dev", "permanent": true },
-    { "source": "/docs/:path*", "destination": "https://docs.langsight.dev/:path*", "permanent": true }
-  ]
+  "installCommand": "npm install"
 }

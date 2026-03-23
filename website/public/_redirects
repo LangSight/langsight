@@ -1,0 +1,3 @@
+# Redirect /docs to Mintlify docs site
+/docs https://docs.langsight.dev 301
+/docs/* https://docs.langsight.dev/:splat 301
