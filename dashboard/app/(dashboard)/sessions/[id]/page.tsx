@@ -9,6 +9,7 @@ import useSWR from "swr";
 import {
   ChevronRight, ChevronDown, GitBranch, Clock, Zap, AlertCircle,
   Search, GitCompare, Play, ArrowLeft, Columns2, Bot, Server,
+  Maximize2, Minimize2,
 } from "lucide-react";
 import { LineageGraph, type GraphNode, type GraphEdge, type GraphSelection } from "@/components/lineage-graph";
 import { PayloadSlideout } from "@/components/payload-slideout";
@@ -272,14 +273,14 @@ function useSessionGraph(
 /* ── Right panel: node detail for session ──────────────────── */
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">{children}</p>;
+  return <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">{children}</p>;
 }
 
 function MetricTile({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="rounded-lg p-3" style={{ background: "hsl(var(--muted))" }}>
-      <p className="text-[10px] text-muted-foreground mb-0.5">{label}</p>
-      <p className={cn("text-[13px] font-bold text-foreground", mono && "font-mono")} style={mono ? { fontFamily: "var(--font-geist-mono)" } : {}}>{value}</p>
+      <p className="text-[11px] text-muted-foreground mb-0.5">{label}</p>
+      <p className={cn("text-[15px] font-bold text-foreground", mono && "font-mono")} style={mono ? { fontFamily: "var(--font-geist-mono)" } : {}}>{value}</p>
     </div>
   );
 }
@@ -317,18 +318,18 @@ function SessionNodeDetail({ nodeId, trace, serverCallers }: { nodeId: string; t
             {isAgent ? <Bot size={18} style={{ color: "hsl(var(--primary))" }} /> : <Server size={18} className="text-muted-foreground" />}
           </div>
           <div className="min-w-0">
-            <p className="text-[14px] font-bold text-foreground truncate">{isPerCall && spans[0] ? spans[0].tool_name : name}</p>
+            <p className="text-[15px] font-semibold text-foreground truncate">{isPerCall && spans[0] ? spans[0].tool_name : name}</p>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-[11px] text-muted-foreground">{isPerCall ? `${name} · Tool Call` : isAgent ? "Agent" : "MCP Server"}</span>
+              <span className="text-[12px] text-muted-foreground">{isPerCall ? `${name} · Tool Call` : isAgent ? "Agent" : "MCP Server"}</span>
               <span className={cn("w-1.5 h-1.5 rounded-full", errors > 0 ? "bg-red-500" : "bg-emerald-500")} />
-              <span className="text-[11px]" style={{ color: errors > 0 ? "#ef4444" : "#10b981" }}>
+              <span className="text-[12px]" style={{ color: errors > 0 ? "#ef4444" : "#10b981" }}>
                 {errors > 0 ? `${errors} error${errors > 1 ? "s" : ""}` : "All OK"}
               </span>
             </div>
             {!isPerCall && (
               <Link
                 href={isAgent ? `/agents` : `/servers`}
-                className="mt-1 inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
+                className="mt-1 inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
               >
                 View in {isAgent ? "Agent" : "Server"} Catalog →
               </Link>
@@ -338,7 +339,7 @@ function SessionNodeDetail({ nodeId, trace, serverCallers }: { nodeId: string; t
       </div>
 
       {/* Overview metrics */}
-      <div className="px-5 py-4">
+      <div className="px-5 py-5">
         <SectionLabel>Overview</SectionLabel>
         <div className="grid grid-cols-2 gap-2">
           <MetricTile label="Total Calls" value={totalCalls.toLocaleString()} />
@@ -347,7 +348,7 @@ function SessionNodeDetail({ nodeId, trace, serverCallers }: { nodeId: string; t
           <MetricTile label="Max Latency" value={`${Math.round(maxLatency)}ms`} />
         </div>
         {errorRate > 0 && (
-          <div className="mt-2 rounded-lg px-3 py-2 flex items-center justify-between" style={{ background: "rgba(239,68,68,0.06)" }}>
+          <div className="mt-2 rounded-lg px-3 py-2 flex items-center justify-between" style={{ background: "rgba(239,68,68,0.06)", borderLeft: "3px solid hsl(var(--danger))" }}>
             <span className="text-[11px] text-muted-foreground">Error Rate</span>
             <span className="text-[12px] font-bold" style={{ color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{errorRate.toFixed(1)}%</span>
           </div>
@@ -454,9 +455,9 @@ function SessionNodeDetail({ nodeId, trace, serverCallers }: { nodeId: string; t
           </div>
           {models.length > 0 && (
             <div className="mt-2 rounded-lg px-3 py-2 flex items-center gap-2" style={{ background: "hsl(var(--muted))" }}>
-              <span className="text-[10px] text-muted-foreground">Model</span>
+              <span className="text-[11px] text-muted-foreground">Model</span>
               {models.map((m) => (
-                <code key={m} className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}>{m}</code>
+                <code key={m} className="text-[11px] px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}>{m}</code>
               ))}
             </div>
           )}
@@ -522,7 +523,7 @@ function SessionNodeDetail({ nodeId, trace, serverCallers }: { nodeId: string; t
                   )}
                   {s.input_json && (
                     <div className="mt-2">
-                      <p className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1">Input</p>
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-widest mb-1">Input</p>
                       <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-32 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))" }}>
                         {(() => { try { return JSON.stringify(JSON.parse(s.input_json), null, 2); } catch { return s.input_json; } })()}
                       </pre>
@@ -530,7 +531,7 @@ function SessionNodeDetail({ nodeId, trace, serverCallers }: { nodeId: string; t
                   )}
                   {s.output_json && (
                     <div>
-                      <p className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1">Output</p>
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-widest mb-1">Output</p>
                       <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-32 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))" }}>
                         {(() => { try { return JSON.stringify(JSON.parse(s.output_json), null, 2); } catch { return s.output_json; } })()}
                       </pre>
@@ -650,9 +651,9 @@ function SessionEdgeDetail({
           </div>
           {metrics.models.length > 0 && (
             <div className="mt-2 rounded-lg px-3 py-2 flex items-center gap-2" style={{ background: "hsl(var(--muted))" }}>
-              <span className="text-[10px] text-muted-foreground">Model</span>
+              <span className="text-[11px] text-muted-foreground">Model</span>
               {metrics.models.map((m) => (
-                <code key={m} className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}>{m}</code>
+                <code key={m} className="text-[11px] px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}>{m}</code>
               ))}
             </div>
           )}
@@ -679,7 +680,7 @@ function SessionEdgeDetail({
                 )}
                 {s.input_json && (
                   <div className="mt-2">
-                    <p className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1">Input</p>
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-widest mb-1">Input</p>
                     <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-32 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))" }}>
                       {(() => { try { return JSON.stringify(JSON.parse(s.input_json), null, 2); } catch { return s.input_json; } })()}
                     </pre>
@@ -687,7 +688,7 @@ function SessionEdgeDetail({
                 )}
                 {s.output_json && (
                   <div>
-                    <p className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1">Output</p>
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-widest mb-1">Output</p>
                     <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-32 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))" }}>
                       {(() => { try { return JSON.stringify(JSON.parse(s.output_json), null, 2); } catch { return s.output_json; } })()}
                     </pre>
@@ -1165,6 +1166,9 @@ export default function SessionDetailPage() {
   /* Payload slideout */
   const [payloadSlideout, setPayloadSlideout] = useState<{ title: string; tabs: { label: string; json: string | null }[] } | null>(null);
 
+  /* Graph fullscreen */
+  const [graphFullscreen, setGraphFullscreen] = useState(false);
+
   /* Compare */
   const [comparePicking, setComparePicking] = useState(false);
   const [compareWith, setCompareWith] = useState<string | null>(null);
@@ -1208,7 +1212,7 @@ export default function SessionDetailPage() {
   }
 
   return (
-    <div className="page-in flex flex-col" style={{ height: "calc(100vh - 4rem)" }}>
+    <div className="page-in flex flex-col" style={{ height: "calc(100vh - 4rem)", paddingBottom: "1rem" }}>
       {/* ── Back + Header ──────────────────────────────────────── */}
       <div className="flex-shrink-0 pb-3">
         <button
@@ -1342,25 +1346,66 @@ export default function SessionDetailPage() {
               ) : !trace ? (
                 <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No data</div>
               ) : (
-                <LineageGraph
-                  nodes={sessionGraph.nodes}
-                  edges={sessionGraph.edges}
-                  selection={selection}
-                  onSelectionChange={setSelection}
-                  expandedGroups={expandedGroups}
-                  onToggleGroup={handleToggleGroup}
-                  expandedEdges={expandedEdges}
-                  onToggleEdge={handleToggleEdge}
-                  onExpandAll={handleExpandAll}
-                  onCollapseAll={handleCollapseAll}
-                  nodeHeight={76}
-                  className="h-full"
-                />
+                <>
+                  <LineageGraph
+                    nodes={sessionGraph.nodes}
+                    edges={sessionGraph.edges}
+                    selection={selection}
+                    onSelectionChange={setSelection}
+                    expandedGroups={expandedGroups}
+                    onToggleGroup={handleToggleGroup}
+                    expandedEdges={expandedEdges}
+                    onToggleEdge={handleToggleEdge}
+                    onExpandAll={handleExpandAll}
+                    onCollapseAll={handleCollapseAll}
+                    nodeHeight={76}
+                    className="h-full"
+                  />
+                  {/* Fullscreen button — top-right corner overlay */}
+                  <button
+                    onClick={() => setGraphFullscreen(true)}
+                    className="btn btn-secondary absolute top-2 right-2 h-[26px] px-2 text-[11px] flex items-center gap-1 z-10"
+                    title="Fullscreen"
+                  >
+                    <Maximize2 size={12} />
+                  </button>
+                </>
               )}
             </div>
+
+            {/* Fullscreen overlay */}
+            {graphFullscreen && trace && (
+              <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "hsl(var(--background))" }}>
+                <div className="flex items-center justify-between px-4 py-2 border-b flex-shrink-0" style={{ borderColor: "hsl(var(--border))" }}>
+                  <span className="text-[13px] font-semibold" style={{ color: "hsl(var(--foreground))" }}>Session graph — {sessionId}</span>
+                  <button
+                    onClick={() => setGraphFullscreen(false)}
+                    className="btn btn-secondary text-xs flex items-center gap-1.5"
+                  >
+                    <Minimize2 size={12} /> Exit fullscreen
+                  </button>
+                </div>
+                <div className="flex-1 relative min-h-0">
+                  <LineageGraph
+                    nodes={sessionGraph.nodes}
+                    edges={sessionGraph.edges}
+                    selection={selection}
+                    onSelectionChange={setSelection}
+                    expandedGroups={expandedGroups}
+                    onToggleGroup={handleToggleGroup}
+                    expandedEdges={expandedEdges}
+                    onToggleEdge={handleToggleEdge}
+                    onExpandAll={handleExpandAll}
+                    onCollapseAll={handleCollapseAll}
+                    nodeHeight={76}
+                    className="h-full"
+                  />
+                </div>
+              </div>
+            )}
           </div>
-          {/* Right panel (30%) */}
-          <div className="flex-[3] border-l overflow-y-auto" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--background))" }}>
+          {/* Right panel (~36%) */}
+          <div className="flex-[4] border-l overflow-y-auto" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--background))" }}>
             {selection?.type === "node" && trace ? (
               <SessionNodeDetail
                 nodeId={selection.id}
@@ -1375,10 +1420,28 @@ export default function SessionDetailPage() {
                 spans={sessionGraph.edgeSpans.get(`${selection.source}→${selection.target}`) ?? []}
               />
             ) : (
-              <div className="h-full flex flex-col items-center justify-center px-5 text-center">
-                <GitBranch size={20} className="text-muted-foreground mb-3" />
-                <p className="text-sm font-semibold text-foreground mb-1">Session flow</p>
-                <p className="text-[11px] text-muted-foreground">Click any agent, server, or edge to see its details for this session.</p>
+              <div className="flex flex-col items-center justify-center h-full px-6 py-10 gap-4">
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "hsl(var(--muted))" }}>
+                  <GitBranch size={22} style={{ color: "hsl(var(--muted-foreground))" }} />
+                </div>
+                <div className="text-center space-y-1">
+                  <p className="text-[13px] font-semibold" style={{ color: "hsl(var(--foreground))" }}>Session flow</p>
+                  <p className="text-[12px]" style={{ color: "hsl(var(--muted-foreground))" }}>Click any agent, server, or edge to see its details for this session.</p>
+                </div>
+                <div className="w-full mt-2 space-y-2">
+                  <div className="rounded-lg p-3 flex items-center justify-between" style={{ background: "hsl(var(--muted))" }}>
+                    <span className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>Total spans</span>
+                    <span className="text-[12px] font-semibold" style={{ color: "hsl(var(--foreground))", fontFamily: "var(--font-geist-mono)" }}>{trace?.spans_flat?.length ?? "—"}</span>
+                  </div>
+                  <div className="rounded-lg p-3 flex items-center justify-between" style={{ background: "hsl(var(--muted))" }}>
+                    <span className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>Tool calls</span>
+                    <span className="text-[12px] font-semibold" style={{ color: "hsl(var(--foreground))", fontFamily: "var(--font-geist-mono)" }}>{trace?.spans_flat?.filter((s: SpanNode) => s.span_type === "tool_call").length ?? "—"}</span>
+                  </div>
+                  <div className="rounded-lg p-3 flex items-center justify-between" style={{ background: "hsl(var(--muted))" }}>
+                    <span className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>Errors</span>
+                    <span className="text-[12px] font-semibold" style={{ color: trace?.spans_flat?.some((s: SpanNode) => s.status === "error") ? "hsl(var(--danger))" : "hsl(var(--foreground))", fontFamily: "var(--font-geist-mono)" }}>{trace?.spans_flat?.filter((s: SpanNode) => s.status === "error").length ?? "—"}</span>
+                  </div>
+                </div>
               </div>
             )}
           </div>
