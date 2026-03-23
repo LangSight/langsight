@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Calendar, X } from "lucide-react";
 
 const PRESETS = [
@@ -36,6 +36,18 @@ export function DateRangeFilter({
   const [showPicker, setShowPicker] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showPicker) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowPicker(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showPicker]);
   const isCustomActive = !!(customFrom && customTo);
 
   function applyCustom() {
@@ -72,7 +84,7 @@ export function DateRangeFilter({
       ))}
 
       {/* Custom range toggle */}
-      <div className="relative">
+      <div className="relative" ref={containerRef}>
         <button
           onClick={() => setShowPicker((v) => !v)}
           className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors"

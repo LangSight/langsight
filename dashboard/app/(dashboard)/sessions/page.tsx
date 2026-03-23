@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { fetcher } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
-import { cn, timeAgo, formatDuration } from "@/lib/utils";
+import { cn, timeAgo, formatDuration, formatExact } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import type { AgentSession, HealthTag } from "@/lib/types";
@@ -239,6 +239,7 @@ export default function SessionsPage() {
                       ["Duration", "text-right"],
                       ["Servers", "text-left"],
                       ["Started", "text-left"],
+                      ["Timestamp", "text-left"],
                     ].map(([h, align]) => (
                       <th
                         key={h}
@@ -323,8 +324,11 @@ export default function SessionsPage() {
                       <td className="px-4 py-3 text-[12px] text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Clock size={11} />
-                          <Timestamp iso={s.first_call_at} />
+                          <Timestamp iso={s.first_call_at} compact />
                         </div>
+                      </td>
+                      <td className="px-4 py-3 text-[11px] text-muted-foreground tabular-nums" style={{ fontFamily: "var(--font-geist-mono)", opacity: 0.7 }}>
+                        {formatExact(s.first_call_at)}
                       </td>
                     </tr>
                   ))}

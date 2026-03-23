@@ -3,12 +3,11 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { useTheme } from "next-themes";
 import { useState, useEffect } from "react";
 import useSWR from "swr";
 import {
   LayoutDashboard, Activity, Shield, GitBranch, DollarSign, Bot,
-  LogOut, Sun, Moon, Settings, Folder, ChevronDown, Plus, Check,
+  LogOut, Settings, Folder, ChevronDown, Plus, Check,
   Zap, ChevronRight, Server,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -212,7 +211,6 @@ function ProjectSwitcher() {
 /* ── User menu ──────────────────────────────────────────────── */
 function UserMenu() {
   const { data: session } = useSession();
-  const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const user = session?.user;
 
@@ -296,21 +294,6 @@ function UserMenu() {
                 </p>
               </div>
             </div>
-
-            <button
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="flex items-center gap-2.5 w-full px-3 py-2 text-[12.5px] transition-colors"
-              style={{ color: "hsl(var(--sidebar-fg))" }}
-              onMouseEnter={e => (e.currentTarget.style.background = "hsl(var(--sidebar-accent))")}
-              onMouseLeave={e => (e.currentTarget.style.background = "")}
-            >
-              {theme === "dark"
-                ? <Sun size={13} style={{ color: "hsl(var(--sidebar-muted))" }} />
-                : <Moon size={13} style={{ color: "hsl(var(--sidebar-muted))" }} />}
-              {theme === "dark" ? "Light mode" : "Dark mode"}
-            </button>
-
-            <div className="my-1" style={{ borderTop: "1px solid hsl(var(--sidebar-border))" }} />
 
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}

@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { RefreshCw, AlertTriangle, Search, ChevronRight, Server as ServerIcon } from "lucide-react";
 import { fetcher, triggerHealthCheck, getServerHistory } from "@/lib/api";
-import { cn, STATUS_BG, timeAgo, formatLatency } from "@/lib/utils";
+import { cn, STATUS_BG, timeAgo, formatLatency, formatExact } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { toast } from "sonner";
@@ -107,7 +107,7 @@ function ExpandedHistory({ serverName }: { serverName: string }) {
         <table className="w-full text-[11px]">
           <thead>
             <tr style={{ borderTop: "1px solid hsl(var(--border))", borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card-raised))" }}>
-              {["Time", "Status", "Latency", "Tools", "Error"].map((h) => (
+              {["Time", "Timestamp", "Status", "Latency", "Tools", "Error"].map((h) => (
                 <th key={h} className="px-5 py-2 text-left font-semibold text-muted-foreground uppercase tracking-wide" style={{ fontSize: 9 }}>{h}</th>
               ))}
             </tr>
@@ -115,7 +115,8 @@ function ExpandedHistory({ serverName }: { serverName: string }) {
           <tbody>
             {history.slice(0, 15).map((h, i) => (
               <tr key={i} className="hover:bg-accent/20 transition-colors" style={{ borderBottom: "1px solid hsl(var(--border) / 0.5)" }}>
-                <td className="px-5 py-1.5 text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}><Timestamp iso={h.checked_at} /></td>
+                <td className="px-5 py-1.5 text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}><Timestamp iso={h.checked_at} compact /></td>
+                <td className="px-5 py-1.5 text-[10px] text-muted-foreground tabular-nums" style={{ fontFamily: "var(--font-geist-mono)", opacity: 0.7 }}>{formatExact(h.checked_at)}</td>
                 <td className="px-5 py-1.5">
                   <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full border font-semibold", STATUS_BG[h.status as keyof typeof STATUS_BG])}>{h.status}</span>
                 </td>
@@ -163,6 +164,7 @@ function ServerRow({ server, expanded, onToggle }: {
 
         {/* Checked */}
         <span className="text-[10px] text-muted-foreground w-16 text-right flex-shrink-0"><Timestamp iso={server.checked_at} compact /></span>
+        <span className="text-[10px] text-muted-foreground w-40 text-right flex-shrink-0 tabular-nums" style={{ fontFamily: "var(--font-geist-mono)", opacity: 0.6 }}>{formatExact(server.checked_at)}</span>
 
         {/* Chevron */}
         <ChevronRight size={14} className={cn("text-muted-foreground flex-shrink-0 transition-transform", expanded && "rotate-90")} />
@@ -309,6 +311,7 @@ export default function HealthPage() {
           <span className="flex-1 text-right">Latency</span>
           <span className="w-8 text-center">Tools</span>
           <span className="w-16 text-right">Last Checked</span>
+          <span className="w-40 text-right">Timestamp</span>
           <span className="w-3.5" /> {/* chevron */}
         </div>
       )}

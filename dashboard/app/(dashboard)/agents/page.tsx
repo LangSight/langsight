@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { fetcher, getCostsBreakdown, listAgentMetadata, upsertAgentMetadata } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
-import { cn, formatDuration, timeAgo } from "@/lib/utils";
+import { cn, formatDuration, timeAgo, formatExact } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
 import { LineageGraph as LineageGraphComponent, type GraphNode, type GraphEdge } from "@/components/lineage-graph";
 import { AgentTopology } from "@/components/agent-topology";
@@ -183,6 +183,7 @@ function AgentTable({ agents, metaByName, onSelect, hours }: { agents: AgentSumm
               <ThCell col="errorRate" label="Err %" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="cost" label={`Cost ${hours}h`} sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="lastActive" label="Last Active" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Timestamp</th>
             </tr>
           </thead>
           <tbody>
@@ -225,12 +226,13 @@ function AgentTable({ agents, metaByName, onSelect, hours }: { agents: AgentSumm
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-[11px] text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{agent.total_cost_usd > 0 ? formatUsd(agent.total_cost_usd) : <span className="opacity-30">—</span>}</td>
-                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground"><Timestamp iso={agent.latest_started_at} /></td>
+                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground"><Timestamp iso={agent.latest_started_at} compact /></td>
+                  <td className="px-3 py-2.5 text-[10px] text-muted-foreground tabular-nums" style={{ fontFamily: "var(--font-geist-mono)", opacity: 0.7 }}>{formatExact(agent.latest_started_at)}</td>
                 </tr>
               );
             })}
             {sorted.length === 0 && (
-              <tr><td colSpan={8} className="text-center py-12 text-sm text-muted-foreground">No agents match</td></tr>
+              <tr><td colSpan={9} className="text-center py-12 text-sm text-muted-foreground">No agents match</td></tr>
             )}
           </tbody>
         </table>
@@ -480,7 +482,7 @@ export default function AgentsPage() {
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_COLOR[selected.status] }} />
                         <span className="text-[11px]" style={{ color: STATUS_COLOR[selected.status] }}>{selected.status}</span>
-                        <span className="text-[10px] text-muted-foreground">· {selected.sessions} sessions · <Timestamp iso={selected.latest_started_at} compact /></span>
+                        <span className="text-[10px] text-muted-foreground">· {selected.sessions} sessions · <Timestamp iso={selected.latest_started_at} /></span>
                       </div>
                     </div>
                     <button onClick={() => setSelectedAgent(null)} className="p-1.5 rounded hover:bg-accent/60 text-muted-foreground hover:text-foreground transition-colors">
@@ -602,7 +604,7 @@ export default function AgentsPage() {
                         </div>
                         <div className="space-y-1">
                           {selectedSessions.map((s) => (
-                            <Link key={s.session_id} href={`/sessions/${s.session_id}`} className="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-accent/30 transition-colors" style={{ border: "1px solid hsl(var(--border))" }}>
+                            <Link key={s.session_id} href={`/sessions/${s.session_id}`} className="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-accent/30 transition-colors" style={{ borderTop: "1px solid hsl(var(--border))", borderRight: "1px solid hsl(var(--border))", borderBottom: "1px solid hsl(var(--border))", borderLeft: `3px solid ${s.failed_calls > 0 ? "#ef4444" : "#22c55e"}` }}>
                               <div className="flex items-center gap-2 min-w-0">
                                 <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", s.failed_calls > 0 ? "bg-red-500" : "bg-emerald-500")} />
                                 <span className="text-[11px] font-medium text-foreground truncate" style={{ fontFamily: "var(--font-geist-mono)" }}>{s.session_id.slice(0, 20)}</span>
@@ -611,7 +613,7 @@ export default function AgentsPage() {
                                 <span>{s.tool_calls} calls</span>
                                 {s.failed_calls > 0 && <span style={{ color: "#ef4444" }}>{s.failed_calls} failed</span>}
                                 <span style={{ fontFamily: "var(--font-geist-mono)" }}>{formatDuration(s.duration_ms)}</span>
-                                <span><Timestamp iso={s.first_call_at} compact /></span>
+                                <Timestamp iso={s.first_call_at} />
                                 <ChevronRight size={12} />
                               </div>
                             </Link>

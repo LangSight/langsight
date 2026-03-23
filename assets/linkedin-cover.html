@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>LangSight — LinkedIn Cover</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 1584px;
+      height: 396px;
+      overflow: hidden;
+      font-family: 'Geist', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ── Cover shell ─────────────────────────────────────────── */
+    .cover {
+      width: 1584px;
+      height: 396px;
+      overflow: hidden;
+      position: relative;
+      background: linear-gradient(135deg, #0D9488 0%, #0F766E 30%, #115E59 60%, #134E4A 100%);
+    }
+
+    /* ── Geometric grid overlay ──────────────────────────────── */
+    .cover::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* ── Center teal glow ────────────────────────────────────── */
+    .glow-center {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 70% at 50% 50%, rgba(45,212,191,0.15), transparent 70%);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* ── Top-left lighter teal wash ──────────────────────────── */
+    .glow-topleft {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 600px;
+      height: 300px;
+      background: radial-gradient(ellipse 70% 80% at 10% 10%, rgba(94,234,212,0.10), transparent 70%);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* ── Subtle bottom-right darker wash ─────────────────────── */
+    .glow-bottomright {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 500px;
+      height: 250px;
+      background: radial-gradient(ellipse 70% 70% at 90% 90%, rgba(6,78,59,0.25), transparent 70%);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* ── Content layer ───────────────────────────────────────── */
+    .content {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+    }
+
+    /* ── Logo row ────────────────────────────────────────────── */
+    .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .hex-icon {
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-text {
+      font-size: 48px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      color: #FFFFFF;
+    }
+
+    /* ── Tagline ─────────────────────────────────────────────── */
+    .tagline {
+      font-size: 18px;
+      font-weight: 400;
+      color: rgba(255,255,255,0.85);
+      letter-spacing: -0.005em;
+      line-height: 1.3;
+      margin-bottom: 20px;
+    }
+
+    /* ── Four pillars ────────────────────────────────────────── */
+    .pillars {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .pillar {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5px 18px;
+      border-radius: 100px;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      color: #FFFFFF;
+      background: rgba(255,255,255,0.13);
+      border: 1px solid rgba(255,255,255,0.22);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      white-space: nowrap;
+      line-height: 1.5;
+    }
+
+    /* ── Bottom line ─────────────────────────────────────────── */
+    .bottom-line {
+      font-size: 12px;
+      font-weight: 400;
+      color: rgba(255,255,255,0.50);
+      letter-spacing: 0.02em;
+    }
+
+    /* ── Decorative status lines (right side) ────────────────── */
+    .deco-lines {
+      position: absolute;
+      right: 80px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      opacity: 0.12;
+    }
+
+    .deco-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Geist', system-ui, sans-serif;
+      font-size: 11px;
+      font-weight: 400;
+      color: #FFFFFF;
+      white-space: nowrap;
+    }
+
+    .deco-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      flex-shrink: 0;
+    }
+
+    .deco-bar {
+      height: 2px;
+      background: #FFFFFF;
+      border-radius: 1px;
+    }
+
+    .deco-label {
+      font-family: 'Geist', system-ui, sans-serif;
+      font-size: 11px;
+      color: #FFFFFF;
+    }
+
+    /* ── Decorative dots (left side) ─────────────────────────── */
+    .deco-dots-left {
+      position: absolute;
+      left: 70px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      opacity: 0.08;
+    }
+
+    .deco-dots-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .deco-small-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: #FFFFFF;
+    }
+  </style>
+</head>
+<body>
+  <div class="cover">
+
+    <!-- Background effects -->
+    <div class="glow-center"></div>
+    <div class="glow-topleft"></div>
+    <div class="glow-bottomright"></div>
+
+    <!-- Decorative dot grid (left side) -->
+    <div class="deco-dots-left">
+      <div class="deco-dots-row">
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+      </div>
+      <div class="deco-dots-row">
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+      </div>
+      <div class="deco-dots-row">
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+      </div>
+      <div class="deco-dots-row">
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+      </div>
+      <div class="deco-dots-row">
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+        <div class="deco-small-dot"></div>
+      </div>
+    </div>
+
+    <!-- Decorative status lines (right side) -->
+    <div class="deco-lines">
+      <div class="deco-row">
+        <div class="deco-dot"></div>
+        <div class="deco-bar" style="width: 140px;"></div>
+        <span class="deco-label">session-a3f2</span>
+      </div>
+      <div class="deco-row">
+        <div class="deco-dot"></div>
+        <div class="deco-bar" style="width: 100px;"></div>
+        <span class="deco-label">budget $12.40</span>
+      </div>
+      <div class="deco-row">
+        <div class="deco-dot"></div>
+        <div class="deco-bar" style="width: 170px;"></div>
+        <span class="deco-label">postgres-mcp</span>
+      </div>
+    </div>
+
+    <!-- Main centered content -->
+    <div class="content">
+
+      <!-- Logo -->
+      <div class="logo-row">
+        <div class="hex-icon">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M14 3L5 8V18L14 23L23 18V8L14 3Z"
+              stroke="#FFFFFF" stroke-width="1.6" stroke-linejoin="round"
+              fill="rgba(255,255,255,0.10)"/>
+            <circle cx="14" cy="13" r="2.8" fill="#FFFFFF" opacity="0.9"/>
+            <path d="M14 9V10M14 16V17M10.5 13H11.5M16.5 13H17.5"
+              stroke="#FFFFFF" stroke-width="1.2" stroke-linecap="round" opacity="0.45"/>
+          </svg>
+        </div>
+        <span class="logo-text">LangSight</span>
+      </div>
+
+      <!-- Tagline -->
+      <div class="tagline">Runtime reliability for AI agent toolchains</div>
+
+      <!-- Four pillars -->
+      <div class="pillars">
+        <span class="pillar">Prevent</span>
+        <span class="pillar">Detect</span>
+        <span class="pillar">Monitor</span>
+        <span class="pillar">Map</span>
+      </div>
+
+      <!-- Bottom line -->
+      <div class="bottom-line">Open source &middot; Apache 2.0 &middot; Self-hosted</div>
+
+    </div>
+
+  </div>
+</body>
+</html>

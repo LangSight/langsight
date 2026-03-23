@@ -12,7 +12,7 @@ import {
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { fetcher, triggerHealthCheck, getServerHistory, listServerMetadata, upsertServerMetadata } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
-import { cn, timeAgo, formatLatency, STATUS_BG } from "@/lib/utils";
+import { cn, timeAgo, formatLatency, STATUS_BG, formatExact } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
 import { toast } from "sonner";
 import { EditableTextarea, EditableText, EditableTags, EditableUrl } from "@/components/editable-field";
@@ -177,6 +177,7 @@ function ServerTable({ servers, metaByName, historyCache, onSelect, onRunCheck, 
               <ThCell col="uptime" label="Uptime" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="tools" label="Tools" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="checked" label="Last Checked" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Timestamp</th>
             </tr>
           </thead>
           <tbody>
@@ -208,11 +209,12 @@ function ServerTable({ servers, metaByName, historyCache, onSelect, onRunCheck, 
                     {upPct !== null ? <span className="text-[11px] font-semibold" style={{ fontFamily: "var(--font-geist-mono)", color: upPct > 95 ? "#22c55e" : upPct > 80 ? "#eab308" : "#ef4444" }}>{upPct.toFixed(0)}%</span> : <span className="text-[11px] text-muted-foreground">—</span>}
                   </td>
                   <td className="px-3 py-2.5 text-[11px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{server.tools_count ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground"><Timestamp iso={server.checked_at} /></td>
+                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground"><Timestamp iso={server.checked_at} compact /></td>
+                  <td className="px-3 py-2.5 text-[10px] text-muted-foreground tabular-nums" style={{ fontFamily: "var(--font-geist-mono)", opacity: 0.7 }}>{formatExact(server.checked_at)}</td>
                 </tr>
               );
             })}
-            {sorted.length === 0 && <tr><td colSpan={10} className="text-center py-12 text-sm text-muted-foreground">No servers match</td></tr>}
+            {sorted.length === 0 && <tr><td colSpan={11} className="text-center py-12 text-sm text-muted-foreground">No servers match</td></tr>}
           </tbody>
         </table>
       </div>
@@ -314,7 +316,7 @@ function HealthHistoryPanel({ serverName }: { serverName: string }) {
         {history.slice(0, 15).map((h, i) => (
           <div key={i} className="flex items-center gap-3 rounded-lg px-3 py-1.5 text-[10px]" style={{ background: "hsl(var(--muted) / 0.5)" }}>
             <StatusDot status={h.status} />
-            <span className="text-muted-foreground w-16 flex-shrink-0"><Timestamp iso={h.checked_at} compact /></span>
+            <span className="text-muted-foreground flex-shrink-0"><Timestamp iso={h.checked_at} /></span>
             <span className="font-semibold text-foreground w-12" style={{ fontFamily: "var(--font-geist-mono)" }}>{formatLatency(h.latency_ms)}</span>
             {h.error && <span className="text-red-400 truncate">{h.error}</span>}
           </div>

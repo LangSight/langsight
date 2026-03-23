@@ -1,11 +1,11 @@
 # LangSight: Implementation Plan
 
-> **Version**: 2.0.0
-> **Date**: 2026-03-22
-> **Status**: Active — Phase 1-11 COMPLETE. v0.3 Tier 1 (Prevention Layer) COMPLETE: circuit breaker, loop detection, budget guardrails, health tag engine. Prevention Config (dashboard-managed thresholds) COMPLETE. Pre-Production Security Hardening in progress (S.4, S.7, S.9, S.10 COMPLETE). Release 0.2.0 shipped. v0.3.0 Prevention Layer shipped. v0.3.1 Prevention Config shipped.
+> **Version**: 2.1.0
+> **Date**: 2026-03-23
+> **Status**: Active — Phase 1-11 COMPLETE. v0.3 Tier 1 (Prevention Layer) COMPLETE. v0.3 Tier 1.5 (Stability & Scale) STARTED following Principal Engineer Audit. Tier 2 & 3 pending.
 > **Author**: Engineering
 >
-> **Change from 2.0**: Prevention Config shipped (2026-03-22). `prevention_config` Postgres table (per-project, per-agent thresholds). `PreventionConfig` domain model. 6 new API endpoints under `/api/agents/` and `/api/projects/`. SDK `_apply_remote_config()` background task fetches dashboard config on `wrap()`, falls back to constructor defaults when offline. Dashboard Settings → Prevention tab with per-agent inline edit table. Demo seed: 5 sample configs.
+> **Change from 2.1**: Added Tier 1.5 (Stability & Scale) to address critical audit findings: SDK memory leak, SSE scalability limit, and distributed state management.
 
 ---
 
@@ -38,6 +38,8 @@ Phase 10 (Multi-tenancy)        ████████████████
 Phase 11 (Catalogs + Graph UX)  ████████████████ 100% — COMPLETE ✅ 2026-03-20
 v0.3 Tier 1 (Prevention Layer)  ████████████████ 100% — COMPLETE ✅ 2026-03-22
 Prevention Config (dashboard)   ████████████████ 100% — COMPLETE ✅ 2026-03-22
+Dashboard UX Polish (2026-03-23) ████████████████ 100% — COMPLETE ✅ DateRangeFilter, Timestamp, session detail redesign, lineage graph redesign, graph builder extraction
+v0.3 Tier 1.5 (Scale & Fixes)   ░░░░░░░░░░░░░░░░   0% — NOT STARTED (SDK LRU, Redis SSE, Dist. Circuit Breaker)
 v0.3 Tier 2 (Smarter Alerting)  ░░░░░░░░░░░░░░░░   0% — NOT STARTED (OpsGenie, PagerDuty, pattern alerts)
 v0.3 Tier 3 (Blast Radius)      ░░░░░░░░░░░░░░░░   0% — NOT STARTED (lineage-driven impact analysis)
 ```
@@ -53,6 +55,13 @@ v0.3 Tier 3 (Blast Radius)      ░░░░░░░░░░░░░░░░
 - **New models**: `PreventionEvent` in `sdk/models.py`. `CircuitBreakerConfig` added as optional field on `MCPServer`. `LoopDetectedError`, `BudgetExceededError`, `CircuitBreakerOpenError` exceptions.
 - **Health tag engine** (`src/langsight/tagging/engine.py`): `HealthTag` enum with 8 priority-ordered tags. `tag_from_spans()` computes tags from session spans.
 - **Dashboard**: `HealthTagBadge` component, sessions page health tag column + filter dropdown, `HealthTag` type + `health_tag` field on `AgentSession`.
+
+**Dashboard UX polish (shipped 2026-03-23)**:
+- **`DateRangeFilter` component** (`dashboard/components/date-range-filter.tsx`): reusable date range control with 5 presets (1h/6h/24h/7d/30d) and a custom date picker dropdown. Integrated into Sessions, Costs, Health, Agents, and Servers pages. Active preset highlighted with primary teal; custom range shows indigo-tinted "Custom" label. Clicking outside the dropdown closes it via `mousedown` event listener.
+- **`Timestamp` component** (`dashboard/components/timestamp.tsx`): semantic `<time>` element that displays relative time alongside exact time. Compact mode shows only relative with exact in the HTML `title` attribute. Used across sessions list, session detail, health page uptime dots, agents page, servers page, and settings.
+- **Session detail page redesigned** (`dashboard/app/(dashboard)/sessions/[id]/page.tsx`): wide-screen layout optimized for the lineage graph. `SessionNodeDetail` right-panel uses `MetricTile` sub-components (rounded tiles with colored left border). `SectionLabel` sub-component standardizes panel section headings. `useSessionGraph` hook wraps `buildSessionGraph` in `useMemo`, scoped to `trace`, `expandedGroups`, and `expandedEdges` dependencies.
+- **Graph builder extracted** (`dashboard/lib/session-graph.ts`): `buildSessionGraph(trace, expandedGroups, expandedEdges): SessionGraphResult` extracts all graph construction from the session detail page. Includes `findRepeatedCall` (loop pattern detection — same tool + same args N times) and `buildCallLabels` (per-call sequence labels for disambiguating repeated tools).
+- **Lineage graph redesigned** (`dashboard/components/lineage-graph.tsx`): node cards redesigned with compact metric pills (calls, errors, avg latency), tighter padding, loop annotation row, glass-morphism border + glow on selection. Minimap uses `ResizeObserver` for live container size tracking; auto-fits graph into viewport on first render via `hasFitted` ref guard. Back-edges (cycles) rendered as self-loop arcs.
 
 **Phase 11 changes (shipped 2026-03-20)**:
 - Session detail page: graph toolbar (search, zoom slider 25-250%, expand/collapse, failures toggle), minimap (150×90px, draggable viewport), timeline bar (colored segments per tool call, click to select node), PayloadSlideout component (full-width slide-over, line numbers, copy, word wrap, Esc to close), per-tool edge expansion (circular `+` button with call count), "View in Catalog" links from node panels. Keyboard shortcuts: `/` search, `f` fit, `e` error toggle, `+`/`-` zoom, `Esc` deselect.

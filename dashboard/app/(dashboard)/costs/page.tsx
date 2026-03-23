@@ -1,9 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import useSWR from "swr";
-import { Database, DollarSign, Layers3, Wallet, Cpu, Wrench, Filter, X } from "lucide-react";
+import { Database, DollarSign, Layers3, Wallet, Cpu, Wrench, Filter, X, ChevronDown, Check } from "lucide-react";
 import { getCostsBreakdown } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import type { CostsBreakdownResponse } from "@/lib/types";
@@ -59,6 +59,83 @@ function FilterPill({ label, value, onClear }: {
   );
 }
 
+/* ── Multi-select dropdown ──────────────────────────────────── */
+function MultiSelectDropdown({
+  placeholder,
+  options,
+  selected,
+  onChange,
+}: {
+  placeholder: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const isActive = selected.length > 0;
+  const buttonLabel = selected.length === 0
+    ? placeholder
+    : selected.length === 1
+    ? (options.find((o) => o.value === selected[0])?.label ?? selected[0])
+    : `${selected.length} selected`;
+
+  function toggle(value: string) {
+    onChange(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value]);
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "filter-select flex items-center gap-1.5 pr-2",
+          isActive && "text-primary"
+        )}
+        style={isActive ? { borderColor: "hsl(var(--primary) / 0.3)", color: "hsl(var(--primary))" } : undefined}
+      >
+        <span className="flex-1 text-left truncate">{buttonLabel}</span>
+        <ChevronDown size={10} className={cn("flex-shrink-0 opacity-50 transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div
+          className="absolute top-full left-0 mt-1 z-50 rounded-xl py-1.5 shadow-xl min-w-[180px]"
+          style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
+        >
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => toggle(opt.value)}
+              className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-accent/30 transition-colors text-[12px] text-left"
+            >
+              <div
+                className="w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0"
+                style={{
+                  background: selected.includes(opt.value) ? "hsl(var(--primary))" : "hsl(var(--muted))",
+                  border: selected.includes(opt.value) ? "none" : "1px solid hsl(var(--border))",
+                }}
+              >
+                {selected.includes(opt.value) && <Check size={9} className="text-white" />}
+              </div>
+              <span className="text-foreground truncate">{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Empty state ────────────────────────────────────────────── */
 function EmptyState({ title, description, body }: {
   title: string; description: string; body: ReactNode;
@@ -93,11 +170,11 @@ export default function CostsPage() {
   const [customTo, setCustomTo] = useState<string | null>(null);
   const { activeProject } = useProject();
 
-  // Filters
-  const [serverFilter, setServerFilter] = useState<string | null>(null);
-  const [agentFilter, setAgentFilter] = useState<string | null>(null);
-  const [modelFilter, setModelFilter] = useState<string | null>(null);
-  const [typeFilter, setTypeFilter] = useState<"all" | "token_based" | "call_based">("all");
+  // Filters (multi-select)
+  const [serverFilter, setServerFilter] = useState<string[]>([]);
+  const [agentFilter, setAgentFilter] = useState<string[]>([]);
+  const [modelFilter, setModelFilter] = useState<string[]>([]);
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
 
   const { data, error, isLoading } = useSWR<CostsBreakdownResponse>(
     `/api/costs/breakdown?hours=${hours}${activeProject ? `&project_id=${activeProject.id}` : ""}`,
@@ -114,35 +191,35 @@ export default function CostsPage() {
   const filteredTools = useMemo(() => {
     if (!data) return [];
     return data.by_tool.filter((e) => {
-      if (serverFilter && e.server_name !== serverFilter) return false;
-      if (modelFilter && e.model_id !== modelFilter) return false;
-      if (typeFilter !== "all" && e.cost_type !== typeFilter) return false;
+      if (serverFilter.length > 0 && !serverFilter.includes(e.server_name)) return false;
+      if (modelFilter.length > 0 && !modelFilter.includes(e.model_id ?? "")) return false;
+      if (typeFilter.length > 0 && !typeFilter.includes(e.cost_type)) return false;
       return true;
     });
   }, [data, serverFilter, modelFilter, typeFilter]);
 
   const filteredAgents = useMemo(() => {
     if (!data) return [];
-    if (!agentFilter) return data.by_agent;
-    return data.by_agent.filter((e) => e.agent_name === agentFilter);
+    if (agentFilter.length === 0) return data.by_agent;
+    return data.by_agent.filter((e) => agentFilter.includes(e.agent_name));
   }, [data, agentFilter]);
 
   const filteredSessions = useMemo(() => {
     if (!data) return [];
-    if (!agentFilter) return data.by_session;
-    return data.by_session.filter((e) => e.agent_name === agentFilter);
+    if (agentFilter.length === 0) return data.by_session;
+    return data.by_session.filter((e) => agentFilter.includes(e.agent_name ?? ""));
   }, [data, agentFilter]);
 
   // Filtered totals
   const filteredTotal = filteredTools.reduce((sum, e) => sum + e.total_cost_usd, 0);
   const filteredCalls = filteredTools.reduce((sum, e) => sum + e.total_calls, 0);
-  const hasFilters = serverFilter || agentFilter || modelFilter || typeFilter !== "all";
+  const hasFilters = serverFilter.length > 0 || agentFilter.length > 0 || modelFilter.length > 0 || typeFilter.length > 0;
 
   function clearAll() {
-    setServerFilter(null);
-    setAgentFilter(null);
-    setModelFilter(null);
-    setTypeFilter("all");
+    setServerFilter([]);
+    setAgentFilter([]);
+    setModelFilter([]);
+    setTypeFilter([]);
   }
 
   return (
@@ -222,44 +299,38 @@ export default function CostsPage() {
           >
             <Filter size={13} className="text-muted-foreground mr-1" />
 
-            <select
-              value={serverFilter ?? ""}
-              onChange={(e) => setServerFilter(e.target.value || null)}
-              className="filter-select"
-            >
-              <option value="">All servers</option>
-              {servers.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <MultiSelectDropdown
+              placeholder="All servers"
+              options={servers.map((s) => ({ value: s, label: s }))}
+              selected={serverFilter}
+              onChange={setServerFilter}
+            />
 
-            <select
-              value={agentFilter ?? ""}
-              onChange={(e) => setAgentFilter(e.target.value || null)}
-              className="filter-select"
-            >
-              <option value="">All agents</option>
-              {agents.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
+            <MultiSelectDropdown
+              placeholder="All agents"
+              options={agents.map((a) => ({ value: a, label: a }))}
+              selected={agentFilter}
+              onChange={setAgentFilter}
+            />
 
             {models.length > 0 && (
-              <select
-                value={modelFilter ?? ""}
-                onChange={(e) => setModelFilter(e.target.value || null)}
-                className="filter-select"
-              >
-                <option value="">All models</option>
-                {models.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
+              <MultiSelectDropdown
+                placeholder="All models"
+                options={models.map((m) => ({ value: m, label: m }))}
+                selected={modelFilter}
+                onChange={setModelFilter}
+              />
             )}
 
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}
-              className="filter-select"
-            >
-              <option value="all">All types</option>
-              <option value="token_based">LLM (token)</option>
-              <option value="call_based">Tool (per-call)</option>
-            </select>
+            <MultiSelectDropdown
+              placeholder="All types"
+              options={[
+                { value: "token_based", label: "LLM (token)" },
+                { value: "call_based", label: "Tool (per-call)" },
+              ]}
+              selected={typeFilter}
+              onChange={setTypeFilter}
+            />
 
             {hasFilters && (
               <button
@@ -274,10 +345,14 @@ export default function CostsPage() {
           {/* Active filter pills */}
           {hasFilters && (
             <div className="flex flex-wrap gap-1.5">
-              {serverFilter && <FilterPill label="Server" value={serverFilter} onClear={() => setServerFilter(null)} />}
-              {agentFilter && <FilterPill label="Agent" value={agentFilter} onClear={() => setAgentFilter(null)} />}
-              {modelFilter && <FilterPill label="Model" value={modelFilter} onClear={() => setModelFilter(null)} />}
-              {typeFilter !== "all" && <FilterPill label="Type" value={typeFilter === "token_based" ? "LLM" : "Tool"} onClear={() => setTypeFilter("all")} />}
+              {serverFilter.length === 1 && <FilterPill label="Server" value={serverFilter[0]} onClear={() => setServerFilter([])} />}
+              {serverFilter.length > 1 && <FilterPill label="Servers" value={`${serverFilter.length} selected`} onClear={() => setServerFilter([])} />}
+              {agentFilter.length === 1 && <FilterPill label="Agent" value={agentFilter[0]} onClear={() => setAgentFilter([])} />}
+              {agentFilter.length > 1 && <FilterPill label="Agents" value={`${agentFilter.length} selected`} onClear={() => setAgentFilter([])} />}
+              {modelFilter.length === 1 && <FilterPill label="Model" value={modelFilter[0]} onClear={() => setModelFilter([])} />}
+              {modelFilter.length > 1 && <FilterPill label="Models" value={`${modelFilter.length} selected`} onClear={() => setModelFilter([])} />}
+              {typeFilter.length === 1 && <FilterPill label="Type" value={typeFilter[0] === "token_based" ? "LLM" : "Tool"} onClear={() => setTypeFilter([])} />}
+              {typeFilter.length > 1 && <FilterPill label="Types" value="Both" onClear={() => setTypeFilter([])} />}
             </div>
           )}
 
@@ -355,8 +430,8 @@ export default function CostsPage() {
                       key={`${entry.server_name}-${entry.tool_name}-${entry.model_id ?? ""}`}
                       className="hover:bg-accent/30 transition-colors cursor-pointer"
                       onClick={() => {
-                        if (!serverFilter) setServerFilter(entry.server_name);
-                        else if (!agentFilter && entry.model_id) setModelFilter(entry.model_id);
+                        if (serverFilter.length === 0) setServerFilter([entry.server_name]);
+                        else if (modelFilter.length === 0 && entry.model_id) setModelFilter([entry.model_id]);
                       }}
                     >
                       <td className="px-5 py-3">
@@ -411,10 +486,10 @@ export default function CostsPage() {
                       <tr
                         key={entry.agent_name}
                         className="hover:bg-accent/30 transition-colors cursor-pointer"
-                        onClick={() => setAgentFilter(agentFilter === entry.agent_name ? null : entry.agent_name)}
+                        onClick={() => setAgentFilter(agentFilter.includes(entry.agent_name) ? agentFilter.filter((a) => a !== entry.agent_name) : [...agentFilter, entry.agent_name])}
                       >
                         <td className="px-5 py-3 text-[13px] text-foreground flex items-center gap-2">
-                          {agentFilter === entry.agent_name && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                          {agentFilter.includes(entry.agent_name) && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
                           {entry.agent_name}
                         </td>
                         <td className="px-5 py-3 text-[13px] text-muted-foreground tabular-nums">

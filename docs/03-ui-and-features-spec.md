@@ -1,8 +1,8 @@
 # LangSight: UI & Features Specification
 
-> **Version**: 1.4.0
-> **Date**: 2026-03-21
-> **Status**: Active — updated with health page lazy loading, agents page SWR staggering, login page demo credential gating, dashboard security headers (2026-03-21)
+> **Version**: 1.5.0
+> **Date**: 2026-03-23
+> **Status**: Active — updated with DateRangeFilter component, Timestamp component, session detail page redesign (wide-screen layout, graph builder extraction), lineage graph node/toolbar/minimap redesign (2026-03-23)
 
 ---
 
@@ -453,11 +453,26 @@ The Agents page renders in one of three states depending on what is selected:
 
 ### 4.3 Sessions Page
 
-**Session table**: One row per workflow/session with agent, tool-call count, failures, duration, and touched backends.
+**Session table**: One row per workflow/session with agent, health tag, tool-call count, failures, duration, touched backends, and two timestamp columns (relative "Started" + exact ISO "Timestamp").
+
+**Date range filter** (added 2026-03-23): The `DateRangeFilter` component appears in the page header to the right of the title. It provides:
+- Five preset buttons: `1h`, `6h`, `24h`, `7d`, `30d` — the active preset is highlighted with the primary teal accent.
+- A `Range` / `Custom` calendar button that opens a dropdown picker with From/To `<input type="date">` fields. On Apply the custom range is passed as ISO strings (`T00:00:00` / `T23:59:59`); clicking any preset clears the custom range.
+- The active preset or custom range is reflected in the SWR fetch URL (`?hours=<N>`). Custom range state is held in `customFrom` / `customTo` state; switching to a preset clears both.
+- Clicking outside the dropdown closes it via `mousedown` document listener.
+- Component path: `dashboard/components/date-range-filter.tsx`
+
+**Filters (in addition to date range)**:
+- Text search: session ID, agent name, or server name
+- Status tabs: All / Clean / Failed — with live counts
+- Agent dropdown (shown only when more than one agent is present)
+- Health tag dropdown: All / Success / Fallback / Loop / Budget / Failure / Circuit Open / Timeout / Schema Drift
+
+**Pagination**: 20 rows per page; sticky footer with first/previous/next/last controls and `x / total` label.
 
 **Dedicated session detail route**: Clicking a row opens `/sessions/[id]`.
 
-#### 4.3.1 Details tab — Lineage Graph (redesigned 2026-03-20)
+#### 4.3.1 Details tab — Lineage Graph (redesigned 2026-03-20; wide-screen layout 2026-03-23)
 
 The Details tab is the visual debugging surface. It has three sub-regions stacked vertically:
 
@@ -475,21 +490,35 @@ The Details tab is the visual debugging surface. It has three sub-regions stacke
 - Fit view button — fits all nodes into viewport. Keyboard shortcut: `f`
 - `Esc` clears selection
 
-**Lineage graph** (shared SVG + dagre renderer):
+**Lineage graph** (shared SVG + dagre renderer — nodes redesigned 2026-03-23):
 - Agent nodes and server nodes connected by directed edges with call counts
+- Node cards redesigned: compact metric pills inside each card show call count, error count, and avg latency. Node padding tightened. Agent nodes use a primary-teal gradient header; server nodes use a muted slate gradient. Glass-morphism styling with border + glow on selection.
+- Tool names listed inside expanded server nodes (one row per distinct tool), up to a configurable max before "+ N more"
+- Loop detection annotation: nodes with a repeated call pattern show the `repeatCallName` and `repeatCallCount` below the metric pills
 - Per-tool expansion: each edge between an agent and a server shows a circular `+` button with call count (e.g. `5×`). Clicking it splits the server node into per-tool sub-nodes, one per distinct tool called
+- Back-edges (cycles) rendered as self-loop arcs on the right side of the node
 - "View in Agent/Server Catalog →" links visible in node detail panel, navigating to `/agents` or `/servers` with the node pre-selected
 - Keyboard shortcut: `Esc` = deselect node
 
-**Minimap** (bottom-right corner):
+**Minimap** (bottom-right corner — redesigned 2026-03-23):
 - 150×90px overview of the full graph with a viewport rectangle overlay
 - Dragging the viewport rectangle inside the minimap pans the main graph
-- Always visible when graph has more than a few nodes
+- Minimap uses a `ResizeObserver` to track the container size and scales accordingly
+- Auto-fits the graph into the viewport on first render when both container size and layout are known
+- Always visible when graph has nodes
 
 **Right-side inspector panel** (70/30 split — graph 70%, panel 30%):
 - Populated when a node, edge, or per-tool sub-node is selected
 - Shows call counts, error rate, avg/p99 latency, tool list, and token usage for the selected element
+- MetricTile sub-component: each metric is a rounded tile with a primary or danger accent border on the left side
 - "View in Catalog" link appears for agent and server nodes
+
+**Graph builder extraction** (2026-03-23):
+- Session graph construction logic extracted from the session detail page into `dashboard/lib/session-graph.ts`
+- Exports `buildSessionGraph(trace, expandedGroups, expandedEdges): SessionGraphResult`
+- `SessionGraphResult` type: `{ nodes, edges, serverCallers, edgeMetrics, edgeSpans }`
+- Loop detection (`findRepeatedCall`) and per-call label generation (`buildCallLabels`) live in this module
+- The detail page consumes `buildSessionGraph` via the `useSessionGraph` hook (a `useMemo` wrapper) — graph recomputes only when trace, expandedGroups, or expandedEdges change
 
 **PayloadSlideout** (full-width slide-over panel):
 - Opens when a payload cell in the inspector is clicked
@@ -508,6 +537,40 @@ Compare is initiated from the session detail page. The user picks another recent
 #### 4.3.4 Replay button (P5.7)
 
 Replay lives in the session detail header — re-runs all `tool_call` spans in the session with their stored input args against live MCP servers. Shows spinner and "Replaying..." while in flight. On completion, calls `POST /api/agents/sessions/{id}/replay` and returns a replay session that can be compared directly with the original. Requires `redact_payloads: false` (default) so that `input_json` is present on spans.
+
+### 4.3.5 Shared UI Components (added / updated 2026-03-23)
+
+#### `Timestamp` component (`dashboard/components/timestamp.tsx`)
+
+Renders both relative and exact timestamps from a single ISO string. Used across sessions list, session detail, health page uptime dots, agents page, and servers page.
+
+**Default mode** (two spans in one `<time>` element):
+```
+16h ago · Mar 22, 14:30:05
+```
+The relative portion is displayed in normal foreground color. The exact portion (`· Mar 22, 14:30:05`) is rendered at 60% opacity in `text-muted-foreground`.
+
+**Compact mode** (`compact` prop): renders only the relative time. The exact time is placed in the HTML `title` attribute for tooltip-on-hover. Used in tight spaces such as the sessions table "Started" column.
+
+Both modes use the `<time dateTime={iso}>` element for semantic HTML. The `timeAgo()` and `formatExact()` helpers from `@/lib/utils` compute the display values.
+
+#### `DateRangeFilter` component (`dashboard/components/date-range-filter.tsx`)
+
+Reusable date range control for any dashboard page that needs time-windowed data. Pages using it as of 2026-03-23: Sessions, Costs, Health, Agents, Servers.
+
+**Props**:
+| Prop | Type | Description |
+|---|---|---|
+| `activeHours` | `number \| null` | Currently selected preset in hours; `null` when custom range is active |
+| `onPreset` | `(hours: number) => void` | Called when a preset button is clicked |
+| `onCustomRange` | `(from: string, to: string) => void` | Called with ISO strings when Apply is clicked in the date picker |
+| `onClearCustom` | `() => void` | Called when custom range is cleared or preset is selected |
+| `customFrom` | `string \| null` | Controlled: currently active custom from date (ISO) |
+| `customTo` | `string \| null` | Controlled: currently active custom to date (ISO) |
+
+**Presets**: `1h` (1h), `6h` (6h), `24h` (24h), `7d` (168h), `30d` (720h). Active preset highlighted with primary color; inactive presets use muted background.
+
+**Custom range picker**: dropdown (absolute-positioned, `z-50`, blur backdrop) with From/To `<input type="date">` fields. Apply button is disabled until both dates are filled. Custom range applies `T00:00:00` to the From date and `T23:59:59` to the To date before converting to ISO strings.
 
 ### 4.4 MCP Servers Catalog — `/servers`
 

@@ -8,8 +8,10 @@ import {
   Key, Plus, Trash2, Copy, Check, ExternalLink, Shield, Database,
   Info, AlertTriangle, Eye, EyeOff, Users, UserPlus, UserX, ShieldCheck,
   DollarSign, Pencil, X, Folder, ChevronDown, ChevronRight,
-  Bell, ClipboardList, Server, Settings2, AlertCircle, ShieldAlert,
+  Bell, ClipboardList, Server, Settings2, AlertCircle, ShieldAlert, Palette,
+  Sun, Moon, Monitor,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { fetcher, getApiKeys, createApiKey, revokeApiKey, listUsers, inviteUser, deactivateUser, updateUserRole, listModelPricing, createModelPricing, updateModelPricing, deactivateModelPricing, listProjects, createProject, deleteProject, listProjectMembers, addProjectMember, removeProjectMember, getAlertsConfig, saveAlertsConfig, testSlackWebhook, getAuditLogs, listPreventionConfigs, savePreventionConfig, deletePreventionConfig, saveProjectPreventionConfig, listAgentMetadata } from "@/lib/api";
 import type { ApiKeyResponse, ApiKeyCreatedResponse, ApiStatus, DashboardUser, InviteResponse, ModelPricingEntry, ProjectResponse, ProjectMember, PreventionConfig, PreventionConfigUpdate, AgentMetadata } from "@/lib/types";
 import { cn, timeAgo } from "@/lib/utils";
@@ -1942,13 +1944,67 @@ function PreventionForm({
   );
 }
 
+// ─── Appearance Section ────────────────────────────────────────────────────────
+
+function AppearanceSection() {
+  const { theme, setTheme } = useTheme();
+
+  const options: { value: string; label: string; icon: React.ElementType; desc: string }[] = [
+    { value: "light", label: "Light", icon: Sun, desc: "Always use the light theme" },
+    { value: "dark", label: "Dark", icon: Moon, desc: "Always use the dark theme" },
+    { value: "system", label: "System", icon: Monitor, desc: "Follow your OS preference" },
+  ];
+
+  return (
+    <div className="space-y-5 max-w-2xl">
+      <SectionHeader title="Appearance" description="Customize how LangSight looks in your browser." />
+      <div className="rounded-xl border p-5 space-y-4" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+        <p className="text-[13px] font-semibold text-foreground">Theme</p>
+        <div className="grid grid-cols-3 gap-3">
+          {options.map(({ value, label, icon: Icon, desc }) => {
+            const active = theme === value;
+            return (
+              <button
+                key={value}
+                onClick={() => setTheme(value)}
+                className="flex flex-col items-center gap-2.5 rounded-xl p-4 border transition-all text-left"
+                style={{
+                  background: active ? "hsl(var(--primary) / 0.06)" : "hsl(var(--muted) / 0.4)",
+                  borderColor: active ? "hsl(var(--primary) / 0.4)" : "hsl(var(--border))",
+                  boxShadow: active ? "0 0 0 1px hsl(var(--primary) / 0.2)" : undefined,
+                }}
+              >
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center"
+                  style={{ background: active ? "hsl(var(--primary) / 0.12)" : "hsl(var(--muted))" }}
+                >
+                  <Icon size={16} style={{ color: active ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))" }} />
+                </div>
+                <div>
+                  <p className={cn("text-[13px] font-semibold", active ? "text-foreground" : "text-muted-foreground")}>{label}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{desc}</p>
+                </div>
+                {active && (
+                  <div className="w-4 h-4 rounded-full flex items-center justify-center self-end ml-auto" style={{ background: "hsl(var(--primary))" }}>
+                    <Check size={9} className="text-white" />
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
-type SettingsSection = "general" | "api-keys" | "model-pricing" | "members" | "projects" | "notifications" | "prevention" | "audit-logs" | "instance";
+type SettingsSection = "general" | "api-keys" | "model-pricing" | "members" | "projects" | "notifications" | "prevention" | "audit-logs" | "appearance" | "instance";
 
 const VALID_SECTIONS: SettingsSection[] = [
   "general", "api-keys", "model-pricing", "members",
-  "projects", "notifications", "prevention", "audit-logs", "instance",
+  "projects", "notifications", "prevention", "audit-logs", "appearance", "instance",
 ];
 
 function isValidSection(s: string): s is SettingsSection {
@@ -1980,6 +2036,7 @@ export default function SettingsPage() {
     { id: "notifications", label: "Notifications",  icon: Bell },
     { id: "prevention",    label: "Prevention",     icon: ShieldAlert },
     { id: "audit-logs",    label: "Audit Logs",     icon: ClipboardList },
+    { id: "appearance",    label: "Appearance",     icon: Palette },
     { id: "instance",      label: "Instance",       icon: Server },
   ];
 
@@ -2017,6 +2074,7 @@ export default function SettingsPage() {
         {active === "notifications"  && <NotificationsSection />}
         {active === "prevention"     && <PreventionSection />}
         {active === "audit-logs"     && <AuditLogsSection />}
+        {active === "appearance"     && <AppearanceSection />}
         {active === "instance"       && (
           <div className="space-y-5 max-w-2xl">
             <SectionHeader title="Instance" description="Current LangSight backend configuration and version info." />

@@ -159,14 +159,6 @@ describe("Sidebar — user menu", () => {
     });
   });
 
-  it("shows theme toggle in user menu", async () => {
-    renderSidebar();
-    const userButton = screen.getByText("Admin User").closest("button");
-    await userEvent.click(userButton!);
-    await waitFor(() => {
-      expect(screen.getByText(/light mode|dark mode/i)).toBeInTheDocument();
-    });
-  });
 });
 
 /* ── Project switcher ───────────────────────────────────────── */

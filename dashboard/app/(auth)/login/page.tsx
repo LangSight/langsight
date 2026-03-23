@@ -212,17 +212,23 @@ export default function LoginPage() {
           )}
 
           {/* Footer */}
-          <p className="mt-8 text-center text-xs text-muted-foreground">
-            New users are invited by an admin.{" "}
-            <a
-              href="https://docs.langsight.dev/users"
-              target="_blank"
-              rel="noreferrer"
-              className="underline underline-offset-2 transition-colors hover:text-foreground"
-            >
-              Learn more →
-            </a>
-          </p>
+          <div className="mt-8 pt-6 flex items-center justify-center gap-4" style={{ borderTop: "1px solid hsl(var(--border) / 0.5)" }}>
+            {[
+              { label: "Docs", href: "https://docs.langsight.dev" },
+              { label: "GitHub", href: "https://github.com/langsight/langsight" },
+              { label: "Apache 2.0", href: "https://www.apache.org/licenses/LICENSE-2.0" },
+            ].map(({ label, href }) => (
+              <a
+                key={label}
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {label}
+              </a>
+            ))}
+          </div>
         </div>
       </div>
     </div>
