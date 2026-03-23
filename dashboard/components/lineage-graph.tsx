@@ -407,7 +407,7 @@ export function LineageGraph({
                     onMouseEnter={() => setHoveredNode(node.id)}
                     onMouseLeave={() => setHoveredNode(null)}
                   >
-                    <div className="w-full h-full rounded-xl px-4 flex flex-col justify-center"
+                    <div className="w-full h-full rounded-xl px-4 py-2.5 flex flex-col justify-center"
                       style={{
                         background: isSel
                           ? "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.06) 100%)"
@@ -451,16 +451,11 @@ export function LineageGraph({
                       </div>
                       {/* Row 2: metric pills */}
                       {hasMet && (
-                        <div className="flex items-center gap-2 mt-2">
-                          {node.callCount != null && node.callCount > 0 && <span className="text-[9px] px-2 py-[3px] rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)", border: "0.5px solid hsl(var(--border))" }}>{node.callCount} calls</span>}
-                          {node.errorCount != null && node.errorCount > 0 && <span className="text-[9px] px-2 py-[3px] rounded-full" style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", fontFamily: "var(--font-geist-mono)", border: "0.5px solid rgba(239,68,68,0.18)" }}>{node.errorCount} err</span>}
-                          {node.avgLatencyMs != null && <span className="text-[9px] px-2 py-[3px] rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)", border: "0.5px solid hsl(var(--border))" }}>{Math.round(node.avgLatencyMs)}ms</span>}
-                          {node.repeatCallCount != null && node.repeatCallCount >= 2 && (
-                            <span className="text-[9px] px-2 py-[3px] rounded-full" style={{ background: "rgba(245,158,11,0.10)", color: "#b45309", fontFamily: "var(--font-geist-mono)", border: "0.5px solid rgba(245,158,11,0.28)" }}>
-                              repeat {node.repeatCallCount}×
-                            </span>
-                          )}
-                          {errRate > 0 && <div className="flex-1 h-[4px] rounded-full overflow-hidden ml-1" style={{ background: "hsl(var(--muted))", minWidth: 24, maxWidth: 44 }}><div className="h-full rounded-full" style={{ width: `${Math.min(100, errRate * 100)}%`, background: errRate > 0.5 ? "#ef4444" : errRate > 0.1 ? "#f59e0b" : "#10b981" }} /></div>}
+                        <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
+                          {node.callCount != null && node.callCount > 0 && <span className="text-[8px] px-1.5 py-[2px] rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)" }}>{node.callCount} calls</span>}
+                          {node.errorCount != null && node.errorCount > 0 && <span className="text-[8px] px-1.5 py-[2px] rounded-full" style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{node.errorCount} err</span>}
+                          {node.avgLatencyMs != null && <span className="text-[8px] px-1.5 py-[2px] rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)" }}>{Math.round(node.avgLatencyMs)}ms</span>}
+                          {errRate > 0 && <div className="h-[3px] rounded-full overflow-hidden" style={{ background: "hsl(var(--muted))", width: 32 }}><div className="h-full rounded-full" style={{ width: `${Math.min(100, errRate * 100)}%`, background: errRate > 0.5 ? "#ef4444" : errRate > 0.1 ? "#f59e0b" : "#10b981" }} /></div>}
                         </div>
                       )}
                       {/* Row 3: call expand */}
