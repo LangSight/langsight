@@ -41,8 +41,8 @@ _SEND_TIMEOUT = 3.0
 _BATCH_SIZE = 50  # flush when buffer reaches this many spans
 _FLUSH_INTERVAL = 1.0  # seconds between automatic flushes
 _MAX_BUFFER_SIZE = 10_000  # hard cap — drop oldest spans on overflow to prevent OOM
-_MAX_SESSION_STATE = 500   # max live loop-detector/budget entries (one per session_id)
-_MAX_SERVER_STATE = 100    # max live circuit-breaker entries (one per server_name)
+_MAX_SESSION_STATE = 500  # max live loop-detector/budget entries (one per session_id)
+_MAX_SERVER_STATE = 100  # max live circuit-breaker entries (one per server_name)
 
 
 class LangSightClient:
@@ -384,7 +384,7 @@ class LangSightClient:
             await self._http.aclose()
             self._http = None
 
-    async def __aenter__(self) -> "LangSightClient":
+    async def __aenter__(self) -> LangSightClient:
         return self
 
     async def __aexit__(self, *_: object) -> None:
