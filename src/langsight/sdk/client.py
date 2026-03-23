@@ -302,10 +302,9 @@ class LangSightClient:
             if not self._buffer:
                 return
             batch, self._buffer = self._buffer, []
-        try:
-            await self._post_spans(batch)
-        except Exception:  # noqa: BLE001
-            # Return spans to the buffer — atexit handler will deliver them
+        ok = await self._post_spans(batch)
+        if not ok:
+            # Return spans to buffer — atexit handler will deliver them on exit
             async with self._lock:
                 self._buffer = batch + self._buffer
 
@@ -478,8 +477,8 @@ class LangSightClient:
             self._http = httpx.AsyncClient(timeout=self._timeout, headers=headers)
         return self._http
 
-    async def _post_spans(self, spans: list[ToolCallSpan]) -> None:
-        """Internal: POST a batch of spans. Never raises."""
+    async def _post_spans(self, spans: list[ToolCallSpan]) -> bool:
+        """Internal: POST a batch of spans. Returns True on success, False on failure. Never raises."""
         payload = [s.model_dump(mode="json") for s in spans]
         try:
             http = await self._get_http()
@@ -489,9 +488,11 @@ class LangSightClient:
             )
             response.raise_for_status()
             logger.debug("sdk.spans_sent", count=len(spans))
+            return True
         except Exception as exc:  # noqa: BLE001
             # Fail-open: log but never raise — monitoring must not break the app
             logger.warning("sdk.send_failed", error=str(exc), count=len(spans))
+            return False
 
 
 class MCPClientProxy:
