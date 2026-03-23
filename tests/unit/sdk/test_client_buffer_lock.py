@@ -103,8 +103,9 @@ class TestConcurrentSendAndFlushNoLoss:
         """
         sent_spans: list[ToolCallSpan] = []
 
-        async def capture_post(batch: list[ToolCallSpan]) -> None:
+        async def capture_post(batch: list[ToolCallSpan]) -> bool:
             sent_spans.extend(batch)
+            return True
 
         client = _client_no_flush(batch_size=10_000)
         client._post_spans = capture_post  # type: ignore[method-assign]
@@ -140,8 +141,9 @@ class TestConcurrentSendAndFlushNoLoss:
         """Two concurrent flush() calls must not deliver the same span twice."""
         delivered_batches: list[list[ToolCallSpan]] = []
 
-        async def capture_post(batch: list[ToolCallSpan]) -> None:
+        async def capture_post(batch: list[ToolCallSpan]) -> bool:
             delivered_batches.append(batch)
+            return True
 
         client = _client_no_flush()
         client._post_spans = capture_post  # type: ignore[method-assign]
@@ -208,9 +210,10 @@ class TestFlushLockSemantics:
         """A second flush after the first already cleared the buffer is a no-op."""
         call_count = 0
 
-        async def counter_post(batch: list[ToolCallSpan]) -> None:
+        async def counter_post(batch: list[ToolCallSpan]) -> bool:
             nonlocal call_count
             call_count += 1
+            return True
 
         client = _client_no_flush()
         client._post_spans = counter_post  # type: ignore[method-assign]
