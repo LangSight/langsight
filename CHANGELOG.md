@@ -7,6 +7,20 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.3.6] - 2026-03-23 — Tool Input/Output Capture and Flush Reliability
+
+### Added
+
+- **Tool argument and result capture** (`src/langsight/integrations/base.py`): `_record()` now accepts `input_str` (tool arguments) and `output` (tool result). Both fields are stored on the span. When `redact_payloads=True` is configured on the client, neither field is captured, preventing accidental PII ingestion.
+- **LangChain tool payload capture** (`src/langsight/integrations/langchain.py`): `on_tool_start` stores `input_str`; `on_tool_end` passes the tool result as `output` to `_record()`. Spans now carry full tool invocation context.
+- **LangGraph node payload capture** (`src/langsight/integrations/langgraph.py`): same as LangChain — `input_str` and `output` captured on node-level spans so every node execution is fully observable.
+
+### Fixed
+
+- **Spans lost when event loop closes during flush** (`src/langsight/sdk/client.py`): `flush()` now catches `_post_spans` failures and returns the batch to the front of the buffer. The `atexit` handler can then deliver the spans in its own thread, so no spans are silently dropped when the event loop is already closing at process teardown.
+
+---
+
 ## [0.3.5] - 2026-03-23 — Graceful Shutdown Flush for LangSightClient
 
 ### Fixed

@@ -1,6 +1,6 @@
 [project]
 name = "langsight"
-version = "0.3.5"
+version = "0.3.6"
 description = "Agent runtime reliability — prevent loops, enforce budgets, monitor MCP health, scan for CVEs"
 readme = "README.md"
 license = { text = "Apache-2.0" }
