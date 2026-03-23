@@ -89,6 +89,65 @@ async def upsert_server_metadata(
     return _coerce(row)
 
 
+@router.post(
+    "/discover",
+    summary="Auto-register servers seen in traces",
+    response_model=dict[str, Any],
+)
+async def discover_servers_from_spans(
+    storage: StorageBackend = Depends(get_storage),
+    project_id: str | None = Depends(get_active_project_id),
+    _admin: None = Depends(require_admin),
+) -> dict[str, Any]:
+    """Scan recent spans for server_name values and register any that are not
+    already in the server catalog.
+
+    Useful after initial SDK instrumentation — run once to populate the
+    MCP Servers page from existing trace data without manual registration.
+    """
+    if not hasattr(storage, "query"):
+        # ClickHouse not available — nothing to discover
+        return {"discovered": 0, "servers": []}
+
+    # Query distinct server names from ClickHouse spans for this project
+    project_filter = ""
+    params: dict[str, Any] = {}
+    if project_id:
+        project_filter = "AND project_id = {project_id:String}"
+        params["project_id"] = project_id
+
+    result = await storage.query(  # type: ignore[attr-defined]
+        f"""
+        SELECT DISTINCT server_name
+        FROM mcp_tool_calls
+        WHERE server_name != ''
+          AND span_type = 'tool_call'
+          {project_filter}
+        ORDER BY server_name
+        LIMIT 100
+        """,
+        parameters=params,
+    )
+    span_servers = {row[0] for row in result.result_rows}
+
+    # Find which ones are not yet in the catalog
+    existing = await storage.get_all_server_metadata(project_id=project_id)
+    existing_names = {m["server_name"] for m in existing}
+    new_servers = span_servers - existing_names
+
+    # Register each new server with basic metadata
+    registered = []
+    for name in sorted(new_servers):
+        await storage.upsert_server_metadata(
+            server_name=name,
+            description=f"Auto-discovered from traces",
+            project_id=project_id,
+        )
+        registered.append(name)
+
+    return {"discovered": len(registered), "servers": registered}
+
+
 @router.delete("/metadata/{server_name}", status_code=http_status.HTTP_204_NO_CONTENT)
 async def delete_server_metadata(
     server_name: str,

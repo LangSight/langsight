@@ -10,7 +10,7 @@ import {
   ChevronUp, ChevronLast, AlertTriangle, X, Bot, Activity,
 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
-import { fetcher, triggerHealthCheck, getServerHistory, listServerMetadata, upsertServerMetadata } from "@/lib/api";
+import { fetcher, triggerHealthCheck, getServerHistory, listServerMetadata, upsertServerMetadata, discoverServers } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatLatency, STATUS_BG, formatExact } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
@@ -337,6 +337,24 @@ export default function ServersPage() {
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [activeTab, setActiveTab] = useState<DetailTab>("about");
   const [checking, setChecking] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+
+  async function runDiscover() {
+    setDiscovering(true);
+    try {
+      const res = await discoverServers(pid);
+      if (res.discovered > 0) {
+        toast.success(`Discovered ${res.discovered} server${res.discovered > 1 ? "s" : ""}: ${res.servers.join(", ")}`);
+        await Promise.all([mutate(), mutateMetadata()]);
+      } else {
+        toast.info("No new servers found in traces. Run your agent first, then discover.");
+      }
+    } catch {
+      toast.error("Discover failed");
+    } finally {
+      setDiscovering(false);
+    }
+  }
 
   const { data: servers, isLoading, mutate } = useSWR<HealthResult[]>(`/api/health/servers${pq ? `?${pq.slice(1)}` : ""}`, fetcher, { refreshInterval: 30_000 });
   const { data: metadata, mutate: mutateMetadata } = useSWR<ServerMetadata[]>(`/api/servers/metadata${pq}`, () => listServerMetadata(pid), { refreshInterval: 60_000 });
@@ -388,7 +406,15 @@ export default function ServersPage() {
         <div className="flex-1 flex flex-col items-center justify-center rounded-xl border" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
           <Server size={28} className="mb-3 text-muted-foreground opacity-40" />
           <p className="text-sm font-semibold text-foreground mb-1">No servers found</p>
-          <p className="text-xs text-muted-foreground">Run a health check or instrument your agents</p>
+          <p className="text-xs text-muted-foreground mb-4">Auto-register servers seen in your agent traces</p>
+          <button
+            onClick={runDiscover}
+            disabled={discovering}
+            className="btn btn-primary flex items-center gap-2 text-xs px-4 py-2"
+          >
+            {discovering ? <span className="animate-spin">⟳</span> : <Search size={13} />}
+            {discovering ? "Discovering…" : "Discover from traces"}
+          </button>
         </div>
       ) : (
         <>
