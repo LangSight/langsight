@@ -8,13 +8,7 @@ import { getCostsBreakdown } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import type { CostsBreakdownResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-const WINDOWS = [
-  { label: "1h",  hours: 1 },
-  { label: "24h", hours: 24 },
-  { label: "7d",  hours: 24 * 7 },
-  { label: "30d", hours: 24 * 30 },
-];
+import { DateRangeFilter } from "@/components/date-range-filter";
 
 function formatUsd(v: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -95,6 +89,8 @@ function EmptyState({ title, description, body }: {
 /* ── Page ───────────────────────────────────────────────────── */
 export default function CostsPage() {
   const [hours, setHours] = useState<number>(24);
+  const [customFrom, setCustomFrom] = useState<string | null>(null);
+  const [customTo, setCustomTo] = useState<string | null>(null);
   const { activeProject } = useProject();
 
   // Filters
@@ -159,25 +155,14 @@ export default function CostsPage() {
             Filter by server, agent, model, or cost type to explore spend
           </p>
         </div>
-        <div
-          className="flex rounded-lg border p-0.5"
-          style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-        >
-          {WINDOWS.map((w) => (
-            <button
-              key={w.hours}
-              onClick={() => setHours(w.hours)}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                w.hours === hours
-                  ? "bg-primary text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {w.label}
-            </button>
-          ))}
-        </div>
+        <DateRangeFilter
+          activeHours={hours}
+          onPreset={(h) => { setHours(h); setCustomFrom(null); setCustomTo(null); }}
+          onCustomRange={(from, to) => { setCustomFrom(from); setCustomTo(to); }}
+          onClearCustom={() => { setCustomFrom(null); setCustomTo(null); }}
+          customFrom={customFrom}
+          customTo={customTo}
+        />
       </div>
 
       {isLoading ? (

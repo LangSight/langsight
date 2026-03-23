@@ -13,6 +13,7 @@ import { fetcher } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatDuration } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
+import { DateRangeFilter } from "@/components/date-range-filter";
 import type { AgentSession, HealthTag } from "@/lib/types";
 import { HealthTagBadge } from "@/components/health-tag-badge";
 
@@ -22,6 +23,8 @@ const PAGE_SIZE = 20;
 export default function SessionsPage() {
   const router = useRouter();
   const [hours, setHours] = useState(24);
+  const [customFrom, setCustomFrom] = useState<string | null>(null);
+  const [customTo, setCustomTo] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "clean" | "failed">("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
@@ -71,8 +74,6 @@ export default function SessionsPage() {
   const totalCalls  = filtered.reduce((n, s) => n + s.tool_calls, 0);
   const totalFailed = filtered.reduce((n, s) => n + s.failed_calls, 0);
 
-  const TIME_OPTIONS = [[1,"1h"],[6,"6h"],[24,"24h"],[168,"7d"]] as const;
-
   return (
     <div className="page-in flex flex-col" style={{ height: "calc(100vh - 4rem)" }}>
       {/* ── Header ────────────────────────────────────────────── */}
@@ -85,27 +86,14 @@ export default function SessionsPage() {
               {totalFailed > 0 && <span style={{ color: "hsl(var(--danger))" }}> · {totalFailed} failures</span>}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <div
-              className="flex rounded-lg border p-0.5"
-              style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-            >
-              {TIME_OPTIONS.map(([v, l]) => (
-                <button
-                  key={v}
-                  onClick={() => setHours(v)}
-                  className={cn(
-                    "px-2.5 py-1.5 rounded-md text-xs font-medium transition-all",
-                    hours === v
-                      ? "bg-primary text-white shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {l}
-                </button>
-              ))}
-            </div>
-          </div>
+          <DateRangeFilter
+            activeHours={hours}
+            onPreset={(h) => { setHours(h); setCustomFrom(null); setCustomTo(null); }}
+            onCustomRange={(from, to) => { setCustomFrom(from); setCustomTo(to); }}
+            onClearCustom={() => { setCustomFrom(null); setCustomTo(null); }}
+            customFrom={customFrom}
+            customTo={customTo}
+          />
         </div>
 
         {/* ── Filters ───────────────────────────────────────────── */}

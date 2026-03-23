@@ -176,7 +176,7 @@ function ServerTable({ servers, metaByName, historyCache, onSelect, onRunCheck, 
               <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Trend</th>
               <ThCell col="uptime" label="Uptime" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="tools" label="Tools" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <ThCell col="checked" label="Checked" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              <ThCell col="checked" label="Last Checked" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
             </tr>
           </thead>
           <tbody>
@@ -418,7 +418,7 @@ export default function ServersPage() {
                       <div className="flex items-center gap-2 mt-0.5">
                         <StatusDot status={selected.status} pulse />
                         <span className="text-[11px]" style={{ color: STATUS_COLOR[selected.status] }}>{selected.status}</span>
-                        <span className="text-[10px] text-muted-foreground">· {selected.tools_count ?? 0} tools · checked <Timestamp iso={selected.checked_at} compact /></span>
+                        <span className="text-[10px] text-muted-foreground">· {selected.tools_count ?? 0} tools · last checked <Timestamp iso={selected.checked_at} compact /></span>
                         {selected.latency_ms && <span className="text-[10px] font-semibold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(selected.latency_ms)}ms</span>}
                       </div>
                     </div>

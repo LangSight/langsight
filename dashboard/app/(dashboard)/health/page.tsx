@@ -7,6 +7,7 @@ import { RefreshCw, AlertTriangle, Search, ChevronRight, Server as ServerIcon } 
 import { fetcher, triggerHealthCheck, getServerHistory } from "@/lib/api";
 import { cn, STATUS_BG, timeAgo, formatLatency } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
+import { DateRangeFilter } from "@/components/date-range-filter";
 import { toast } from "sonner";
 import type { HealthResult } from "@/lib/types";
 
@@ -187,6 +188,9 @@ function ServerRow({ server, expanded, onToggle }: {
 type StatusFilter = "all" | "up" | "degraded" | "down";
 
 export default function HealthPage() {
+  const [hours, setHours] = useState<number>(24);
+  const [customFrom, setCustomFrom] = useState<string | null>(null);
+  const [customTo, setCustomTo] = useState<string | null>(null);
   const { data: servers, isLoading, mutate } = useSWR<HealthResult[]>("/api/health/servers", fetcher, { refreshInterval: 30_000 });
   const [expanded, setExpanded] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
@@ -247,6 +251,14 @@ export default function HealthPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <DateRangeFilter
+            activeHours={hours}
+            onPreset={(h) => { setHours(h); setCustomFrom(null); setCustomTo(null); }}
+            onCustomRange={(from, to) => { setCustomFrom(from); setCustomTo(to); }}
+            onClearCustom={() => { setCustomFrom(null); setCustomTo(null); }}
+            customFrom={customFrom}
+            customTo={customTo}
+          />
           {/* Search */}
           <div className="relative">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -296,7 +308,7 @@ export default function HealthPage() {
           <span className="w-14">Status</span>
           <span className="flex-1 text-right">Latency</span>
           <span className="w-8 text-center">Tools</span>
-          <span className="w-16 text-right">Checked</span>
+          <span className="w-16 text-right">Last Checked</span>
           <span className="w-3.5" /> {/* chevron */}
         </div>
       )}
