@@ -99,12 +99,13 @@ async def get_slo_status(
 
 @router.get("", response_model=list[SLOResponse], summary="List all SLO definitions")
 async def list_slos(
+    project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
 ) -> list[SLOResponse]:
-    """Return all configured SLO definitions."""
+    """Return SLO definitions scoped to the active project."""
     if not hasattr(storage, "list_slos"):
         return []
-    slos = await storage.list_slos()
+    slos = await storage.list_slos(project_id=project_id)
     return [_slo_to_response(s) for s in slos]
 
 
@@ -116,10 +117,11 @@ async def list_slos(
 )
 async def create_slo(
     body: CreateSLORequest,
+    project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
     _: None = Depends(require_admin),
 ) -> SLOResponse:
-    """Define a new Agent SLO.
+    """Define a new Agent SLO scoped to the active project.
 
     Example — 95% success rate for customer-support-bot over 24h:
         { "agent_name": "customer-support-bot", "metric": "success_rate",
@@ -132,6 +134,7 @@ async def create_slo(
         )
     slo = AgentSLO(
         id=uuid.uuid4().hex,
+        project_id=project_id or "",
         agent_name=body.agent_name,
         metric=body.metric,
         target=body.target,
@@ -149,16 +152,17 @@ async def create_slo(
 )
 async def delete_slo(
     slo_id: str,
+    project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
     _: None = Depends(require_admin),
 ) -> None:
-    """Delete an SLO definition by ID."""
+    """Delete an SLO definition. Only deletes within the active project."""
     if not hasattr(storage, "delete_slo"):
         raise HTTPException(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="SLO management requires PostgreSQL backend.",
         )
-    found = await storage.delete_slo(slo_id)
+    found = await storage.delete_slo(slo_id, project_id=project_id)
     if not found:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,

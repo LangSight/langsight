@@ -760,8 +760,15 @@ class PostgresBackend:
         row = await self._pool.fetchrow("SELECT * FROM agent_slos WHERE id = $1", slo_id)
         return _row_to_slo(row) if row else None
 
-    async def delete_slo(self, slo_id: str) -> bool:
-        result: str = await self._pool.execute("DELETE FROM agent_slos WHERE id = $1", slo_id)
+    async def delete_slo(self, slo_id: str, project_id: str | None = None) -> bool:
+        if project_id:
+            result: str = await self._pool.execute(
+                "DELETE FROM agent_slos WHERE id = $1 AND project_id = $2",
+                slo_id,
+                project_id,
+            )
+        else:
+            result = await self._pool.execute("DELETE FROM agent_slos WHERE id = $1", slo_id)
         return result != "DELETE 0"
 
     # ── Alert config ──────────────────────────────────────────────────────────

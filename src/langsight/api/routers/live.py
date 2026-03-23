@@ -15,9 +15,10 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from starlette.responses import StreamingResponse
 
+from langsight.api.dependencies import get_active_project_id
 from langsight.api.metrics import ACTIVE_SSE
 
 router = APIRouter(prefix="/live", tags=["live"])
@@ -29,8 +30,14 @@ router = APIRouter(prefix="/live", tags=["live"])
     response_class=StreamingResponse,
     responses={200: {"description": "SSE event stream", "content": {"text/event-stream": {}}}},
 )
-async def live_events(request: Request) -> StreamingResponse:
+async def live_events(
+    request: Request,
+    project_id: str | None = Depends(get_active_project_id),
+) -> StreamingResponse:
     """Subscribe to real-time events via Server-Sent Events.
+
+    Events are filtered by the active project — each client only receives
+    events for their own project. Admin subscribers (no project) see all events.
 
     Events are pushed when:
     - A new span is ingested (event: span:new)
@@ -44,8 +51,7 @@ async def live_events(request: Request) -> StreamingResponse:
     async def event_generator() -> AsyncGenerator[str, None]:
         ACTIVE_SSE.inc()
         try:
-            async for event in broadcaster.subscribe():
-                # Check if client disconnected
+            async for event in broadcaster.subscribe(project_id=project_id):
                 if await request.is_disconnected():
                     break
                 yield event

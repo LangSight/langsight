@@ -207,6 +207,10 @@ class StorageBackend(Protocol):
         """Return a single SLO by ID, or None if not found."""
         ...
 
+    async def delete_slo(self, slo_id: str, project_id: str | None = None) -> bool:
+        """Delete an SLO. When project_id is set, only deletes within that project."""
+        ...
+
     async def delete_slo(self, slo_id: str) -> bool:
         """Delete an SLO. Returns True if found and deleted."""
         ...

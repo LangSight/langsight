@@ -305,6 +305,9 @@ class DualStorage:
     async def get_slo(self, slo_id: str) -> AgentSLO | None:
         return await self._meta.get_slo(slo_id)
 
+    async def delete_slo(self, slo_id: str, project_id: str | None = None) -> bool:
+        return await self._meta.delete_slo(slo_id, project_id=project_id)
+
     async def delete_slo(self, slo_id: str) -> bool:
         return await self._meta.delete_slo(slo_id)
 

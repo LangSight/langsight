@@ -34,25 +34,34 @@ _CLIENT_BUFFER = 50
 
 
 class SSEBroadcaster:
-    """In-memory pub/sub for Server-Sent Events."""
+    """In-memory pub/sub for Server-Sent Events.
+
+    Supports per-project filtering: subscribers pass a project_id and only
+    receive events for that project. Admin subscribers (project_id=None)
+    receive all events.
+    """
 
     def __init__(self) -> None:
-        self._clients: list[asyncio.Queue[str]] = []
+        # Each entry: (queue, project_id) — project_id=None means admin/all events
+        self._clients: list[tuple[asyncio.Queue[str], str | None]] = []
 
     @property
     def client_count(self) -> int:
         return len(self._clients)
 
     def publish(self, event_type: str, data: dict[str, Any]) -> None:
-        """Publish an event to all connected clients. Non-blocking, never raises."""
+        """Publish an event to matching clients. Non-blocking, never raises."""
         if not self._clients:
             return
+        event_project = data.get("project_id") or ""
         payload = f"event: {event_type}\ndata: {json.dumps(data, default=str)}\n\n"
-        for queue in self._clients:
+        for queue, sub_project in self._clients:
+            # Admin (None) sees all; project subscriber only sees their own events
+            if sub_project is not None and event_project and sub_project != event_project:
+                continue
             try:
                 queue.put_nowait(payload)
             except asyncio.QueueFull:
-                # Client is too slow — drop oldest event to make room
                 try:
                     queue.get_nowait()
                     queue.put_nowait(payload)
@@ -61,21 +70,24 @@ class SSEBroadcaster:
                 SSE_EVENTS_DROPPED.inc()
                 logger.debug("sse.event_dropped", event_type=event_type, clients=len(self._clients))
 
-    async def subscribe(self) -> AsyncGenerator[str, None]:
-        """Subscribe to the event stream. Yields SSE-formatted strings."""
+    async def subscribe(self, project_id: str | None = None) -> AsyncGenerator[str, None]:
+        """Subscribe to the event stream filtered by project_id.
+
+        project_id=None receives all events (admin).
+        project_id=<id> receives only events for that project.
+        """
         if len(self._clients) >= _MAX_CLIENTS:
             yield f"event: error\ndata: {json.dumps({'message': 'Too many connections'})}\n\n"
             return
 
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=_CLIENT_BUFFER)
-        self._clients.append(queue)
+        entry = (queue, project_id)
+        self._clients.append(entry)
 
-        # Send initial keepalive
         yield f": connected at {datetime.now(UTC).isoformat()}\n\n"
 
         try:
             while True:
-                # Heartbeat every 15 seconds to keep connection alive
                 try:
                     msg = await asyncio.wait_for(queue.get(), timeout=15.0)
                     yield msg
@@ -84,4 +96,4 @@ class SSEBroadcaster:
         except asyncio.CancelledError:
             pass
         finally:
-            self._clients.remove(queue)
+            self._clients.remove(entry)
