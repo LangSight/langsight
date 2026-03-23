@@ -105,7 +105,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             className="flex-1 overflow-y-auto"
             style={{ background: "hsl(var(--background))" }}
           >
-            <div className="p-5 max-w-7xl mx-auto">
+            <div className="p-5 w-full">
               {children}
             </div>
           </main>
