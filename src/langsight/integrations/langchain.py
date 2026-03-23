@@ -108,8 +108,8 @@ class LangSightLangChainCallback(BaseIntegration):
             session_id=session_id,
         )
         self._trace_id = trace_id
-        # run_id (UUID) → (tool_name, started_at)
-        self._pending: dict[str, tuple[str, datetime]] = {}
+        # run_id (UUID) → (tool_name, started_at, input_str)
+        self._pending: dict[str, tuple[str, datetime, str]] = {}
 
     # ---------------------------------------------------------------------------
     # LangChain callback interface
@@ -125,7 +125,7 @@ class LangSightLangChainCallback(BaseIntegration):
     ) -> None:
         """Called when a LangChain tool call begins."""
         tool_name = serialized.get("name") or serialized.get("id", ["unknown"])[-1] or "unknown"
-        self._pending[str(run_id)] = (tool_name, datetime.now(UTC))
+        self._pending[str(run_id)] = (tool_name, datetime.now(UTC), input_str)
 
     def on_tool_end(
         self,
@@ -138,13 +138,15 @@ class LangSightLangChainCallback(BaseIntegration):
         key = str(run_id)
         if key not in self._pending:
             return
-        tool_name, started_at = self._pending.pop(key)
+        tool_name, started_at, input_str = self._pending.pop(key)
         _fire_and_forget(
             self._record(
                 tool_name=tool_name,
                 started_at=started_at,
                 status=ToolCallStatus.SUCCESS,
                 trace_id=self._trace_id,
+                input_str=input_str,
+                output=output,
             )
         )
 
@@ -159,7 +161,7 @@ class LangSightLangChainCallback(BaseIntegration):
         key = str(run_id)
         if key not in self._pending:
             return
-        tool_name, started_at = self._pending.pop(key)
+        tool_name, started_at, input_str = self._pending.pop(key)
         _fire_and_forget(
             self._record(
                 tool_name=tool_name,
@@ -167,5 +169,6 @@ class LangSightLangChainCallback(BaseIntegration):
                 status=ToolCallStatus.ERROR,
                 error=str(error),
                 trace_id=self._trace_id,
+                input_str=input_str,
             )
         )

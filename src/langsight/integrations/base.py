@@ -9,7 +9,9 @@ to know about ToolCallSpan or the SDK client directly.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from typing import Any
 
 import structlog
 
@@ -38,6 +40,17 @@ class BaseIntegration:
         self._session_id = session_id
         self._redact = getattr(client, "_redact_payloads", False)
 
+    @staticmethod
+    def _parse_input(input_str: str) -> dict[str, Any] | None:
+        """Try to parse a LangChain input string into a dict."""
+        try:
+            parsed = json.loads(input_str)
+            if isinstance(parsed, dict):
+                return parsed
+            return {"input": parsed}
+        except (json.JSONDecodeError, TypeError):
+            return {"input": input_str} if input_str else None
+
     async def _record(
         self,
         tool_name: str,
@@ -45,8 +58,11 @@ class BaseIntegration:
         status: ToolCallStatus,
         error: str | None = None,
         trace_id: str | None = None,
+        input_str: str | None = None,
+        output: Any | None = None,
     ) -> None:
         """Build and fire-and-forget a ToolCallSpan."""
+        redact = self._redact
         span = ToolCallSpan.record(
             server_name=self._server_name,
             tool_name=tool_name,
@@ -57,6 +73,8 @@ class BaseIntegration:
             session_id=self._session_id,
             trace_id=trace_id,
             project_id=getattr(self._client, "_project_id", None) or "",
+            input_args=None if redact else self._parse_input(input_str or ""),
+            output_result=None if redact else (str(output) if output is not None else None),
         )
         await self._client.send_span(span)
         logger.debug(

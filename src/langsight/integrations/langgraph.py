@@ -104,8 +104,8 @@ class LangSightLangGraphCallback(BaseIntegration):
             session_id=session_id,
         )
         self._trace_id = trace_id
-        # Tool call tracking: run_id → (tool_name, started_at, node_name)
-        self._pending: dict[str, tuple[str, datetime, str | None]] = {}
+        # Tool call tracking: run_id → (tool_name, started_at, node_name, input_str)
+        self._pending: dict[str, tuple[str, datetime, str | None, str]] = {}
         # Node tracking: chain_run_id → node_name
         self._active_nodes: dict[str, str] = {}
         # Current node name (most recently started)
@@ -166,7 +166,7 @@ class LangSightLangGraphCallback(BaseIntegration):
     ) -> None:
         """Called when a tool call begins within a graph node."""
         tool_name = serialized.get("name") or serialized.get("id", ["unknown"])[-1] or "unknown"
-        self._pending[str(run_id)] = (tool_name, datetime.now(UTC), self._current_node)
+        self._pending[str(run_id)] = (tool_name, datetime.now(UTC), self._current_node, input_str)
 
     def on_tool_end(
         self,
@@ -179,9 +179,9 @@ class LangSightLangGraphCallback(BaseIntegration):
         key = str(run_id)
         if key not in self._pending:
             return
-        tool_name, started_at, node_name = self._pending.pop(key)
-        # Use node_name as server_name if available — shows graph context
+        tool_name, started_at, node_name, input_str = self._pending.pop(key)
         effective_server = f"{self._server_name}/{node_name}" if node_name else self._server_name
+        redact = getattr(self._client, "_redact_payloads", False)
         span = ToolCallSpan.record(
             server_name=effective_server,
             tool_name=tool_name,
@@ -191,6 +191,8 @@ class LangSightLangGraphCallback(BaseIntegration):
             session_id=self._session_id,
             trace_id=self._trace_id,
             project_id=getattr(self._client, "_project_id", None) or "",
+            input_args=None if redact else ({"input": input_str} if input_str else None),
+            output_result=None if redact else (str(output) if output is not None else None),
         )
         _fire_and_forget(self._client.send_span(span))
 
@@ -205,8 +207,9 @@ class LangSightLangGraphCallback(BaseIntegration):
         key = str(run_id)
         if key not in self._pending:
             return
-        tool_name, started_at, node_name = self._pending.pop(key)
+        tool_name, started_at, node_name, input_str = self._pending.pop(key)
         effective_server = f"{self._server_name}/{node_name}" if node_name else self._server_name
+        redact = getattr(self._client, "_redact_payloads", False)
         span = ToolCallSpan.record(
             server_name=effective_server,
             tool_name=tool_name,
@@ -217,6 +220,7 @@ class LangSightLangGraphCallback(BaseIntegration):
             session_id=self._session_id,
             trace_id=self._trace_id,
             project_id=getattr(self._client, "_project_id", None) or "",
+            input_args=None if redact else ({"input": input_str} if input_str else None),
         )
         _fire_and_forget(self._client.send_span(span))
 
