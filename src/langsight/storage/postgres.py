@@ -321,7 +321,10 @@ class PostgresBackend:
         indefinitely. If DDL fails, the pool is closed to prevent leaks.
         """
         pool = await asyncpg.create_pool(
-            dsn, min_size=min_size, max_size=max_size, command_timeout=30,
+            dsn,
+            min_size=min_size,
+            max_size=max_size,
+            command_timeout=30,
         )
         try:
             async with pool.acquire() as conn:
@@ -843,23 +846,74 @@ class PostgresBackend:
             rows = await self._pool.fetch("SELECT * FROM agent_metadata ORDER BY agent_name")
         return [dict(r) for r in rows]
 
-    async def get_agent_metadata(self, agent_name: str, project_id: str | None = None) -> dict[str, Any] | None:
+    async def get_agent_metadata(
+        self, agent_name: str, project_id: str | None = None
+    ) -> dict[str, Any] | None:
         if project_id:
             row = await self._pool.fetchrow(
                 "SELECT * FROM agent_metadata WHERE agent_name = $1 AND project_id = $2",
-                agent_name, project_id,
+                agent_name,
+                project_id,
             )
         else:
             row = await self._pool.fetchrow(
-                "SELECT * FROM agent_metadata WHERE agent_name = $1", agent_name,
+                "SELECT * FROM agent_metadata WHERE agent_name = $1",
+                agent_name,
             )
         return dict(row) if row else None
 
     async def upsert_agent_metadata(
-        self, agent_name: str, description: str, owner: str,
-        tags: list[str], status: str, runbook_url: str,
+        self,
+        agent_name: str,
+        description: str,
+        owner: str,
+        tags: list[str],
+        status: str,
+        runbook_url: str,
         project_id: str | None = None,
     ) -> dict[str, Any]:
+        now = datetime.now(UTC)
+        if project_id is None:
+            row = await self._pool.fetchrow(
+                """
+                UPDATE agent_metadata
+                SET description = $2,
+                    owner = $3,
+                    tags = $4::jsonb,
+                    status = $5,
+                    runbook_url = $6,
+                    updated_at = $7
+                WHERE agent_name = $1 AND project_id IS NULL
+                RETURNING *
+                """,
+                agent_name,
+                description,
+                owner,
+                json.dumps(tags),
+                status,
+                runbook_url,
+                now,
+            )
+            if row:
+                return dict(row)
+
+            row = await self._pool.fetchrow(
+                """
+                INSERT INTO agent_metadata (id, agent_name, description, owner, tags, status, runbook_url, project_id, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, NULL, $8, $8)
+                RETURNING *
+                """,
+                uuid.uuid4().hex,
+                agent_name,
+                description,
+                owner,
+                json.dumps(tags),
+                status,
+                runbook_url,
+                now,
+            )
+            return dict(row) if row else {}
+
         row = await self._pool.fetchrow(
             """
             INSERT INTO agent_metadata (id, agent_name, description, owner, tags, status, runbook_url, project_id, created_at, updated_at)
@@ -873,39 +927,111 @@ class PostgresBackend:
                 updated_at = EXCLUDED.updated_at
             RETURNING *
             """,
-            uuid.uuid4().hex, agent_name, description, owner,
-            json.dumps(tags), status, runbook_url, project_id,
-            datetime.now(UTC),
+            uuid.uuid4().hex,
+            agent_name,
+            description,
+            owner,
+            json.dumps(tags),
+            status,
+            runbook_url,
+            project_id,
+            now,
         )
         return dict(row) if row else {}
 
     async def delete_agent_metadata(self, agent_name: str, project_id: str | None = None) -> bool:
         if project_id:
             result: str = await self._pool.execute(
-                "DELETE FROM agent_metadata WHERE agent_name = $1 AND project_id = $2", agent_name, project_id,
+                "DELETE FROM agent_metadata WHERE agent_name = $1 AND project_id = $2",
+                agent_name,
+                project_id,
             )
         else:
             result = await self._pool.execute(
-                "DELETE FROM agent_metadata WHERE agent_name = $1 AND project_id IS NULL", agent_name,
+                "DELETE FROM agent_metadata WHERE agent_name = $1 AND project_id IS NULL",
+                agent_name,
             )
         return result != "DELETE 0"
 
     # Server metadata (catalog)
     async def get_all_server_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]:
         if project_id:
-            rows = await self._pool.fetch("SELECT * FROM server_metadata WHERE project_id = $1 ORDER BY server_name", project_id)
+            rows = await self._pool.fetch(
+                "SELECT * FROM server_metadata WHERE project_id = $1 ORDER BY server_name",
+                project_id,
+            )
         else:
             rows = await self._pool.fetch("SELECT * FROM server_metadata ORDER BY server_name")
         return [dict(r) for r in rows]
 
-    async def get_server_metadata(self, server_name: str, project_id: str | None = None) -> dict[str, Any] | None:
+    async def get_server_metadata(
+        self, server_name: str, project_id: str | None = None
+    ) -> dict[str, Any] | None:
         if project_id:
-            row = await self._pool.fetchrow("SELECT * FROM server_metadata WHERE server_name = $1 AND project_id = $2", server_name, project_id)
+            row = await self._pool.fetchrow(
+                "SELECT * FROM server_metadata WHERE server_name = $1 AND project_id = $2",
+                server_name,
+                project_id,
+            )
         else:
-            row = await self._pool.fetchrow("SELECT * FROM server_metadata WHERE server_name = $1", server_name)
+            row = await self._pool.fetchrow(
+                "SELECT * FROM server_metadata WHERE server_name = $1", server_name
+            )
         return dict(row) if row else None
 
-    async def upsert_server_metadata(self, *, server_name: str, description: str = "", owner: str = "", tags: list[str] | None = None, transport: str = "", runbook_url: str = "", project_id: str | None = None) -> dict[str, Any]:
+    async def upsert_server_metadata(
+        self,
+        *,
+        server_name: str,
+        description: str = "",
+        owner: str = "",
+        tags: list[str] | None = None,
+        transport: str = "",
+        runbook_url: str = "",
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        now = datetime.now(UTC)
+        if project_id is None:
+            row = await self._pool.fetchrow(
+                """
+                UPDATE server_metadata
+                SET description = $2,
+                    owner = $3,
+                    tags = $4::jsonb,
+                    transport = $5,
+                    runbook_url = $6,
+                    updated_at = $7
+                WHERE server_name = $1 AND project_id IS NULL
+                RETURNING *
+                """,
+                server_name,
+                description,
+                owner,
+                json.dumps(tags or []),
+                transport,
+                runbook_url,
+                now,
+            )
+            if row:
+                return dict(row)
+
+            row = await self._pool.fetchrow(
+                """
+                INSERT INTO server_metadata (id, server_name, description, owner, tags, transport, runbook_url, project_id, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, NULL, $8, $8)
+                RETURNING *
+                """,
+                uuid.uuid4().hex,
+                server_name,
+                description,
+                owner,
+                json.dumps(tags or []),
+                transport,
+                runbook_url,
+                now,
+            )
+            return dict(row) if row else {}
+
         row = await self._pool.fetchrow(
             """
             INSERT INTO server_metadata (id, server_name, description, owner, tags, transport, runbook_url, project_id, created_at, updated_at)
@@ -919,25 +1045,36 @@ class PostgresBackend:
                 updated_at = EXCLUDED.updated_at
             RETURNING *
             """,
-            uuid.uuid4().hex, server_name, description, owner,
-            json.dumps(tags or []), transport, runbook_url, project_id,
-            datetime.now(UTC),
+            uuid.uuid4().hex,
+            server_name,
+            description,
+            owner,
+            json.dumps(tags or []),
+            transport,
+            runbook_url,
+            project_id,
+            now,
         )
         return dict(row) if row else {}
 
     async def delete_server_metadata(self, server_name: str, project_id: str | None = None) -> bool:
         if project_id:
             result: str = await self._pool.execute(
-                "DELETE FROM server_metadata WHERE server_name = $1 AND project_id = $2", server_name, project_id,
+                "DELETE FROM server_metadata WHERE server_name = $1 AND project_id = $2",
+                server_name,
+                project_id,
             )
         else:
             result = await self._pool.execute(
-                "DELETE FROM server_metadata WHERE server_name = $1 AND project_id IS NULL", server_name,
+                "DELETE FROM server_metadata WHERE server_name = $1 AND project_id IS NULL",
+                server_name,
             )
         return result != "DELETE 0"
 
     # Server tools (captured from list_tools() SDK interception)
-    async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]], project_id: str | None = None) -> None:
+    async def upsert_server_tools(
+        self, server_name: str, tools: list[dict[str, object]], project_id: str | None = None
+    ) -> None:
         """Upsert a batch of tools for a server in a single pipelined call."""
         if not tools:
             return
@@ -956,6 +1093,40 @@ class PostgresBackend:
         ]
         async with self._pool.acquire() as conn:
             async with conn.transaction():
+                if project_id is None:
+                    for tool in tools:
+                        row = await conn.fetchrow(
+                            """
+                            UPDATE server_tools
+                            SET description = $3,
+                                input_schema = $4::jsonb,
+                                last_seen_at = $5
+                            WHERE server_name = $1 AND tool_name = $2 AND project_id IS NULL
+                            RETURNING id
+                            """,
+                            server_name,
+                            str(tool.get("name", "")),
+                            str(tool.get("description", "")),
+                            json.dumps(tool.get("input_schema") or {}),
+                            now,
+                        )
+                        if row is not None:
+                            continue
+
+                        await conn.execute(
+                            """
+                            INSERT INTO server_tools (id, server_name, tool_name, description, input_schema, project_id, first_seen_at, last_seen_at)
+                            VALUES ($1, $2, $3, $4, $5::jsonb, NULL, $6, $6)
+                            """,
+                            uuid.uuid4().hex,
+                            server_name,
+                            str(tool.get("name", "")),
+                            str(tool.get("description", "")),
+                            json.dumps(tool.get("input_schema") or {}),
+                            now,
+                        )
+                    return
+
                 await conn.executemany(
                     """
                     INSERT INTO server_tools (id, server_name, tool_name, description, input_schema, project_id, first_seen_at, last_seen_at)
@@ -968,12 +1139,15 @@ class PostgresBackend:
                     args,
                 )
 
-    async def get_server_tools(self, server_name: str, project_id: str | None = None) -> list[dict[str, object]]:
+    async def get_server_tools(
+        self, server_name: str, project_id: str | None = None
+    ) -> list[dict[str, object]]:
         """Get all declared tools for a server, scoped to project."""
         if project_id:
             rows = await self._pool.fetch(
                 "SELECT * FROM server_tools WHERE server_name = $1 AND project_id = $2 ORDER BY tool_name",
-                server_name, project_id,
+                server_name,
+                project_id,
             )
         else:
             rows = await self._pool.fetch(
@@ -1067,9 +1241,7 @@ class PostgresBackend:
         )
         return _row_to_prevention_config(row)
 
-    async def delete_prevention_config(
-        self, agent_name: str, project_id: str
-    ) -> bool:
+    async def delete_prevention_config(self, agent_name: str, project_id: str) -> bool:
         """Delete config for this agent. Returns True if found and deleted."""
         result: str = await self._pool.execute(
             "DELETE FROM prevention_config WHERE project_id = $1 AND agent_name = $2",
@@ -1235,7 +1407,9 @@ def _row_to_prevention_config(row: asyncpg.Record) -> PreventionConfig:
         loop_action=str(row["loop_action"]),
         max_steps=int(row["max_steps"]) if row["max_steps"] is not None else None,
         max_cost_usd=float(row["max_cost_usd"]) if row["max_cost_usd"] is not None else None,
-        max_wall_time_s=float(row["max_wall_time_s"]) if row["max_wall_time_s"] is not None else None,
+        max_wall_time_s=float(row["max_wall_time_s"])
+        if row["max_wall_time_s"] is not None
+        else None,
         budget_soft_alert=float(row["budget_soft_alert"]),
         cb_enabled=bool(row["cb_enabled"]),
         cb_failure_threshold=int(row["cb_failure_threshold"]),
