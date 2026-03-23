@@ -86,6 +86,7 @@ export function AgentTopology({ agentName, lineageGraph, isLoading, className }:
           edges={edges}
           selectedId={selectedNode}
           onSelect={setSelectedNode}
+          nodeHeight={76}
           className="h-full"
         />
       </div>
