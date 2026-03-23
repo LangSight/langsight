@@ -276,7 +276,7 @@ describe("revokeApiKey", () => {
 /* ── inviteUser ─────────────────────────────────────────────── */
 describe("inviteUser", () => {
   it("POSTs email and role to /api/users/invite", async () => {
-    const mockInvite = { invite_token: "tok_abc", invite_url: "http://localhost/accept?token=tok_abc", email: "user@example.com", expires_at: "" };
+    const mockInvite = { token: "tok_abc", invite_url: "http://localhost/accept?token=tok_abc", email: "user@example.com", role: "viewer", expires_at: "" };
     mockFetch(mockInvite);
 
     const result = await inviteUser("user@example.com", "viewer");
@@ -284,6 +284,6 @@ describe("inviteUser", () => {
     const body = JSON.parse((fetch as jest.Mock).mock.calls[0][1].body);
     expect(body.email).toBe("user@example.com");
     expect(body.role).toBe("viewer");
-    expect(result.invite_token).toBe("tok_abc");
+    expect(result.token).toBe("tok_abc");
   });
 });

@@ -10,6 +10,18 @@ import LoginPage from "@/app/(auth)/login/page";
 const mockSignIn = signIn as jest.MockedFunction<typeof signIn>;
 const mockPush = jest.fn();
 const mockRefresh = jest.fn();
+type SignInResult = NonNullable<Awaited<ReturnType<typeof signIn>>>;
+
+function makeSignInResponse(overrides: Partial<SignInResult> = {}): SignInResult {
+  return {
+    ok: true,
+    error: undefined,
+    status: 200,
+    url: null,
+    code: undefined,
+    ...overrides,
+  };
+}
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
@@ -91,7 +103,7 @@ describe("LoginPage — form interaction", () => {
 /* ── Sign-in success ────────────────────────────────────────── */
 describe("LoginPage — successful sign in", () => {
   beforeEach(() => {
-    mockSignIn.mockResolvedValue({ ok: true, error: null } as Awaited<ReturnType<typeof signIn>>);
+    mockSignIn.mockResolvedValue(makeSignInResponse());
   });
 
   it("calls signIn with credentials provider and form values", async () => {
@@ -122,7 +134,7 @@ describe("LoginPage — successful sign in", () => {
   it("shows loading state while submitting", async () => {
     // Make signIn take a moment
     mockSignIn.mockImplementationOnce(
-      () => new Promise((res) => setTimeout(() => res({ ok: true, error: null } as Awaited<ReturnType<typeof signIn>>), 50))
+      () => new Promise((res) => setTimeout(() => res(makeSignInResponse()), 50))
     );
 
     renderLogin();
@@ -137,7 +149,9 @@ describe("LoginPage — successful sign in", () => {
 describe("LoginPage — failed sign in", () => {
   beforeEach(() => {
     mockPush.mockReset();
-    mockSignIn.mockResolvedValue({ ok: false, error: "CredentialsSignin" } as Awaited<ReturnType<typeof signIn>>);
+    mockSignIn.mockResolvedValue(
+      makeSignInResponse({ ok: false, error: "CredentialsSignin", status: 401 })
+    );
   });
 
   it("does not redirect on error", async () => {
