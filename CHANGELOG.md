@@ -7,6 +7,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.3.3] - 2026-03-23 — LangChain-Core Compatibility Fix
+
+### Fixed
+
+- **LangChain integration import order** (`src/langsight/integrations/langchain.py`, `src/langsight/integrations/langgraph.py`): both modules now attempt to import `BaseCallbackHandler` from `langchain_core.callbacks.base` first, falling back to `langchain.callbacks.base` only if `langchain_core` is not available. LangGraph users no longer need the full `langchain` package — `pip install langsight langgraph` is sufficient.
+
+---
+
 ## [0.3.2] - 2026-03-23 — Buffer Safety, Bootstrap, and Hardening
 
 ### Added (2026-03-23 — Dashboard UX polish)
