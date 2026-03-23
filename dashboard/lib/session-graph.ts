@@ -262,7 +262,7 @@ export function buildSessionGraph(
         avgLatencyMs,
         isCollapsible: isMultiCaller,
         collapsedCount: isMultiCaller ? callers.length : undefined,
-        expandableEdgeId: singlePathKey && singlePm && singlePm.callCount >= 2 ? singlePathKey : undefined,
+        expandableEdgeId: singlePathKey && singlePm && singlePm.callCount >= 1 ? singlePathKey : undefined,
         expandItemCount: singlePm?.callCount,
         toolNames: singlePm?.tools,
         repeatCallName: singlePm?.repeatCallName,
@@ -273,7 +273,7 @@ export function buildSessionGraph(
         const pathKey = `${caller.agentId}→server:${server}`;
         const metrics = edgeMetrics.get(pathKey);
         const isEdgeExpanded = expandedEdges.has(pathKey);
-        const hasMultipleCalls = (metrics?.callCount ?? 0) >= 2;
+        const hasMultipleCalls = (metrics?.callCount ?? 0) >= 1;
 
         graphEdges.push({
           source: caller.agentId,

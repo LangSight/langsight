@@ -78,7 +78,7 @@ function selfLoop(x: number, y: number, w: number, h: number) {
 
 /* ── Layout ────────────────────────────────────────────────── */
 function nodeH(n: GraphNode, base: number) {
-  return n.expandableEdgeId && (n.expandItemCount ?? 0) >= 2 ? base + TOOL_EXPAND_ROW_H : base;
+  return n.expandableEdgeId && (n.expandItemCount ?? 0) >= 1 ? base + TOOL_EXPAND_ROW_H : base;
 }
 
 function layout(nodes: GraphNode[], edges: GraphEdge[], baseH: number) {
@@ -320,7 +320,7 @@ export function LineageGraph({
                     const canExpandEdge = edge.edgeId && onToggleEdge;
                     const isEdgeExp = edge.edgeId ? expandedEdges?.has(edge.edgeId) : false;
                     const tgtNode = nodes.find((n) => n.id === edge.target);
-                    const hasMultiCalls = (tgtNode?.expandItemCount ?? 0) >= 2;
+                    const hasMultiCalls = (tgtNode?.expandItemCount ?? 0) >= 1;
                     // Also check for group expand on target node
                     const tgtCollapsible = tgtNode?.isCollapsible && tgtNode?.collapsedCount != null && onToggleGroup;
                     const tgtGid = tgtNode?.groupId ?? tgtNode?.id ?? "";
@@ -393,7 +393,7 @@ export function LineageGraph({
               const op = nodeOpacity(node.id, node.hasError);
               const searchMatch = matchIds !== null && matchIds.has(node.id);
               const glow = searchMatch ? "url(#glow-search)" : isSel ? "url(#glow-pri)" : node.hasError && !isSel ? "url(#glow-err)" : undefined;
-              const canExpandCalls = node.expandableEdgeId && (node.expandItemCount ?? 0) >= 2;
+              const canExpandCalls = node.expandableEdgeId && (node.expandItemCount ?? 0) >= 1;
               const isCallsExpanded = node.expandableEdgeId ? expandedEdges?.has(node.expandableEdgeId) : false;
               const expandPreview = node.repeatCallCount && node.repeatCallName
                 ? `repeated ${node.repeatCallName} ${node.repeatCallCount}×`
