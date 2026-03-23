@@ -38,7 +38,7 @@ class TestLangSightLangChainCallback:
             run_id=run_id,
         )
         assert str(run_id) in callback._pending
-        tool_name, started_at = callback._pending[str(run_id)]
+        tool_name, started_at, input_str = callback._pending[str(run_id)]
         assert tool_name == "search_tool"
 
     def test_on_tool_start_extracts_name_from_id(self, callback: LangSightLangChainCallback) -> None:
@@ -48,12 +48,12 @@ class TestLangSightLangChainCallback:
             "input",
             run_id=run_id,
         )
-        tool_name, _ = callback._pending[str(run_id)]
+        tool_name, _, _input = callback._pending[str(run_id)]
         assert tool_name == "MyCustomTool"
 
     def test_on_tool_end_clears_pending(self, callback: LangSightLangChainCallback) -> None:
         run_id = uuid4()
-        callback._pending[str(run_id)] = ("my_tool", datetime.now(UTC))
+        callback._pending[str(run_id)] = ("my_tool", datetime.now(UTC), "input")
 
         with patch("asyncio.ensure_future"):
             callback.on_tool_end("result", run_id=run_id)
@@ -62,7 +62,7 @@ class TestLangSightLangChainCallback:
 
     def test_on_tool_error_clears_pending(self, callback: LangSightLangChainCallback) -> None:
         run_id = uuid4()
-        callback._pending[str(run_id)] = ("my_tool", datetime.now(UTC))
+        callback._pending[str(run_id)] = ("my_tool", datetime.now(UTC), "input")
 
         with patch("asyncio.ensure_future"):
             callback.on_tool_error(ValueError("failed"), run_id=run_id)

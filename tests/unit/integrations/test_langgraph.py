@@ -188,7 +188,7 @@ class TestLangGraphOnToolStart:
 
         key = str(tool_id)
         assert key in callback._pending
-        tool_name, started_at, node_name = callback._pending[key]
+        tool_name, started_at, node_name, _input = callback._pending[key]
         assert tool_name == "search_tool"
         assert node_name == "agent_node"
         assert isinstance(started_at, datetime)
@@ -197,7 +197,7 @@ class TestLangGraphOnToolStart:
         tool_id = uuid4()
         callback.on_tool_start({"name": "orphan_tool"}, "input", run_id=tool_id)
 
-        tool_name, _, node_name = callback._pending[str(tool_id)]
+        tool_name, _, node_name, _input = callback._pending[str(tool_id)]
         assert tool_name == "orphan_tool"
         assert node_name is None
 
@@ -209,14 +209,14 @@ class TestLangGraphOnToolStart:
             run_id=tool_id,
         )
 
-        tool_name, _, _ = callback._pending[str(tool_id)]
+        tool_name, _, _, _input = callback._pending[str(tool_id)]
         assert tool_name == "MyTool"
 
     def test_defaults_to_unknown(self, callback: LangSightLangGraphCallback) -> None:
         tool_id = uuid4()
         callback.on_tool_start({}, "input", run_id=tool_id)
 
-        tool_name, _, _ = callback._pending[str(tool_id)]
+        tool_name, _, _, _input = callback._pending[str(tool_id)]
         assert tool_name == "unknown"
 
 
@@ -225,7 +225,7 @@ class TestLangGraphOnToolEnd:
         self, callback: LangSightLangGraphCallback, client: LangSightClient
     ) -> None:
         tool_id = uuid4()
-        callback._pending[str(tool_id)] = ("search", datetime.now(UTC), "agent_node")
+        callback._pending[str(tool_id)] = ("search", datetime.now(UTC), "agent_node", "input")
 
         with patch("langsight.integrations.langgraph._fire_and_forget") as mock_fire:
             callback.on_tool_end("result data", run_id=tool_id)
@@ -240,7 +240,7 @@ class TestLangGraphOnToolEnd:
         self, callback: LangSightLangGraphCallback, client: LangSightClient
     ) -> None:
         tool_id = uuid4()
-        callback._pending[str(tool_id)] = ("query", datetime.now(UTC), "tool_node")
+        callback._pending[str(tool_id)] = ("query", datetime.now(UTC), "tool_node", "input")
 
         with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
             with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: coro.close()):
@@ -256,7 +256,7 @@ class TestLangGraphOnToolEnd:
         self, callback: LangSightLangGraphCallback, client: LangSightClient
     ) -> None:
         tool_id = uuid4()
-        callback._pending[str(tool_id)] = ("query", datetime.now(UTC), None)
+        callback._pending[str(tool_id)] = ("query", datetime.now(UTC), None, "input")
 
         with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
             with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: coro.close()):
@@ -272,7 +272,7 @@ class TestLangGraphOnToolEnd:
         self, callback: LangSightLangGraphCallback, client: LangSightClient
     ) -> None:
         tool_id = uuid4()
-        callback._pending[str(tool_id)] = ("tool", datetime.now(UTC), "node")
+        callback._pending[str(tool_id)] = ("tool", datetime.now(UTC), "node", "input")
 
         with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
             with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: coro.close()):
@@ -288,7 +288,7 @@ class TestLangGraphOnToolError:
         self, callback: LangSightLangGraphCallback, client: LangSightClient
     ) -> None:
         tool_id = uuid4()
-        callback._pending[str(tool_id)] = ("bad_tool", datetime.now(UTC), "agent_node")
+        callback._pending[str(tool_id)] = ("bad_tool", datetime.now(UTC), "agent_node", "input")
 
         with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
             with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: coro.close()):
@@ -307,7 +307,7 @@ class TestLangGraphOnToolError:
         self, callback: LangSightLangGraphCallback, client: LangSightClient
     ) -> None:
         tool_id = uuid4()
-        callback._pending[str(tool_id)] = ("tool", datetime.now(UTC), None)
+        callback._pending[str(tool_id)] = ("tool", datetime.now(UTC), None, "input")
 
         with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
             with patch("langsight.integrations.langgraph._fire_and_forget", side_effect=lambda coro: coro.close()):

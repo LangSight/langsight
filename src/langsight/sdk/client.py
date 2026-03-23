@@ -293,12 +293,21 @@ class LangSightClient:
             asyncio.create_task(self.flush())
 
     async def flush(self) -> None:
-        """Flush all buffered spans to the API. Safe to call at any time."""
+        """Flush all buffered spans to the API. Safe to call at any time.
+
+        If the HTTP send fails (e.g. event loop is closing), spans are returned
+        to the buffer so the atexit handler can deliver them.
+        """
         async with self._lock:
             if not self._buffer:
                 return
             batch, self._buffer = self._buffer, []
-        await self._post_spans(batch)
+        try:
+            await self._post_spans(batch)
+        except Exception:  # noqa: BLE001
+            # Return spans to the buffer — atexit handler will deliver them
+            async with self._lock:
+                self._buffer = batch + self._buffer
 
     async def _fetch_prevention_config(
         self, agent_name: str, project_id: str | None
