@@ -56,6 +56,7 @@ class BaseIntegration:
             agent_name=self._agent_name,
             session_id=self._session_id,
             trace_id=trace_id,
+            project_id=getattr(self._client, "_project_id", None) or "",
         )
         await self._client.send_span(span)
         logger.debug(

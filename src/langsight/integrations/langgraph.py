@@ -190,6 +190,7 @@ class LangSightLangGraphCallback(BaseIntegration):
             agent_name=self._agent_name,
             session_id=self._session_id,
             trace_id=self._trace_id,
+            project_id=getattr(self._client, "_project_id", None) or "",
         )
         _fire_and_forget(self._client.send_span(span))
 
@@ -215,6 +216,7 @@ class LangSightLangGraphCallback(BaseIntegration):
             agent_name=self._agent_name,
             session_id=self._session_id,
             trace_id=self._trace_id,
+            project_id=getattr(self._client, "_project_id", None) or "",
         )
         _fire_and_forget(self._client.send_span(span))
 
