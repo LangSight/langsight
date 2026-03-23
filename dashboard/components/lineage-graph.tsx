@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dagre from "dagre";
-import { Bot, Server, Search, AlertCircle } from "lucide-react";
+import { Bot, Server, Zap, Search, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /* ── Types ─────────────────────────────────────────────────── */
@@ -387,6 +387,7 @@ export function LineageGraph({
               const isSel = sel?.type === "node" && sel.id === node.id;
               const isHov = hoveredNode === node.id;
               const isAgent = node.type === "agent";
+              const isToolCall = !isAgent && !!node.splitLabel; // expanded individual call node
               const hasMet = node.errorCount != null || node.avgLatencyMs != null || (node.callCount != null && node.callCount > 0);
               const errRate = (node.callCount && node.errorCount) ? node.errorCount / node.callCount : 0;
               const op = nodeOpacity(node.id, node.hasError);
@@ -430,10 +431,20 @@ export function LineageGraph({
                           style={{
                             background: isAgent
                               ? "linear-gradient(135deg, hsl(var(--primary) / 0.15), hsl(var(--primary) / 0.06))"
-                              : "linear-gradient(135deg, rgba(100,116,139,0.14), rgba(100,116,139,0.05))",
-                            border: isAgent ? "1px solid hsl(var(--primary) / 0.2)" : "1px solid rgba(100,116,139,0.15)",
+                              : isToolCall
+                                ? "linear-gradient(135deg, rgba(245,158,11,0.14), rgba(245,158,11,0.05))"
+                                : "linear-gradient(135deg, rgba(100,116,139,0.14), rgba(100,116,139,0.05))",
+                            border: isAgent
+                              ? "1px solid hsl(var(--primary) / 0.2)"
+                              : isToolCall
+                                ? "1px solid rgba(245,158,11,0.2)"
+                                : "1px solid rgba(100,116,139,0.15)",
                           }}>
-                          {isAgent ? <Bot size={14} style={{ color: "hsl(var(--primary))" }} /> : <Server size={14} className="text-muted-foreground" />}
+                          {isAgent
+                            ? <Bot size={14} style={{ color: "hsl(var(--primary))" }} />
+                            : isToolCall
+                              ? <Zap size={13} style={{ color: "rgba(245,158,11,0.85)" }} />
+                              : <Server size={14} className="text-muted-foreground" />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
@@ -445,7 +456,7 @@ export function LineageGraph({
                             }} />
                           </div>
                           <span className="text-[10px] text-muted-foreground block truncate" style={{ marginTop: 1 }}>
-                            {isAgent ? "Agent" : "MCP Server"}{node.splitLabel ? ` \u00b7 ${node.splitLabel}` : ""}
+                            {isAgent ? "Agent" : isToolCall ? "Tool Call" : "MCP Server"}{node.splitLabel ? ` \u00b7 ${node.splitLabel}` : ""}
                           </span>
                         </div>
                       </div>
