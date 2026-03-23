@@ -9,283 +9,54 @@ import useSWR from "swr";
 import {
   ChevronRight, ChevronDown, GitBranch, Clock, Zap, AlertCircle,
   Search, GitCompare, Play, ArrowLeft, Columns2, Bot, Server,
-  Maximize2, Minimize2,
+  Maximize2, Minimize2, ExternalLink, X,
 } from "lucide-react";
 import { LineageGraph, type GraphNode, type GraphEdge, type GraphSelection } from "@/components/lineage-graph";
 import { PayloadSlideout } from "@/components/payload-slideout";
 import { SessionTimeline } from "@/components/session-timeline";
 import { fetcher, getSessionTrace, compareSessions, replaySession } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
+import { buildSessionGraph, type SessionGraphResult } from "@/lib/session-graph";
 import { cn, timeAgo, formatDuration, CALL_STATUS_COLOR, SPAN_TYPE_ICON } from "@/lib/utils";
 import type { AgentSession, SessionTrace, SpanNode, SessionComparison, DiffEntry, PathMetrics, ServerCallerInfo } from "@/lib/types";
 
 /* ── Build session graph from trace spans (with per-path attribution) ── */
-
-interface SessionGraphResult {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-  serverCallers: Map<string, ServerCallerInfo[]>;
-  edgeMetrics: Map<string, PathMetrics>;
-  edgeSpans: Map<string, SpanNode[]>;
-}
 
 function useSessionGraph(
   trace: SessionTrace | null,
   expandedGroups: Set<string>,
   expandedEdges: Set<string>,
 ): SessionGraphResult {
-  return useMemo(() => {
-    const empty: SessionGraphResult = {
-      nodes: [], edges: [],
-      serverCallers: new Map(), edgeMetrics: new Map(), edgeSpans: new Map(),
-    };
-    if (!trace) return empty;
-
-    // Step 1: collect per-path spans
-    const pathData = new Map<string, { agentName: string; serverName: string; spans: SpanNode[] }>();
-    const agents = new Set<string>();
-    const servers = new Set<string>();
-    const handoffs: { source: string; target: string; count: number }[] = [];
-    const handoffMap = new Map<string, number>();
-    const agentErrors = new Set<string>();
-
-    for (const span of trace.spans_flat) {
-      const agent = span.agent_name ?? "unknown";
-      if (span.agent_name) agents.add(agent);
-
-      if (span.span_type === "handoff" && span.tool_name) {
-        const target = span.tool_name.replace(/^->\s*/, "").replace(/^→\s*/, "");
-        if (target) {
-          agents.add(target);
-          const hKey = `${agent}→${target}`;
-          handoffMap.set(hKey, (handoffMap.get(hKey) ?? 0) + 1);
-        }
-      } else if (span.span_type === "tool_call" && span.server_name) {
-        const server = span.server_name;
-        servers.add(server);
-        if (span.status !== "success") agentErrors.add(agent);
-        const pathKey = `agent:${agent}→server:${server}`;
-        if (!pathData.has(pathKey)) {
-          pathData.set(pathKey, { agentName: agent, serverName: server, spans: [] });
-        }
-        pathData.get(pathKey)!.spans.push(span);
-      }
-    }
-
-    for (const [key, count] of handoffMap) {
-      const [src, tgt] = key.split("→");
-      handoffs.push({ source: src, target: tgt, count });
-    }
-
-    // Step 2: compute per-path metrics
-    const edgeMetrics = new Map<string, PathMetrics>();
-    const edgeSpans = new Map<string, SpanNode[]>();
-
-    for (const [pathKey, data] of pathData) {
-      const spans = data.spans;
-      const callCount = spans.length;
-      const errorCount = spans.filter((s) => s.status !== "success").length;
-      const avgLatencyMs = callCount > 0
-        ? spans.reduce((sum, s) => sum + (s.latency_ms ?? 0), 0) / callCount : 0;
-      const maxLatencyMs = spans.reduce((max, s) => Math.max(max, s.latency_ms ?? 0), 0);
-      const tools = [...new Set(spans.map((s) => s.tool_name))];
-      const inputTokens = spans.reduce((s, sp) => s + (sp.input_tokens ?? 0), 0);
-      const outputTokens = spans.reduce((s, sp) => s + (sp.output_tokens ?? 0), 0);
-      const models = [...new Set(spans.map((s) => s.model_id).filter(Boolean))] as string[];
-
-      edgeMetrics.set(pathKey, { callCount, errorCount, avgLatencyMs, maxLatencyMs, tools, inputTokens, outputTokens, models });
-      edgeSpans.set(pathKey, spans);
-    }
-
-    // Step 3: build serverCallers map
-    const serverCallers = new Map<string, ServerCallerInfo[]>();
-    for (const server of servers) {
-      const callers: ServerCallerInfo[] = [];
-      for (const [pathKey, data] of pathData) {
-        if (data.serverName === server) {
-          callers.push({
-            agentId: `agent:${data.agentName}`,
-            agentLabel: data.agentName,
-            metrics: edgeMetrics.get(pathKey)!,
-          });
-        }
-      }
-      serverCallers.set(server, callers);
-    }
-
-    // Step 4: build nodes + edges
-    const nodes: GraphNode[] = [];
-    const graphEdges: GraphEdge[] = [];
-
-    // Agent nodes
-    for (const agent of agents) {
-      const agentToolSpans = trace.spans_flat.filter(
-        (s) => s.agent_name === agent && s.span_type === "tool_call",
-      );
-      const callCount = agentToolSpans.length;
-      const errorCount = agentToolSpans.filter((s) => s.status !== "success").length;
-      const avgLatencyMs = callCount > 0
-        ? agentToolSpans.reduce((sum, s) => sum + (s.latency_ms ?? 0), 0) / callCount : 0;
-
-      nodes.push({
-        id: `agent:${agent}`, type: "agent", label: agent,
-        hasError: agentErrors.has(agent),
-        callCount, errorCount, avgLatencyMs,
-      });
-    }
-
-    // Helper: create one node per individual call for an edge
-    function addToolSplitNodes(
-      sourceId: string, server: string, agentLabel: string,
-      pathKey: string, spans: SpanNode[],
-    ) {
-      for (let i = 0; i < spans.length; i++) {
-        const s = spans[i];
-        const tool = s.tool_name;
-        const callNodeId = `server:${server}::call:${s.span_id ?? `${tool}-${i}`}`;
-        const latency = s.latency_ms ?? 0;
-        const hasErr = s.status !== "success";
-
-        nodes.push({
-          id: callNodeId, type: "server", label: tool,
-          hasError: hasErr,
-          callCount: 1, errorCount: hasErr ? 1 : 0, avgLatencyMs: latency,
-          groupId: pathKey,
-          splitLabel: server,
-        });
-
-        const callPathKey = `${sourceId}→${callNodeId}`;
-        edgeMetrics.set(callPathKey, {
-          callCount: 1, errorCount: hasErr ? 1 : 0, avgLatencyMs: latency,
-          maxLatencyMs: latency,
-          tools: [tool],
-          inputTokens: s.input_tokens ?? 0,
-          outputTokens: s.output_tokens ?? 0,
-          models: s.model_id ? [s.model_id] : [],
-        });
-        edgeSpans.set(callPathKey, [s]);
-
-        graphEdges.push({
-          source: sourceId, target: callNodeId, type: "calls",
-          edgeId: pathKey, errorCount: hasErr ? 1 : 0, avgLatencyMs: latency,
-        });
-      }
-    }
-
-    // Server nodes — with per-agent and per-tool expansion
-    for (const server of servers) {
-      const callers = serverCallers.get(server) ?? [];
-      const isMultiCaller = callers.length >= 2;
-      const isAgentExpanded = expandedGroups.has(`server:${server}`);
-
-      if (!isMultiCaller || !isAgentExpanded) {
-        // Collapsed or single-caller — ALWAYS add the server node
-        const allSpans = [...pathData.entries()]
-          .filter(([, d]) => d.serverName === server)
-          .flatMap(([, d]) => d.spans);
-        const callCount = allSpans.length;
-        const errorCount = allSpans.filter((s) => s.status !== "success").length;
-        const avgLatencyMs = callCount > 0
-          ? allSpans.reduce((sum, s) => sum + (s.latency_ms ?? 0), 0) / callCount : 0;
-
-        const singleCaller = callers.length === 1 ? callers[0] : null;
-        const singlePathKey = singleCaller ? `${singleCaller.agentId}→server:${server}` : null;
-        const singlePm = singlePathKey ? edgeMetrics.get(singlePathKey) : null;
-
-        nodes.push({
-          id: `server:${server}`, type: "server", label: server,
-          hasError: errorCount > 0,
-          callCount, errorCount, avgLatencyMs,
-          isCollapsible: isMultiCaller,
-          collapsedCount: isMultiCaller ? callers.length : undefined,
-          expandableEdgeId: singlePathKey && singlePm && singlePm.tools.length >= 2 ? singlePathKey : undefined,
-          toolNames: singlePm && singlePm.tools.length >= 2 ? singlePm.tools : undefined,
-        });
-
-        // Agent → server edge (always present)
-        for (const caller of callers) {
-          const pathKey = `${caller.agentId}→server:${server}`;
-          const pm = edgeMetrics.get(pathKey);
-          const isEdgeExpanded = expandedEdges.has(pathKey);
-          const hasMultipleTools = pm && pm.tools.length >= 2;
-
-          graphEdges.push({
-            source: caller.agentId, target: `server:${server}`, type: "calls",
-            label: pm && pm.callCount > 1 ? `${pm.callCount}×` : undefined,
-            edgeId: pathKey, errorCount: pm?.errorCount, avgLatencyMs: pm?.avgLatencyMs,
-          });
-
-          // Per-tool expansion: tool nodes fan out FROM the server node
-          if (isEdgeExpanded && hasMultipleTools) {
-            addToolSplitNodes(`server:${server}`, server, caller.agentLabel, pathKey, edgeSpans.get(pathKey) ?? []);
-          }
-        }
-      } else {
-        // Expanded per-agent: one split node per caller
-        let firstSplitId: string | null = null;
-        for (const caller of callers) {
-          const pathKey = `${caller.agentId}→server:${server}`;
-          const pm = edgeMetrics.get(pathKey)!;
-          const isEdgeExpanded = expandedEdges.has(pathKey);
-          const hasMultipleTools = pm.tools.length >= 2;
-
-          if (isEdgeExpanded && hasMultipleTools) {
-            addToolSplitNodes(caller.agentId, server, caller.agentLabel, pathKey, edgeSpans.get(pathKey) ?? []);
-          } else {
-            const splitId = `server:${server}::via:${caller.agentLabel}`;
-            if (!firstSplitId) firstSplitId = splitId;
-
-            nodes.push({
-              id: splitId, type: "server", label: server,
-              hasError: pm.errorCount > 0,
-              callCount: pm.callCount, errorCount: pm.errorCount, avgLatencyMs: pm.avgLatencyMs,
-              groupId: `server:${server}`,
-              splitLabel: `via ${caller.agentLabel}`,
-              isCollapsible: splitId === firstSplitId,
-              collapsedCount: splitId === firstSplitId ? callers.length : undefined,
-              expandableEdgeId: hasMultipleTools ? pathKey : undefined,
-              toolNames: hasMultipleTools ? pm.tools : undefined,
-            });
-
-            graphEdges.push({
-              source: caller.agentId, target: splitId, type: "calls",
-              label: pm.callCount > 1 ? `${pm.callCount}×` : undefined,
-              edgeId: pathKey, errorCount: pm.errorCount, avgLatencyMs: pm.avgLatencyMs,
-            });
-          }
-        }
-      }
-    }
-
-    // Handoff edges
-    for (const h of handoffs) {
-      graphEdges.push({
-        source: `agent:${h.source}`, target: `agent:${h.target}`, type: "handoff",
-        edgeId: `agent:${h.source}→h→agent:${h.target}`,
-        label: h.count > 1 ? `${h.count} handoffs` : undefined,
-      });
-    }
-
-    return { nodes, edges: graphEdges, serverCallers, edgeMetrics, edgeSpans };
-  }, [trace, expandedGroups, expandedEdges]);
+  return useMemo(
+    () => buildSessionGraph(trace, expandedGroups, expandedEdges),
+    [trace, expandedGroups, expandedEdges],
+  );
 }
 
 /* ── Right panel: node detail for session ──────────────────── */
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">{children}</p>;
-}
-
-function MetricTile({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="rounded-lg p-3" style={{ background: "hsl(var(--muted))" }}>
-      <p className="text-[11px] text-muted-foreground mb-0.5">{label}</p>
-      <p className={cn("text-[15px] font-bold text-foreground", mono && "font-mono")} style={mono ? { fontFamily: "var(--font-geist-mono)" } : {}}>{value}</p>
+    <div className="flex items-center gap-2 mb-3.5">
+      <span className="w-1 h-3.5 rounded-full" style={{ background: "hsl(var(--primary))" }} />
+      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">{children}</p>
     </div>
   );
 }
 
-function SessionNodeDetail({ nodeId, trace, serverCallers }: { nodeId: string; trace: SessionTrace; serverCallers: Map<string, ServerCallerInfo[]> }) {
+function MetricTile({ label, value, danger, mono = true }: { label: string; value: string; danger?: boolean; mono?: boolean }) {
+  return (
+    <div className="rounded-xl p-3.5 transition-colors hover:brightness-110" style={{
+      background: "hsl(var(--muted))",
+      borderLeft: danger ? "3px solid hsl(var(--danger))" : "3px solid hsl(var(--primary) / 0.3)",
+    }}>
+      <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
+      <p className={cn("text-[16px] font-bold text-foreground", mono && "font-mono")} style={mono ? { fontFamily: "var(--font-geist-mono)" } : {}}>{value}</p>
+    </div>
+  );
+}
+
+function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { nodeId: string; trace: SessionTrace; serverCallers: Map<string, ServerCallerInfo[]>; onViewPayload?: (title: string, tabs: { label: string; json: string | null }[]) => void }) {
   const isAgent = nodeId.startsWith("agent:");
   const isPerCall = nodeId.includes("::call:");
   const name = nodeId.replace(/^(agent|server):/, "").replace(/::call:.*$/, "");
@@ -312,24 +83,34 @@ function SessionNodeDetail({ nodeId, trace, serverCallers }: { nodeId: string; t
   return (
     <div className="h-full overflow-y-auto">
       {/* Header */}
-      <div className="px-5 pt-5 pb-4 border-b" style={{ borderColor: "hsl(var(--border))" }}>
+      <div className="px-5 pt-5 pb-4 border-b" style={{
+        borderColor: "hsl(var(--border))",
+        background: isAgent
+          ? "linear-gradient(180deg, hsl(var(--primary) / 0.05) 0%, transparent 100%)"
+          : "linear-gradient(180deg, hsl(var(--muted) / 0.3) 0%, transparent 100%)",
+      }}>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "hsl(var(--primary) / 0.08)" }}>
-            {isAgent ? <Bot size={18} style={{ color: "hsl(var(--primary))" }} /> : <Server size={18} className="text-muted-foreground" />}
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{
+            background: isAgent
+              ? "linear-gradient(135deg, hsl(var(--primary) / 0.15), hsl(var(--primary) / 0.06))"
+              : "linear-gradient(135deg, rgba(100,116,139,0.14), rgba(100,116,139,0.05))",
+            border: isAgent ? "1px solid hsl(var(--primary) / 0.2)" : "1px solid rgba(100,116,139,0.15)",
+          }}>
+            {isAgent ? <Bot size={20} style={{ color: "hsl(var(--primary))" }} /> : <Server size={20} className="text-muted-foreground" />}
           </div>
-          <div className="min-w-0">
-            <p className="text-[15px] font-semibold text-foreground truncate">{isPerCall && spans[0] ? spans[0].tool_name : name}</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-[16px] font-bold text-foreground truncate" style={{ letterSpacing: "-0.01em" }}>{isPerCall && spans[0] ? spans[0].tool_name : name}</p>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-[12px] text-muted-foreground">{isPerCall ? `${name} · Tool Call` : isAgent ? "Agent" : "MCP Server"}</span>
-              <span className={cn("w-1.5 h-1.5 rounded-full", errors > 0 ? "bg-red-500" : "bg-emerald-500")} />
-              <span className="text-[12px]" style={{ color: errors > 0 ? "#ef4444" : "#10b981" }}>
+              <span className={cn("w-2 h-2 rounded-full", errors > 0 ? "bg-red-500" : "bg-emerald-500")} style={{ boxShadow: errors > 0 ? "0 0 6px rgba(239,68,68,0.4)" : "0 0 4px rgba(16,185,129,0.3)" }} />
+              <span className="text-[12px] font-medium" style={{ color: errors > 0 ? "#ef4444" : "#10b981" }}>
                 {errors > 0 ? `${errors} error${errors > 1 ? "s" : ""}` : "All OK"}
               </span>
             </div>
             {!isPerCall && (
               <Link
                 href={isAgent ? `/agents` : `/servers`}
-                className="mt-1 inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-medium"
               >
                 View in {isAgent ? "Agent" : "Server"} Catalog →
               </Link>
@@ -343,7 +124,7 @@ function SessionNodeDetail({ nodeId, trace, serverCallers }: { nodeId: string; t
         <SectionLabel>Overview</SectionLabel>
         <div className="grid grid-cols-2 gap-2">
           <MetricTile label="Total Calls" value={totalCalls.toLocaleString()} />
-          <MetricTile label="Errors" value={errors.toLocaleString()} />
+          <MetricTile label="Errors" value={errors.toLocaleString()} danger={errors > 0} />
           <MetricTile label="Avg Latency" value={`${Math.round(avgLatency)}ms`} />
           <MetricTile label="Max Latency" value={`${Math.round(maxLatency)}ms`} />
         </div>
@@ -365,14 +146,15 @@ function SessionNodeDetail({ nodeId, trace, serverCallers }: { nodeId: string; t
               const toolErrors = toolSpans.filter((s: SpanNode) => s.status !== "success").length;
               const toolAvgMs = toolSpans.reduce((s: number, sp: SpanNode) => s + (sp.latency_ms ?? 0), 0) / toolSpans.length;
               return (
-                <div key={tool} className="flex items-center justify-between rounded-lg px-3 py-2.5" style={{ background: "hsl(var(--muted))" }}>
-                  <div className="flex items-center gap-2">
-                    <span className={cn("w-1.5 h-1.5 rounded-full", toolErrors > 0 ? "bg-red-500" : "bg-emerald-500")} />
-                    <span className="text-[12px] font-medium text-foreground">{tool}</span>
+                <div key={tool} className="flex items-center justify-between rounded-xl px-3.5 py-3 transition-colors hover:brightness-110 cursor-default" style={{ background: "hsl(var(--muted))" }}>
+                  <div className="flex items-center gap-2.5">
+                    <span className={cn("w-2 h-2 rounded-full", toolErrors > 0 ? "bg-red-500" : "bg-emerald-500")} style={{ boxShadow: toolErrors > 0 ? "0 0 5px rgba(239,68,68,0.3)" : undefined }} />
+                    <span className="text-[13px] font-medium text-foreground">{tool}</span>
+                    {toolErrors > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}>{toolErrors} err</span>}
                   </div>
-                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                  <div className="flex items-center gap-3 text-[12px] text-muted-foreground">
                     <span className="font-mono" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(toolAvgMs)}ms</span>
-                    <span>{toolSpans.length}×</span>
+                    <span className="font-mono" style={{ fontFamily: "var(--font-geist-mono)" }}>{toolSpans.length}×</span>
                   </div>
                 </div>
               );
@@ -506,47 +288,64 @@ function SessionNodeDetail({ nodeId, trace, serverCallers }: { nodeId: string; t
       {!isPerCall && (
         <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
           <SectionLabel>Calls ({spans.length})</SectionLabel>
-          <div className="space-y-1.5">
-            {spans.map((s: SpanNode, i: number) => (
-              <details key={i} className="group rounded-lg overflow-hidden" style={{ border: "1px solid hsl(var(--border))" }}>
-                <summary className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-accent/30 transition-colors list-none">
+          <div className="space-y-2">
+            {spans.map((s: SpanNode, i: number) => {
+              const isError = s.status !== "success";
+              return (
+              <details key={i} className="group rounded-xl overflow-hidden" style={{ border: "1px solid hsl(var(--border))", borderLeft: `3px solid ${isError ? "#ef4444" : "#10b981"}` }}>
+                <summary className="flex items-center justify-between px-3.5 py-2.5 cursor-pointer hover:bg-accent/30 transition-colors list-none">
                   <div className="flex items-center gap-2">
-                    <span className={cn("w-1.5 h-1.5 rounded-full", s.status === "success" ? "bg-emerald-500" : "bg-red-500")} />
-                    <span className="text-[12px] font-medium text-foreground">{s.tool_name}</span>
-                    {s.error && <span className="text-[10px] text-red-400">error</span>}
+                    <span className="text-[12px] font-semibold text-foreground">{s.tool_name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{
+                      background: isError ? "rgba(239,68,68,0.08)" : "rgba(16,185,129,0.08)",
+                      color: isError ? "#ef4444" : "#10b981",
+                    }}>{isError ? "error" : "success"}</span>
                   </div>
-                  <span className="text-[11px] text-muted-foreground font-mono" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(s.latency_ms ?? 0)}ms</span>
+                  <span className="text-[12px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(s.latency_ms ?? 0)}ms</span>
                 </summary>
-                <div className="px-3 pb-3 space-y-2" style={{ borderTop: "1px solid hsl(var(--border))" }}>
+                <div className="px-3.5 pb-3.5 space-y-2.5" style={{ borderTop: "1px solid hsl(var(--border))" }}>
                   {s.error && (
-                    <div className="mt-2 rounded-lg px-3 py-2 text-[11px]" style={{ background: "rgba(239,68,68,0.05)", color: "#ef4444" }}>{s.error}</div>
+                    <div className="mt-2 rounded-xl px-3.5 py-2.5 text-[11px]" style={{ background: "rgba(239,68,68,0.05)", color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{s.error}</div>
                   )}
                   {s.input_json && (
                     <div className="mt-2">
-                      <p className="text-[11px] text-muted-foreground uppercase tracking-widest mb-1">Input</p>
-                      <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-32 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))" }}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-[11px] text-muted-foreground uppercase tracking-widest font-semibold">Input</p>
+                        <button
+                          className="text-[10px] text-primary hover:underline flex items-center gap-1 font-medium"
+                          onClick={(e) => { e.stopPropagation(); onViewPayload?.(`Input — ${s.tool_name}`, [{ label: "JSON", json: s.input_json }]); }}
+                        ><ExternalLink size={10} />View full</button>
+                      </div>
+                      <pre className="text-[11px] text-foreground rounded-xl p-3 whitespace-pre-wrap break-all max-h-48 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
                         {(() => { try { return JSON.stringify(JSON.parse(s.input_json), null, 2); } catch { return s.input_json; } })()}
                       </pre>
                     </div>
                   )}
                   {s.output_json && (
                     <div>
-                      <p className="text-[11px] text-muted-foreground uppercase tracking-widest mb-1">Output</p>
-                      <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-32 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))" }}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-[11px] text-muted-foreground uppercase tracking-widest font-semibold">Output</p>
+                        <button
+                          className="text-[10px] text-primary hover:underline flex items-center gap-1 font-medium"
+                          onClick={(e) => { e.stopPropagation(); onViewPayload?.(`Output — ${s.tool_name}`, [{ label: "JSON", json: s.output_json }]); }}
+                        ><ExternalLink size={10} />View full</button>
+                      </div>
+                      <pre className="text-[11px] text-foreground rounded-xl p-3 whitespace-pre-wrap break-all max-h-48 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
                         {(() => { try { return JSON.stringify(JSON.parse(s.output_json), null, 2); } catch { return s.output_json; } })()}
                       </pre>
                     </div>
                   )}
                   {(s.input_tokens || s.output_tokens) && (
-                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-1">
+                    <div className="flex items-center gap-4 text-[11px] text-muted-foreground pt-1">
                       {s.model_id && <span>Model: <code className="text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{s.model_id}</code></span>}
-                      {s.input_tokens != null && <span>In: <strong className="text-foreground">{s.input_tokens}</strong></span>}
-                      {s.output_tokens != null && <span>Out: <strong className="text-foreground">{s.output_tokens}</strong></span>}
+                      {s.input_tokens != null && <span>In: <strong className="text-foreground">{s.input_tokens.toLocaleString()}</strong></span>}
+                      {s.output_tokens != null && <span>Out: <strong className="text-foreground">{s.output_tokens.toLocaleString()}</strong></span>}
                     </div>
                   )}
                 </div>
               </details>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -557,12 +356,13 @@ function SessionNodeDetail({ nodeId, trace, serverCallers }: { nodeId: string; t
 /* ── Edge detail panel ─────────────────────────────────────── */
 
 function SessionEdgeDetail({
-  source, target, metrics, spans,
+  source, target, metrics, spans, onViewPayload,
 }: {
   source: string;
   target: string;
   metrics: PathMetrics | null;
   spans: SpanNode[];
+  onViewPayload?: (title: string, tabs: { label: string; json: string | null }[]) => void;
 }) {
   const sourceName = source.replace(/^(agent|server):/, "");
   const targetName = target.replace(/^(agent|server):/, "");
@@ -606,6 +406,14 @@ function SessionEdgeDetail({
           <MetricTile label="Avg Latency" value={`${Math.round(metrics.avgLatencyMs)}ms`} />
           <MetricTile label="Max Latency" value={`${Math.round(metrics.maxLatencyMs)}ms`} />
         </div>
+        {metrics.repeatCallCount != null && metrics.repeatCallCount >= 2 && metrics.repeatCallName && (
+          <div className="mt-2 rounded-lg px-3 py-2 flex items-center justify-between" style={{ background: "rgba(245,158,11,0.08)", borderLeft: "3px solid #f59e0b" }}>
+            <span className="text-[11px] text-muted-foreground">Repeated identical call</span>
+            <span className="text-[12px] font-bold" style={{ color: "#b45309", fontFamily: "var(--font-geist-mono)" }}>
+              {metrics.repeatCallName} {metrics.repeatCallCount}×
+            </span>
+          </div>
+        )}
         {errorRate > 0 && (
           <div className="mt-2 rounded-lg px-3 py-2 flex items-center justify-between" style={{ background: "rgba(239,68,68,0.06)" }}>
             <span className="text-[11px] text-muted-foreground">Error Rate</span>
@@ -663,40 +471,57 @@ function SessionEdgeDetail({
       {/* Span timeline */}
       <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
         <SectionLabel>Calls ({spans.length})</SectionLabel>
-        <div className="space-y-1.5">
-          {spans.map((s: SpanNode, i: number) => (
-            <details key={i} className="group rounded-lg overflow-hidden" style={{ border: "1px solid hsl(var(--border))" }}>
-              <summary className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-accent/30 transition-colors list-none">
+        <div className="space-y-2">
+          {spans.map((s: SpanNode, i: number) => {
+            const isErr = s.status !== "success";
+            return (
+            <details key={i} className="group rounded-xl overflow-hidden" style={{ border: "1px solid hsl(var(--border))", borderLeft: `3px solid ${isErr ? "#ef4444" : "#10b981"}` }}>
+              <summary className="flex items-center justify-between px-3.5 py-2.5 cursor-pointer hover:bg-accent/30 transition-colors list-none">
                 <div className="flex items-center gap-2">
-                  <span className={cn("w-1.5 h-1.5 rounded-full", s.status === "success" ? "bg-emerald-500" : "bg-red-500")} />
-                  <span className="text-[12px] font-medium text-foreground">{s.tool_name}</span>
-                  {s.error && <span className="text-[10px] text-red-400">error</span>}
+                  <span className="text-[12px] font-semibold text-foreground">{s.tool_name}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{
+                    background: isErr ? "rgba(239,68,68,0.08)" : "rgba(16,185,129,0.08)",
+                    color: isErr ? "#ef4444" : "#10b981",
+                  }}>{isErr ? "error" : "success"}</span>
                 </div>
-                <span className="text-[11px] text-muted-foreground font-mono" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(s.latency_ms ?? 0)}ms</span>
+                <span className="text-[12px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(s.latency_ms ?? 0)}ms</span>
               </summary>
-              <div className="px-3 pb-3 space-y-2" style={{ borderTop: "1px solid hsl(var(--border))" }}>
+              <div className="px-3.5 pb-3.5 space-y-2.5" style={{ borderTop: "1px solid hsl(var(--border))" }}>
                 {s.error && (
-                  <div className="mt-2 rounded-lg px-3 py-2 text-[11px]" style={{ background: "rgba(239,68,68,0.05)", color: "#ef4444" }}>{s.error}</div>
+                  <div className="mt-2 rounded-xl px-3.5 py-2.5 text-[11px]" style={{ background: "rgba(239,68,68,0.05)", color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{s.error}</div>
                 )}
                 {s.input_json && (
                   <div className="mt-2">
-                    <p className="text-[11px] text-muted-foreground uppercase tracking-widest mb-1">Input</p>
-                    <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-32 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))" }}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-widest font-semibold">Input</p>
+                      <button
+                        className="text-[10px] text-primary hover:underline flex items-center gap-1 font-medium"
+                        onClick={(e) => { e.stopPropagation(); onViewPayload?.(`Input — ${s.tool_name}`, [{ label: "JSON", json: s.input_json }]); }}
+                      ><ExternalLink size={10} />View full</button>
+                    </div>
+                    <pre className="text-[11px] text-foreground rounded-xl p-3 whitespace-pre-wrap break-all max-h-48 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
                       {(() => { try { return JSON.stringify(JSON.parse(s.input_json), null, 2); } catch { return s.input_json; } })()}
                     </pre>
                   </div>
                 )}
                 {s.output_json && (
                   <div>
-                    <p className="text-[11px] text-muted-foreground uppercase tracking-widest mb-1">Output</p>
-                    <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-32 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))" }}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-widest font-semibold">Output</p>
+                      <button
+                        className="text-[10px] text-primary hover:underline flex items-center gap-1 font-medium"
+                        onClick={(e) => { e.stopPropagation(); onViewPayload?.(`Output — ${s.tool_name}`, [{ label: "JSON", json: s.output_json }]); }}
+                      ><ExternalLink size={10} />View full</button>
+                    </div>
+                    <pre className="text-[11px] text-foreground rounded-xl p-3 whitespace-pre-wrap break-all max-h-48 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
                       {(() => { try { return JSON.stringify(JSON.parse(s.output_json), null, 2); } catch { return s.output_json; } })()}
                     </pre>
                   </div>
                 )}
               </div>
             </details>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -704,15 +529,22 @@ function SessionEdgeDetail({
 }
 
 /* ── Payload panel ──────────────────────────────────────────── */
-function PayloadPanel({ label, json }: { label: string; json: string | null }) {
+function PayloadPanel({ label, json, onViewFull }: { label: string; json: string | null; onViewFull?: () => void }) {
   if (!json) return null;
   let formatted = json;
   try { formatted = JSON.stringify(JSON.parse(json), null, 2); } catch { /* keep raw */ }
   return (
     <div className="mt-2">
-      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">{label}</p>
+      <div className="flex items-center justify-between mb-1.5">
+        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">{label}</p>
+        {onViewFull && (
+          <button onClick={(e) => { e.stopPropagation(); onViewFull(); }} className="text-[10px] text-primary hover:underline flex items-center gap-1 font-medium">
+            <ExternalLink size={10} />View full
+          </button>
+        )}
+      </div>
       <pre
-        className="text-[11px] rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed max-h-44 overflow-y-auto"
+        className="text-[11px] rounded-xl p-3 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed max-h-48 overflow-y-auto"
         style={{
           fontFamily: "var(--font-geist-mono)",
           background: "hsl(var(--muted))",
@@ -727,43 +559,53 @@ function PayloadPanel({ label, json }: { label: string; json: string | null }) {
 }
 
 /* ── Span row ───────────────────────────────────────────────── */
-function SpanRow({ span, depth = 0 }: { span: SpanNode; depth?: number }) {
+function SpanRow({ span, depth = 0, onViewPayload }: { span: SpanNode; depth?: number; onViewPayload?: (title: string, tabs: { label: string; json: string | null }[]) => void }) {
   const [open, setOpen] = useState(true);
   const [detailOpen, setDetailOpen] = useState(false);
   const icon = SPAN_TYPE_ICON[span.span_type] ?? "●";
-  const statusColor = CALL_STATUS_COLOR[span.status] ?? "text-zinc-400";
   const hasChildren = span.children && span.children.length > 0;
   const isLlmSpan = span.span_type === "agent" && (span.llm_input || span.llm_output);
   const hasPayload = span.input_json || span.output_json || span.llm_input || span.llm_output || span.error;
+  const isError = span.status === "error";
+  const isPrevented = span.status === "prevented";
 
   const spanColor =
     span.span_type === "handoff" ? "text-yellow-500"
     : span.span_type === "agent" ? "text-primary"
     : "text-foreground";
 
+  const statusBadge = isError
+    ? { text: "error", bg: "rgba(239,68,68,0.08)", color: "#ef4444" }
+    : isPrevented
+      ? { text: "prevented", bg: "rgba(234,179,8,0.08)", color: "#eab308" }
+      : span.status === "success"
+        ? { text: "success", bg: "rgba(16,185,129,0.08)", color: "#10b981" }
+        : { text: span.status, bg: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" };
+
   return (
     <>
       <tr
         className={cn(
-          "group transition-colors border-b border-border/40",
+          "group transition-colors",
           hasPayload ? "cursor-pointer hover:bg-accent/40" : "hover:bg-accent/20",
           detailOpen && "bg-accent/20"
         )}
+        style={{ borderBottom: "1px solid hsl(var(--border) / 0.4)", borderLeft: isError ? "3px solid #ef4444" : isPrevented ? "3px solid #eab308" : "3px solid transparent" }}
         onClick={() => hasPayload && setDetailOpen((o) => !o)}
       >
-        <td className="py-2 pr-3">
-          <div className="flex items-center" style={{ paddingLeft: `${depth * 18}px` }}>
+        <td className="py-2.5 pr-3">
+          <div className="flex items-center" style={{ paddingLeft: `${depth * 20}px` }}>
             <button
               onClick={(e) => { e.stopPropagation(); hasChildren && setOpen((o) => !o); }}
               className={cn("flex items-center gap-1.5 min-w-0", hasChildren ? "cursor-pointer" : "cursor-default")}
             >
               {hasChildren
                 ? open
-                  ? <ChevronDown size={11} className="text-muted-foreground flex-shrink-0" />
-                  : <ChevronRight size={11} className="text-muted-foreground flex-shrink-0" />
-                : <span className="w-3 flex-shrink-0" />}
-              <span className="text-xs mr-1">{icon}</span>
-              <span className={cn("text-[12px] font-mono truncate", spanColor)} style={{ fontFamily: "var(--font-geist-mono)" }}>
+                  ? <ChevronDown size={12} className="text-muted-foreground flex-shrink-0" />
+                  : <ChevronRight size={12} className="text-muted-foreground flex-shrink-0" />
+                : <span className="w-3.5 flex-shrink-0" />}
+              <span className="text-[12px] mr-1">{icon}</span>
+              <span className={cn("text-[12px] font-semibold truncate", spanColor)} style={{ fontFamily: "var(--font-geist-mono)" }}>
                 {span.server_name}/{span.tool_name}
               </span>
             </button>
@@ -774,37 +616,37 @@ function SpanRow({ span, depth = 0 }: { span: SpanNode; depth?: number }) {
             )}
           </div>
         </td>
-        <td className="py-2 pr-3 text-[12px] text-muted-foreground">{span.agent_name || "—"}</td>
-        <td className="py-2 pr-3 text-[12px]">
-          <span className={cn("font-mono font-semibold", statusColor)}>
-            {span.status === "success" ? "✓" : span.status === "error" ? "✗" : span.status === "prevented" ? "⊘" : "⏱"}
+        <td className="py-2.5 pr-3 text-[12px] text-muted-foreground">{span.agent_name || "—"}</td>
+        <td className="py-2.5 pr-3">
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{ background: statusBadge.bg, color: statusBadge.color }}>
+            {statusBadge.text}
           </span>
         </td>
-        <td className="py-2 pr-3 text-[12px] font-mono text-right text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>
+        <td className="py-2.5 pr-3 text-[12px] text-right text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>
           {span.latency_ms ? `${span.latency_ms.toFixed(0)}ms` : "—"}
         </td>
-        <td className="py-2 text-[11px] text-red-500 truncate max-w-xs">{span.error?.slice(0, 60) ?? ""}</td>
+        <td className="py-2.5 text-[11px] text-red-500 truncate max-w-xs">{span.error?.slice(0, 80) ?? ""}</td>
       </tr>
 
       {detailOpen && hasPayload && (
-        <tr style={{ background: "hsl(var(--muted) / 0.5)" }}>
-          <td colSpan={5} className="px-4 pb-3 pt-1" style={{ paddingLeft: `${depth * 18 + 28}px` }}>
+        <tr style={{ background: "hsl(var(--muted) / 0.4)" }}>
+          <td colSpan={5} className="px-4 pb-4 pt-2" style={{ paddingLeft: `${depth * 20 + 32}px` }}>
             {isLlmSpan ? (
               <>
-                <PayloadPanel label="Prompt" json={span.llm_input ?? null} />
-                <PayloadPanel label="Completion" json={span.llm_output ?? null} />
+                <PayloadPanel label="Prompt" json={span.llm_input ?? null} onViewFull={span.llm_input ? () => onViewPayload?.(`Prompt — ${span.tool_name}`, [{ label: "JSON", json: span.llm_input ?? null }]) : undefined} />
+                <PayloadPanel label="Completion" json={span.llm_output ?? null} onViewFull={span.llm_output ? () => onViewPayload?.(`Completion — ${span.tool_name}`, [{ label: "JSON", json: span.llm_output ?? null }]) : undefined} />
               </>
             ) : (
               <>
-                <PayloadPanel label="Input" json={span.input_json ?? null} />
-                <PayloadPanel label="Output" json={span.output_json ?? null} />
+                <PayloadPanel label="Input" json={span.input_json ?? null} onViewFull={span.input_json ? () => onViewPayload?.(`Input — ${span.tool_name}`, [{ label: "JSON", json: span.input_json ?? null }]) : undefined} />
+                <PayloadPanel label="Output" json={span.output_json ?? null} onViewFull={span.output_json ? () => onViewPayload?.(`Output — ${span.tool_name}`, [{ label: "JSON", json: span.output_json ?? null }]) : undefined} />
               </>
             )}
             {span.error && !span.output_json && !span.llm_output && (
               <div className="mt-2">
-                <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "hsl(var(--danger))" }}>Error</p>
+                <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "hsl(var(--danger))" }}>Error</p>
                 <pre
-                  className="text-[11px] rounded-lg p-3 whitespace-pre-wrap break-all"
+                  className="text-[11px] rounded-xl p-3 whitespace-pre-wrap break-all"
                   style={{
                     fontFamily: "var(--font-geist-mono)",
                     background: "hsl(var(--danger-bg))",
@@ -820,7 +662,7 @@ function SpanRow({ span, depth = 0 }: { span: SpanNode; depth?: number }) {
         </tr>
       )}
       {open && span.children?.map((child) => (
-        <SpanRow key={child.span_id} span={child} depth={depth + 1} />
+        <SpanRow key={child.span_id} span={child} depth={depth + 1} onViewPayload={onViewPayload} />
       ))}
     </>
   );
@@ -1153,7 +995,7 @@ export default function SessionDetailPage() {
     for (const n of sessionGraph.nodes) if (n.isCollapsible) groups.add(n.groupId ?? n.id);
     setExpandedGroups(groups);
     const edgeIds = new Set<string>();
-    for (const [pk, pm] of sessionGraph.edgeMetrics) if (pm.tools.length >= 2) edgeIds.add(pk);
+    for (const [pk, pm] of sessionGraph.edgeMetrics) if (pm.callCount >= 2) edgeIds.add(pk);
     setExpandedEdges(edgeIds);
   }, [sessionGraph]);
 
@@ -1263,25 +1105,38 @@ export default function SessionDetailPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2.5 flex-shrink-0">
             <button
               onClick={handleReplay}
               disabled={replaying || loading}
-              className="btn btn-secondary text-[12px] py-1.5 px-3"
+              className="flex items-center gap-2 text-[13px] font-medium py-2 px-4 rounded-xl transition-all"
+              style={{
+                background: "linear-gradient(135deg, hsl(var(--primary) / 0.08), hsl(var(--primary) / 0.02))",
+                border: "1px solid hsl(var(--primary) / 0.2)",
+                color: "hsl(var(--primary))",
+                opacity: replaying || loading ? 0.5 : 1,
+                cursor: replaying || loading ? "not-allowed" : "pointer",
+              }}
             >
               {replaying
-                ? <><span className="w-3 h-3 border border-current border-t-transparent rounded-full spin" />Replaying...</>
-                : <><Play size={11} />Replay</>
+                ? <><span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full" style={{ animation: "spin 0.6s linear infinite" }} />Replaying...</>
+                : <><div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "hsl(var(--primary) / 0.12)" }}><Play size={12} /></div>Replay</>
               }
             </button>
             <button
               onClick={() => { setComparePicking((v) => !v); setCompareWith(null); }}
-              className={cn(
-                "btn text-[12px] py-1.5 px-3",
-                comparePicking ? "btn-primary" : "btn-secondary"
-              )}
+              className="flex items-center gap-2 text-[13px] font-medium py-2 px-4 rounded-xl transition-all"
+              style={{
+                background: comparePicking
+                  ? "hsl(var(--primary))"
+                  : "linear-gradient(135deg, hsl(var(--muted)), hsl(var(--card)))",
+                border: comparePicking
+                  ? "1px solid hsl(var(--primary))"
+                  : "1px solid hsl(var(--border))",
+                color: comparePicking ? "white" : "hsl(var(--foreground))",
+              }}
             >
-              <GitCompare size={11} />Compare
+              <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: comparePicking ? "rgba(255,255,255,0.15)" : "hsl(var(--muted))" }}><GitCompare size={12} /></div>Compare
             </button>
           </div>
         </div>
@@ -1411,6 +1266,7 @@ export default function SessionDetailPage() {
                 nodeId={selection.id}
                 trace={trace}
                 serverCallers={sessionGraph.serverCallers}
+                onViewPayload={(title, tabs) => setPayloadSlideout({ title, tabs })}
               />
             ) : selection?.type === "edge" && trace ? (
               <SessionEdgeDetail
@@ -1418,6 +1274,7 @@ export default function SessionDetailPage() {
                 target={selection.target}
                 metrics={sessionGraph.edgeMetrics.get(`${selection.source}→${selection.target}`) ?? null}
                 spans={sessionGraph.edgeSpans.get(`${selection.source}→${selection.target}`) ?? []}
+                onViewPayload={(title, tabs) => setPayloadSlideout({ title, tabs })}
               />
             ) : (
               <div className="flex flex-col items-center justify-center h-full px-6 py-10 gap-4">
@@ -1486,7 +1343,7 @@ export default function SessionDetailPage() {
                   </thead>
                   <tbody>
                     {trace.root_spans.map((span) => (
-                      <SpanRow key={span.span_id} span={span} depth={0} />
+                      <SpanRow key={span.span_id} span={span} depth={0} onViewPayload={(title, tabs) => setPayloadSlideout({ title, tabs })} />
                     ))}
                   </tbody>
                 </table>

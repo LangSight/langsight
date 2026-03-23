@@ -333,6 +333,8 @@ export interface PathMetrics {
   inputTokens: number;
   outputTokens: number;
   models: string[];
+  repeatCallName?: string;
+  repeatCallCount?: number;
 }
 
 /** Which agents call a given server, with per-path metrics. */
