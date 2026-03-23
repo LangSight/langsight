@@ -16,7 +16,9 @@ v0.3 additions:
 from __future__ import annotations
 
 import asyncio
+import atexit
 import json
+import threading
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -103,6 +105,9 @@ class LangSightClient:
         self._buffer: list[ToolCallSpan] = []
         self._lock: asyncio.Lock = asyncio.Lock()
         self._flush_task: asyncio.Task[None] | None = None
+
+        # Flush any remaining buffered spans on program exit — no user code needed
+        atexit.register(self._flush_on_exit)
 
         # Loop detection config (None = disabled)
         self._loop_config: LoopDetectorConfig | None = (
@@ -370,6 +375,25 @@ class LangSightClient:
             budget=self._budget_config is not None,
             circuit_breaker=self._cb_default_config is not None,
         )
+
+    def _flush_on_exit(self) -> None:
+        """Synchronous atexit handler — flushes buffered spans when the program exits.
+
+        Called automatically at process shutdown so users never need to call
+        close() or use `async with`. Spawns a non-daemon thread with its own
+        event loop to deliver any spans that were buffered but not yet sent.
+        """
+        if not self._buffer:
+            return
+        batch, self._buffer = self._buffer, []
+        try:
+            thread = threading.Thread(
+                target=asyncio.run, args=(self._post_spans(batch),), daemon=False
+            )
+            thread.start()
+            thread.join(timeout=5.0)
+        except Exception:  # noqa: BLE001
+            pass  # best effort — interpreter may already be shutting down
 
     async def close(self) -> None:
         """Flush remaining spans, cancel the flush loop, and close the HTTP client."""
