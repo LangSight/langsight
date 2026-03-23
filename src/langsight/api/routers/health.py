@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 
@@ -42,14 +44,11 @@ async def list_servers_health(
     if project_id:
         allowed = await _project_server_names(storage, project_id)
 
-    results: list[HealthCheckResult] = []
-    for server in config.servers:
-        if allowed is not None and server.name not in allowed:
-            continue
-        history = await storage.get_health_history(server.name, limit=1)
-        if history:
-            results.append(history[0])
-    return results
+    visible = [s for s in config.servers if allowed is None or s.name in allowed]
+    histories = await asyncio.gather(
+        *(storage.get_health_history(s.name, limit=1) for s in visible)
+    )
+    return [h[0] for h in histories if h]
 
 
 @router.get(

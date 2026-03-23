@@ -237,6 +237,9 @@ async def compare_sessions(
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND, detail="Session not found."
             )
+        # Replace with filtered spans — prevents returning foreign-project span data
+        # even when the session IDs matched (ownership check passed above).
+        result = {**result, "spans_a": spans_a_in_project, "spans_b": spans_b_in_project}
 
     if not result["spans_a"] and not result["spans_b"]:
         raise HTTPException(

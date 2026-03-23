@@ -75,9 +75,9 @@ services:
     ports:
       - "4317:4317"
       - "4318:4318"
-    depends_on:
-      api:
-        condition: service_healthy
+    # No depends_on for api: the OTEL collector receives traces independently.
+    # Waiting for the API to be healthy blocks SDK clients during cold starts
+    # (e.g. slow DB migrations) causing connection-refused errors and lost spans.
     networks: [langsight-net]
     restart: unless-stopped
 

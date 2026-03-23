@@ -1,0 +1,140 @@
+name: Release
+
+# Triggered by pushing a version tag: git tag v0.3.0 && git push --tags
+# The workflow gates publication on CI passing, then publishes to PyPI
+# using Trusted Publishing (OIDC) — no API tokens to rotate.
+#
+# One-time setup required (per repo, not per release):
+#   1. Go to https://pypi.org/manage/account/publishing/
+#   2. Add a new Trusted Publisher:
+#        Owner:    <your GitHub org/username>
+#        Repo:     langsight
+#        Workflow: release.yml
+#        Env:      pypi
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]*"
+
+permissions:
+  contents: write   # create GitHub release
+  id-token: write   # OIDC token for PyPI Trusted Publishing
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Gate: unit tests must pass before we publish anything
+  # ---------------------------------------------------------------------------
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run unit tests
+        run: uv run pytest --no-header
+
+  # ---------------------------------------------------------------------------
+  # Build the sdist + wheel
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build Distribution
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Verify the wheel installs and CLI entry point is present
+        run: |
+          pip install dist/*.whl --quiet
+          langsight --help
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Publish to PyPI via OIDC Trusted Publishing (no token required)
+  # ---------------------------------------------------------------------------
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # No password/token needed — uses OIDC Trusted Publishing.
+        # See: https://docs.pypi.org/trusted-publishers/
+
+  # ---------------------------------------------------------------------------
+  # Create a GitHub Release with auto-generated notes from the CHANGELOG
+  # ---------------------------------------------------------------------------
+  github-release:
+    name: Create GitHub Release
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract CHANGELOG section for this version
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Extract the block between ## [version] and the next ## heading
+          NOTES=$(awk "/^## \[$VERSION\]/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="See CHANGELOG.md for details."
+          fi
+          # Write to a file to avoid shell escaping issues
+          echo "$NOTES" > release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: LangSight ${{ github.ref_name }}
+          body_path: release_notes.md
+          files: dist/*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

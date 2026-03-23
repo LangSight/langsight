@@ -7,38 +7,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.3.1] - 2026-03-22 — Prevention Config
+## [0.3.2] - 2026-03-23 — Buffer Safety, Bootstrap, and Hardening
 
-### Added
+### Added (2026-03-23 — Dashboard UX polish)
 
-- **`prevention_config` Postgres table** — per-project, per-agent prevention thresholds persisted in the platform. `agent_name="*"` row is the project-level default that applies to all agents without a specific config entry.
-- **`PreventionConfig` domain model** (`models.py`) — fields: `id`, `project_id`, `agent_name`, `loop_enabled`, `loop_threshold`, `loop_action`, `max_steps`, `max_cost_usd`, `max_wall_time_s`, `budget_soft_alert`, `cb_enabled`, `cb_failure_threshold`, `cb_cooldown_seconds`, `cb_half_open_max_calls`.
-- **API endpoints**: `GET /api/agents/{name}/prevention-config`, `PUT /api/agents/{name}/prevention-config`, `DELETE /api/agents/{name}/prevention-config`, and project-default equivalents under `/api/projects/{id}/prevention-config`.
-- **SDK: `LangSightClient._apply_remote_config()`** — background task launched on `wrap()` that fetches the agent's dashboard config and merges it over constructor defaults. Non-blocking: `wrap()` returns immediately; the remote config takes effect before the first tool call. Falls back to constructor params when the API is unreachable.
-- **Dashboard: Prevention tab in Settings** — per-agent table with inline edit forms for all threshold fields. Project default row (`*`) always shown at top.
-- **Demo seed**: 5 sample `prevention_config` rows covering demo agents.
+- **`DateRangeFilter` component** (`dashboard/components/date-range-filter.tsx`): global date range control with five presets (`1h`, `6h`, `24h`, `7d`, `30d`) and a custom date picker dropdown (From/To `<input type="date">` with Apply button). Active preset highlighted with primary teal; custom range shows an indigo-tinted "Custom" label. Clicking outside the dropdown closes it via `mousedown` listener. Integrated into Sessions, Costs, Health, Agents, and Servers pages.
+- **`Timestamp` component** (`dashboard/components/timestamp.tsx`): semantic `<time>` element that displays relative time ("16h ago") alongside exact time at 60% opacity ("Mar 22, 14:30:05"). Compact mode shows only relative time with exact value in the HTML `title` attribute (tooltip on hover). Used across sessions list, session detail, health page uptime dots, agents page, servers page, and settings.
+- **Graph builder module** (`dashboard/lib/session-graph.ts`): `buildSessionGraph(trace, expandedGroups, expandedEdges): SessionGraphResult` extracts all session-to-graph construction logic from the session detail page. Exposes `findRepeatedCall` (detects same tool + same args repeated N times) and `buildCallLabels` (sequence labels for disambiguating repeated tools on the same edge). `SessionGraphResult` type carries `nodes`, `edges`, `serverCallers`, `edgeMetrics`, `edgeSpans`.
 
-## [0.3.0] - 2026-03-22 — Prevention Layer (Tier 1)
+### Changed (2026-03-23 — Dashboard UX polish)
 
-### Added
-
-- **SDK: Circuit breaker** (`src/langsight/sdk/circuit_breaker.py`) — per-server CLOSED → OPEN → HALF_OPEN state machine. Configurable failure threshold (default 5), cooldown period (default 60s), and half-open test calls (default 2). When open, tool calls are rejected immediately without hitting the server. Recovery is automatic via half-open test calls.
-- **SDK: Loop detector** (`src/langsight/sdk/loop_detector.py`) — per-session sliding window (default 20 calls) detecting three patterns: repetition (same tool + same args N times), ping-pong (alternating between two tool+args pairs), and retry-without-progress (same tool + same error repeated). Configurable threshold (default 3) and action (`warn` or `terminate`).
-- **SDK: Budget guardrails** (`src/langsight/sdk/budget.py`) — per-session tracking of step count, wall time, and cumulative cost. Step count and wall time are checked pre-call; cost limit fires post-call on the first call that pushes over the threshold. Soft alert at configurable fraction (default 80%) fires once per limit type.
-- **SDK: Prevention integration in `call_tool()`** — pre-call checks (circuit breaker, loop detection, budget step/wall-time) and post-call state updates (loop detector record, budget cost/step increment, circuit breaker success/failure). All prevention params default to disabled for backward compatibility.
-- **New SDK constructor params**: `loop_detection`, `loop_threshold`, `loop_action`, `max_cost_usd`, `max_steps`, `max_wall_time_s`, `budget_soft_alert`, `pricing_table`, `circuit_breaker`, `circuit_breaker_threshold`, `circuit_breaker_cooldown`, `circuit_breaker_half_open_max`.
-- **New alert types**: `LOOP_DETECTED`, `BUDGET_WARNING`, `BUDGET_EXCEEDED`, `CIRCUIT_BREAKER_OPEN`, `CIRCUIT_BREAKER_RECOVERED` in `alerts/engine.py`.
-- **`AlertEngine.evaluate_prevention_event()`** — new method that creates alerts from SDK prevention events. Unlike health-check evaluation, prevention events always produce an alert (no threshold needed).
-- **`ToolCallStatus.PREVENTED`** — new status value for tool calls blocked by prevention layer.
-- **`PreventionEvent` model** (`sdk/models.py`) — SDK-originated event model for loop/budget/circuit-breaker events.
-- **New exceptions**: `LoopDetectedError`, `BudgetExceededError`, `CircuitBreakerOpenError` in `exceptions.py`.
-- **Health tag engine** (`src/langsight/tagging/engine.py`) — `HealthTag` enum with 8 tags: `success`, `success_with_fallback`, `loop_detected`, `budget_exceeded`, `tool_failure`, `circuit_breaker_open`, `timeout`, `schema_drift`. `tag_from_spans()` computes tags from session spans using priority ordering.
-- **Dashboard: `HealthTagBadge` component** (`dashboard/components/health-tag-badge.tsx`) — colored tag badges for session health status.
-- **Dashboard: Sessions page** — health tag column added to session list, filter dropdown for filtering by health tag.
-- **Dashboard: `HealthTag` type** and `health_tag` field on `AgentSession` type.
-- **`CircuitBreakerConfig`** added as optional field on `MCPServer` model for per-server circuit breaker overrides.
-
-## [Unreleased]
+- **Session detail page redesigned** (`dashboard/app/(dashboard)/sessions/[id]/page.tsx`): layout optimized for wide screens to maximize lineage graph area. `SessionNodeDetail` right-panel converted to `MetricTile` sub-components (rounded tiles with left accent border, primary or danger color). `SectionLabel` sub-component standardizes panel headings. Graph construction delegated to `useSessionGraph` hook (`useMemo` over `buildSessionGraph`).
+- **Lineage graph nodes redesigned** (`dashboard/components/lineage-graph.tsx`): node cards now display compact metric pills (call count, error count, avg latency) inside each card. Node padding tightened for denser graphs. Loop detection annotation row shows `repeatCallName` + `repeatCallCount` when a repeated call pattern is present. Agent nodes use a teal gradient header; server nodes use slate. Selection: glass-morphism border + glow. Back-edges (cycles) rendered as self-loop arcs on the right side of the source node. Minimap uses `ResizeObserver` for live container size tracking and auto-fits the graph into the viewport on first render.
+- **Timestamp labels corrected** across pages (Sessions, Health, Agents, Servers, Settings): switched from raw `timeAgo()` string interpolation to the `Timestamp` component, ensuring consistent relative + exact time display and semantic `<time>` elements.
 
 ### Changed (2026-03-22 — Positioning: observability → runtime reliability)
 
@@ -411,6 +392,58 @@ Pre-production security hardening required before 0.2.0 can be positioned as pro
 ### Planned (Phase 4 remaining — manual deployment steps)
 - R.4: Mintlify deployment — connect `docs-site/` on mintlify.com dashboard to `docs.langsight.dev`
 - Phase 4 website Vercel deployment — connect `website/` repo on vercel.com
+
+### Fixed (2026-03-23 — Audit pass 1: OOM, rate limiting, isolation, correctness)
+
+- **SDK dict caps** — `_loop_detectors`, `_session_budgets`, and `_circuit_breakers` dicts capped at 500 / 100 / 500 entries respectively with FIFO eviction; prevents OOM DoS via unbounded growth from random `session_id` values.
+- **Rate limiter key** — rate limiter now keys on `X-Forwarded-For` first, then `X-API-Key` prefix (first 8 chars), then TCP address; each dashboard user gets an independent bucket instead of sharing one global bucket behind the proxy.
+- **Session compare cross-project leak** — `/api/agents/compare` was returning unfiltered cross-project spans; result is now replaced with project-scoped spans before returning.
+- **Overview health URL missing `project_id`** — health URL on the Overview page now includes the active `project_id` query param; non-admin users no longer see a wrong or empty server list.
+- **Health listing sequential loop** — `/api/health/servers` now uses `asyncio.gather()` to fetch all server health entries concurrently instead of a sequential loop.
+- **ClickHouse `get_untagged_sessions()` invalid WHERE** — `max(ended_at)` filter moved from `WHERE` to `HAVING` clause; was causing ClickHouse to reject the query for aggregates in non-aggregate context.
+- **`mv_tool_reliability` missing `project_id`** — materialized view `GROUP BY` now includes `project_id`; multi-tenant reliability queries were merging data across projects.
+- **SDK missing `async with` support** — `LangSightClient` now implements `__aenter__` / `__aexit__` for safe `async with client:` usage and guaranteed flush on exit.
+- **`/api/status` version fallback** — version field now falls back to reading `pyproject.toml` directly when the `langsight` package is not installed (e.g. development installs without `pip install -e .`).
+- **`test-mcps` Postgres port conflict** — `test-mcps/docker-compose.yml` Postgres port changed from `5432` to `5433` to avoid conflict with the main stack's Postgres container.
+
+### Fixed (2026-03-23 — Audit pass 2: concurrency, startup, fingerprinting, schema)
+
+- **SDK buffer lock** — `send_span`, `send_spans`, and `flush` in `LangSightClient` are now protected by `asyncio.Lock`; concurrent flushes could previously corrupt the buffer or lose spans.
+- **`otel-collector` startup dependency** — `otel-collector` docker-compose service no longer depends on `api: service_healthy`; SDK clients no longer receive connection-refused errors during API cold starts.
+- **Default project bootstrap** — `_bootstrap_default_project()` is now called on API startup; new installs get a real "Default" project automatically instead of only the seed "Sample Project".
+- **`/api/status` fingerprinting** — `servers_configured`, `auth_enabled`, and `storage_mode` fields removed from the unauthenticated `/api/status` response; these fields were exposable to unauthenticated callers and useful for fingerprinting the deployment.
+- **`mcp_health_results` missing `project_id`** — ClickHouse `mcp_health_results` table DDL now includes a `project_id` column; an `ALTER TABLE IF EXISTS` migration is applied for existing installs to add the column without data loss.
+
+## [0.3.1] - 2026-03-22 — Prevention Config
+
+### Added
+
+- **`prevention_config` Postgres table** — per-project, per-agent prevention thresholds persisted in the platform. `agent_name="*"` row is the project-level default that applies to all agents without a specific config entry.
+- **`PreventionConfig` domain model** (`models.py`) — fields: `id`, `project_id`, `agent_name`, `loop_enabled`, `loop_threshold`, `loop_action`, `max_steps`, `max_cost_usd`, `max_wall_time_s`, `budget_soft_alert`, `cb_enabled`, `cb_failure_threshold`, `cb_cooldown_seconds`, `cb_half_open_max_calls`.
+- **API endpoints**: `GET /api/agents/{name}/prevention-config`, `PUT /api/agents/{name}/prevention-config`, `DELETE /api/agents/{name}/prevention-config`, and project-default equivalents under `/api/projects/{id}/prevention-config`.
+- **SDK: `LangSightClient._apply_remote_config()`** — background task launched on `wrap()` that fetches the agent's dashboard config and merges it over constructor defaults. Non-blocking: `wrap()` returns immediately; the remote config takes effect before the first tool call. Falls back to constructor params when the API is unreachable.
+- **Dashboard: Prevention tab in Settings** — per-agent table with inline edit forms for all threshold fields. Project default row (`*`) always shown at top.
+- **Demo seed**: 5 sample `prevention_config` rows covering demo agents.
+
+## [0.3.0] - 2026-03-22 — Prevention Layer (Tier 1)
+
+### Added
+
+- **SDK: Circuit breaker** (`src/langsight/sdk/circuit_breaker.py`) — per-server CLOSED → OPEN → HALF_OPEN state machine. Configurable failure threshold (default 5), cooldown period (default 60s), and half-open test calls (default 2). When open, tool calls are rejected immediately without hitting the server. Recovery is automatic via half-open test calls.
+- **SDK: Loop detector** (`src/langsight/sdk/loop_detector.py`) — per-session sliding window (default 20 calls) detecting three patterns: repetition (same tool + same args N times), ping-pong (alternating between two tool+args pairs), and retry-without-progress (same tool + same error repeated). Configurable threshold (default 3) and action (`warn` or `terminate`).
+- **SDK: Budget guardrails** (`src/langsight/sdk/budget.py`) — per-session tracking of step count, wall time, and cumulative cost. Step count and wall time are checked pre-call; cost limit fires post-call on the first call that pushes over the threshold. Soft alert at configurable fraction (default 80%) fires once per limit type.
+- **SDK: Prevention integration in `call_tool()`** — pre-call checks (circuit breaker, loop detection, budget step/wall-time) and post-call state updates (loop detector record, budget cost/step increment, circuit breaker success/failure). All prevention params default to disabled for backward compatibility.
+- **New SDK constructor params**: `loop_detection`, `loop_threshold`, `loop_action`, `max_cost_usd`, `max_steps`, `max_wall_time_s`, `budget_soft_alert`, `pricing_table`, `circuit_breaker`, `circuit_breaker_threshold`, `circuit_breaker_cooldown`, `circuit_breaker_half_open_max`.
+- **New alert types**: `LOOP_DETECTED`, `BUDGET_WARNING`, `BUDGET_EXCEEDED`, `CIRCUIT_BREAKER_OPEN`, `CIRCUIT_BREAKER_RECOVERED` in `alerts/engine.py`.
+- **`AlertEngine.evaluate_prevention_event()`** — new method that creates alerts from SDK prevention events. Unlike health-check evaluation, prevention events always produce an alert (no threshold needed).
+- **`ToolCallStatus.PREVENTED`** — new status value for tool calls blocked by prevention layer.
+- **`PreventionEvent` model** (`sdk/models.py`) — SDK-originated event model for loop/budget/circuit-breaker events.
+- **New exceptions**: `LoopDetectedError`, `BudgetExceededError`, `CircuitBreakerOpenError` in `exceptions.py`.
+- **Health tag engine** (`src/langsight/tagging/engine.py`) — `HealthTag` enum with 8 tags: `success`, `success_with_fallback`, `loop_detected`, `budget_exceeded`, `tool_failure`, `circuit_breaker_open`, `timeout`, `schema_drift`. `tag_from_spans()` computes tags from session spans using priority ordering.
+- **Dashboard: `HealthTagBadge` component** (`dashboard/components/health-tag-badge.tsx`) — colored tag badges for session health status.
+- **Dashboard: Sessions page** — health tag column added to session list, filter dropdown for filtering by health tag.
+- **Dashboard: `HealthTag` type** and `health_tag` field on `AgentSession` type.
+- **`CircuitBreakerConfig`** added as optional field on `MCPServer` model for per-server circuit breaker overrides.
 
 ---
 

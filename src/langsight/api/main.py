@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from importlib.metadata import version as _pkg_version
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +39,13 @@ from langsight.config import Settings, load_config
 from langsight.storage.factory import open_storage
 
 logger = structlog.get_logger()
-_VERSION = _pkg_version("langsight")
+try:
+    _VERSION = _pkg_version("langsight")
+except PackageNotFoundError:
+    import tomllib
+
+    _toml = tomllib.loads((Path(__file__).parents[3] / "pyproject.toml").read_text())
+    _VERSION = _toml["project"]["version"]
 
 
 _MODEL_PRICING_SEED: list[tuple[str, str, str, float, float, float, str]] = [
@@ -299,9 +305,14 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                 hint="Set LANGSIGHT_API_KEYS=<key1,key2> to enable authentication",
             )
 
-        # First-run bootstrap — create initial admin user and sample project
+        # First-run bootstrap — create initial admin user, default project, and sample project
         await _seed_model_pricing(app.state.storage)
         admin_id = await _bootstrap_admin(app.state.storage)
+
+        # Create a real "Default" project for the admin user to land in.
+        # Must run before sample project so the empty-projects check inside
+        # _bootstrap_default_project triggers correctly on first startup.
+        await _bootstrap_default_project(app.state.storage, admin_id or "system")
 
         # Seed a "Sample Project" with demo agent sessions on first run
         await _bootstrap_sample_project(app.state.storage, admin_id or "system")
@@ -403,27 +414,14 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/status", tags=["meta"])
     async def status() -> dict[str, Any]:
-        """Combined status — kept for backwards compatibility. Prefer /readiness."""
-        env_keys = bool(getattr(app.state, "api_keys", []))
-        db_keys = False
-        storage = getattr(app.state, "storage", None)
-        if storage and hasattr(storage, "list_api_keys"):
-            import inspect
+        """Public status probe — returns minimal info to avoid fingerprinting.
 
-            list_fn = getattr(storage, "list_api_keys", None)
-            if list_fn and inspect.iscoroutinefunction(list_fn):
-                try:
-                    keys = await list_fn()
-                    db_keys = any(not k.is_revoked for k in keys)
-                except Exception:  # noqa: BLE001
-                    db_keys = True  # fail-closed
-        return {
-            "status": "ok",
-            "version": _VERSION,
-            "servers_configured": len(app.state.config.servers),
-            "auth_enabled": env_keys or db_keys,
-            "storage_mode": app.state.config.storage.mode,
-        }
+        Kept for backwards compatibility. Prefer /readiness for health checks.
+        Sensitive fields (servers_configured, auth_enabled, storage_mode) were
+        removed from the public response — they are only available via /readiness
+        to authenticated callers.
+        """
+        return {"status": "ok", "version": _VERSION}
 
     @app.get("/api/liveness", tags=["meta"])
     async def liveness() -> dict[str, str]:

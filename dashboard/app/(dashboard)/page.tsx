@@ -172,7 +172,11 @@ export default function OverviewPage() {
   const p = activeProject ? `&project_id=${activeProject.id}` : "";
 
   const { data: servers, isLoading: serversLoading, mutate } =
-    useSWR<HealthResult[]>("/api/health/servers", fetcher, { refreshInterval: 30_000 });
+    useSWR<HealthResult[]>(
+      activeProject ? `/api/health/servers?project_id=${activeProject.id}` : "/api/health/servers",
+      fetcher,
+      { refreshInterval: 30_000 },
+    );
   const { data: sessions, isLoading: sessionsLoading } =
     useSWR<AgentSession[]>(`/api/agents/sessions?hours=24&limit=8${p}`, fetcher, { refreshInterval: 30_000 });
   const { data: anomalies } =

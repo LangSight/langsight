@@ -72,11 +72,15 @@ class TestApiStatus:
         assert response.status_code == 200
 
     async def test_status_body(self, client) -> None:
+        """Verify /api/status returns only minimal public fields (no fingerprinting)."""
         c, _ = client
         data = (await c.get("/api/status")).json()
         assert data["status"] == "ok"
-        assert data["version"] == "0.2.0"
-        assert data["servers_configured"] == 2
+        assert "version" in data
+        # Sensitive fields stripped — must not be present in the public response
+        assert "servers_configured" not in data
+        assert "auth_enabled" not in data
+        assert "storage_mode" not in data
 
 
 class TestListServersHealth:

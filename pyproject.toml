@@ -1,10 +1,23 @@
 [project]
 name = "langsight"
-version = "0.2.0"
+version = "0.3.2"
 description = "Agent runtime reliability — prevent loops, enforce budgets, monitor MCP health, scan for CVEs"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
+authors = [{ name = "LangSight", email = "hello@langsight.dev" }]
+keywords = ["llm", "agents", "mcp", "observability", "reliability", "monitoring"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Monitoring",
+]
+
 dependencies = [
     "click>=8.1",
     "rich>=13",
@@ -30,6 +43,12 @@ dependencies = [
 
 [project.scripts]
 langsight = "langsight.cli.main:cli"
+
+[project.urls]
+Homepage = "https://langsight.dev"
+Documentation = "https://docs.langsight.dev"
+Repository = "https://github.com/langsight/langsight"
+"Bug Tracker" = "https://github.com/langsight/langsight/issues"
 
 [build-system]
 requires = ["hatchling"]

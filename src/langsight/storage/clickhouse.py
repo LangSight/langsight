@@ -40,6 +40,10 @@ logger = structlog.get_logger()
 # ---------------------------------------------------------------------------
 
 _DDL = [
+    # Migration: add project_id to mcp_health_results for existing installations.
+    # ALTER ADD COLUMN IF NOT EXISTS is idempotent — safe to run on every startup.
+    # Fresh installs get the column directly from the CREATE TABLE below.
+    "ALTER TABLE IF EXISTS mcp_health_results ADD COLUMN IF NOT EXISTS project_id String DEFAULT ''",
     # Health check results — full fidelity, 90-day TTL
     """
     CREATE TABLE IF NOT EXISTS mcp_health_results (
@@ -49,7 +53,8 @@ _DDL = [
         tools_count  UInt16 DEFAULT 0,
         schema_hash  Nullable(String),
         error        Nullable(String),
-        checked_at   DateTime64(3, 'UTC')
+        checked_at   DateTime64(3, 'UTC'),
+        project_id   String DEFAULT ''
     )
     ENGINE = MergeTree()
     PARTITION BY toYYYYMM(checked_at)
@@ -107,14 +112,19 @@ _DDL = [
     ORDER BY (server_name, recorded_at)
     SETTINGS index_granularity = 8192
     """,
-    # Materialized view: pre-aggregated tool reliability per hour
+    # Migration: drop old mv_tool_reliability if it lacks project_id so the
+    # CREATE below recreates it with multi-tenant support. Safe: POPULATE
+    # rebuilds from the raw mcp_tool_calls table on first startup.
+    "DROP VIEW IF EXISTS mv_tool_reliability",
+    # Materialized view: pre-aggregated tool reliability per (project, tool, hour)
     # Drives the Tool Reliability page in the dashboard without real-time fan-out
     """
     CREATE MATERIALIZED VIEW IF NOT EXISTS mv_tool_reliability
     ENGINE = SummingMergeTree()
-    ORDER BY (server_name, tool_name, hour)
+    ORDER BY (project_id, server_name, tool_name, hour)
     POPULATE
     AS SELECT
+        project_id,
         server_name,
         tool_name,
         toStartOfHour(started_at)           AS hour,
@@ -125,7 +135,7 @@ _DDL = [
         sum(latency_ms)                      AS total_latency_ms,
         max(latency_ms)                      AS max_latency_ms
     FROM mcp_tool_calls
-    GROUP BY server_name, tool_name, hour
+    GROUP BY project_id, server_name, tool_name, hour
     """,
     # Materialized view: agent sessions — one row per session
     # Drives langsight sessions + GET /api/agents/sessions
@@ -410,59 +420,34 @@ class ClickHouseBackend:
         """Return tool reliability metrics for the given time window.
 
         Uses the mv_tool_reliability materialized view for fast aggregation.
-        When project_id is set, queries the base mcp_tool_calls table instead
-        (the MV does not carry project_id).
+        project_id is now a first-class column in the MV — no base-table fallback needed.
         """
         params: dict[str, Any] = {"hours": hours}
-
+        where = "WHERE hour >= now() - INTERVAL {hours:UInt32} HOUR"
         if project_id:
-            # Fall back to base table for project-scoped queries
-            where = "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR AND project_id = {project_id:String}"
+            where += " AND project_id = {project_id:String}"
             params["project_id"] = project_id
-            if server_name:
-                where += " AND server_name = {server_name:String}"
-                params["server_name"] = server_name
-            result = await self._client.query(
-                f"""
-                SELECT
-                    server_name,
-                    tool_name,
-                    count()                              AS total_calls,
-                    countIf(status = 'success')           AS success_calls,
-                    countIf(status = 'error')              AS error_calls,
-                    countIf(status = 'timeout')            AS timeout_calls,
-                    sum(latency_ms)                        AS total_latency_ms,
-                    max(latency_ms)                        AS max_latency_ms
-                FROM mcp_tool_calls
-                {where}
-                GROUP BY server_name, tool_name
-                ORDER BY total_calls DESC
-                """,
-                parameters=params,
-            )
-        else:
-            where = "WHERE hour >= now() - INTERVAL {hours:UInt32} HOUR"
-            if server_name:
-                where += " AND server_name = {server_name:String}"
-                params["server_name"] = server_name
-            result = await self._client.query(
-                f"""
-                SELECT
-                    server_name,
-                    tool_name,
-                    sum(total_calls)       AS total_calls,
-                    sum(success_calls)     AS success_calls,
-                    sum(error_calls)       AS error_calls,
-                    sum(timeout_calls)     AS timeout_calls,
-                    sum(total_latency_ms)  AS total_latency_ms,
-                    max(max_latency_ms)    AS max_latency_ms
-                FROM mv_tool_reliability
-                {where}
-                GROUP BY server_name, tool_name
-                ORDER BY total_calls DESC
-                """,
-                parameters=params,
-            )
+        if server_name:
+            where += " AND server_name = {server_name:String}"
+            params["server_name"] = server_name
+        result = await self._client.query(
+            f"""
+            SELECT
+                server_name,
+                tool_name,
+                sum(total_calls)       AS total_calls,
+                sum(success_calls)     AS success_calls,
+                sum(error_calls)       AS error_calls,
+                sum(timeout_calls)     AS timeout_calls,
+                sum(total_latency_ms)  AS total_latency_ms,
+                max(max_latency_ms)    AS max_latency_ms
+            FROM mv_tool_reliability
+            {where}
+            GROUP BY server_name, tool_name
+            ORDER BY total_calls DESC
+            """,
+            parameters=params,
+        )
 
         rows = []
         for row in result.result_rows:
@@ -687,39 +672,26 @@ class ClickHouseBackend:
         """Return per-tool baseline statistics (mean + stddev) for anomaly detection.
 
         Computes statistics from hourly aggregated data in mv_tool_reliability.
-        When project_id is set, queries the base mcp_tool_calls table instead.
+        project_id is now a first-class column in the MV — no base-table fallback needed.
         """
         params: dict[str, Any] = {"baseline_hours": baseline_hours}
-
+        project_filter = ""
         if project_id:
-            # Base table for project-scoped queries
+            project_filter = "AND project_id = {project_id:String}"
             params["project_id"] = project_id
-            inner_query = """
-                SELECT
-                    server_name,
-                    tool_name,
-                    toStartOfHour(started_at)                    AS hour,
-                    countIf(status = 'error') / greatest(count(), 1) AS error_rate,
-                    avg(latency_ms)                              AS avg_latency
-                FROM mcp_tool_calls
-                WHERE started_at >= now() - INTERVAL {baseline_hours:UInt32} HOUR
-                  AND project_id = {project_id:String}
-                GROUP BY server_name, tool_name, hour
-                HAVING count() > 0
-            """
-        else:
-            inner_query = """
-                SELECT
-                    server_name,
-                    tool_name,
-                    hour,
-                    error_calls / greatest(total_calls, 1)       AS error_rate,
-                    total_latency_ms / greatest(total_calls, 1)  AS avg_latency
-                FROM mv_tool_reliability
-                WHERE hour >= now() - INTERVAL {baseline_hours:UInt32} HOUR
-                  AND total_calls > 0
-                GROUP BY server_name, tool_name, hour, error_calls, total_calls, total_latency_ms
-            """
+        inner_query = f"""
+            SELECT
+                server_name,
+                tool_name,
+                hour,
+                error_calls / greatest(total_calls, 1)       AS error_rate,
+                total_latency_ms / greatest(total_calls, 1)  AS avg_latency
+            FROM mv_tool_reliability
+            WHERE hour >= now() - INTERVAL {{baseline_hours:UInt32}} HOUR
+              AND total_calls > 0
+              {project_filter}
+            GROUP BY server_name, tool_name, hour, error_calls, total_calls, total_latency_ms
+        """
 
         result = await self._client.query(
             f"""
@@ -1100,9 +1072,9 @@ class ClickHouseBackend:
             FROM mcp_tool_calls
             WHERE session_id != ''
               {project_filter}
-              AND max(ended_at) < now() - INTERVAL {{inactive_s:UInt32}} SECOND
               AND session_id NOT IN (SELECT DISTINCT session_id FROM session_health_tags FINAL)
             GROUP BY session_id
+            HAVING max(ended_at) < now() - INTERVAL {{inactive_s:UInt32}} SECOND
             LIMIT {{lim:UInt32}}
             """,
             parameters=params,

@@ -485,23 +485,26 @@ class TestCircuitBreakerTimingAttack:
 
 
 class TestCircuitBreakerResourceExhaustion:
-    """Unique server_names create new CircuitBreaker instances. Verify
-    the dict grows unboundedly (documenting the risk)."""
+    """Unique server_names create new CircuitBreaker instances. The dict is
+    now capped at _MAX_SERVER_STATE (100) entries to prevent OOM DoS."""
 
-    def test_unique_server_names_create_unbounded_breakers(self) -> None:
-        """FINDING: each unique server_name creates a new CircuitBreaker.
-        1000 unique names = 1000 objects in memory."""
+    def test_circuit_breakers_capped_at_max_server_state(self) -> None:
+        """FIXED: dict is now capped at _MAX_SERVER_STATE (100) entries.
+
+        A rogue agent cycling through arbitrary server names cannot grow
+        _circuit_breakers without bound — oldest entries are evicted.
+        """
+        from langsight.sdk.client import _MAX_SERVER_STATE
+
         client = LangSightClient(
             url="http://test:8000",
             circuit_breaker=True,
         )
-        for i in range(1000):
+        for i in range(_MAX_SERVER_STATE + 500):
             cb = client._get_circuit_breaker(f"server-{i}")
             assert cb is not None
 
-        assert len(client._circuit_breakers) == 1000
-        # This documents unbounded growth. If a fix (LRU eviction) is applied,
-        # this assertion would need updating.
+        assert len(client._circuit_breakers) == _MAX_SERVER_STATE
 
 
 # ===================================================================
@@ -822,32 +825,39 @@ class TestNoDataLeakageInExceptions:
 
 class TestResourceExhaustion:
     """The prevention layer creates per-session and per-server state.
-    Verify behavior under high cardinality."""
+    Verify the caps are enforced under high cardinality (DoS prevention)."""
 
-    def test_many_unique_session_ids_loop_detectors(self) -> None:
-        """FINDING: Each unique session_id creates a new LoopDetector.
-        1000 sessions = 1000 detectors in memory."""
+    def test_loop_detectors_capped_at_max_session_state(self) -> None:
+        """FIXED: _loop_detectors is capped at _MAX_SESSION_STATE (500).
+
+        A rogue agent sending random session_ids cannot cause unbounded
+        memory growth — oldest entries are evicted.
+        """
+        from langsight.sdk.client import _MAX_SESSION_STATE
+
         client = LangSightClient(
             url="http://test:8000",
             loop_detection=True,
         )
-        for i in range(1000):
+        for i in range(_MAX_SESSION_STATE + 200):
             det = client._get_loop_detector(f"session-{i}")
             assert det is not None
 
-        assert len(client._loop_detectors) == 1000
+        assert len(client._loop_detectors) == _MAX_SESSION_STATE
 
-    def test_many_unique_session_ids_budgets(self) -> None:
-        """FINDING: Each unique session_id creates a new SessionBudget."""
+    def test_session_budgets_capped_at_max_session_state(self) -> None:
+        """FIXED: _session_budgets is capped at _MAX_SESSION_STATE (500)."""
+        from langsight.sdk.client import _MAX_SESSION_STATE
+
         client = LangSightClient(
             url="http://test:8000",
             max_steps=10,
         )
-        for i in range(1000):
+        for i in range(_MAX_SESSION_STATE + 200):
             budget = client._get_session_budget(f"session-{i}")
             assert budget is not None
 
-        assert len(client._session_budgets) == 1000
+        assert len(client._session_budgets) == _MAX_SESSION_STATE
 
     def test_loop_detector_window_is_bounded(self) -> None:
         """The deque maxlen prevents unbounded growth within a single detector."""

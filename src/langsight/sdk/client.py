@@ -41,6 +41,8 @@ _SEND_TIMEOUT = 3.0
 _BATCH_SIZE = 50  # flush when buffer reaches this many spans
 _FLUSH_INTERVAL = 1.0  # seconds between automatic flushes
 _MAX_BUFFER_SIZE = 10_000  # hard cap — drop oldest spans on overflow to prevent OOM
+_MAX_SESSION_STATE = 500   # max live loop-detector/budget entries (one per session_id)
+_MAX_SERVER_STATE = 100    # max live circuit-breaker entries (one per server_name)
 
 
 class LangSightClient:
@@ -99,6 +101,7 @@ class LangSightClient:
         self._flush_interval = flush_interval
         self._max_buffer_size = max_buffer_size
         self._buffer: list[ToolCallSpan] = []
+        self._lock: asyncio.Lock = asyncio.Lock()
         self._flush_task: asyncio.Task[None] | None = None
 
         # Loop detection config (None = disabled)
@@ -142,30 +145,48 @@ class LangSightClient:
     # --- Prevention state accessors ---
 
     def _get_circuit_breaker(self, server_name: str) -> CircuitBreaker | None:
-        """Return the circuit breaker for a server (creates on first access)."""
+        """Return the circuit breaker for a server (creates on first access).
+
+        Evicts the oldest entry when the cap is reached to prevent a rogue agent
+        cycling through arbitrary server names from growing the dict without bound.
+        """
         if self._cb_default_config is None:
             return None
         if server_name not in self._circuit_breakers:
+            if len(self._circuit_breakers) >= _MAX_SERVER_STATE:
+                self._circuit_breakers.pop(next(iter(self._circuit_breakers)))
             self._circuit_breakers[server_name] = CircuitBreaker(
                 server_name, self._cb_default_config
             )
         return self._circuit_breakers[server_name]
 
     def _get_loop_detector(self, session_id: str | None) -> LoopDetector | None:
-        """Return the loop detector for a session (creates on first access)."""
+        """Return the loop detector for a session (creates on first access).
+
+        Evicts the oldest entry when the cap is reached to prevent a rogue agent
+        generating random session_ids from causing unbounded memory growth (DoS).
+        """
         if self._loop_config is None:
             return None
         key = session_id or "__default__"
         if key not in self._loop_detectors:
+            if len(self._loop_detectors) >= _MAX_SESSION_STATE:
+                self._loop_detectors.pop(next(iter(self._loop_detectors)))
             self._loop_detectors[key] = LoopDetector(self._loop_config)
         return self._loop_detectors[key]
 
     def _get_session_budget(self, session_id: str | None) -> SessionBudget | None:
-        """Return the budget tracker for a session (creates on first access)."""
+        """Return the budget tracker for a session (creates on first access).
+
+        Evicts the oldest entry when the cap is reached — same DoS protection as
+        _get_loop_detector.
+        """
         if self._budget_config is None:
             return None
         key = session_id or "__default__"
         if key not in self._session_budgets:
+            if len(self._session_budgets) >= _MAX_SESSION_STATE:
+                self._session_budgets.pop(next(iter(self._session_budgets)))
             self._session_budgets[key] = SessionBudget(self._budget_config)
         return self._session_budgets[key]
 
@@ -244,31 +265,34 @@ class LangSightClient:
         If the buffer exceeds ``max_buffer_size``, oldest spans are dropped
         to prevent unbounded memory growth when the backend is slow/down.
         """
-        self._buffer.append(span)
-        if len(self._buffer) > self._max_buffer_size:
-            dropped = len(self._buffer) - self._max_buffer_size
-            self._buffer = self._buffer[dropped:]
-            logger.warning("sdk.buffer_overflow", dropped=dropped, max=self._max_buffer_size)
+        async with self._lock:
+            self._buffer.append(span)
+            if len(self._buffer) > self._max_buffer_size:
+                dropped = len(self._buffer) - self._max_buffer_size
+                self._buffer = self._buffer[dropped:]
+                logger.warning("sdk.buffer_overflow", dropped=dropped, max=self._max_buffer_size)
         self._ensure_flush_loop()
         if len(self._buffer) >= self._batch_size:
             asyncio.create_task(self.flush())
 
     async def send_spans(self, spans: list[ToolCallSpan]) -> None:
         """Buffer multiple spans. Triggers immediate flush if threshold reached."""
-        self._buffer.extend(spans)
-        if len(self._buffer) > self._max_buffer_size:
-            dropped = len(self._buffer) - self._max_buffer_size
-            self._buffer = self._buffer[dropped:]
-            logger.warning("sdk.buffer_overflow", dropped=dropped, max=self._max_buffer_size)
+        async with self._lock:
+            self._buffer.extend(spans)
+            if len(self._buffer) > self._max_buffer_size:
+                dropped = len(self._buffer) - self._max_buffer_size
+                self._buffer = self._buffer[dropped:]
+                logger.warning("sdk.buffer_overflow", dropped=dropped, max=self._max_buffer_size)
         self._ensure_flush_loop()
         if len(self._buffer) >= self._batch_size:
             asyncio.create_task(self.flush())
 
     async def flush(self) -> None:
         """Flush all buffered spans to the API. Safe to call at any time."""
-        if not self._buffer:
-            return
-        batch, self._buffer = self._buffer, []
+        async with self._lock:
+            if not self._buffer:
+                return
+            batch, self._buffer = self._buffer, []
         await self._post_spans(batch)
 
     async def _fetch_prevention_config(
@@ -359,6 +383,12 @@ class LangSightClient:
         if self._http and not self._http.is_closed:
             await self._http.aclose()
             self._http = None
+
+    async def __aenter__(self) -> "LangSightClient":
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.close()
 
     async def record_tool_schemas(
         self,

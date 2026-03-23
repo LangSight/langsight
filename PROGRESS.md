@@ -1,9 +1,48 @@
 # LangSight — Build Progress
 
-> Last updated: 2026-03-20 (session detail graph toolbar/minimap/timeline/slideout, agents catalog 3-state layout, MCP Servers catalog at /servers, SDK auto tool-schema capture, docs sync)
+> Last updated: 2026-03-23 (DateRangeFilter + Timestamp components, session detail page redesign, lineage graph node/toolbar/minimap redesign, graph builder extraction)
 > Maintained by: docs-keeper agent — update after every feature, architectural decision, or milestone
 
 **Project framing**: LangSight is an **agent runtime reliability platform** — prevent loops, enforce budgets, detect cascading failures, monitor MCP health, and scan for CVEs. Not another prompt, eval, or simulation platform. **Prevent. Detect. Monitor. Map.** Langfuse watches the brain. LangSight watches the hands. Agent-level instrumentation captures all tool types. MCP servers additionally receive proactive health checks, security scanning, schema drift detection, and alerting because the MCP protocol is standard and inspectable. (changed from original: was "observability platform" positioning; pivoted to "runtime reliability" 2026-03-22)
+
+---
+
+## Dashboard UX Polish (2026-03-23)
+
+### DateRangeFilter component
+
+- `dashboard/components/date-range-filter.tsx` — reusable date range control for all data pages.
+- Five presets: `1h`, `6h`, `24h`, `7d`, `30d` (active preset highlighted with primary teal).
+- Custom date picker: dropdown with From/To `<input type="date">` fields. Apply converts to ISO strings (`T00:00:00` / `T23:59:59`). Clicking outside closes via `mousedown` listener.
+- Integrated into Sessions, Costs, Health, Agents, and Servers pages.
+
+### Timestamp component
+
+- `dashboard/components/timestamp.tsx` — semantic `<time>` element with relative + exact display.
+- Default: "16h ago · Mar 22, 14:30:05" (exact at 60% opacity).
+- Compact: "16h ago" only; exact time in `title` attribute (tooltip on hover). Used in sessions list "Started" column and health uptime dot tooltips.
+- Used across sessions, session detail, health, agents, servers, and settings pages.
+
+### Session detail page redesigned
+
+- `dashboard/app/(dashboard)/sessions/[id]/page.tsx` — wide-screen optimized layout.
+- Right-panel uses `MetricTile` sub-components (rounded tile, colored left border: primary or danger).
+- `SectionLabel` sub-component standardizes panel section headings.
+- `useSessionGraph` hook wraps `buildSessionGraph` in `useMemo`; recomputes only when trace, expandedGroups, or expandedEdges change.
+
+### Graph builder extracted
+
+- `dashboard/lib/session-graph.ts` — `buildSessionGraph(trace, expandedGroups, expandedEdges): SessionGraphResult`.
+- Isolates all graph-construction logic from the session detail page; improves testability.
+- `findRepeatedCall`: detects the most-repeated (tool, input) pair in a span list.
+- `buildCallLabels`: generates per-call sequence labels (e.g. `read_file [1/3]`) to disambiguate repeated tools on one edge.
+
+### Lineage graph nodes, toolbar, minimap redesigned
+
+- `dashboard/components/lineage-graph.tsx` — node cards redesigned with compact metric pills (calls, errors, avg latency). Tighter padding. Loop annotation row shows repeated tool name + count.
+- Agent nodes: teal gradient header. Server nodes: slate gradient. Selection: glass-morphism glow.
+- Back-edges (cycles): rendered as self-loop arcs on the right side of the source node.
+- Minimap: now uses `ResizeObserver` for live container size. Auto-fits graph into viewport on first render via `hasFitted` ref guard.
 
 ---
 
