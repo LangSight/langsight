@@ -82,17 +82,21 @@ class LangSightLangChainCallback(BaseIntegration):
         session_id: str | None = None,
         trace_id: str | None = None,
     ) -> None:
-        # Lazy import — don't require langchain at module level
+        # Lazy import — try langchain-core first (available without full langchain),
+        # fall back to langchain for older installations.
         try:
-            from langchain.callbacks.base import (
-                BaseCallbackHandler,
-            )
+            try:
+                from langchain_core.callbacks.base import BaseCallbackHandler
+            except ImportError:
+                from langchain.callbacks.base import BaseCallbackHandler  # type: ignore[no-redef]
 
             # Dynamically inherit from BaseCallbackHandler
             self.__class__.__bases__ = (BaseIntegration, BaseCallbackHandler)
             BaseCallbackHandler.__init__(self)
         except ImportError:
-            logger.warning("langchain not installed. Install with: pip install langchain")
+            logger.warning(
+                "langchain-core not installed. Install with: pip install langchain-core"
+            )
 
         super().__init__(
             client=client,
