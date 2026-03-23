@@ -299,6 +299,13 @@ function SectionHeader({ title, description }: { title: string; description: str
 function ProjectRow({ project, onDeleted }: { project: ProjectResponse; onDeleted: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [members, setMembers] = useState<ProjectMember[] | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
+
+  function copyProjectId() {
+    navigator.clipboard.writeText(project.id);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  }
   const [users, setUsers] = useState<DashboardUser[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -390,6 +397,17 @@ function ProjectRow({ project, onDeleted }: { project: ProjectResponse; onDelete
           >
             /{project.slug}
           </code>
+        </button>
+
+        {/* Project ID — copy for SDK project_id= config */}
+        <button
+          onClick={(e) => { e.stopPropagation(); copyProjectId(); }}
+          className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors flex-shrink-0"
+          title="Copy project ID for SDK config"
+          style={{ fontFamily: "var(--font-geist-mono)", border: "1px solid hsl(var(--border))" }}
+        >
+          {copiedId ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
+          <span className="max-w-[80px] truncate">{project.id.slice(0, 8)}…</span>
         </button>
 
         <span className="text-[11px] text-muted-foreground tabular-nums flex-shrink-0">
