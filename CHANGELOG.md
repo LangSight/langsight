@@ -4,6 +4,15 @@ All meaningful changes to LangSight are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.5.6] — 2026-03-24
+
+### Added
+- **`langsight.trace()`** — decorator and context manager that wraps entire agent functions. Captures any exception raised between LLM calls (`status=error`), `asyncio.CancelledError` (`status=timeout`). Follows Langfuse `@observe` and LangWatch `with trace()` patterns. Never swallows exceptions — always re-raises.
+- **`finish_reason` / safety filter detection** — LLM generation spans now detect and record `status=error` for: empty `choices`/`candidates` (safety filter), `finish_reason=SAFETY/RECITATION/content_filter`, truncated responses (`MAX_TOKENS/length`). Neither Langfuse nor LangWatch do this — LangSight unique.
+- **MCP content error detection** — `wrap()` now inspects tool result text content for error patterns (`"Error: ..."`, `"Exception: ..."`, `"Traceback"`, `"[ERROR]"`) even when `isError=False`. Neither Langfuse nor LangWatch inspect MCP result content.
+
+---
+
 ## [0.5.5] — 2026-03-24
 
 ### Added

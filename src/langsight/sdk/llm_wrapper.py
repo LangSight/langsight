@@ -47,6 +47,63 @@ import structlog
 from langsight.sdk.context import register_pending_tool
 from langsight.sdk.models import ToolCallSpan, ToolCallStatus
 
+# finish_reason values treated as errors across all LLM SDKs
+_FINISH_REASON_ERRORS = frozenset({
+    # OpenAI / Google GenAI
+    "content_filter", "SAFETY", "RECITATION", "PROHIBITED_CONTENT",
+    # Anthropic
+    "content_filtered",
+})
+# finish_reason values that indicate truncation (warn but not error)
+_FINISH_REASON_TRUNCATED = frozenset({"length", "MAX_TOKENS", "max_tokens"})
+
+
+def _check_finish_reason(
+    response: Any,
+    status: ToolCallStatus,
+    error: str | None,
+    *,
+    sdk: str,
+) -> tuple[ToolCallStatus, str | None]:
+    """Inspect finish_reason and empty choices/candidates after a successful LLM call.
+
+    Returns (status, error) — may override SUCCESS with ERROR/TIMEOUT.
+    """
+    if status != ToolCallStatus.SUCCESS or response is None:
+        return status, error  # already failed — don't override
+
+    if sdk == "openai":
+        choices = getattr(response, "choices", None) or []
+        if not choices:
+            return ToolCallStatus.ERROR, "EmptyResponse: no choices returned (possible content filter)"
+        finish = getattr(choices[0], "finish_reason", None)
+        if finish in _FINISH_REASON_ERRORS:
+            return ToolCallStatus.ERROR, f"ContentFilter: finish_reason={finish}"
+        if finish in _FINISH_REASON_TRUNCATED:
+            return ToolCallStatus.ERROR, f"Truncated: finish_reason={finish} (output cut off)"
+
+    elif sdk == "anthropic":
+        stop_reason = getattr(response, "stop_reason", None)
+        if stop_reason == "content_filtered":
+            return ToolCallStatus.ERROR, "ContentFilter: response was content-filtered"
+
+    elif sdk == "gemini":
+        candidates = getattr(response, "candidates", None) or []
+        if not candidates:
+            return ToolCallStatus.ERROR, "EmptyResponse: no candidates returned (possible safety filter)"
+        # Check first candidate finish reason
+        first = candidates[0]
+        finish = getattr(first, "finish_reason", None)
+        # Gemini finish_reason is an enum — check name or value
+        finish_name = getattr(finish, "name", str(finish) if finish is not None else None)
+        if finish_name in _FINISH_REASON_ERRORS:
+            return ToolCallStatus.ERROR, f"ContentFilter: finish_reason={finish_name}"
+        if finish_name in _FINISH_REASON_TRUNCATED:
+            return ToolCallStatus.ERROR, f"Truncated: finish_reason={finish_name} (output cut off)"
+
+    return status, error
+
+
 logger = structlog.get_logger()
 
 
@@ -186,6 +243,9 @@ def _process_openai_response(
     output_tokens = getattr(usage, "completion_tokens", None) if usage else None
 
     spans: list[ToolCallSpan] = []
+
+    # Inspect finish_reason / empty choices for silent failures
+    status, error = _check_finish_reason(response, status, error, sdk="openai")
 
     # LLM generation span
     llm_span = ToolCallSpan.record(
@@ -346,6 +406,9 @@ def _process_anthropic_response(
 
     spans: list[ToolCallSpan] = []
 
+    # Inspect stop_reason for silent failures (content_filtered)
+    status, error = _check_finish_reason(response, status, error, sdk="anthropic")
+
     # LLM generation span
     llm_span = ToolCallSpan.record(
         server_name="anthropic",
@@ -497,6 +560,9 @@ def _process_gemini_response(
     output_tokens = getattr(usage, "candidates_token_count", None) if usage else None
 
     spans: list[ToolCallSpan] = []
+
+    # Inspect finish_reason / empty candidates for silent failures (safety filter)
+    status, error = _check_finish_reason(response, status, error, sdk="gemini")
 
     # LLM generation span
     llm_span = ToolCallSpan.record(

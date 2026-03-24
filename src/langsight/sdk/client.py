@@ -694,7 +694,20 @@ class MCPClientProxy:
                     tool=name,
                     error=error,
                 )
-            elif not redact:
+            else:
+                # Inspect content text for semantic errors when isError=False.
+                # MCP servers sometimes return error messages as valid responses.
+                content_error = _detect_content_error(result)
+                if content_error:
+                    status = ToolCallStatus.ERROR
+                    error = content_error
+                    logger.warning(
+                        "sdk.mcp_content_error",
+                        server=server_name,
+                        tool=name,
+                        error=error,
+                    )
+            if not redact:
                 try:
                     output_result = json.dumps(result, default=str)
                 except Exception:  # noqa: BLE001
@@ -735,6 +748,47 @@ class MCPClientProxy:
                 status,
             )
             langsight.buffer_span(span)
+
+
+# ---------------------------------------------------------------------------
+# MCP content error detection
+# ---------------------------------------------------------------------------
+
+# Prefixes that indicate a semantic error inside a successful MCP response.
+# These are common patterns returned by MCP servers that set isError=False
+# but include an error message in the content (e.g. DB errors, not-found, etc.)
+_CONTENT_ERROR_PREFIXES = (
+    "Error:", "ERROR:", "Exception:", "Traceback (most recent",
+    "[ERROR]", "[Error]", "error:", "Failed:", "FAILED:",
+)
+
+
+def _detect_content_error(result: object) -> str | None:
+    """Return an error string if the MCP result content looks like an error.
+
+    Only called when ``result.isError == False``. Inspects the first text
+    block in ``result.content`` for known error prefixes. Returns ``None``
+    if the content looks normal — does NOT flag empty content as an error
+    (some tools legitimately return empty results).
+    """
+    try:
+        content = getattr(result, "content", None)
+        if not content:
+            return None
+        # Take the first text block
+        first = content[0] if isinstance(content, (list, tuple)) else content
+        text: str | None = None
+        if hasattr(first, "text"):
+            text = first.text
+        elif isinstance(first, str):
+            text = first
+        if text and any(text.lstrip().startswith(p) for p in _CONTENT_ERROR_PREFIXES):
+            # Truncate long error messages
+            msg = text.strip()[:200]
+            return f"ContentError: {msg}"
+    except Exception:  # noqa: BLE001
+        pass  # fail-open — detection must never break tool calls
+    return None
 
 
 # ---------------------------------------------------------------------------

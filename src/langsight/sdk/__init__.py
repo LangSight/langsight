@@ -37,6 +37,7 @@ from langsight.sdk.auto_patch import (
 )
 from langsight.sdk.client import LangSightClient, MCPClientProxy
 from langsight.sdk.models import PreventionEvent, ToolCallSpan, ToolCallStatus
+from langsight.sdk.trace import trace
 
 _logger = structlog.get_logger()
 
@@ -85,5 +86,6 @@ __all__ = [
     "init",
     "session",
     "set_context",
+    "trace",
     "unpatch",
 ]
