@@ -200,7 +200,7 @@ def _process_openai_response(
         # Register tool_call spans so wrap() can claim them as parents
         for s in spans:
             if s.span_type == "tool_call":
-                register_pending_tool(s.tool_name, s.span_id)
+                register_pending_tool(s.tool_name, s.span_id, s.agent_name)
         logger.debug(
             "llm_wrapper.openai_traced",
             model=model,
@@ -310,7 +310,7 @@ def _process_anthropic_response(
         proxy._emit_spans(spans)
         for s in spans:
             if s.span_type == "tool_call":
-                register_pending_tool(s.tool_name, s.span_id)
+                register_pending_tool(s.tool_name, s.span_id, s.agent_name)
         logger.debug(
             "llm_wrapper.anthropic_traced",
             model=model,
@@ -433,7 +433,7 @@ def _process_gemini_response(
         proxy._emit_spans(spans)
         for s in spans:
             if s.span_type == "tool_call":
-                register_pending_tool(s.tool_name, s.span_id)
+                register_pending_tool(s.tool_name, s.span_id, s.agent_name)
         logger.debug(
             "llm_wrapper.gemini_traced",
             model=model,

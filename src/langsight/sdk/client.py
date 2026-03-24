@@ -643,7 +643,12 @@ class MCPClientProxy:
         if not parent_span_id:
             from langsight.sdk.context import claim_pending_tool
 
-            parent_span_id = claim_pending_tool(name)
+            ctx = claim_pending_tool(name)
+            if ctx is not None:
+                parent_span_id = ctx.span_id
+                # Inherit agent_name so the dashboard can draw agent→server edges
+                if not agent_name and ctx.agent_name:
+                    agent_name = ctx.agent_name
 
         started_at = datetime.now(UTC)
 

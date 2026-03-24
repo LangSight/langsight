@@ -36,7 +36,9 @@ def client() -> LangSightClient:
 class TestPendingToolCalls:
     def test_register_and_claim(self) -> None:
         register_pending_tool("search", "span-1")
-        assert claim_pending_tool("search") == "span-1"
+        ctx = claim_pending_tool("search")
+        assert ctx is not None
+        assert ctx.span_id == "span-1"
 
     def test_claim_returns_none_when_empty(self) -> None:
         assert claim_pending_tool("unknown") is None
@@ -44,20 +46,26 @@ class TestPendingToolCalls:
     def test_fifo_order(self) -> None:
         register_pending_tool("get_product", "span-a")
         register_pending_tool("get_product", "span-b")
-        assert claim_pending_tool("get_product") == "span-a"
-        assert claim_pending_tool("get_product") == "span-b"
+        assert claim_pending_tool("get_product").span_id == "span-a"  # type: ignore[union-attr]
+        assert claim_pending_tool("get_product").span_id == "span-b"  # type: ignore[union-attr]
         assert claim_pending_tool("get_product") is None
 
     def test_different_tools_independent(self) -> None:
         register_pending_tool("tool_a", "span-1")
         register_pending_tool("tool_b", "span-2")
-        assert claim_pending_tool("tool_b") == "span-2"
-        assert claim_pending_tool("tool_a") == "span-1"
+        assert claim_pending_tool("tool_b").span_id == "span-2"  # type: ignore[union-attr]
+        assert claim_pending_tool("tool_a").span_id == "span-1"  # type: ignore[union-attr]
+
+    def test_agent_name_propagated(self) -> None:
+        register_pending_tool("search", "span-1", agent_name="orchestrator")
+        ctx = claim_pending_tool("search")
+        assert ctx is not None
+        assert ctx.agent_name == "orchestrator"
 
     def test_thread_isolation(self) -> None:
         """Pending calls in one thread must not leak to another."""
         register_pending_tool("search", "span-main")
-        result_from_thread: list[str | None] = []
+        result_from_thread: list[object] = []
 
         def worker() -> None:
             result_from_thread.append(claim_pending_tool("search"))
@@ -69,7 +77,9 @@ class TestPendingToolCalls:
         # Other thread sees nothing
         assert result_from_thread[0] is None
         # Original thread still has it
-        assert claim_pending_tool("search") == "span-main"
+        ctx = claim_pending_tool("search")
+        assert ctx is not None
+        assert ctx.span_id == "span-main"
 
 
 # =============================================================================
