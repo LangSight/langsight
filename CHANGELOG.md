@@ -3,6 +3,27 @@
 All meaningful changes to LangSight are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+## [0.4.0] — 2026-03-24
+
+### Added
+- **Unified LangChain/LangGraph callback** — single callback auto-detects agents, builds parent-child tree, captures prompts
+- **`wrap_llm()`** — instrument direct OpenAI, Anthropic, and Gemini SDK calls
+- **Agent + server auto-discovery** — auto-register from trace ingestion
+- **Silent MCP error detection** — catch `isError` on JSON-RPC responses
+- **Token capture + cost computation** — via `on_llm_end` + model_pricing table
+- **Project-scoped security scan** — only scan servers belonging to active project
+- **Global `redact_payloads` setting** — admin toggle to strip all payloads server-side
+- **Sessions page overhaul** — horizontal scroll, sortable columns, numbered pagination, health tag fallback
+- **Session detail redesign** — clean inline rows, rich default summary, all agents in header
+- **Agents page polish** — merged timestamp columns, edge legend, topology detail bar
+- **Mintlify docs** — updated for all new SDK features and auto-discovery
+
+### Fixed
+- Security scan showed findings from all projects (now project-scoped)
+- "1 calls" grammar → "1 call" singular
+- Dashboard agent count showed session math instead of distinct names
+- Timestamps off by 1 hour (ClickHouse naive datetime → UTC fix)
 Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
