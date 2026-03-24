@@ -37,6 +37,7 @@ Does NOT import any LLM SDK at module level. Detection is lazy.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from typing import Any
@@ -125,11 +126,15 @@ class _OpenAICompletionsProxy:
             return response
         except TimeoutError as exc:
             status = ToolCallStatus.TIMEOUT
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
-        except Exception as exc:  # noqa: BLE001
+        except asyncio.CancelledError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = f"CancelledError: {exc or 'request cancelled'}"
+            raise
+        except BaseException as exc:  # noqa: BLE001
             status = ToolCallStatus.ERROR
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
             _process_openai_response(self._parent, response, kwargs, started_at, status=status, error=error)
@@ -146,11 +151,15 @@ class _OpenAICompletionsProxy:
             return response
         except TimeoutError as exc:
             status = ToolCallStatus.TIMEOUT
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
-        except Exception as exc:  # noqa: BLE001
+        except asyncio.CancelledError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = f"CancelledError: {exc or 'request cancelled'}"
+            raise
+        except BaseException as exc:  # noqa: BLE001
             status = ToolCallStatus.ERROR
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
             _process_openai_response(self._parent, response, kwargs, started_at, status=status, error=error)
@@ -276,11 +285,15 @@ class _AnthropicMessagesProxy:
             return response
         except TimeoutError as exc:
             status = ToolCallStatus.TIMEOUT
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
-        except Exception as exc:  # noqa: BLE001
+        except asyncio.CancelledError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = f"CancelledError: {exc or 'request cancelled'}"
+            raise
+        except BaseException as exc:  # noqa: BLE001
             status = ToolCallStatus.ERROR
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
             _process_anthropic_response(self._parent, response, kwargs, started_at, status=status, error=error)
@@ -297,11 +310,15 @@ class _AnthropicMessagesProxy:
             return response
         except TimeoutError as exc:
             status = ToolCallStatus.TIMEOUT
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
-        except Exception as exc:  # noqa: BLE001
+        except asyncio.CancelledError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = f"CancelledError: {exc or 'request cancelled'}"
+            raise
+        except BaseException as exc:  # noqa: BLE001
             status = ToolCallStatus.ERROR
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
             _process_anthropic_response(self._parent, response, kwargs, started_at, status=status, error=error)
@@ -407,11 +424,15 @@ class GeminiProxy(_LLMProxyBase):
             return response
         except TimeoutError as exc:
             status = ToolCallStatus.TIMEOUT
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
-        except Exception as exc:  # noqa: BLE001
+        except asyncio.CancelledError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = f"CancelledError: {exc or 'request cancelled'}"
+            raise
+        except BaseException as exc:  # noqa: BLE001
             status = ToolCallStatus.ERROR
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
             _process_gemini_response(self, response, kwargs, started_at, status=status, error=error)
@@ -428,11 +449,15 @@ class GeminiProxy(_LLMProxyBase):
             return response
         except TimeoutError as exc:
             status = ToolCallStatus.TIMEOUT
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
-        except Exception as exc:  # noqa: BLE001
+        except asyncio.CancelledError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = f"CancelledError: {exc or 'request cancelled'}"
+            raise
+        except BaseException as exc:  # noqa: BLE001
             status = ToolCallStatus.ERROR
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
             _process_gemini_response(self, response, kwargs, started_at, status=status, error=error)
@@ -580,11 +605,15 @@ class _GenaiModelsProxy:
             return response
         except TimeoutError as exc:
             status = ToolCallStatus.TIMEOUT
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
-        except Exception as exc:  # noqa: BLE001
+        except asyncio.CancelledError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = f"CancelledError: {exc or 'request cancelled'}"
+            raise
+        except BaseException as exc:  # noqa: BLE001
             status = ToolCallStatus.ERROR
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
             _process_gemini_response(self._parent, response, kwargs, started_at, model_override=model, status=status, error=error)
@@ -641,11 +670,15 @@ class _GenaiAioModelsProxy:
             return response
         except TimeoutError as exc:
             status = ToolCallStatus.TIMEOUT
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
-        except Exception as exc:  # noqa: BLE001
+        except asyncio.CancelledError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = f"CancelledError: {exc or 'request cancelled'}"
+            raise
+        except BaseException as exc:  # noqa: BLE001
             status = ToolCallStatus.ERROR
-            error = str(exc)
+            error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
             _process_gemini_response(self._parent, response, kwargs, started_at, model_override=model, status=status, error=error)

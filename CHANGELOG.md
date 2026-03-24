@@ -4,6 +4,15 @@ All meaningful changes to LangSight are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.5.4] — 2026-03-24
+
+### Fixed
+- **`asyncio.CancelledError` handled as `timeout`** — `asyncio.wait_for()` timeouts now record `status=timeout` instead of being missed entirely. Follows Langfuse and Datadog patterns (both explicitly handle task cancellation).
+- **`BaseException` scope** — all LLM proxy `except` clauses now catch `BaseException` (was `Exception`), matching Datadog's implementation. Prevents silent span loss on `KeyboardInterrupt` and other base exceptions.
+- **Error includes exception class name** — `error` field is now `"RateLimitError: quota exceeded"` instead of just `"quota exceeded"`, enabling precise alerting rules (matches Langfuse's `status_message` pattern).
+
+---
+
 ## [0.5.3] — 2026-03-24
 
 ### Fixed

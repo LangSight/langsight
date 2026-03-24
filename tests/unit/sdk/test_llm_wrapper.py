@@ -426,6 +426,53 @@ class TestGenaiClientProxy:
         assert len(captured) == 1
         assert captured[0].status == "timeout"
 
+    @pytest.mark.asyncio
+    async def test_asyncio_cancelled_error_records_timeout_span(self, client: LangSightClient) -> None:
+        """asyncio.CancelledError (from wait_for timeout) → status=timeout, not error."""
+        import asyncio as _asyncio
+
+        async def fail(**kw: object) -> object:
+            raise _asyncio.CancelledError()
+
+        fake_genai = SimpleNamespace()
+        fake_genai.aio = SimpleNamespace()
+        fake_genai.aio.models = SimpleNamespace()
+        fake_genai.aio.models.generate_content = fail
+
+        proxy = GenaiClientProxy(fake_genai, client, agent_name="test")
+        captured: list = []
+        client.buffer_span = lambda s: captured.append(s)  # type: ignore[assignment]
+
+        with pytest.raises(_asyncio.CancelledError):
+            await proxy.aio.models.generate_content(model="gemini-2.5-flash", contents=[])
+
+        assert len(captured) == 1
+        assert captured[0].status == "timeout"
+        assert "CancelledError" in (captured[0].error or "")
+
+    def test_error_includes_exception_type_name(self, client: LangSightClient) -> None:
+        """Error field includes exception class name for precise alerting."""
+        class RateLimitError(RuntimeError):
+            pass
+
+        def fail(**kw: object) -> object:
+            raise RateLimitError("quota exceeded")
+
+        fake_genai = SimpleNamespace()
+        fake_genai.models = SimpleNamespace()
+        fake_genai.models.generate_content = fail
+
+        proxy = GenaiClientProxy(fake_genai, client, agent_name="test")
+        captured: list = []
+        client.buffer_span = lambda s: captured.append(s)  # type: ignore[assignment]
+
+        with pytest.raises(RateLimitError):
+            proxy.models.generate_content(model="gemini-2.5-flash", contents=[])
+
+        assert len(captured) == 1
+        assert "RateLimitError" in (captured[0].error or "")
+        assert "quota exceeded" in (captured[0].error or "")
+
 
 # =============================================================================
 # _emit_spans uses buffer_span (not send_spans)
