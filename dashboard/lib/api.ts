@@ -209,6 +209,8 @@ export const getSLOStatus = (projectId?: string | null) =>
   get<SLOStatus[]>(`/slos/status${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""}`);
 export const listSLOs = () => get<SLOStatus[]>("/slos");
 export const deleteSLO = (id: string) => del(`/slos/${encodeURIComponent(id)}`);
+export const createSLO = (body: { agent_name: string; metric: string; target: number; window_hours: number }, projectId?: string | null) =>
+  post<SLOStatus>(`/slos${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""}`, body);
 
 // ── Agent Metadata (Catalog) ─────────────────────────────────────────────────
 import type { AgentMetadata, ServerMetadata } from "./types";

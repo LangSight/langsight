@@ -10,7 +10,7 @@ import {
   Bot, ChevronRight, Search, Network, X, Server, GitBranch,
   ChevronUp, ChevronDown, ChevronLast, AlertTriangle,
 } from "lucide-react";
-import { fetcher, getCostsBreakdown, listAgentMetadata, upsertAgentMetadata, getAgentLoopCounts, getSLOStatus } from "@/lib/api";
+import { fetcher, getCostsBreakdown, listAgentMetadata, upsertAgentMetadata, getAgentLoopCounts, getSLOStatus, createSLO, deleteSLO } from "@/lib/api";
 import type { SLOStatus } from "@/lib/types";
 import { useProject } from "@/lib/project-context";
 import { cn, formatDuration, timeAgo, formatExact } from "@/lib/utils";
@@ -32,7 +32,7 @@ type AgentSummary = {
   total_output_tokens: number;
   avg_tokens_per_session: number;
 };
-type DetailTab = "about" | "overview" | "topology" | "sessions";
+type DetailTab = "about" | "overview" | "topology" | "sessions" | "slos";
 type SortCol = "name" | "healthScore" | "errorRate" | "cost" | "lastActive" | "sessions";
 
 /* ── Helpers ────────────────────────────────────────────────── */
@@ -429,6 +429,180 @@ function AgentRail({ agents, selectedAgent, onSelect, onExpand }: {
   );
 }
 
+/* ── SLO tab ────────────────────────────────────────────────── */
+function SLOTab({ agentName, slos, projectId, onRefresh }: {
+  agentName: string;
+  slos: SLOStatus[];
+  projectId: string | null;
+  onRefresh: () => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [metric, setMetric] = useState<"success_rate" | "latency_p99">("success_rate");
+  const [target, setTarget] = useState("");
+  const [windowHours, setWindowHours] = useState(24);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function handleCreate() {
+    const t = parseFloat(target);
+    if (!t || t <= 0) return;
+    setSaving(true);
+    try {
+      await createSLO({ agent_name: agentName, metric, target: t, window_hours: windowHours }, projectId);
+      setAdding(false);
+      setTarget("");
+      onRefresh();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setDeletingId(id);
+    try {
+      await deleteSLO(id);
+      onRefresh();
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  const statusColor = (s: string) =>
+    s === "ok" ? "#22c55e" : s === "breached" ? "#ef4444" : "#6b7280";
+  const statusLabel = (s: string) =>
+    s === "ok" ? "Passing" : s === "breached" ? "Breached" : "No data";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+          SLO Targets — {agentName}
+        </p>
+        {!adding && (
+          <button
+            onClick={() => setAdding(true)}
+            className="text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors"
+            style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.2)" }}
+          >
+            + Add SLO
+          </button>
+        )}
+      </div>
+
+      {/* Existing SLOs */}
+      {slos.length === 0 && !adding && (
+        <div className="rounded-xl border border-dashed py-8 text-center" style={{ borderColor: "hsl(var(--border))" }}>
+          <p className="text-[12px] font-semibold text-foreground mb-1">No SLOs defined</p>
+          <p className="text-[11px] text-muted-foreground">Set a reliability target to track pass/fail against it.</p>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {slos.map(slo => (
+          <div key={slo.slo_id} className="rounded-xl border p-3 flex items-center justify-between gap-3"
+            style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[12px] font-semibold text-foreground capitalize">
+                  {slo.metric === "success_rate" ? "Success Rate" : "Latency p99"}
+                </span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={{ background: `${statusColor(slo.status)}18`, color: statusColor(slo.status) }}>
+                  {statusLabel(slo.status)}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 text-[11px]">
+                <span className="text-muted-foreground">
+                  Target: <span className="text-foreground font-mono font-semibold">
+                    {slo.metric === "success_rate" ? `${slo.target}%` : `${slo.target}ms`}
+                  </span>
+                </span>
+                {slo.current_value != null && (
+                  <span className="text-muted-foreground">
+                    Current: <span className="font-mono font-semibold" style={{ color: statusColor(slo.status) }}>
+                      {slo.metric === "success_rate"
+                        ? `${slo.current_value.toFixed(1)}%`
+                        : `${Math.round(slo.current_value)}ms`}
+                    </span>
+                  </span>
+                )}
+                <span className="text-muted-foreground">{slo.window_hours}h window</span>
+              </div>
+            </div>
+            <button
+              onClick={() => handleDelete(slo.slo_id)}
+              disabled={deletingId === slo.slo_id}
+              className="text-[10px] text-muted-foreground hover:text-red-400 transition-colors px-2 py-1 rounded disabled:opacity-40"
+            >
+              {deletingId === slo.slo_id ? "…" : "Delete"}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Add SLO form */}
+      {adding && (
+        <div className="rounded-xl border p-4 space-y-3" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--primary) / 0.3)" }}>
+          <p className="text-[11px] font-semibold text-foreground">New SLO for {agentName}</p>
+
+          <div className="flex gap-2">
+            {(["success_rate", "latency_p99"] as const).map(m => (
+              <button key={m} onClick={() => setMetric(m)}
+                className="flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all capitalize"
+                style={{
+                  background: metric === m ? "hsl(var(--primary))" : "hsl(var(--muted))",
+                  color: metric === m ? "white" : "hsl(var(--muted-foreground))",
+                }}>
+                {m === "success_rate" ? "Success Rate" : "Latency p99"}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-2 items-center">
+            <div className="flex-1">
+              <label className="text-[10px] text-muted-foreground mb-1 block">
+                Target {metric === "success_rate" ? "(% — e.g. 95)" : "(ms — e.g. 2000)"}
+              </label>
+              <input
+                type="number"
+                value={target}
+                onChange={e => setTarget(e.target.value)}
+                placeholder={metric === "success_rate" ? "95" : "2000"}
+                className="input-base h-[32px] text-[12px] w-full"
+                style={{ fontFamily: "var(--font-geist-mono)" }}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground mb-1 block">Window</label>
+              <select value={windowHours} onChange={e => setWindowHours(Number(e.target.value))}
+                className="h-[32px] text-[12px] rounded-lg border px-2 outline-none"
+                style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}>
+                <option value={1}>1h</option>
+                <option value={6}>6h</option>
+                <option value={24}>24h</option>
+                <option value={168}>7d</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={handleCreate} disabled={saving || !target}
+              className="flex-1 py-1.5 rounded-lg text-[12px] font-semibold transition-all disabled:opacity-40"
+              style={{ background: "hsl(var(--primary))", color: "white" }}>
+              {saving ? "Saving…" : "Create SLO"}
+            </button>
+            <button onClick={() => { setAdding(false); setTarget(""); }}
+              className="px-4 py-1.5 rounded-lg text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+              style={{ background: "hsl(var(--muted))" }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Page ───────────────────────────────────────────────────── */
 export default function AgentsPage() {
   const { activeProject } = useProject();
@@ -459,7 +633,7 @@ export default function AgentsPage() {
     { refreshInterval: 120_000 },
   );
   const loopByAgent = useMemo(() => new Map((loopCounts ?? []).map(l => [l.agent_name, l.loop_count])), [loopCounts]);
-  const { data: sloStatuses } = useSWR<SLOStatus[]>(
+  const { data: sloStatuses, mutate: mutateSlos } = useSWR<SLOStatus[]>(
     `/api/slos/status${p}`,
     () => getSLOStatus(pid),
     { refreshInterval: 120_000 },
@@ -588,7 +762,7 @@ export default function AgentsPage() {
                   </div>
                   {/* Tabs */}
                   <div className="flex mt-3 -mb-3">
-                    {(["about", "overview", "topology", "sessions"] as DetailTab[]).map((tab) => (
+                    {(["about", "overview", "topology", "sessions", "slos"] as DetailTab[]).map((tab) => (
                       <button key={tab} onClick={() => { setActiveTab(tab); if (tab !== "topology") setRailExpanded(false); }}
                         className={cn("px-3 py-2 text-[12px] font-medium border-b-2 -mb-px transition-colors capitalize", activeTab === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
                         {tab}
@@ -720,6 +894,12 @@ export default function AgentsPage() {
                         {selected.sessions > 20 && <Link href={`/sessions?agent=${selected.agent_name}`} className="block text-center text-[11px] text-primary hover:underline mt-3">View all {selected.sessions} sessions →</Link>}
                       </div>
                     )}
+
+                    {/* SLOS */}
+                    {activeTab === "slos" && (() => {
+                      const agentSlos = (sloStatuses ?? []).filter(s => s.agent_name === selected.agent_name);
+                      return <SLOTab agentName={selected.agent_name} slos={agentSlos} projectId={pid} onRefresh={() => mutateSlos()} />;
+                    })()}
                   </div>
                 )}
               </div>
