@@ -1,8 +1,10 @@
 """
-Tool reliability and anomaly detection endpoints.
+Tool reliability, anomaly detection, and incomplete session endpoints.
 
-GET /api/reliability/anomalies  — statistically unusual tool behaviour (P5.4)
-GET /api/reliability/tools      — per-tool reliability metrics
+GET /api/reliability/anomalies           — statistically unusual tool behaviour
+GET /api/reliability/tools               — per-tool reliability metrics
+GET /api/reliability/incomplete-sessions — detect crashed/stale agent sessions
+POST /api/reliability/tag-incomplete     — tag stale sessions as 'incomplete'
 """
 
 from __future__ import annotations
@@ -100,3 +102,62 @@ async def get_tool_metrics(
     engine = ReliabilityEngine(storage)
     metrics = await engine.get_metrics(server_name=server_name, hours=hours, project_id=project_id)
     return [m.to_dict() for m in metrics]
+
+
+@router.get(
+    "/incomplete-sessions",
+    summary="Detect stale/crashed agent sessions",
+    response_model=list[dict[str, Any]],
+)
+async def get_incomplete_sessions(
+    stale_minutes: int = Query(
+        default=5,
+        ge=1,
+        le=60,
+        description="Minutes since last span to consider a session stale",
+    ),
+    project_id: str | None = Depends(get_active_project_id),
+    storage: StorageBackend = Depends(get_storage),
+) -> list[dict[str, Any]]:
+    """Find sessions that stopped receiving spans — likely crashed agents.
+
+    A session is considered incomplete when:
+    - Its last span was more than ``stale_minutes`` ago
+    - It has fewer than 5 total spans
+    - It has no existing health tag (not yet classified)
+    """
+    if not hasattr(storage, "get_incomplete_sessions"):
+        return []
+    return await storage.get_incomplete_sessions(
+        stale_minutes=stale_minutes,
+        project_id=project_id,
+    )
+
+
+@router.post(
+    "/tag-incomplete",
+    summary="Tag stale sessions as 'incomplete'",
+)
+async def tag_incomplete_sessions(
+    stale_minutes: int = Query(default=5, ge=1, le=60),
+    project_id: str | None = Depends(get_active_project_id),
+    storage: StorageBackend = Depends(get_storage),
+) -> dict[str, int]:
+    """Scan for stale sessions and tag them as 'incomplete'.
+
+    Returns the count of newly tagged sessions.
+    """
+    if not hasattr(storage, "get_incomplete_sessions") or not hasattr(storage, "save_session_health_tag"):
+        return {"tagged": 0}
+
+    incomplete = await storage.get_incomplete_sessions(
+        stale_minutes=stale_minutes,
+        project_id=project_id,
+    )
+    tagged = 0
+    for session in incomplete:
+        sid = session.get("session_id")
+        if sid:
+            await storage.save_session_health_tag(sid, "incomplete")
+            tagged += 1
+    return {"tagged": tagged}
