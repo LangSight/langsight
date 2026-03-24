@@ -6,8 +6,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 const PAGE_META: Record<string, { title: string; description: string }> = {
-  "/":          { title: "Overview",       description: "Monitor your AI agents and the tools they use" },
-  "/sessions":  { title: "Sessions",       description: "Full traces of every agent workflow" },
+  "/":            { title: "Dashboard",      description: "Agent runtime health at a glance" },
+  "/monitoring":  { title: "Monitoring",     description: "Traffic, errors, latency, tokens, and costs over time" },
+  "/sessions":    { title: "Sessions",       description: "Full traces of every agent workflow" },
   "/agents":    { title: "Agents",         description: "Per-agent performance, costs, and error rates" },
   "/costs":     { title: "Cost Attribution", description: "Per-tool, per-agent, and per-session cost breakdown" },
   "/health":    { title: "Tool Health",    description: "Proactive health checks across all MCP servers" },

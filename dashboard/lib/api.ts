@@ -245,6 +245,27 @@ export const getProjectPreventionConfig = (projectId?: string | null) =>
 export const saveProjectPreventionConfig = (body: import("@/lib/types").PreventionConfigUpdate, projectId?: string | null) =>
   put<import("@/lib/types").PreventionConfig>(withProject("/projects/prevention-config", projectId), body);
 
+// ── Monitoring ────────────────────────────────────────────────────────────────
+export interface MonitoringBucket {
+  bucket: string; sessions: number; tool_calls: number; errors: number;
+  error_rate: number; avg_latency_ms: number; p99_latency_ms: number;
+  input_tokens: number; output_tokens: number; agents: number;
+}
+export interface MonitoringModel {
+  model_id: string; calls: number; input_tokens: number; output_tokens: number;
+  avg_latency_ms: number; error_count: number; est_cost_usd: number | null;
+}
+export interface MonitoringTool {
+  server_name: string; tool_name: string; calls: number; errors: number;
+  avg_latency_ms: number; p99_latency_ms: number; success_rate: number;
+}
+export const getMonitoringTimeseries = (hours: number, projectId?: string | null) =>
+  get<MonitoringBucket[]>(withProject(`/monitoring/timeseries?hours=${hours}`, projectId));
+export const getMonitoringModels = (hours: number, projectId?: string | null) =>
+  get<MonitoringModel[]>(withProject(`/monitoring/models?hours=${hours}`, projectId));
+export const getMonitoringTools = (hours: number, projectId?: string | null) =>
+  get<MonitoringTool[]>(withProject(`/monitoring/tools?hours=${hours}`, projectId));
+
 // ── Server Metadata (Catalog) ─────────────────────────────────────────────────
 export const listServerMetadata = (projectId?: string | null) =>
   get<ServerMetadata[]>(withProject("/servers/metadata", projectId));

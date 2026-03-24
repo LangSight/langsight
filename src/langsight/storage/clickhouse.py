@@ -1249,6 +1249,159 @@ class ClickHouseBackend:
         return [str(row[0]) for row in result.result_rows]
 
     # ---------------------------------------------------------------------------
+    # Monitoring time-series
+    # ---------------------------------------------------------------------------
+
+    async def get_monitoring_timeseries(
+        self,
+        hours: int = 24,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Hourly-bucketed metrics for the monitoring dashboard."""
+        where = "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR AND session_id != ''"
+        params: dict[str, Any] = {"hours": hours}
+        if project_id:
+            where += " AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+
+        result = await self._client.query(
+            f"""
+            SELECT
+                formatDateTime(toStartOfHour(started_at), '%Y-%m-%dT%H:00:00Z') AS bucket,
+                uniqExact(session_id)                                            AS sessions,
+                countIf(span_type = 'tool_call')                                AS tool_calls,
+                countIf(status != 'success' AND span_type = 'tool_call')        AS errors,
+                if(countIf(span_type = 'tool_call') > 0,
+                   countIf(status != 'success' AND span_type = 'tool_call') /
+                   countIf(span_type = 'tool_call'), 0)                         AS error_rate,
+                avg(latency_ms)                                                  AS avg_latency_ms,
+                quantile(0.99)(latency_ms)                                       AS p99_latency_ms,
+                sum(input_tokens)                                                AS input_tokens,
+                sum(output_tokens)                                               AS output_tokens,
+                uniqExactIf(agent_name, agent_name != '')                        AS agents
+            FROM mcp_tool_calls
+            {where}
+            GROUP BY bucket
+            ORDER BY bucket
+            """,
+            parameters=params,
+        )
+        cols = [
+            "bucket", "sessions", "tool_calls", "errors", "error_rate",
+            "avg_latency_ms", "p99_latency_ms", "input_tokens", "output_tokens", "agents",
+        ]
+        return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+    async def get_monitoring_models(
+        self,
+        hours: int = 24,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Per-model aggregated metrics for the Models tab."""
+        where = "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR AND model_id != ''"
+        params: dict[str, Any] = {"hours": hours}
+        if project_id:
+            where += " AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+
+        result = await self._client.query(
+            f"""
+            SELECT
+                model_id,
+                count()                                          AS calls,
+                sum(input_tokens)                                AS input_tokens,
+                sum(output_tokens)                               AS output_tokens,
+                avg(latency_ms)                                  AS avg_latency_ms,
+                countIf(status != 'success')                    AS error_count
+            FROM mcp_tool_calls
+            {where}
+            GROUP BY model_id
+            ORDER BY calls DESC
+            """,
+            parameters=params,
+        )
+        cols = ["model_id", "calls", "input_tokens", "output_tokens", "avg_latency_ms", "error_count"]
+        return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+    async def get_monitoring_tools(
+        self,
+        hours: int = 24,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Per-tool aggregated metrics for the Tools tab."""
+        where = (
+            "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR"
+            " AND span_type = 'tool_call'"
+        )
+        params: dict[str, Any] = {"hours": hours}
+        if project_id:
+            where += " AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+
+        result = await self._client.query(
+            f"""
+            SELECT
+                server_name,
+                tool_name,
+                count()                                          AS calls,
+                countIf(status != 'success')                    AS errors,
+                avg(latency_ms)                                  AS avg_latency_ms,
+                quantile(0.99)(latency_ms)                       AS p99_latency_ms,
+                if(count() > 0,
+                   countIf(status = 'success') / count() * 100,
+                   100)                                          AS success_rate
+            FROM mcp_tool_calls
+            {where}
+            GROUP BY server_name, tool_name
+            ORDER BY calls DESC
+            """,
+            parameters=params,
+        )
+        cols = ["server_name", "tool_name", "calls", "errors", "avg_latency_ms", "p99_latency_ms", "success_rate"]
+        return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+    async def get_incomplete_sessions(
+        self,
+        stale_minutes: int = 5,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Find sessions that stopped receiving spans — likely crashed agents."""
+        where = (
+            "WHERE started_at >= now() - INTERVAL 24 HOUR"
+            " AND session_id != ''"
+        )
+        params: dict[str, Any] = {"stale_minutes": stale_minutes}
+        if project_id:
+            where += " AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+
+        result = await self._client.query(
+            f"""
+            SELECT
+                session_id,
+                anyIf(agent_name, agent_name != '') AS agent_name,
+                max(ended_at)                        AS last_activity,
+                count()                              AS span_count,
+                countIf(span_type = 'agent')        AS llm_calls,
+                countIf(span_type = 'tool_call')    AS tool_calls
+            FROM mcp_tool_calls
+            {where}
+            GROUP BY session_id
+            HAVING last_activity < now() - INTERVAL {{stale_minutes:UInt32}} MINUTE
+               AND span_count < 5
+               AND session_id NOT IN (
+                   SELECT session_id FROM session_health_tags
+                   WHERE health_tag IN ('success', 'tool_failure', 'loop_detected',
+                                        'budget_exceeded', 'incomplete')
+               )
+            ORDER BY last_activity DESC
+            """,
+            parameters=params,
+        )
+        cols = ["session_id", "agent_name", "last_activity", "span_count", "llm_calls", "tool_calls"]
+        return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+    # ---------------------------------------------------------------------------
     # Context manager
     # ---------------------------------------------------------------------------
 
