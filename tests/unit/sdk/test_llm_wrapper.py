@@ -384,6 +384,48 @@ class TestGenaiClientProxy:
         result = proxy.models.generate_content(model="gemini-2.5-flash", contents=[])
         assert result is response
 
+    def test_api_error_records_error_span(self, client: LangSightClient) -> None:
+        """When generate_content raises, an error span is still recorded."""
+        def fail(**kw: object) -> object:
+            raise RuntimeError("API 500: internal error")
+
+        fake_genai = SimpleNamespace()
+        fake_genai.models = SimpleNamespace()
+        fake_genai.models.generate_content = fail
+
+        proxy = GenaiClientProxy(fake_genai, client, agent_name="test")
+        captured: list = []
+        client.buffer_span = lambda s: captured.append(s)  # type: ignore[assignment]
+
+        with pytest.raises(RuntimeError, match="API 500"):
+            proxy.models.generate_content(model="gemini-2.5-flash", contents=[])
+
+        assert len(captured) == 1
+        assert captured[0].status == "error"
+        assert "API 500" in (captured[0].error or "")
+        assert captured[0].span_type == "agent"
+
+    @pytest.mark.asyncio
+    async def test_async_api_timeout_records_timeout_span(self, client: LangSightClient) -> None:
+        """When async generate_content raises TimeoutError, span is status=timeout."""
+        async def fail(**kw: object) -> object:
+            raise TimeoutError("Request timed out")
+
+        fake_genai = SimpleNamespace()
+        fake_genai.aio = SimpleNamespace()
+        fake_genai.aio.models = SimpleNamespace()
+        fake_genai.aio.models.generate_content = fail
+
+        proxy = GenaiClientProxy(fake_genai, client, agent_name="test")
+        captured: list = []
+        client.buffer_span = lambda s: captured.append(s)  # type: ignore[assignment]
+
+        with pytest.raises(TimeoutError):
+            await proxy.aio.models.generate_content(model="gemini-2.5-flash", contents=[])
+
+        assert len(captured) == 1
+        assert captured[0].status == "timeout"
+
 
 # =============================================================================
 # _emit_spans uses buffer_span (not send_spans)

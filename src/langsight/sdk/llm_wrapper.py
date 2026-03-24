@@ -117,21 +117,52 @@ class _OpenAICompletionsProxy:
         """Intercept sync chat.completions.create()."""
         client = object.__getattribute__(self._parent, "_client")
         started_at = datetime.now(UTC)
-        response = client.chat.completions.create(**kwargs)
-        _process_openai_response(self._parent, response, kwargs, started_at)
-        return response
+        status = ToolCallStatus.SUCCESS
+        error: str | None = None
+        response: Any = None
+        try:
+            response = client.chat.completions.create(**kwargs)
+            return response
+        except TimeoutError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = str(exc)
+            raise
+        except Exception as exc:  # noqa: BLE001
+            status = ToolCallStatus.ERROR
+            error = str(exc)
+            raise
+        finally:
+            _process_openai_response(self._parent, response, kwargs, started_at, status=status, error=error)
 
     async def acreate(self, **kwargs: Any) -> Any:
         """Intercept async chat.completions.create()."""
         client = object.__getattribute__(self._parent, "_client")
         started_at = datetime.now(UTC)
-        response = await client.chat.completions.create(**kwargs)
-        _process_openai_response(self._parent, response, kwargs, started_at)
-        return response
+        status = ToolCallStatus.SUCCESS
+        error: str | None = None
+        response: Any = None
+        try:
+            response = await client.chat.completions.create(**kwargs)
+            return response
+        except TimeoutError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = str(exc)
+            raise
+        except Exception as exc:  # noqa: BLE001
+            status = ToolCallStatus.ERROR
+            error = str(exc)
+            raise
+        finally:
+            _process_openai_response(self._parent, response, kwargs, started_at, status=status, error=error)
 
 
 def _process_openai_response(
-    proxy: OpenAIProxy, response: Any, kwargs: dict[str, Any], started_at: datetime
+    proxy: OpenAIProxy,
+    response: Any,
+    kwargs: dict[str, Any],
+    started_at: datetime,
+    status: ToolCallStatus = ToolCallStatus.SUCCESS,
+    error: str | None = None,
 ) -> None:
     """Extract tool calls and token usage from an OpenAI response."""
     agent_name = object.__getattribute__(proxy, "_agent_name")
@@ -140,8 +171,8 @@ def _process_openai_response(
     project_id = object.__getattribute__(proxy, "_project_id")
     redact = object.__getattribute__(proxy, "_redact")
 
-    model = getattr(response, "model", kwargs.get("model", "unknown"))
-    usage = getattr(response, "usage", None)
+    model = getattr(response, "model", kwargs.get("model", "unknown")) if response is not None else kwargs.get("model", "unknown")
+    usage = getattr(response, "usage", None) if response is not None else None
     input_tokens = getattr(usage, "prompt_tokens", None) if usage else None
     output_tokens = getattr(usage, "completion_tokens", None) if usage else None
 
@@ -152,7 +183,8 @@ def _process_openai_response(
         server_name="openai",
         tool_name=f"generate/{model}",
         started_at=started_at,
-        status=ToolCallStatus.SUCCESS,
+        status=status,
+        error=error,
         agent_name=agent_name,
         session_id=session_id,
         trace_id=trace_id,
@@ -164,8 +196,8 @@ def _process_openai_response(
     )
     spans.append(llm_span)
 
-    # Tool use spans from the response
-    choices = getattr(response, "choices", [])
+    # Tool use spans from the response — only on success
+    choices = getattr(response, "choices", []) if response is not None and status == ToolCallStatus.SUCCESS else []
     if choices:
         message = getattr(choices[0], "message", None)
         tool_calls = getattr(message, "tool_calls", None) or []
@@ -236,21 +268,52 @@ class _AnthropicMessagesProxy:
         """Intercept sync messages.create()."""
         client = object.__getattribute__(self._parent, "_client")
         started_at = datetime.now(UTC)
-        response = client.messages.create(**kwargs)
-        _process_anthropic_response(self._parent, response, kwargs, started_at)
-        return response
+        status = ToolCallStatus.SUCCESS
+        error: str | None = None
+        response: Any = None
+        try:
+            response = client.messages.create(**kwargs)
+            return response
+        except TimeoutError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = str(exc)
+            raise
+        except Exception as exc:  # noqa: BLE001
+            status = ToolCallStatus.ERROR
+            error = str(exc)
+            raise
+        finally:
+            _process_anthropic_response(self._parent, response, kwargs, started_at, status=status, error=error)
 
     async def acreate(self, **kwargs: Any) -> Any:
         """Intercept async messages.create()."""
         client = object.__getattribute__(self._parent, "_client")
         started_at = datetime.now(UTC)
-        response = await client.messages.create(**kwargs)
-        _process_anthropic_response(self._parent, response, kwargs, started_at)
-        return response
+        status = ToolCallStatus.SUCCESS
+        error: str | None = None
+        response: Any = None
+        try:
+            response = await client.messages.create(**kwargs)
+            return response
+        except TimeoutError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = str(exc)
+            raise
+        except Exception as exc:  # noqa: BLE001
+            status = ToolCallStatus.ERROR
+            error = str(exc)
+            raise
+        finally:
+            _process_anthropic_response(self._parent, response, kwargs, started_at, status=status, error=error)
 
 
 def _process_anthropic_response(
-    proxy: AnthropicProxy, response: Any, kwargs: dict[str, Any], started_at: datetime
+    proxy: AnthropicProxy,
+    response: Any,
+    kwargs: dict[str, Any],
+    started_at: datetime,
+    status: ToolCallStatus = ToolCallStatus.SUCCESS,
+    error: str | None = None,
 ) -> None:
     """Extract tool_use blocks and token usage from an Anthropic response."""
     agent_name = object.__getattribute__(proxy, "_agent_name")
@@ -259,8 +322,8 @@ def _process_anthropic_response(
     project_id = object.__getattribute__(proxy, "_project_id")
     redact = object.__getattribute__(proxy, "_redact")
 
-    model = getattr(response, "model", kwargs.get("model", "unknown"))
-    usage = getattr(response, "usage", None)
+    model = getattr(response, "model", kwargs.get("model", "unknown")) if response is not None else kwargs.get("model", "unknown")
+    usage = getattr(response, "usage", None) if response is not None else None
     input_tokens = getattr(usage, "input_tokens", None) if usage else None
     output_tokens = getattr(usage, "output_tokens", None) if usage else None
 
@@ -271,7 +334,8 @@ def _process_anthropic_response(
         server_name="anthropic",
         tool_name=f"generate/{model}",
         started_at=started_at,
-        status=ToolCallStatus.SUCCESS,
+        status=status,
+        error=error,
         agent_name=agent_name,
         session_id=session_id,
         trace_id=trace_id,
@@ -283,8 +347,8 @@ def _process_anthropic_response(
     )
     spans.append(llm_span)
 
-    # Tool use spans from content blocks
-    content = getattr(response, "content", []) or []
+    # Tool use spans from content blocks — only on success
+    content = (getattr(response, "content", []) or []) if response is not None and status == ToolCallStatus.SUCCESS else []
     for block in content:
         if getattr(block, "type", None) != "tool_use":
             continue
@@ -335,17 +399,43 @@ class GeminiProxy(_LLMProxyBase):
         """Intercept sync generate_content()."""
         client = object.__getattribute__(self, "_client")
         started_at = datetime.now(UTC)
-        response = client.generate_content(*args, **kwargs)
-        _process_gemini_response(self, response, kwargs, started_at)
-        return response
+        status = ToolCallStatus.SUCCESS
+        error: str | None = None
+        response: Any = None
+        try:
+            response = client.generate_content(*args, **kwargs)
+            return response
+        except TimeoutError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = str(exc)
+            raise
+        except Exception as exc:  # noqa: BLE001
+            status = ToolCallStatus.ERROR
+            error = str(exc)
+            raise
+        finally:
+            _process_gemini_response(self, response, kwargs, started_at, status=status, error=error)
 
     async def generate_content_async(self, *args: Any, **kwargs: Any) -> Any:
         """Intercept async generate_content_async()."""
         client = object.__getattribute__(self, "_client")
         started_at = datetime.now(UTC)
-        response = await client.generate_content_async(*args, **kwargs)
-        _process_gemini_response(self, response, kwargs, started_at)
-        return response
+        status = ToolCallStatus.SUCCESS
+        error: str | None = None
+        response: Any = None
+        try:
+            response = await client.generate_content_async(*args, **kwargs)
+            return response
+        except TimeoutError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = str(exc)
+            raise
+        except Exception as exc:  # noqa: BLE001
+            status = ToolCallStatus.ERROR
+            error = str(exc)
+            raise
+        finally:
+            _process_gemini_response(self, response, kwargs, started_at, status=status, error=error)
 
 
 def _process_gemini_response(
@@ -354,6 +444,8 @@ def _process_gemini_response(
     kwargs: dict[str, Any],
     started_at: datetime,
     model_override: str | None = None,
+    status: ToolCallStatus = ToolCallStatus.SUCCESS,
+    error: str | None = None,
 ) -> None:
     """Extract function calls and token usage from a Gemini response.
 
@@ -374,8 +466,8 @@ def _process_gemini_response(
         client = object.__getattribute__(proxy, "_client")
         model = getattr(client, "model_name", None) or getattr(client, "_model_name", "gemini")
 
-    # Token usage from usage_metadata
-    usage = getattr(response, "usage_metadata", None)
+    # Token usage from usage_metadata — only available on success
+    usage = getattr(response, "usage_metadata", None) if response is not None else None
     input_tokens = getattr(usage, "prompt_token_count", None) if usage else None
     output_tokens = getattr(usage, "candidates_token_count", None) if usage else None
 
@@ -386,7 +478,8 @@ def _process_gemini_response(
         server_name="gemini",
         tool_name=f"generate/{model}",
         started_at=started_at,
-        status=ToolCallStatus.SUCCESS,
+        status=status,
+        error=error,
         agent_name=agent_name,
         session_id=session_id,
         trace_id=trace_id,
@@ -398,9 +491,9 @@ def _process_gemini_response(
     )
     spans.append(llm_span)
 
-    # Function call spans from response parts
+    # Function call spans from response parts — only on success
     try:
-        candidates = getattr(response, "candidates", []) or []
+        candidates = (getattr(response, "candidates", []) or []) if response is not None and status == ToolCallStatus.SUCCESS else []
         for candidate in candidates:
             content = getattr(candidate, "content", None)
             parts = getattr(content, "parts", []) if content else []
@@ -479,9 +572,22 @@ class _GenaiModelsProxy:
         """Intercept sync models.generate_content()."""
         client = object.__getattribute__(self._parent, "_client")
         started_at = datetime.now(UTC)
-        response = client.models.generate_content(model=model, **kwargs)
-        _process_gemini_response(self._parent, response, kwargs, started_at, model_override=model)
-        return response
+        status = ToolCallStatus.SUCCESS
+        error: str | None = None
+        response: Any = None
+        try:
+            response = client.models.generate_content(model=model, **kwargs)
+            return response
+        except TimeoutError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = str(exc)
+            raise
+        except Exception as exc:  # noqa: BLE001
+            status = ToolCallStatus.ERROR
+            error = str(exc)
+            raise
+        finally:
+            _process_gemini_response(self._parent, response, kwargs, started_at, model_override=model, status=status, error=error)
 
     def generate_content_stream(self, *, model: str, **kwargs: Any) -> Any:
         """Pass through sync streaming — trace the call start only."""
@@ -527,9 +633,22 @@ class _GenaiAioModelsProxy:
         """Intercept async aio.models.generate_content()."""
         client = object.__getattribute__(self._parent, "_client")
         started_at = datetime.now(UTC)
-        response = await client.aio.models.generate_content(model=model, **kwargs)
-        _process_gemini_response(self._parent, response, kwargs, started_at, model_override=model)
-        return response
+        status = ToolCallStatus.SUCCESS
+        error: str | None = None
+        response: Any = None
+        try:
+            response = await client.aio.models.generate_content(model=model, **kwargs)
+            return response
+        except TimeoutError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = str(exc)
+            raise
+        except Exception as exc:  # noqa: BLE001
+            status = ToolCallStatus.ERROR
+            error = str(exc)
+            raise
+        finally:
+            _process_gemini_response(self._parent, response, kwargs, started_at, model_override=model, status=status, error=error)
 
     async def generate_content_stream(self, *, model: str, **kwargs: Any) -> Any:
         """Pass through async streaming — trace the call start only."""

@@ -4,6 +4,13 @@ All meaningful changes to LangSight are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.5.3] — 2026-03-24
+
+### Fixed
+- **Agent failure detection** — all `wrap_llm()` proxies (OpenAI, Anthropic, Gemini legacy, google.genai) now use try/except/finally so LLM API errors (timeouts, 429s, 500s) record a span with `status=error` or `status=timeout` instead of silently dropping the call. Previously, a failed LLM call produced no span at all.
+
+---
+
 ## [0.5.2] — 2026-03-24
 
 ### Fixed
