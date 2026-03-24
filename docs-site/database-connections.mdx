@@ -18,7 +18,7 @@ Both are exposed on `localhost` when running via `docker compose up`.
 
 ## PostgreSQL
 
-**Connection details (default Docker Compose):**
+**Connection details:**
 
 | Field | Value |
 |---|---|
@@ -26,7 +26,11 @@ Both are exposed on `localhost` when running via `docker compose up`.
 | Port | `5432` |
 | Database | `langsight` |
 | Username | `langsight` |
-| Password | `langsight` |
+| Password | See `POSTGRES_PASSWORD` in your `.env` file |
+
+<Tip>
+Run `grep POSTGRES_PASSWORD .env` in the LangSight directory to retrieve your password.
+</Tip>
 
 ### DBeaver
 
@@ -57,7 +61,7 @@ SELECT id, email, role, created_at FROM users ORDER BY created_at;
 ### psql (command line)
 
 ```bash
-psql -h localhost -p 5432 -U langsight -d langsight
+PGPASSWORD=$(grep POSTGRES_PASSWORD .env | cut -d= -f2) psql -h localhost -p 5432 -U langsight -d langsight
 ```
 
 ### Key tables
@@ -81,15 +85,19 @@ psql -h localhost -p 5432 -U langsight -d langsight
 
 ## ClickHouse
 
-**Connection details (default Docker Compose):**
+**Connection details:**
 
 | Field | Value |
 |---|---|
 | Host | `localhost` |
 | Port | `8123` (HTTP — use this for DBeaver) |
 | Database | `langsight` |
-| Username | `default` |
-| Password | *(empty)* |
+| Username | See `CLICKHOUSE_USER` in your `.env` file |
+| Password | See `CLICKHOUSE_PASSWORD` in your `.env` file |
+
+<Tip>
+Run `grep CLICKHOUSE .env` in the LangSight directory to retrieve your username and password.
+</Tip>
 
 <Note>
 ClickHouse also listens on port `9000` (native binary protocol). DBeaver uses HTTP (8123). The `clickhouse-client` CLI uses the native port by default.
