@@ -94,7 +94,8 @@ class BaseIntegration:
         )
         if span_id is not None:
             # Use constructor directly when span_id is pre-generated
-            from datetime import UTC, datetime as _dt
+            from datetime import UTC
+            from datetime import datetime as _dt
 
             ended_at = _dt.now(UTC)
             span = ToolCallSpan(
