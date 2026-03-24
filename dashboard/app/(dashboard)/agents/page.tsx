@@ -10,7 +10,8 @@ import {
   Bot, ChevronRight, Search, Network, X, Server, GitBranch,
   ChevronUp, ChevronDown, ChevronLast, AlertTriangle,
 } from "lucide-react";
-import { fetcher, getCostsBreakdown, listAgentMetadata, upsertAgentMetadata, getAgentLoopCounts } from "@/lib/api";
+import { fetcher, getCostsBreakdown, listAgentMetadata, upsertAgentMetadata, getAgentLoopCounts, getSLOStatus } from "@/lib/api";
+import type { SLOStatus } from "@/lib/types";
 import { useProject } from "@/lib/project-context";
 import { cn, formatDuration, timeAgo, formatExact } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
@@ -117,7 +118,7 @@ function ThCell({ col, label, sortCol, sortDir, onSort, className }: { col: Sort
 }
 
 /* ── State 1: Full-width sortable table ─────────────────────── */
-function AgentTable({ agents, metaByName, onSelect, hours, loopByAgent }: { agents: AgentSummary[]; metaByName: Map<string, AgentMetadata>; onSelect: (name: string) => void; hours: number; loopByAgent: Map<string, number> }) {
+function AgentTable({ agents, metaByName, onSelect, hours, loopByAgent, sloByAgent }: { agents: AgentSummary[]; metaByName: Map<string, AgentMetadata>; onSelect: (name: string) => void; hours: number; loopByAgent: Map<string, number>; sloByAgent: Map<string, "ok" | "breached" | "no_data"> }) {
   const [sortCol, setSortCol] = useState<SortCol>("errorRate");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [search, setSearch] = useState("");
@@ -224,6 +225,14 @@ function AgentTable({ agents, metaByName, onSelect, hours, loopByAgent }: { agen
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2">
                       <span className="text-[12px] font-semibold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{agent.agent_name}</span>
+                      {sloByAgent.has(agent.agent_name) && (() => {
+                        const slo = sloByAgent.get(agent.agent_name)!;
+                        return slo === "breached" ? (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>SLO ✗</span>
+                        ) : slo === "ok" ? (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.2)" }}>SLO ✓</span>
+                        ) : null;
+                      })()}
                     </div>
                     {meta?.description && <p className="text-[10px] text-muted-foreground truncate max-w-[240px]">{meta.description}</p>}
                   </td>
@@ -450,6 +459,22 @@ export default function AgentsPage() {
     { refreshInterval: 120_000 },
   );
   const loopByAgent = useMemo(() => new Map((loopCounts ?? []).map(l => [l.agent_name, l.loop_count])), [loopCounts]);
+  const { data: sloStatuses } = useSWR<SLOStatus[]>(
+    `/api/slos/status${p}`,
+    () => getSLOStatus(pid),
+    { refreshInterval: 120_000 },
+  );
+  // Worst SLO status per agent: breached > no_data > ok
+  const sloByAgent = useMemo(() => {
+    const m = new Map<string, "ok" | "breached" | "no_data">();
+    for (const s of sloStatuses ?? []) {
+      const cur = m.get(s.agent_name);
+      if (!cur || (s.status === "breached") || (s.status === "no_data" && cur === "ok")) {
+        m.set(s.agent_name, s.status);
+      }
+    }
+    return m;
+  }, [sloStatuses]);
 
   const metaByName = useMemo(() => { const m = new Map<string, AgentMetadata>(); for (const meta of metadata ?? []) m.set(meta.agent_name, meta); return m; }, [metadata]);
   const agents = useMemo(() => sessions ? aggregateAgents(sessions, costs) : [], [sessions, costs]);
@@ -525,7 +550,7 @@ export default function AgentsPage() {
           {/* State 1: No agent selected — full-width table */}
           {!selectedAgent && (
             <div className="flex-1 min-h-0">
-              <AgentTable agents={agents} metaByName={metaByName} onSelect={selectAgent} hours={hours} loopByAgent={loopByAgent} />
+              <AgentTable agents={agents} metaByName={metaByName} onSelect={selectAgent} hours={hours} loopByAgent={loopByAgent} sloByAgent={sloByAgent} />
             </div>
           )}
 

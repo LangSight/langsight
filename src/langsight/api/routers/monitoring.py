@@ -124,6 +124,33 @@ async def get_tools(
     return [ToolMetrics(**r) for r in rows]
 
 
+class MonitoringTrends(BaseModel):
+    cur_avg_latency_ms: float | None = None
+    prev_avg_latency_ms: float | None = None
+    avg_latency_delta_pct: float | None = None
+    cur_p99_latency_ms: float | None = None
+    prev_p99_latency_ms: float | None = None
+    p99_latency_delta_pct: float | None = None
+    cur_error_rate: float | None = None
+    prev_error_rate: float | None = None
+    error_rate_delta_pct: float | None = None
+    cur_sessions: int | None = None
+    prev_sessions: int | None = None
+    sessions_delta_pct: float | None = None
+
+
+@router.get("/trends", response_model=MonitoringTrends)
+async def get_trends(
+    project_id: str | None = Depends(get_active_project_id),
+    storage: StorageBackend = Depends(get_storage),
+) -> MonitoringTrends:
+    """Compare last 7 days vs previous 7 days — sessions, error rate, latency."""
+    if not hasattr(storage, "get_monitoring_trends"):
+        return MonitoringTrends()
+    data = await storage.get_monitoring_trends(project_id=project_id)
+    return MonitoringTrends(**data) if data else MonitoringTrends()
+
+
 @router.get("/errors", response_model=list[ErrorCategory])
 async def get_error_breakdown(
     hours: int = Query(default=24, ge=1, le=720),

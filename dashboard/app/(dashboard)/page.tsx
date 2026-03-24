@@ -13,9 +13,9 @@ import {
 } from "lucide-react";
 import { useProject } from "@/lib/project-context";
 import { cn, formatLatency } from "@/lib/utils";
-import type { MonitoringBucket, MonitoringModel, MonitoringTool, ErrorCategory } from "@/lib/api";
+import type { MonitoringBucket, MonitoringModel, MonitoringTool, ErrorCategory, MonitoringTrends } from "@/lib/api";
 import {
-  getMonitoringTimeseries, getMonitoringModels, getMonitoringTools, getMonitoringErrors,
+  getMonitoringTimeseries, getMonitoringModels, getMonitoringTools, getMonitoringErrors, getMonitoringTrends,
 } from "@/lib/api";
 
 /* ── Time range selector ──────────────────────────────────────── */
@@ -56,10 +56,28 @@ function ChartTooltip({ active, payload, label, formatter }: {
   );
 }
 
+/* ── WoW trend badge ──────────────────────────────────────────── */
+function TrendBadge({ pct, invert }: { pct: number | null | undefined; invert?: boolean }) {
+  if (pct == null || pct === 0) return null;
+  // For error rate / latency, up is bad (invert=false means up=bad)
+  // For sessions, up is good (invert=true means up=good)
+  const isBad = invert ? pct < 0 : pct > 0;
+  const arrow = pct > 0 ? "↑" : "↓";
+  const abs = Math.abs(pct).toFixed(1);
+  return (
+    <span className="text-[9px] font-semibold px-1 py-0.5 rounded" style={{
+      background: isBad ? "rgba(239,68,68,0.1)" : "rgba(34,197,94,0.1)",
+      color: isBad ? "#ef4444" : "#22c55e",
+    }}>
+      {arrow}{abs}% vs last 7d
+    </span>
+  );
+}
+
 /* ── Stat card ────────────────────────────────────────────────── */
-function StatCard({ label, value, sub, icon: Icon, color }: {
+function StatCard({ label, value, sub, icon: Icon, color, trend }: {
   label: string; value: string | number; sub?: string;
-  icon: React.ElementType; color: string;
+  icon: React.ElementType; color: string; trend?: React.ReactNode;
 }) {
   return (
     <div className="rounded-xl border p-4" style={{
@@ -76,7 +94,10 @@ function StatCard({ label, value, sub, icon: Icon, color }: {
       <p className="text-xl font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>
         {value}
       </p>
-      {sub && <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>}
+      <div className="flex items-center gap-2 mt-0.5">
+        {sub && <p className="text-[10px] text-muted-foreground">{sub}</p>}
+        {trend}
+      </div>
     </div>
   );
 }
@@ -127,6 +148,11 @@ export default function DashboardPage() {
     pid && tab === "overview" ? `/monitoring/errors/${hours}/${pid}` : null,
     () => getMonitoringErrors(hours, pid),
     { refreshInterval: 120_000 },
+  );
+  const { data: trends } = useSWR(
+    pid && tab === "overview" ? `/monitoring/trends/${pid}` : null,
+    () => getMonitoringTrends(pid),
+    { refreshInterval: 300_000 },
   );
 
   // Aggregate summary from timeseries
@@ -212,10 +238,13 @@ export default function DashboardPage() {
         <>
           {/* Summary cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard label="Sessions" value={summary?.totalSessions ?? "—"} icon={Activity} color="#14b8a6" sub={`last ${hours}h`} />
+            <StatCard label="Sessions" value={summary?.totalSessions ?? "—"} icon={Activity} color="#14b8a6" sub={`last ${hours}h`}
+              trend={hours === 168 ? <TrendBadge pct={trends?.sessions_delta_pct} invert /> : undefined} />
             <StatCard label="Tool Calls" value={summary?.totalToolCalls?.toLocaleString() ?? "—"} icon={Zap} color="#0ea5e9" sub={`${summary?.totalErrors ?? 0} errors`} />
-            <StatCard label="Error Rate" value={summary ? `${summary.errorRate.toFixed(1)}%` : "—"} icon={AlertTriangle} color={summary && summary.errorRate > 5 ? "#ef4444" : "#22c55e"} />
-            <StatCard label="Avg Latency" value={summary ? formatLatency(summary.avgLatency) : "—"} icon={Clock} color="#8b5cf6" />
+            <StatCard label="Error Rate" value={summary ? `${summary.errorRate.toFixed(1)}%` : "—"} icon={AlertTriangle} color={summary && summary.errorRate > 5 ? "#ef4444" : "#22c55e"}
+              trend={hours === 168 ? <TrendBadge pct={trends?.error_rate_delta_pct} /> : undefined} />
+            <StatCard label="Avg Latency" value={summary ? formatLatency(summary.avgLatency) : "—"} icon={Clock} color="#8b5cf6"
+              trend={hours === 168 ? <TrendBadge pct={trends?.avg_latency_delta_pct} /> : undefined} />
           </div>
 
           {/* Charts row 1: Sessions + Error Rate */}

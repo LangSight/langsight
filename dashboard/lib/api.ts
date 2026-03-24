@@ -205,7 +205,8 @@ export const getAuditLogs = (limit = 50, offset = 0) =>
   }>(`/audit/logs?limit=${limit}&offset=${offset}`);
 
 // ─── SLOs (P5.5) ──────────────────────────────────────────────────────────────
-export const getSLOStatus = () => get<SLOStatus[]>("/slos/status");
+export const getSLOStatus = (projectId?: string | null) =>
+  get<SLOStatus[]>(`/slos/status${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""}`);
 export const listSLOs = () => get<SLOStatus[]>("/slos");
 export const deleteSLO = (id: string) => del(`/slos/${encodeURIComponent(id)}`);
 
@@ -267,6 +268,14 @@ export const getMonitoringErrors = (hours: number, projectId?: string | null) =>
   get<ErrorCategory[]>(`/monitoring/errors?hours=${hours}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
 export const getAgentLoopCounts = (hours: number, projectId?: string | null) =>
   get<{ agent_name: string; loop_count: number }[]>(`/agents/loop-counts?hours=${hours}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
+export interface MonitoringTrends {
+  cur_avg_latency_ms: number | null; prev_avg_latency_ms: number | null; avg_latency_delta_pct: number | null;
+  cur_p99_latency_ms: number | null; prev_p99_latency_ms: number | null; p99_latency_delta_pct: number | null;
+  cur_error_rate: number | null;     prev_error_rate: number | null;     error_rate_delta_pct: number | null;
+  cur_sessions: number | null;       prev_sessions: number | null;       sessions_delta_pct: number | null;
+}
+export const getMonitoringTrends = (projectId?: string | null) =>
+  get<MonitoringTrends>(`/monitoring/trends${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""}`);
 
 // ── Server Metadata (Catalog) ─────────────────────────────────────────────────
 export const listServerMetadata = (projectId?: string | null) =>

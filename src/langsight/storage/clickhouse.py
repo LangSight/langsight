@@ -1364,6 +1364,94 @@ class ClickHouseBackend:
         cols = ["server_name", "tool_name", "calls", "errors", "avg_latency_ms", "p99_latency_ms", "success_rate", "calls_per_session", "content_errors"]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
+    async def get_monitoring_trends(
+        self,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Compare last 7 days vs previous 7 days for key metrics.
+
+        Returns current and previous period values for sessions, errors,
+        avg latency, and p99 latency so the dashboard can show WoW deltas.
+        """
+        where_base = "started_at >= now() - INTERVAL 14 DAY"
+        params: dict[str, Any] = {}
+        if project_id:
+            where_base += " AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+
+        result = await self._client.query(
+            f"""
+            SELECT
+                round(avgIf(latency_ms,
+                    started_at >= now() - INTERVAL 7 DAY
+                    AND span_type = 'tool_call'), 2)                                AS cur_avg_lat,
+                round(avgIf(latency_ms,
+                    started_at < now() - INTERVAL 7 DAY
+                    AND span_type = 'tool_call'), 2)                                AS prev_avg_lat,
+                round(quantileIf(0.99)(latency_ms,
+                    started_at >= now() - INTERVAL 7 DAY
+                    AND span_type = 'tool_call'), 2)                                AS cur_p99,
+                round(quantileIf(0.99)(latency_ms,
+                    started_at < now() - INTERVAL 7 DAY
+                    AND span_type = 'tool_call'), 2)                                AS prev_p99,
+                countIf(started_at >= now() - INTERVAL 7 DAY
+                    AND status != 'success' AND span_type = 'tool_call')            AS cur_errors,
+                countIf(started_at < now() - INTERVAL 7 DAY
+                    AND status != 'success' AND span_type = 'tool_call')            AS prev_errors,
+                countIf(started_at >= now() - INTERVAL 7 DAY
+                    AND span_type = 'tool_call')                                    AS cur_calls,
+                countIf(started_at < now() - INTERVAL 7 DAY
+                    AND span_type = 'tool_call')                                    AS prev_calls,
+                uniqExactIf(session_id,
+                    started_at >= now() - INTERVAL 7 DAY AND session_id != '')      AS cur_sessions,
+                uniqExactIf(session_id,
+                    started_at < now() - INTERVAL 7 DAY AND session_id != '')       AS prev_sessions
+            FROM mcp_tool_calls
+            WHERE {where_base}
+            """,
+            parameters=params,
+        )
+
+        if not result.result_rows:
+            return {}
+
+        r = result.result_rows[0]
+        def safe_float(v: Any) -> float | None:
+            try:
+                f = float(v)
+                return None if (f != f) else f  # nan check
+            except (TypeError, ValueError):
+                return None
+
+        def delta_pct(cur: float | None, prev: float | None) -> float | None:
+            if cur is None or prev is None or prev == 0:
+                return None
+            return round((cur - prev) / prev * 100, 1)
+
+        cur_avg = safe_float(r[0]); prev_avg = safe_float(r[1])
+        cur_p99 = safe_float(r[2]); prev_p99 = safe_float(r[3])
+        cur_err = int(r[4]); prev_err = int(r[5])
+        cur_calls = int(r[6]); prev_calls = int(r[7])
+        cur_sess = int(r[8]); prev_sess = int(r[9])
+
+        cur_err_rate  = cur_err / cur_calls if cur_calls else None
+        prev_err_rate = prev_err / prev_calls if prev_calls else None
+
+        return {
+            "cur_avg_latency_ms":  cur_avg,
+            "prev_avg_latency_ms": prev_avg,
+            "avg_latency_delta_pct": delta_pct(cur_avg, prev_avg),
+            "cur_p99_latency_ms":  cur_p99,
+            "prev_p99_latency_ms": prev_p99,
+            "p99_latency_delta_pct": delta_pct(cur_p99, prev_p99),
+            "cur_error_rate":  cur_err_rate,
+            "prev_error_rate": prev_err_rate,
+            "error_rate_delta_pct": delta_pct(cur_err_rate, prev_err_rate),
+            "cur_sessions":  cur_sess,
+            "prev_sessions": prev_sess,
+            "sessions_delta_pct": delta_pct(float(cur_sess), float(prev_sess)),
+        }
+
     async def get_agent_loop_counts(
         self,
         hours: int = 24,
