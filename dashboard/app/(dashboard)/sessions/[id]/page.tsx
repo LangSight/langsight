@@ -55,16 +55,29 @@ function MetricTile({ label, value, danger }: { label: string; value: string; da
 function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { nodeId: string; trace: SessionTrace; serverCallers: Map<string, ServerCallerInfo[]>; onViewPayload?: (title: string, tabs: { label: string; json: string | null }[]) => void }) {
   const isAgent = nodeId.startsWith("agent:");
   const isPerCall = nodeId.includes("::call:");
-  const name = nodeId.replace(/^(agent|server):/, "").replace(/::call:.*$/, "");
+  const isViaSplit = nodeId.includes("::via:");
+
+  // Extract the base server/agent name from compound node IDs:
+  //   "server:inventory::via:procurement" → serverName="inventory", viaAgent="procurement"
+  //   "server:catalog::call:abc123"       → name="catalog", callSpanId="abc123"
+  //   "server:catalog"                    → name="catalog"
+  //   "agent:orchestrator"                → name="orchestrator"
+  const name = nodeId.replace(/^(agent|server):/, "").replace(/::call:.*$/, "").replace(/::via:.*$/, "");
+  const viaAgent = isViaSplit ? nodeId.replace(/^.*::via:/, "") : null;
 
   // For per-call nodes, find the exact span by span_id
   const callSpanId = isPerCall ? nodeId.replace(/^.*::call:/, "") : null;
 
   const spans = isPerCall
     ? trace.spans_flat.filter((s: SpanNode) => s.span_id === callSpanId)
-    : trace.spans_flat.filter((s: SpanNode) =>
-        isAgent ? s.agent_name === name : (s.server_name === name && s.span_type === "tool_call")
-      );
+    : trace.spans_flat.filter((s: SpanNode) => {
+        if (isAgent) return s.agent_name === name;
+        // Server node: match by server_name + tool_call type
+        if (s.server_name !== name || s.span_type !== "tool_call") return false;
+        // For "via X" split nodes, also filter by agent_name
+        if (viaAgent && s.agent_name !== viaAgent) return false;
+        return true;
+      });
 
   const totalCalls = spans.length;
   const errors = spans.filter((s: SpanNode) => s.status !== "success").length;
@@ -1184,7 +1197,21 @@ export default function SessionDetailPage() {
       {/* ── Tab bar ────────────────────────────────────────────── */}
       <div className="flex-shrink-0 flex items-center gap-1 mb-3 border-b" style={{ borderColor: "hsl(var(--border))" }}>
         {([
-          { key: "details", label: "Details", count: trace ? `${new Set(trace.spans_flat.map((s: SpanNode) => s.agent_name).filter(Boolean)).size} agents · ${new Set(trace.spans_flat.filter((s: SpanNode) => s.span_type === "tool_call").map((s: SpanNode) => s.server_name)).size} servers` : undefined },
+          { key: "details", label: "Details", count: trace ? (() => {
+            const spanMap = new Map(trace.spans_flat.map((s: SpanNode) => [s.span_id, s]));
+            const realServerSpans = trace.spans_flat.filter((s: SpanNode) => {
+              if (s.span_type !== "tool_call") return false;
+              // Skip LLM intent spans (parent is an agent span)
+              if (s.parent_span_id) {
+                const parent = spanMap.get(s.parent_span_id);
+                if (parent?.span_type === "agent") return false;
+              }
+              return true;
+            });
+            const agentCount = new Set(trace.spans_flat.map((s: SpanNode) => s.agent_name).filter(Boolean)).size;
+            const serverCount = new Set(realServerSpans.map((s: SpanNode) => s.server_name)).size;
+            return `${agentCount} ${agentCount === 1 ? "agent" : "agents"} · ${serverCount} ${serverCount === 1 ? "server" : "servers"}`;
+          })() : undefined },
           { key: "trace", label: "Trace", count: trace ? `${trace.total_spans} spans` : undefined },
         ] as const).map((tab) => (
           <button
