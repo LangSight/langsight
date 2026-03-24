@@ -1,0 +1,223 @@
+---
+title: "Database Connections"
+description: "Connect to PostgreSQL and ClickHouse with DBeaver, psql, or clickhouse-client"
+---
+
+## Overview
+
+LangSight runs two databases in the Docker stack:
+
+| Database | Purpose | Port |
+|---|---|---|
+| **PostgreSQL** | Metadata — users, projects, API keys, SLOs, agent metadata, model pricing | 5432 |
+| **ClickHouse** | Analytics — span traces, health check results, session data, reliability metrics | 8123 (HTTP) / 9000 (native) |
+
+Both are exposed on `localhost` when running via `docker compose up`.
+
+---
+
+## PostgreSQL
+
+**Connection details (default Docker Compose):**
+
+| Field | Value |
+|---|---|
+| Host | `localhost` |
+| Port | `5432` |
+| Database | `langsight` |
+| Username | `langsight` |
+| Password | `langsight` |
+
+### DBeaver
+
+1. New Connection → PostgreSQL
+2. Fill in the fields above
+3. Click **Test Connection** — DBeaver will prompt to download the JDBC driver if needed
+4. Click **Finish**
+
+Useful queries to get started:
+
+```sql
+-- List all projects
+SELECT id, name, slug FROM projects;
+
+-- List all agents with their SLOs
+SELECT a.agent_name, a.project_id, s.metric, s.target, s.window_hours
+FROM agent_metadata a
+LEFT JOIN agent_slos s ON s.agent_name = a.agent_name AND s.project_id = a.project_id
+ORDER BY a.agent_name;
+
+-- List model pricing
+SELECT model_id, input_per_1m_usd, output_per_1m_usd FROM model_pricing ORDER BY provider, model_id;
+
+-- List users
+SELECT id, email, role, created_at FROM users ORDER BY created_at;
+```
+
+### psql (command line)
+
+```bash
+psql -h localhost -p 5432 -U langsight -d langsight
+```
+
+### Key tables
+
+| Table | What it stores |
+|---|---|
+| `users` | User accounts and roles |
+| `projects` | Project definitions |
+| `project_members` | User ↔ project membership and roles |
+| `agent_metadata` | Agent descriptions, owners, tags, runbook URLs |
+| `agent_slos` | SLO definitions per agent (metric, target, window) |
+| `server_metadata` | MCP server catalog entries |
+| `model_pricing` | LLM token pricing per model |
+| `api_keys` | API key hashes (never stores plaintext keys) |
+| `health_results` | Latest MCP server health check results |
+| `prevention_config` | Loop/budget/circuit-breaker thresholds per agent |
+| `alert_config` | Slack webhook and alert type toggles |
+| `audit_logs` | Admin action audit trail |
+
+---
+
+## ClickHouse
+
+**Connection details (default Docker Compose):**
+
+| Field | Value |
+|---|---|
+| Host | `localhost` |
+| Port | `8123` (HTTP — use this for DBeaver) |
+| Database | `langsight` |
+| Username | `default` |
+| Password | *(empty)* |
+
+<Note>
+ClickHouse also listens on port `9000` (native binary protocol). DBeaver uses HTTP (8123). The `clickhouse-client` CLI uses the native port by default.
+</Note>
+
+### DBeaver
+
+1. New Connection → ClickHouse
+2. If the ClickHouse driver is not installed, DBeaver will prompt to download it — click **Download**
+3. Fill in: Host `localhost`, Port `8123`, Database `langsight`, Username `default`, Password empty
+4. Click **Test Connection** → **Finish**
+
+Useful queries to get started:
+
+```sql
+-- Recent sessions with health tags
+SELECT
+    t.session_id,
+    t.agent_name,
+    h.health_tag,
+    count() AS spans,
+    min(t.started_at) AS started,
+    max(t.ended_at) AS ended
+FROM mcp_tool_calls t
+LEFT JOIN session_health_tags h ON h.session_id = t.session_id
+WHERE t.started_at >= now() - INTERVAL 24 HOUR
+  AND t.session_id != ''
+GROUP BY t.session_id, t.agent_name, h.health_tag
+ORDER BY started DESC
+LIMIT 50;
+
+-- Error breakdown last 24h
+SELECT
+    status,
+    count() AS cnt,
+    round(count() * 100.0 / sum(count()) OVER (), 1) AS pct
+FROM mcp_tool_calls
+WHERE started_at >= now() - INTERVAL 24 HOUR
+  AND status != 'success'
+GROUP BY status
+ORDER BY cnt DESC;
+
+-- Token usage by model last 7 days
+SELECT
+    model_id,
+    count() AS calls,
+    sum(input_tokens) AS total_input,
+    sum(output_tokens) AS total_output,
+    round(avg(latency_ms), 0) AS avg_latency_ms
+FROM mcp_tool_calls
+WHERE started_at >= now() - INTERVAL 7 DAY
+  AND model_id != ''
+GROUP BY model_id
+ORDER BY calls DESC;
+
+-- Slowest tools (p99 latency)
+SELECT
+    server_name,
+    tool_name,
+    count() AS calls,
+    round(quantile(0.99)(latency_ms), 0) AS p99_ms,
+    round(avg(latency_ms), 0) AS avg_ms
+FROM mcp_tool_calls
+WHERE started_at >= now() - INTERVAL 24 HOUR
+  AND span_type = 'tool_call'
+GROUP BY server_name, tool_name
+ORDER BY p99_ms DESC
+LIMIT 20;
+```
+
+### clickhouse-client (command line)
+
+```bash
+docker exec -it langsight-clickhouse clickhouse-client --database langsight
+```
+
+Or if you have clickhouse-client installed locally:
+
+```bash
+clickhouse-client -h localhost --port 9000 --database langsight
+```
+
+### Key tables
+
+| Table | Engine | What it stores |
+|---|---|---|
+| `mcp_tool_calls` | MergeTree (partitioned monthly) | All span traces — tool calls, LLM generations, agent spans |
+| `mcp_health_results` | MergeTree (partitioned monthly) | MCP server health check history |
+| `mcp_schema_snapshots` | MergeTree | MCP server tool schema snapshots for drift detection |
+| `session_health_tags` | ReplacingMergeTree | Per-session health tag (success, tool_failure, loop_detected, etc.) |
+| `mv_agent_sessions` | Materialized View (AggregatingMergeTree) | Pre-aggregated session summaries — drives the Sessions page |
+| `mv_tool_reliability` | Materialized View (SummingMergeTree) | Pre-aggregated tool reliability metrics — drives the Tool Health page |
+
+### Important columns in `mcp_tool_calls`
+
+| Column | Type | Description |
+|---|---|---|
+| `span_id` | String | Unique span identifier |
+| `session_id` | String | Groups spans from the same agent run |
+| `span_type` | LowCardinality(String) | `tool_call` (MCP), `agent` (LLM generation), `handoff` |
+| `server_name` | String | MCP server name |
+| `tool_name` | String | Tool name |
+| `agent_name` | String | Agent that made the call |
+| `status` | LowCardinality(String) | `success`, `error`, `timeout`, `prevented` |
+| `error` | Nullable(String) | Error message — `ContentError:` prefix = silent failure |
+| `model_id` | String | LLM model name (for `agent` spans) |
+| `input_tokens` | Nullable(UInt32) | LLM input token count |
+| `output_tokens` | Nullable(UInt32) | LLM output token count |
+| `project_id` | String | Project scope |
+| `started_at` | DateTime64(3) | Span start time (UTC) |
+
+---
+
+## Changing default passwords
+
+The default credentials are for local development only. For production or team deployments, override them in `docker-compose.yml` or via environment variables:
+
+```yaml
+# docker-compose.yml
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: your-strong-password
+  api:
+    environment:
+      LANGSIGHT_POSTGRES_URL: postgresql://langsight:your-strong-password@postgres:5432/langsight
+```
+
+<Warning>
+Never expose PostgreSQL port 5432 or ClickHouse ports 8123/9000 to the public internet without authentication and TLS. The default ClickHouse installation has no password on the `default` user.
+</Warning>

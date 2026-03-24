@@ -124,7 +124,8 @@
       "pages": [
         "self-hosting/docker-compose",
         "self-hosting/configuration",
-        "self-hosting/storage"
+        "self-hosting/storage",
+        "database-connections"
       ]
     },
     {
