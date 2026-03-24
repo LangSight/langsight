@@ -577,8 +577,9 @@ class ClickHouseBackend:
                 " AND t.project_id = {project_id:String}"
             )
             params: dict[str, Any] = {"hours": hours, "limit": limit, "project_id": project_id}
+            having = ""
             if agent_name:
-                where += " AND t.agent_name = {agent_name:String}"
+                having = "HAVING has(groupUniqArray(t.agent_name), {agent_name:String})"
                 params["agent_name"] = agent_name
             if health_tag:
                 where += " AND sht.health_tag = {health_tag:String}"
@@ -587,24 +588,24 @@ class ClickHouseBackend:
                 f"""
                 SELECT
                     t.session_id,
-                    t.agent_name                                                 AS agent_name,
-                    min(t.started_at)                                            AS first_call_at,
-                    max(t.ended_at)                                              AS last_call_at,
-                    countIf(t.span_type = 'tool_call')                          AS tool_calls,
+                    anyIf(t.agent_name, t.agent_name != '')              AS agent_name,
+                    min(t.started_at)                                    AS first_call_at,
+                    max(t.ended_at)                                      AS last_call_at,
+                    countIf(t.span_type = 'tool_call')                  AS tool_calls,
                     countIf(t.status != 'success' AND t.span_type = 'tool_call') AS failed_calls,
-                    sum(t.latency_ms)                                            AS total_latency_ms,
-                    groupUniqArray(t.server_name)                               AS servers_used,
+                    sum(t.latency_ms)                                    AS total_latency_ms,
+                    groupUniqArray(t.server_name)                       AS servers_used,
                     dateDiff('millisecond', min(t.started_at), max(t.ended_at)) AS duration_ms,
-                    any(sht.health_tag)                                          AS health_tag,
-                    sum(t.input_tokens)                                          AS total_input_tokens,
-                    sum(t.output_tokens)                                         AS total_output_tokens,
-                    anyIf(t.model_id, t.model_id != '')                          AS model_id
+                    any(sht.health_tag)                                  AS health_tag,
+                    sum(t.input_tokens)                                  AS total_input_tokens,
+                    sum(t.output_tokens)                                 AS total_output_tokens,
+                    anyIf(t.model_id, t.model_id != '')                  AS model_id
                 FROM mcp_tool_calls t
                 LEFT JOIN (SELECT session_id, health_tag FROM session_health_tags FINAL) sht
                     ON t.session_id = sht.session_id
                 {where}
-                  AND t.agent_name != ''
-                GROUP BY t.session_id, t.agent_name
+                GROUP BY t.session_id
+                {having}
                 ORDER BY first_call_at DESC
                 LIMIT {{limit:UInt32}}
                 """,
@@ -627,18 +628,18 @@ class ClickHouseBackend:
             f"""
             SELECT
                 mv.session_id,
-                mv.agent_name,
-                mv.first_call_at,
-                mv.last_call_at,
-                mv.tool_calls,
-                mv.failed_calls,
-                mv.total_latency_ms,
-                mv.servers_used,
-                dateDiff('millisecond', mv.first_call_at, mv.last_call_at) AS duration_ms,
-                sht.health_tag,
-                tok.total_input_tokens,
-                tok.total_output_tokens,
-                tok.model_id
+                any(mv.agent_name)                                          AS agent_name,
+                min(mv.first_call_at)                                       AS first_call_at,
+                max(mv.last_call_at)                                        AS last_call_at,
+                sum(mv.tool_calls)                                          AS tool_calls,
+                sum(mv.failed_calls)                                        AS failed_calls,
+                sum(mv.total_latency_ms)                                    AS total_latency_ms,
+                groupUniqArrayArray(mv.servers_used)                        AS servers_used,
+                dateDiff('millisecond', min(mv.first_call_at), max(mv.last_call_at)) AS duration_ms,
+                any(sht.health_tag)                                         AS health_tag,
+                sum(tok.total_input_tokens)                                 AS total_input_tokens,
+                sum(tok.total_output_tokens)                                AS total_output_tokens,
+                anyIf(tok.model_id, tok.model_id != '')                     AS model_id
             FROM mv_agent_sessions mv
             LEFT JOIN (
                 SELECT session_id, agent_name,
@@ -652,7 +653,8 @@ class ClickHouseBackend:
             LEFT JOIN (SELECT session_id, health_tag FROM session_health_tags FINAL) sht
                 ON mv.session_id = sht.session_id
             {where}
-            ORDER BY mv.first_call_at DESC
+            GROUP BY mv.session_id
+            ORDER BY first_call_at DESC
             LIMIT {{limit:UInt32}}
             """,
             parameters=params,
