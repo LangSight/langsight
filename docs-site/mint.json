@@ -82,10 +82,17 @@
         "sdk/integrations/anthropic",
         "sdk/integrations/langgraph",
         "sdk/integrations/langchain",
+        "sdk/integrations/direct-sdk",
         "sdk/integrations/crewai",
         "sdk/integrations/pydantic-ai",
         "sdk/integrations/librechat",
         "sdk/integrations/otel"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        "guides/auto-discovery"
       ]
     },
     {

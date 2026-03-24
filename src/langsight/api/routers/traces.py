@@ -28,6 +28,11 @@ logger = structlog.get_logger()
 
 router = APIRouter(prefix="/traces", tags=["traces"])
 
+# In-memory caches to avoid DB lookups on every span batch.
+# Reset on process restart — safe because upsert is idempotent.
+_seen_agents: set[str] = set()
+_seen_servers: set[str] = set()
+
 
 # ---------------------------------------------------------------------------
 # SDK endpoint
@@ -59,10 +64,54 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
             session=span.session_id,
         )
 
-    # Persist to ClickHouse if the backend supports it
+    # Server-side payload redaction — admin toggle overrides SDK setting
     storage = getattr(request.app.state, "storage", None)
+    if storage is not None and hasattr(storage, "get_instance_settings"):
+        try:
+            settings = await storage.get_instance_settings()
+            if settings.get("redact_payloads"):
+                for span in spans:
+                    span.input_args = None
+                    span.output_result = None
+                    span.llm_input = None
+                    span.llm_output = None
+        except Exception:  # noqa: BLE001
+            pass  # fail-open — if settings fetch fails, don't block ingestion
+
+    # Persist to ClickHouse if the backend supports it
     if storage is not None and hasattr(storage, "save_tool_call_spans"):
         await storage.save_tool_call_spans(spans)
+
+    # Auto-register unseen agents and servers (fire-and-forget, fail-open)
+    if storage is not None and hasattr(storage, "upsert_agent_metadata"):
+        project_id = _extract_project_id(spans)
+        for span in spans:
+            if span.agent_name and span.agent_name not in _seen_agents:
+                _seen_agents.add(span.agent_name)
+                try:
+                    await storage.upsert_agent_metadata(
+                        agent_name=span.agent_name,
+                        description="Auto-discovered from traces",
+                        owner="",
+                        tags=[],
+                        status="active",
+                        runbook_url="",
+                        project_id=project_id,
+                    )
+                    logger.debug("trace.agent_auto_registered", agent=span.agent_name)
+                except Exception:  # noqa: BLE001
+                    pass  # fail-open — auto-register is best-effort
+            if span.server_name and span.server_name not in _seen_servers:
+                _seen_servers.add(span.server_name)
+                try:
+                    await storage.upsert_server_metadata(
+                        server_name=span.server_name,
+                        description="Auto-discovered from traces",
+                        project_id=project_id,
+                    )
+                    logger.debug("trace.server_auto_registered", server=span.server_name)
+                except Exception:  # noqa: BLE001
+                    pass
 
     # Update metrics + broadcast to SSE clients
     SPANS_INGESTED.inc(len(spans))
@@ -82,6 +131,14 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
             )
 
     return {"accepted": len(spans)}
+
+
+def _extract_project_id(spans: list[ToolCallSpan]) -> str | None:
+    """Return the first non-empty project_id from the span batch."""
+    for span in spans:
+        if span.project_id:
+            return span.project_id
+    return None
 
 
 # ---------------------------------------------------------------------------

@@ -469,4 +469,23 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             return JSONResponse(content=body, status_code=200)
         return JSONResponse(content=body, status_code=503)
 
+    # ── Instance settings (global admin toggle for redact_payloads etc.) ──────
+
+    @app.get("/api/settings", tags=["settings"])
+    async def get_settings() -> dict[str, Any]:
+        """Return global instance settings."""
+        storage = getattr(app.state, "storage", None)
+        if storage and hasattr(storage, "get_instance_settings"):
+            return await storage.get_instance_settings()
+        return {"redact_payloads": False}
+
+    @app.put("/api/settings", tags=["settings"])
+    async def save_settings(body: dict[str, Any]) -> dict[str, Any]:
+        """Update global instance settings. Admin only."""
+        storage = getattr(app.state, "storage", None)
+        if storage and hasattr(storage, "save_instance_settings"):
+            await storage.save_instance_settings(body)
+            return await storage.get_instance_settings()
+        return {"redact_payloads": False}
+
     return app

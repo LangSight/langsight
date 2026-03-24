@@ -1177,6 +1177,26 @@ function ModelPricingSection() {
 
 function InstanceSection() {
   const { data: status, isLoading } = useSWR<ApiStatus>("/api/status", fetcher, { refreshInterval: 60_000 });
+  const { data: settings, mutate: mutateSettings } = useSWR<{ redact_payloads: boolean }>("/api/settings", fetcher, { refreshInterval: 0 });
+  const [saving, setSaving] = useState(false);
+
+  async function toggleRedact() {
+    const next = !settings?.redact_payloads;
+    setSaving(true);
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_LANGSIGHT_API_URL ?? "http://localhost:8000"}/api/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(typeof window !== "undefined" && localStorage.getItem("ls_api_key") ? { "X-API-Key": localStorage.getItem("ls_api_key")! } : {}) },
+        body: JSON.stringify({ redact_payloads: next }),
+      });
+      mutateSettings({ redact_payloads: next }, false);
+      toast.success(next ? "Payload redaction enabled" : "Payload redaction disabled");
+    } catch {
+      toast.error("Failed to update settings");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const rows: { label: string; value: React.ReactNode }[] = [
     {
@@ -1237,6 +1257,7 @@ function InstanceSection() {
   ];
 
   return (
+    <>
     <Section title="Instance" description="Current LangSight backend configuration">
       <dl className="space-y-3">
         {rows.map(({ label, value }) => (
@@ -1247,6 +1268,32 @@ function InstanceSection() {
         ))}
       </dl>
     </Section>
+
+    <Section title="Data Privacy" description="Control whether tool call inputs and outputs are stored.">
+      <div className="flex items-center justify-between py-2">
+        <div>
+          <p className="text-xs font-medium" style={{ color: "hsl(var(--foreground))" }}>Redact payloads</p>
+          <p className="text-[11px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
+            When enabled, tool call inputs/outputs are stripped before storage. Applies server-side to all incoming spans regardless of SDK settings.
+          </p>
+        </div>
+        <button
+          onClick={toggleRedact}
+          disabled={saving}
+          className="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+          style={{ background: settings?.redact_payloads ? "hsl(var(--primary))" : "hsl(var(--muted))" }}
+        >
+          <span
+            className="pointer-events-none inline-block h-4 w-4 transform rounded-full shadow ring-0 transition duration-200 ease-in-out"
+            style={{
+              background: "white",
+              transform: settings?.redact_payloads ? "translateX(16px)" : "translateX(0)",
+            }}
+          />
+        </button>
+      </div>
+    </Section>
+    </>
   );
 }
 

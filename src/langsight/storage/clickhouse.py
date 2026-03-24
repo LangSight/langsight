@@ -423,6 +423,61 @@ class ClickHouseBackend:
         )
         logger.debug("storage.clickhouse.spans_saved", count=len(spans))
 
+    async def get_distinct_span_server_names(
+        self, project_id: str | None = None
+    ) -> set[str]:
+        """Return distinct server_name values from tool call spans.
+
+        Used by the Discover endpoint to find MCP servers that have sent
+        traces but are not yet registered in the server catalog.
+        """
+        params: dict[str, Any] = {}
+        project_filter = ""
+        if project_id:
+            project_filter = "AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+
+        result = await self._client.query(
+            f"""
+            SELECT DISTINCT server_name
+            FROM mcp_tool_calls
+            WHERE server_name != ''
+              AND span_type = 'tool_call'
+              {project_filter}
+            ORDER BY server_name
+            LIMIT 100
+            """,
+            parameters=params,
+        )
+        return {row[0] for row in result.result_rows}
+
+    async def get_distinct_span_agent_names(
+        self, project_id: str | None = None
+    ) -> set[str]:
+        """Return distinct agent_name values from spans.
+
+        Used by the Discover endpoint to find agents that have sent
+        traces but are not yet registered in the agent catalog.
+        """
+        params: dict[str, Any] = {}
+        project_filter = ""
+        if project_id:
+            project_filter = "AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+
+        result = await self._client.query(
+            f"""
+            SELECT DISTINCT agent_name
+            FROM mcp_tool_calls
+            WHERE agent_name != ''
+              {project_filter}
+            ORDER BY agent_name
+            LIMIT 100
+            """,
+            parameters=params,
+        )
+        return {row[0] for row in result.result_rows}
+
     async def get_tool_reliability(
         self,
         server_name: str | None = None,
@@ -509,6 +564,9 @@ class ClickHouseBackend:
             "servers_used",
             "duration_ms",
             "health_tag",  # v0.3
+            "total_input_tokens",
+            "total_output_tokens",
+            "model_id",
         ]
 
         # mv_agent_sessions does not include project_id — query base table when filtering by project
@@ -529,7 +587,7 @@ class ClickHouseBackend:
                 f"""
                 SELECT
                     t.session_id,
-                    any(t.agent_name)                                            AS agent_name,
+                    t.agent_name                                                 AS agent_name,
                     min(t.started_at)                                            AS first_call_at,
                     max(t.ended_at)                                              AS last_call_at,
                     countIf(t.span_type = 'tool_call')                          AS tool_calls,
@@ -537,12 +595,16 @@ class ClickHouseBackend:
                     sum(t.latency_ms)                                            AS total_latency_ms,
                     groupUniqArray(t.server_name)                               AS servers_used,
                     dateDiff('millisecond', min(t.started_at), max(t.ended_at)) AS duration_ms,
-                    any(sht.health_tag)                                          AS health_tag
+                    any(sht.health_tag)                                          AS health_tag,
+                    sum(t.input_tokens)                                          AS total_input_tokens,
+                    sum(t.output_tokens)                                         AS total_output_tokens,
+                    anyIf(t.model_id, t.model_id != '')                          AS model_id
                 FROM mcp_tool_calls t
                 LEFT JOIN (SELECT session_id, health_tag FROM session_health_tags FINAL) sht
                     ON t.session_id = sht.session_id
                 {where}
-                GROUP BY t.session_id
+                  AND t.agent_name != ''
+                GROUP BY t.session_id, t.agent_name
                 ORDER BY first_call_at DESC
                 LIMIT {{limit:UInt32}}
                 """,
@@ -573,8 +635,20 @@ class ClickHouseBackend:
                 mv.total_latency_ms,
                 mv.servers_used,
                 dateDiff('millisecond', mv.first_call_at, mv.last_call_at) AS duration_ms,
-                sht.health_tag
+                sht.health_tag,
+                tok.total_input_tokens,
+                tok.total_output_tokens,
+                tok.model_id
             FROM mv_agent_sessions mv
+            LEFT JOIN (
+                SELECT session_id, agent_name,
+                       sum(input_tokens) AS total_input_tokens,
+                       sum(output_tokens) AS total_output_tokens,
+                       anyIf(model_id, model_id != '') AS model_id
+                FROM mcp_tool_calls
+                WHERE session_id != '' AND agent_name != ''
+                GROUP BY session_id, agent_name
+            ) tok ON mv.session_id = tok.session_id AND mv.agent_name = tok.agent_name
             LEFT JOIN (SELECT session_id, health_tag FROM session_health_tags FINAL) sht
                 ON mv.session_id = sht.session_id
             {where}
@@ -643,7 +717,18 @@ class ClickHouseBackend:
             "output_tokens",
             "model_id",
         ]
-        return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+        rows = [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+        # Ensure timestamps carry UTC timezone — ClickHouse DateTime64('UTC')
+        # returns naive datetimes via clickhouse-connect, causing JS to
+        # interpret them as local time instead of UTC.
+        for row in rows:
+            for key in ("started_at", "ended_at"):
+                dt = row.get(key)
+                if dt is not None and hasattr(dt, "tzinfo") and dt.tzinfo is None:
+                    from datetime import UTC
+
+                    row[key] = dt.replace(tzinfo=UTC)
+        return rows
 
     async def compare_sessions(
         self,
@@ -809,9 +894,10 @@ class ClickHouseBackend:
         """
         import asyncio
 
-        agent_server_edges, handoff_edges = await asyncio.gather(
+        agent_server_edges, handoff_edges, delegation_edges = await asyncio.gather(
             self._lineage_agent_server_edges(hours, project_id),
             self._lineage_handoff_edges(hours, project_id),
+            self._lineage_delegation_edges(hours, project_id),
         )
 
         # ── Assemble unique nodes from edges ──────────────────────────────────
@@ -854,8 +940,8 @@ class ClickHouseBackend:
             sm["_latency_sum"] += edge["avg_latency_ms"] * edge["call_count"]
             sm["_call_count_for_avg"] += edge["call_count"]
 
-        # Agents that only appear as handoff targets (no tool_call spans of their own)
-        for edge in handoff_edges:
+        # Agents that only appear as handoff/delegation targets
+        for edge in [*handoff_edges, *delegation_edges]:
             for agent in (edge["from_agent"], edge["to_agent"]):
                 if agent and agent not in agent_metrics:
                     agent_metrics[agent] = {
@@ -929,6 +1015,25 @@ class ClickHouseBackend:
                     },
                 }
             )
+        # Delegation edges inferred from parent_span_id
+        # (agent A's tool call is the parent of agent B's tool calls)
+        # Emitted as "handoff" type so the dashboard renders them identically.
+        for edge in delegation_edges:
+            source = f"agent:{edge['from_agent']}"
+            target = f"agent:{edge['to_agent']}"
+            # Don't duplicate if already covered by an explicit handoff edge
+            if not any(e["source"] == source and e["target"] == target for e in edges):
+                edges.append(
+                    {
+                        "source": source,
+                        "target": target,
+                        "type": "handoff",
+                        "metrics": {
+                            "handoff_count": edge["delegation_count"],
+                            "session_count": edge["session_count"],
+                        },
+                    }
+                )
 
         return {
             "window_hours": hours,
@@ -1011,6 +1116,47 @@ class ClickHouseBackend:
         )
 
         cols = ["from_agent", "to_agent", "handoff_count", "session_count"]
+        return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+    async def _lineage_delegation_edges(
+        self,
+        hours: int,
+        project_id: str | None,
+    ) -> list[dict[str, Any]]:
+        """Infer agent-to-agent delegation from parent_span_id relationships.
+
+        When agent A's tool call is the parent of agent B's tool calls,
+        that means A delegated work to B. This captures the supervisor → analyst
+        pattern that the unified callback records via cross-ainvoke parent linking.
+        """
+        where = "started_at >= now() - INTERVAL {hours:UInt32} HOUR"
+        params: dict[str, Any] = {"hours": hours}
+        if project_id:
+            where += " AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+
+        result = await self._client.query(
+            f"""
+            SELECT
+                parent.agent_name  AS from_agent,
+                child.agent_name   AS to_agent,
+                count()            AS delegation_count,
+                uniq(child.session_id) AS session_count
+            FROM mcp_tool_calls AS child
+            INNER JOIN mcp_tool_calls AS parent
+                ON child.parent_span_id = parent.span_id
+            WHERE child.{where}
+              AND parent.{where}
+              AND child.agent_name != ''
+              AND parent.agent_name != ''
+              AND child.agent_name != parent.agent_name
+            GROUP BY parent.agent_name, child.agent_name
+            ORDER BY delegation_count DESC
+            """,
+            parameters=params,
+        )
+
+        cols = ["from_agent", "to_agent", "delegation_count", "session_count"]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
     # ---------------------------------------------------------------------------

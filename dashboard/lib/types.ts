@@ -54,6 +54,10 @@ export interface AgentSession {
   duration_ms: number;
   servers_used: string[];
   health_tag: HealthTag | null;  // v0.3
+  total_input_tokens: number | null;
+  total_output_tokens: number | null;
+  model_id: string | null;
+  est_cost_usd: number | null;
 }
 
 export interface SpanNode {

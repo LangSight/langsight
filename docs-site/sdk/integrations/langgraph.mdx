@@ -3,6 +3,10 @@ title: "LangGraph"
 description: "Graph-aware tracing — see which node called which tool."
 ---
 
+<Note>
+  Since v0.4, `LangSightLangGraphCallback` is an **alias** for `LangSightLangChainCallback`. The unified callback handles both LangChain and LangGraph automatically with auto-detect mode. This page covers the LangGraph-specific setup. For the full reference, see the [LangChain integration](/sdk/integrations/langchain).
+</Note>
+
 ## Install
 
 ```bash
@@ -13,21 +17,41 @@ pip install langsight langgraph
   `langchain-core` ships with `langgraph` — you don't need the full `langchain` package. LangSight's callback will find `BaseCallbackHandler` in `langchain-core` automatically.
 </Note>
 
-## Setup
+## Setup (auto-detect mode)
+
+The recommended setup for LangGraph omits `server_name`, enabling auto-detect mode. Agent names, parent links, and prompts are detected automatically from graph names.
 
 ```python
 import os
+import uuid
 from langsight.sdk import LangSightClient
 from langsight.integrations.langgraph import LangSightLangGraphCallback
 
 client = LangSightClient(
     url=os.getenv("LANGSIGHT_URL", "http://localhost:8000"),
     api_key=os.getenv("LANGSIGHT_API_KEY"),
-    project_id=os.getenv("LANGSIGHT_PROJECT_ID"),  # copy from Settings → Projects
+    project_id=os.getenv("LANGSIGHT_PROJECT_ID"),
 )
+
+session_id = str(uuid.uuid4())
+trace_id = str(uuid.uuid4())
+
+callback = LangSightLangGraphCallback(
+    client=client,
+    session_id=session_id,
+    trace_id=trace_id,
+)
+```
+
+## Setup (fixed mode)
+
+If you don't need auto-detection, pass `server_name` for v0.3-compatible behavior:
+
+```python
 callback = LangSightLangGraphCallback(
     client=client,
     agent_name="my-graph",
+    server_name="my-tools",
     session_id="sess-001",
     trace_id="trace-abc",
 )
@@ -46,56 +70,54 @@ result = await graph.ainvoke(
 
 Works with synchronous `graph.invoke()` too.
 
-## What makes this different from the LangChain callback?
+## Multi-agent workflows
 
-The basic [LangChain callback](/sdk/integrations/langchain) also works with
-LangGraph. This integration adds **graph node context**:
+In auto-detect mode, each named graph in your LangGraph workflow becomes an agent span. Cross-`ainvoke` parent linking happens automatically via a thread-local tool stack:
 
-| Feature | LangChain callback | LangGraph callback |
-|---------|-------------------|--------------------|
-| Tool call tracing | Yes | Yes |
-| Tool timing + status | Yes | Yes |
-| **Node name tracking** | No | Yes |
-| **Node → tool mapping** | No | Yes |
+```python
+# Supervisor graph calls "call_analyst" tool, which invokes analyst graph
+result = await supervisor.ainvoke(
+    {"input": "Analyze Q4 sales"},
+    config={"callbacks": [callback]},
+)
+```
 
-With the LangGraph callback, spans show which graph node triggered each tool:
+Result in the dashboard:
 
 ```
 Session: sess-001
-├── langgraph/research_node/search_docs     142ms  ✓
-├── langgraph/research_node/fetch_page       89ms  ✓
-├── langgraph/analysis_node/query_db        210ms  ✓
-└── langgraph/summary_node/generate_report   45ms  ✓
+├── supervisor (agent)
+│   ├── call_analyst                 120ms  success
+│   │   └── analyst (agent)
+│   │       └── read_query            42ms  success
+│   └── summarize                     15ms  success
 ```
 
-The `server_name` field is `langgraph/{node_name}`, so you can filter and
-group by graph node in the dashboard.
+## Migration from v0.3
 
-## Conditional routing
-
-LangGraph's conditional edges are visible in the trace — you can see which
-path the graph took based on which nodes executed and what tools they called.
-
-## Use with the basic LangChain callback
-
-If you don't need node-level context, the basic LangChain callback works:
+The import path is unchanged — no code changes needed:
 
 ```python
-from langsight.integrations.langchain import LangSightLangChainCallback
+# This still works (backward-compatible alias)
+from langsight.integrations.langgraph import LangSightLangGraphCallback
 
-callback = LangSightLangChainCallback(client=client, agent_name="my-graph")
-result = await graph.ainvoke(input, config={"callbacks": [callback]})
+# Or use the canonical import
+from langsight.integrations.langchain import LangSightLangChainCallback
 ```
+
+The only behavioral change: if you omit `server_name`, the callback now enters auto-detect mode instead of defaulting to `"langgraph"`. To preserve v0.3 behavior exactly, pass `server_name` explicitly.
 
 ## What gets traced
 
-| Field | Value |
-|-------|-------|
-| `tool_name` | Tool function name |
-| `server_name` | `langgraph/{node_name}` |
-| `agent_name` | Graph name (configurable) |
-| `latency_ms` | Auto-computed |
-| `status` | `success`, `error`, or `timeout` |
+| Field | Auto-detect mode | Fixed mode |
+|-------|-----------------|------------|
+| `tool_name` | Tool function name | Tool function name |
+| `server_name` | Agent name (auto-detected) | Value from constructor |
+| `agent_name` | Auto-detected from graph names | Value from constructor |
+| `span_type` | `"agent"` for agents, `"tool_call"` for tools | `"tool_call"` |
+| `parent_span_id` | Auto-linked | Manual or `None` |
+| `latency_ms` | Auto-computed | Auto-computed |
+| `status` | `success`, `error`, or `timeout` | `success`, `error`, or `timeout` |
 
 ## View traces
 

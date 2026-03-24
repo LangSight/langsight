@@ -20,6 +20,7 @@ import { buildSessionGraph, type SessionGraphResult } from "@/lib/session-graph"
 import { cn, timeAgo, formatDuration, CALL_STATUS_COLOR, SPAN_TYPE_ICON } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
 import type { AgentSession, SessionTrace, SpanNode, SessionComparison, DiffEntry, PathMetrics, ServerCallerInfo } from "@/lib/types";
+import { HealthTagBadge } from "@/components/health-tag-badge";
 
 /* ── Build session graph from trace spans (with per-path attribution) ── */
 
@@ -38,21 +39,15 @@ function useSessionGraph(
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 mb-3.5">
-      <span className="w-1 h-3.5 rounded-full" style={{ background: "hsl(var(--primary))" }} />
-      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">{children}</p>
-    </div>
+    <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mb-2.5">{children}</p>
   );
 }
 
-function MetricTile({ label, value, danger, mono = true }: { label: string; value: string; danger?: boolean; mono?: boolean }) {
+function MetricTile({ label, value, danger }: { label: string; value: string; danger?: boolean; mono?: boolean }) {
   return (
-    <div className="rounded-xl p-3.5 transition-colors hover:brightness-110" style={{
-      background: "hsl(var(--muted))",
-      borderLeft: danger ? "3px solid hsl(var(--danger))" : "3px solid hsl(var(--primary) / 0.3)",
-    }}>
-      <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
-      <p className={cn("text-[16px] font-bold text-foreground", mono && "font-mono")} style={mono ? { fontFamily: "var(--font-geist-mono)" } : {}}>{value}</p>
+    <div className="flex items-center justify-between py-1.5">
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <span className={cn("text-[12px] font-semibold", danger ? "text-red-500" : "text-foreground")} style={{ fontFamily: "var(--font-geist-mono)" }}>{value}</span>
     </div>
   );
 }
@@ -90,19 +85,19 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
           ? "linear-gradient(180deg, hsl(var(--primary) / 0.05) 0%, transparent 100%)"
           : "linear-gradient(180deg, hsl(var(--muted) / 0.3) 0%, transparent 100%)",
       }}>
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{
             background: isAgent
               ? "linear-gradient(135deg, hsl(var(--primary) / 0.15), hsl(var(--primary) / 0.06))"
               : "linear-gradient(135deg, rgba(100,116,139,0.14), rgba(100,116,139,0.05))",
             border: isAgent ? "1px solid hsl(var(--primary) / 0.2)" : "1px solid rgba(100,116,139,0.15)",
           }}>
-            {isAgent ? <Bot size={20} style={{ color: "hsl(var(--primary))" }} /> : <Server size={20} className="text-muted-foreground" />}
+            {isAgent ? <Bot size={16} style={{ color: "hsl(var(--primary))" }} /> : <Server size={16} className="text-muted-foreground" />}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[16px] font-bold text-foreground truncate" style={{ letterSpacing: "-0.01em" }}>{isPerCall && spans[0] ? spans[0].tool_name : name}</p>
+            <p className="text-[14px] font-bold text-foreground truncate" style={{ letterSpacing: "-0.01em" }}>{isPerCall && spans[0] ? spans[0].tool_name : name}</p>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-[12px] text-muted-foreground">{isPerCall ? `${name} · Tool Call` : isAgent ? "Agent" : "MCP Server"}</span>
+              <span className="text-[11px] text-muted-foreground">{isPerCall ? `${name} · Tool Call` : isAgent ? "Agent" : "MCP Server"}</span>
               <span className={cn("w-2 h-2 rounded-full", errors > 0 ? "bg-red-500" : "bg-emerald-500")} style={{ boxShadow: errors > 0 ? "0 0 6px rgba(239,68,68,0.4)" : "0 0 4px rgba(16,185,129,0.3)" }} />
               <span className="text-[12px] font-medium" style={{ color: errors > 0 ? "#ef4444" : "#10b981" }}>
                 {errors > 0 ? `${errors} error${errors > 1 ? "s" : ""}` : "All OK"}
@@ -121,41 +116,42 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
       </div>
 
       {/* Overview metrics */}
-      <div className="px-5 py-5">
+      <div className="px-5 py-4">
         <SectionLabel>Overview</SectionLabel>
-        <div className="grid grid-cols-2 gap-2">
-          <MetricTile label="Total Calls" value={totalCalls.toLocaleString()} />
+        <div className="divide-y" style={{ borderColor: "hsl(var(--border) / 0.5)" }}>
+          <MetricTile label="Calls" value={totalCalls.toLocaleString()} />
           <MetricTile label="Errors" value={errors.toLocaleString()} danger={errors > 0} />
           <MetricTile label="Avg Latency" value={`${Math.round(avgLatency)}ms`} />
           <MetricTile label="Max Latency" value={`${Math.round(maxLatency)}ms`} />
+          {errorRate > 0 && <MetricTile label="Error Rate" value={`${errorRate.toFixed(1)}%`} danger />}
+          {spans.length > 0 && spans[0].started_at && (
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-[11px] text-muted-foreground">Started</span>
+              <span className="text-[10px] text-muted-foreground"><Timestamp iso={spans[0].started_at} /></span>
+            </div>
+          )}
         </div>
-        {errorRate > 0 && (
-          <div className="mt-2 rounded-lg px-3 py-2 flex items-center justify-between" style={{ background: "rgba(239,68,68,0.06)", borderLeft: "3px solid hsl(var(--danger))" }}>
-            <span className="text-[11px] text-muted-foreground">Error Rate</span>
-            <span className="text-[12px] font-bold" style={{ color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{errorRate.toFixed(1)}%</span>
-          </div>
-        )}
       </div>
 
       {/* Tools */}
       {tools.length > 0 && (
         <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
           <SectionLabel>Tools ({tools.length})</SectionLabel>
-          <div className="space-y-1">
+          <div className="divide-y" style={{ borderColor: "hsl(var(--border) / 0.5)" }}>
             {tools.map((tool) => {
               const toolSpans = spans.filter((s: SpanNode) => s.tool_name === tool);
               const toolErrors = toolSpans.filter((s: SpanNode) => s.status !== "success").length;
               const toolAvgMs = toolSpans.reduce((s: number, sp: SpanNode) => s + (sp.latency_ms ?? 0), 0) / toolSpans.length;
               return (
-                <div key={tool} className="flex items-center justify-between rounded-xl px-3.5 py-3 transition-colors hover:brightness-110 cursor-default" style={{ background: "hsl(var(--muted))" }}>
-                  <div className="flex items-center gap-2.5">
-                    <span className={cn("w-2 h-2 rounded-full", toolErrors > 0 ? "bg-red-500" : "bg-emerald-500")} style={{ boxShadow: toolErrors > 0 ? "0 0 5px rgba(239,68,68,0.3)" : undefined }} />
-                    <span className="text-[13px] font-medium text-foreground">{tool}</span>
-                    {toolErrors > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}>{toolErrors} err</span>}
+                <div key={tool} className="flex items-center justify-between py-1.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", toolErrors > 0 ? "bg-red-500" : "bg-emerald-500")} />
+                    <span className="text-[11px] font-medium text-foreground truncate">{tool}</span>
+                    {toolErrors > 0 && <span className="text-[9px] px-1 py-0.5 rounded-full flex-shrink-0" style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}>{toolErrors} err</span>}
                   </div>
-                  <div className="flex items-center gap-3 text-[12px] text-muted-foreground">
-                    <span className="font-mono" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(toolAvgMs)}ms</span>
-                    <span className="font-mono" style={{ fontFamily: "var(--font-geist-mono)" }}>{toolSpans.length}×</span>
+                  <div className="flex items-center gap-2.5 text-[10px] text-muted-foreground flex-shrink-0" style={{ fontFamily: "var(--font-geist-mono)" }}>
+                    <span>{Math.round(toolAvgMs)}ms</span>
+                    <span>{toolSpans.length}×</span>
                   </div>
                 </div>
               );
@@ -232,18 +228,20 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
       {totalInputTokens > 0 && (
         <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
           <SectionLabel>Token Usage</SectionLabel>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="divide-y" style={{ borderColor: "hsl(var(--border) / 0.5)" }}>
             <MetricTile label="Input" value={totalInputTokens.toLocaleString()} />
             <MetricTile label="Output" value={totalOutputTokens.toLocaleString()} />
+            {models.length > 0 && (
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[11px] text-muted-foreground">Model</span>
+                <div className="flex gap-1">
+                  {models.map((m) => (
+                    <code key={m} className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}>{m}</code>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-          {models.length > 0 && (
-            <div className="mt-2 rounded-lg px-3 py-2 flex items-center gap-2" style={{ background: "hsl(var(--muted))" }}>
-              <span className="text-[11px] text-muted-foreground">Model</span>
-              {models.map((m) => (
-                <code key={m} className="text-[11px] px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}>{m}</code>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
@@ -289,58 +287,59 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
       {!isPerCall && (
         <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
           <SectionLabel>Calls ({spans.length})</SectionLabel>
-          <div className="space-y-2">
+          <div className="divide-y" style={{ borderColor: "hsl(var(--border) / 0.5)" }}>
             {spans.map((s: SpanNode, i: number) => {
               const isError = s.status !== "success";
               return (
-              <details key={i} className="group rounded-xl overflow-hidden" style={{ border: "1px solid hsl(var(--border))", borderLeft: `3px solid ${isError ? "#ef4444" : "#10b981"}` }}>
-                <summary className="flex items-center justify-between px-3.5 py-2.5 cursor-pointer hover:bg-accent/30 transition-colors list-none">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[12px] font-semibold text-foreground">{s.tool_name}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{
+              <details key={i} className="group">
+                <summary className="flex items-center justify-between py-2 cursor-pointer hover:bg-accent/20 transition-colors list-none -mx-1 px-1 rounded">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", isError ? "bg-red-500" : "bg-emerald-500")} />
+                    <span className="text-[11px] font-medium text-foreground truncate">{s.tool_name}</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0" style={{
                       background: isError ? "rgba(239,68,68,0.08)" : "rgba(16,185,129,0.08)",
                       color: isError ? "#ef4444" : "#10b981",
-                    }}>{isError ? "error" : "success"}</span>
+                    }}>{isError ? "error" : "ok"}</span>
                   </div>
-                  <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
-                    <span className="text-[12px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(s.latency_ms ?? 0)}ms</span>
-                    {s.started_at && <span className="text-[10px] text-muted-foreground" style={{ opacity: 0.6 }}><Timestamp iso={s.started_at} compact /></span>}
+                  <div className="flex items-center gap-2 flex-shrink-0 text-[10px] text-muted-foreground">
+                    <span style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(s.latency_ms ?? 0)}ms</span>
+                    {s.started_at && <Timestamp iso={s.started_at} compact />}
                   </div>
                 </summary>
-                <div className="px-3.5 pb-3.5 space-y-2.5" style={{ borderTop: "1px solid hsl(var(--border))" }}>
+                <div className="pl-3.5 pb-2.5 space-y-2 mt-1">
                   {s.error && (
-                    <div className="mt-2 rounded-xl px-3.5 py-2.5 text-[11px]" style={{ background: "rgba(239,68,68,0.05)", color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{s.error}</div>
+                    <div className="rounded-lg px-3 py-2 text-[10px]" style={{ background: "rgba(239,68,68,0.05)", color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{s.error}</div>
                   )}
                   {s.input_json && (
-                    <div className="mt-2">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <p className="text-[11px] text-muted-foreground uppercase tracking-widest font-semibold">Input</p>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-semibold">Input</p>
                         <button
-                          className="text-[10px] text-primary hover:underline flex items-center gap-1 font-medium"
+                          className="text-[9px] text-primary hover:underline flex items-center gap-1 font-medium"
                           onClick={(e) => { e.stopPropagation(); onViewPayload?.(`Input — ${s.tool_name}`, [{ label: "JSON", json: s.input_json }]); }}
-                        ><ExternalLink size={10} />View full</button>
+                        ><ExternalLink size={9} />View</button>
                       </div>
-                      <pre className="text-[11px] text-foreground rounded-xl p-3 whitespace-pre-wrap break-all max-h-48 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
+                      <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-36 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
                         {(() => { try { return JSON.stringify(JSON.parse(s.input_json), null, 2); } catch { return s.input_json; } })()}
                       </pre>
                     </div>
                   )}
                   {s.output_json && (
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <p className="text-[11px] text-muted-foreground uppercase tracking-widest font-semibold">Output</p>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-semibold">Output</p>
                         <button
-                          className="text-[10px] text-primary hover:underline flex items-center gap-1 font-medium"
+                          className="text-[9px] text-primary hover:underline flex items-center gap-1 font-medium"
                           onClick={(e) => { e.stopPropagation(); onViewPayload?.(`Output — ${s.tool_name}`, [{ label: "JSON", json: s.output_json }]); }}
-                        ><ExternalLink size={10} />View full</button>
+                        ><ExternalLink size={9} />View</button>
                       </div>
-                      <pre className="text-[11px] text-foreground rounded-xl p-3 whitespace-pre-wrap break-all max-h-48 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
+                      <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-36 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
                         {(() => { try { return JSON.stringify(JSON.parse(s.output_json), null, 2); } catch { return s.output_json; } })()}
                       </pre>
                     </div>
                   )}
                   {(s.input_tokens || s.output_tokens) && (
-                    <div className="flex items-center gap-4 text-[11px] text-muted-foreground pt-1">
+                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
                       {s.model_id && <span>Model: <code className="text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{s.model_id}</code></span>}
                       {s.input_tokens != null && <span>In: <strong className="text-foreground">{s.input_tokens.toLocaleString()}</strong></span>}
                       {s.output_tokens != null && <span>Out: <strong className="text-foreground">{s.output_tokens.toLocaleString()}</strong></span>}
@@ -601,7 +600,11 @@ function SpanRow({ span, depth = 0, onViewPayload }: { span: SpanNode; depth?: n
         onClick={() => hasPayload && setDetailOpen((o) => !o)}
       >
         <td className="py-2.5 pr-3">
-          <div className="flex items-center" style={{ paddingLeft: `${depth * 20}px` }}>
+          <div className="flex items-center" style={{ paddingLeft: `${depth * 28 + 8}px` }}>
+            {/* Tree connector lines for nested spans */}
+            {depth > 0 && (
+              <span className="text-[12px] mr-1.5 flex-shrink-0" style={{ color: "hsl(var(--border))", fontFamily: "var(--font-geist-mono)" }}>└─</span>
+            )}
             <button
               onClick={(e) => { e.stopPropagation(); hasChildren && setOpen((o) => !o); }}
               className={cn("flex items-center gap-1.5 min-w-0", hasChildren ? "cursor-pointer" : "cursor-default")}
@@ -610,7 +613,7 @@ function SpanRow({ span, depth = 0, onViewPayload }: { span: SpanNode; depth?: n
                 ? open
                   ? <ChevronDown size={12} className="text-muted-foreground flex-shrink-0" />
                   : <ChevronRight size={12} className="text-muted-foreground flex-shrink-0" />
-                : <span className="w-3.5 flex-shrink-0" />}
+                : depth === 0 ? <span className="w-3.5 flex-shrink-0" /> : null}
               <span className="text-[12px] mr-1">{icon}</span>
               <span className={cn("text-[12px] font-semibold truncate", spanColor)} style={{ fontFamily: "var(--font-geist-mono)" }}>
                 {span.server_name}/{span.tool_name}
@@ -632,6 +635,14 @@ function SpanRow({ span, depth = 0, onViewPayload }: { span: SpanNode; depth?: n
         <td className="py-2.5 pr-3 text-[12px] text-right text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>
           {span.latency_ms ? `${span.latency_ms.toFixed(0)}ms` : "—"}
         </td>
+        <td className="py-2.5 pr-3 text-[11px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>
+          {span.input_tokens != null || span.output_tokens != null ? (
+            <span className="flex items-center gap-1.5">
+              {span.input_tokens != null && <span title="Input tokens">↑{span.input_tokens.toLocaleString()}</span>}
+              {span.output_tokens != null && <span title="Output tokens">↓{span.output_tokens.toLocaleString()}</span>}
+            </span>
+          ) : "—"}
+        </td>
         <td className="py-2.5 pr-3 text-[11px] text-muted-foreground">
           {span.started_at ? <Timestamp iso={span.started_at} compact /> : "—"}
         </td>
@@ -640,7 +651,7 @@ function SpanRow({ span, depth = 0, onViewPayload }: { span: SpanNode; depth?: n
 
       {detailOpen && hasPayload && (
         <tr style={{ background: "hsl(var(--muted) / 0.4)" }}>
-          <td colSpan={6} className="px-4 pb-4 pt-2" style={{ paddingLeft: `${depth * 20 + 32}px` }}>
+          <td colSpan={7} className="px-4 pb-4 pt-2" style={{ paddingLeft: `${depth * 20 + 32}px` }}>
             {isLlmSpan ? (
               <>
                 <PayloadPanel label="Prompt" json={span.llm_input ?? null} onViewFull={span.llm_input ? () => onViewPayload?.(`Prompt — ${span.tool_name}`, [{ label: "JSON", json: span.llm_input ?? null }]) : undefined} />
@@ -1079,36 +1090,43 @@ export default function SessionDetailPage() {
           <div className="flex items-center gap-3 min-w-0">
             <GitBranch size={15} className="text-primary flex-shrink-0" />
             <div className="min-w-0">
-              <code
-                className="text-sm text-foreground block truncate"
-                style={{ fontFamily: "var(--font-geist-mono)" }}
-              >
-                {sessionId}
-              </code>
-              <div className="flex items-center gap-2 text-[12px] text-muted-foreground mt-0.5">
-                {session?.agent_name && (
-                  <span className="text-primary font-medium">{session.agent_name}</span>
-                )}
+              <div className="flex items-center gap-2">
+                <code
+                  className="text-[13px] text-foreground truncate"
+                  style={{ fontFamily: "var(--font-geist-mono)" }}
+                >
+                  {sessionId}
+                </code>
+                {trace && (() => {
+                  const agents = Array.from(new Set(trace.spans_flat.map((s: SpanNode) => s.agent_name).filter(Boolean)));
+                  return agents.length > 0 ? (
+                    <span className="text-[11px] text-primary font-medium flex-shrink-0">{agents.join(" → ")}</span>
+                  ) : session?.agent_name ? (
+                    <span className="text-[11px] text-primary font-medium flex-shrink-0">{session.agent_name}</span>
+                  ) : null;
+                })()}
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5" style={{ fontFamily: "var(--font-geist-mono)" }}>
                 {trace && (
                   <>
                     <span>{trace.total_spans} spans</span>
-                    <span>·</span>
-                    <span>{trace.tool_calls} tool calls</span>
+                    <span className="opacity-40">·</span>
+                    <span>{trace.tool_calls} {trace.tool_calls === 1 ? "call" : "calls"}</span>
                     {trace.failed_calls > 0 && (
-                      <><span>·</span>
+                      <><span className="opacity-40">·</span>
                       <span style={{ color: "hsl(var(--danger))" }} className="font-semibold">
                         {trace.failed_calls} failed
                       </span></>
                     )}
                     {trace.duration_ms && (
-                      <><span>·</span><span>{formatDuration(trace.duration_ms)}</span></>
+                      <><span className="opacity-40">·</span><span>{formatDuration(trace.duration_ms)}</span></>
                     )}
                   </>
                 )}
                 {session && (
                   <>
-                    <span>·</span>
-                    <span className="flex items-center gap-1"><Clock size={11} /><Timestamp iso={session.first_call_at} /></span>
+                    <span className="opacity-40">·</span>
+                    <span className="flex items-center gap-1"><Clock size={9} /><Timestamp iso={session.first_call_at} compact /></span>
                   </>
                 )}
               </div>
@@ -1171,7 +1189,7 @@ export default function SessionDetailPage() {
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              "px-4 py-2.5 text-[13px] font-medium border-b-2 -mb-px transition-colors",
+              "px-4 py-2.5 text-[12px] font-medium border-b-2 -mb-px transition-colors",
               activeTab === tab.key
                 ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -1190,7 +1208,7 @@ export default function SessionDetailPage() {
       {/* ── Details tab — session lineage graph ─────────────────── */}
       {activeTab === "details" && (
         <div className="flex-1 flex gap-0 rounded-xl border overflow-hidden min-h-0" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-          {/* Graph (70%) */}
+          {/* Graph (~70%) */}
           <div className="flex-[7] flex flex-col">
             {/* Timeline bar */}
             {trace && trace.duration_ms && (
@@ -1269,8 +1287,8 @@ export default function SessionDetailPage() {
               </div>
             )}
           </div>
-          {/* Right panel (~36%) */}
-          <div className="flex-[4] border-l overflow-y-auto" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--background))" }}>
+          {/* Right panel (~30%) */}
+          <div className="flex-[3] border-l overflow-y-auto" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--background))" }}>
             {selection?.type === "node" && trace ? (
               <SessionNodeDetail
                 nodeId={selection.id}
@@ -1287,28 +1305,69 @@ export default function SessionDetailPage() {
                 onViewPayload={(title, tabs) => setPayloadSlideout({ title, tabs })}
               />
             ) : (
-              <div className="flex flex-col items-center justify-center h-full px-6 py-10 gap-4">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "hsl(var(--muted))" }}>
-                  <GitBranch size={22} style={{ color: "hsl(var(--muted-foreground))" }} />
+              <div className="p-5 space-y-5">
+                {/* Session summary header */}
+                <div className="flex items-center justify-between">
+                  <p className="text-[12px] font-semibold text-foreground">Session Summary</p>
+                  {(session?.health_tag || (trace && trace.failed_calls === 0)) && (
+                    <HealthTagBadge tag={session?.health_tag ?? (trace && trace.failed_calls > 0 ? "tool_failure" : "success")} />
+                  )}
                 </div>
-                <div className="text-center space-y-1">
-                  <p className="text-[13px] font-semibold" style={{ color: "hsl(var(--foreground))" }}>Session flow</p>
-                  <p className="text-[12px]" style={{ color: "hsl(var(--muted-foreground))" }}>Click any agent, server, or edge to see its details for this session.</p>
-                </div>
-                <div className="w-full mt-2 space-y-2">
-                  <div className="rounded-lg p-3 flex items-center justify-between" style={{ background: "hsl(var(--muted))" }}>
-                    <span className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>Total spans</span>
-                    <span className="text-[12px] font-semibold" style={{ color: "hsl(var(--foreground))", fontFamily: "var(--font-geist-mono)" }}>{trace?.spans_flat?.length ?? "—"}</span>
+
+                {/* Stats — clean rows */}
+                {trace && (
+                  <div>
+                    <SectionLabel>Overview</SectionLabel>
+                    <div className="divide-y" style={{ borderColor: "hsl(var(--border) / 0.5)" }}>
+                      <MetricTile label="Duration" value={trace.duration_ms ? formatDuration(trace.duration_ms) : "—"} />
+                      <MetricTile label="Total Spans" value={String(trace.spans_flat.length)} />
+                      <MetricTile label="Tool Calls" value={String(trace.spans_flat.filter((s: SpanNode) => s.span_type === "tool_call").length)} />
+                      <MetricTile label="Errors" value={String(trace.spans_flat.filter((s: SpanNode) => s.status === "error").length)} danger={(trace.spans_flat.filter((s: SpanNode) => s.status === "error").length) > 0} />
+                    </div>
                   </div>
-                  <div className="rounded-lg p-3 flex items-center justify-between" style={{ background: "hsl(var(--muted))" }}>
-                    <span className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>Tool calls</span>
-                    <span className="text-[12px] font-semibold" style={{ color: "hsl(var(--foreground))", fontFamily: "var(--font-geist-mono)" }}>{trace?.spans_flat?.filter((s: SpanNode) => s.span_type === "tool_call").length ?? "—"}</span>
+                )}
+
+                {/* Agents & Servers */}
+                {trace && (
+                  <div className="space-y-3">
+                    <div>
+                      <SectionLabel>Agents</SectionLabel>
+                      <div className="flex flex-wrap gap-1">
+                        {Array.from(new Set(trace.spans_flat.map((s: SpanNode) => s.agent_name).filter(Boolean))).map((a) => (
+                          <span key={a as string} className="px-2 py-0.5 rounded text-[10px] font-medium" style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.15)" }}>{a as string}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <SectionLabel>Servers</SectionLabel>
+                      <div className="flex flex-wrap gap-1">
+                        {Array.from(new Set(trace.spans_flat.filter((s: SpanNode) => s.span_type === "tool_call").map((s: SpanNode) => s.server_name))).map((srv) => (
+                          <span key={srv as string} className="px-2 py-0.5 rounded text-[10px]" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", border: "1px solid hsl(var(--border))", fontFamily: "var(--font-geist-mono)" }}>{srv as string}</span>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <div className="rounded-lg p-3 flex items-center justify-between" style={{ background: "hsl(var(--muted))" }}>
-                    <span className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>Errors</span>
-                    <span className="text-[12px] font-semibold" style={{ color: trace?.spans_flat?.some((s: SpanNode) => s.status === "error") ? "hsl(var(--danger))" : "hsl(var(--foreground))", fontFamily: "var(--font-geist-mono)" }}>{trace?.spans_flat?.filter((s: SpanNode) => s.status === "error").length ?? "—"}</span>
+                )}
+
+                {/* Tokens & Cost */}
+                {session && (session.total_input_tokens || session.est_cost_usd) && (
+                  <div>
+                    <SectionLabel>Tokens & Cost</SectionLabel>
+                    <div className="divide-y" style={{ borderColor: "hsl(var(--border) / 0.5)" }}>
+                      <MetricTile label="Input Tokens" value={(session.total_input_tokens ?? 0).toLocaleString()} />
+                      <MetricTile label="Output Tokens" value={(session.total_output_tokens ?? 0).toLocaleString()} />
+                      {session.model_id && (
+                        <div className="flex items-center justify-between py-1.5">
+                          <span className="text-[11px] text-muted-foreground">Model</span>
+                          <code className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}>{session.model_id}</code>
+                        </div>
+                      )}
+                      {session.est_cost_usd != null && <MetricTile label="Cost" value={`$${session.est_cost_usd < 0.01 ? session.est_cost_usd.toFixed(4) : session.est_cost_usd.toFixed(2)}`} />}
+                    </div>
                   </div>
-                </div>
+                )}
+
+                <p className="text-[10px] text-muted-foreground text-center pt-2">Click any node or edge for details</p>
               </div>
             )}
           </div>
@@ -1318,6 +1377,44 @@ export default function SessionDetailPage() {
       {/* ── Trace tab — span tree ──────────────────────────────── */}
       {activeTab === "trace" && (
         <>
+          {/* Token + cost summary bar */}
+          {trace && (() => {
+            const allSpans = trace.spans_flat;
+            const totalIn = allSpans.reduce((s, sp) => s + (sp.input_tokens ?? 0), 0);
+            const totalOut = allSpans.reduce((s, sp) => s + (sp.output_tokens ?? 0), 0);
+            const models = [...new Set(allSpans.map((sp) => sp.model_id).filter(Boolean))];
+            const hasTokens = totalIn > 0 || totalOut > 0;
+            if (!hasTokens) return null;
+            return (
+              <div className="flex items-center gap-4 px-4 py-2 rounded-xl border mb-2" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+                <div className="flex items-center gap-1.5 text-[11px]" style={{ fontFamily: "var(--font-geist-mono)" }}>
+                  <span className="text-muted-foreground">Tokens:</span>
+                  <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>↑{totalIn.toLocaleString()}</span>
+                  <span className="text-muted-foreground">/</span>
+                  <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>↓{totalOut.toLocaleString()}</span>
+                </div>
+                <div className="w-px h-3" style={{ background: "hsl(var(--border))" }} />
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  <span className="text-muted-foreground">Total:</span>
+                  <span className="font-semibold" style={{ color: "hsl(var(--foreground))", fontFamily: "var(--font-geist-mono)" }}>{(totalIn + totalOut).toLocaleString()}</span>
+                </div>
+                {models.length > 0 && (
+                  <>
+                    <div className="w-px h-3" style={{ background: "hsl(var(--border))" }} />
+                    <div className="flex items-center gap-1.5 text-[11px]">
+                      <span className="text-muted-foreground">Model:</span>
+                      <span className="font-medium" style={{ color: "hsl(var(--foreground))" }}>{models.join(", ")}</span>
+                    </div>
+                  </>
+                )}
+                <div className="w-px h-3" style={{ background: "hsl(var(--border))" }} />
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  <span className="text-muted-foreground">LLM calls:</span>
+                  <span className="font-semibold" style={{ color: "hsl(var(--foreground))", fontFamily: "var(--font-geist-mono)" }}>{allSpans.filter((sp) => sp.input_tokens != null).length}</span>
+                </div>
+              </div>
+            );
+          })()}
           <div
             className="flex-1 rounded-xl border overflow-hidden flex flex-col min-h-0"
             style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
@@ -1341,7 +1438,7 @@ export default function SessionDetailPage() {
                       className="sticky top-0 z-10"
                       style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card-raised))" }}
                     >
-                      {["Span", "Agent", "Status", "Latency", "Time", "Error"].map((h) => (
+                      {["Span", "Agent", "Status", "Latency", "Tokens", "Time", "Error"].map((h) => (
                         <th
                           key={h}
                           className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide"

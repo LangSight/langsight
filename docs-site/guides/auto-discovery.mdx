@@ -1,0 +1,101 @@
+---
+title: "Auto-Discovery"
+description: "Zero-config agent and server registration from trace data"
+---
+
+LangSight auto-discovers agents and MCP servers from your trace data. No manual catalog registration needed — instrument your agent, send spans, and the catalog populates itself.
+
+## How it works
+
+When spans arrive at `POST /api/traces/spans`, LangSight inspects each span's `agent_name` and `server_name` fields. Any value not already in the catalog is automatically registered:
+
+```
+Agent sends span →  POST /api/traces/spans
+                         │
+                         ├── agent_name="analyst" not in catalog?
+                         │   └── auto-register with description "Auto-discovered from traces"
+                         │
+                         └── server_name="postgres-mcp" not in catalog?
+                             └── auto-register with description "Auto-discovered from traces"
+```
+
+This is best-effort and fail-open — if registration fails, the span is still stored. Your tracing is never blocked by catalog operations.
+
+## Zero-config setup
+
+There is nothing to configure. Auto-discovery is always on. As soon as you send your first span, the Agents page and Servers page in the dashboard populate automatically.
+
+```python
+from langsight.sdk import LangSightClient
+from langsight.integrations.langchain import LangSightLangChainCallback
+
+client = LangSightClient(url="http://localhost:8000", project_id="my-project")
+
+# Auto-detect mode — agent names discovered from graph names
+cb = LangSightLangChainCallback(client=client, session_id="sess-001", trace_id="trace-001")
+
+# First run populates the catalog
+await supervisor.ainvoke(input, config={"callbacks": [cb]})
+# "supervisor", "analyst", "postgres-mcp" etc. now appear in the dashboard
+```
+
+## Batch backfill
+
+Already have trace data in ClickHouse but the catalog is empty? Use the batch discover endpoints to scan all historical spans and register everything at once.
+
+### Discover agents
+
+```bash
+curl -X POST http://localhost:8000/api/agents/discover \
+  -H "X-API-Key: lsk_your_key"
+```
+
+Response:
+
+```json
+{
+  "discovered": 3,
+  "agents": ["supervisor", "analyst", "billing-agent"]
+}
+```
+
+### Discover servers
+
+```bash
+curl -X POST http://localhost:8000/api/servers/discover \
+  -H "X-API-Key: lsk_your_key"
+```
+
+Response:
+
+```json
+{
+  "discovered": 4,
+  "servers": ["postgres-mcp", "jira-mcp", "slack-mcp", "openai"]
+}
+```
+
+<Note>
+  Both `/discover` endpoints require **admin** role. They scan ClickHouse for all distinct `agent_name` and `server_name` values and register any that are missing from the catalog.
+</Note>
+
+## What gets registered
+
+| Catalog | Field scanned | Initial description | Status |
+|---------|--------------|--------------------|---------|
+| Agents | `span.agent_name` | "Auto-discovered from traces" | `active` |
+| Servers | `span.server_name` | "Auto-discovered from traces" | — |
+
+Auto-discovered entries have a generic description. Update them in the dashboard under **Agents** or **MCP Servers** to add meaningful descriptions, tags, and runbook URLs.
+
+## In-process deduplication
+
+The span ingestion endpoint maintains an in-memory set of already-seen agent and server names. A name is only registered once per API process lifetime, avoiding redundant database writes on every span.
+
+## When to use manual registration instead
+
+Auto-discovery is sufficient for most setups. Use manual registration (`PUT /api/agents/metadata/{name}`) when you need:
+
+- Custom descriptions or runbook URLs before the first span arrives
+- Tags for filtering (e.g., `["production", "critical"]`)
+- Pre-populating the catalog for a new project before agents are deployed

@@ -7,6 +7,40 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.4.0] - 2026-03-23 — Unified Callback, Direct LLM Tracing, Auto-Discovery
+
+### Added
+
+- **Unified LangChain callback with auto-detect mode** (`src/langsight/integrations/langchain.py`): `LangSightLangChainCallback` now supports two modes. Omit `server_name` to enable auto-detect — agent names are detected from LangGraph graph names via `on_chain_start`, parent-child trees are built via `parent_run_id` and a thread-local tool stack for cross-`ainvoke` linking, and the first human message is auto-captured as the session prompt. Pass `server_name` for backward-compatible fixed mode.
+- **`on_chain_start` / `on_chain_end` agent spans**: named agents in LangGraph workflows emit `span_type="agent"` spans with auto-computed latency, error propagation, and parent linking. Framework-internal names (`RunnableSequence`, `ChannelWrite`, `ChatOpenAI`, etc.) are filtered out.
+- **`on_chat_model_start` prompt capture**: the first human message in a conversation is auto-captured as the session input. Override with `cb.set_input(text)`.
+- **`set_input()` / `set_output()` explicit prompt/answer capture**: public API on the callback for frameworks where auto-capture is insufficient.
+- **`LangSightLangGraphCallback` is now an alias** (`src/langsight/integrations/langgraph.py`): points to `LangSightLangChainCallback`. Existing import paths still work.
+- **`wrap_llm()` for direct SDK tracing** (`src/langsight/sdk/llm_wrapper.py`, `src/langsight/sdk/client.py`): new `client.wrap_llm()` method wraps OpenAI, Anthropic, and Gemini SDK clients. Intercepts generation calls and auto-traces LLM generation spans (model, tokens, cost) and tool_use blocks from responses as `tool_call` spans with parent linking.
+- **Auto-discovery of agents and servers from traces** (`src/langsight/api/routers/traces.py`): `POST /api/traces/spans` now auto-registers unseen `agent_name` and `server_name` values in the catalog. Best-effort, fail-open, in-process deduplication.
+- **Batch discovery endpoints**: `POST /api/agents/discover` and `POST /api/servers/discover` scan ClickHouse for all distinct values and register any missing from the catalog (admin only).
+- **Silent MCP error detection** (`src/langsight/sdk/client.py`): `MCPClientProxy.call_tool()` now detects `result.isError` (MCP JSON-RPC error responses) and marks the span as `status=error` instead of `success`.
+- **Global payload redaction toggle** (`src/langsight/api/main.py`): `GET /api/settings` and `PUT /api/settings` endpoints for instance-level settings. When `redact_payloads` is enabled server-side, the server strips `input_args`, `output_result`, `llm_input`, and `llm_output` from all incoming spans before storage, overriding individual SDK settings.
+
+### Changed
+
+- **LangGraph callback merged into LangChain callback**: the separate `LangSightLangGraphCallback` class in `langgraph.py` is replaced by an alias to the unified `LangSightLangChainCallback`. All node-level and graph-level context tracking is handled by the unified callback.
+- **Cross-ainvoke parent linking is module-level**: the thread-local tool execution stack is shared across all callback instances in the same thread, enabling automatic parent linking when sub-agents are invoked from within tool execution contexts.
+
+### Docs
+
+- **LangChain integration page rewritten** (`docs-site/sdk/integrations/langchain.mdx`): documents auto-detect mode, fixed mode, prompt capture, cross-ainvoke linking, and the updated span field table.
+- **New Direct SDK page** (`docs-site/sdk/integrations/direct-sdk.mdx`): documents `wrap_llm()` for OpenAI, Anthropic, and Gemini with full code examples and span field tables.
+- **New Auto-Discovery guide** (`docs-site/guides/auto-discovery.mdx`): documents zero-config agent/server registration and batch backfill endpoints.
+- **LangGraph page updated** (`docs-site/sdk/integrations/langgraph.mdx`): reflects alias status, auto-detect mode, migration from v0.3.
+- **Python SDK page updated** (`docs-site/sdk/python.mdx`): added silent MCP error detection section, auto parent linking section, and `wrap_llm()` cross-reference.
+- **Configuration page updated** (`docs-site/self-hosting/configuration.mdx`): added global payload redaction section with API examples.
+- **API reference updated** (`docs-site/api-reference/overview.mdx`): added Auto-Discovery and Instance Settings endpoint tables.
+- **Introduction updated** (`docs-site/introduction.mdx`): added `wrap_llm()` to integrations table.
+- **Navigation updated** (`docs-site/mint.json`): added `sdk/integrations/direct-sdk` and `guides/auto-discovery` pages.
+
+---
+
 ## [0.3.7] - 2026-03-23 — Reliable Span Delivery on Flush Failure
 
 ### Fixed

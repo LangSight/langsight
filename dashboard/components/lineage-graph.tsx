@@ -32,6 +32,7 @@ export interface GraphNode {
   toolNames?: string[];
   repeatCallName?: string;
   repeatCallCount?: number;
+  spanId?: string;  // for linking tool call nodes to delegation edges
 }
 
 export interface GraphEdge {
@@ -316,7 +317,7 @@ export function LineageGraph({
                     onMouseEnter={(e) => setHoveredEdge({ edge, x: e.clientX, y: e.clientY })} onMouseLeave={() => setHoveredEdge(null)} />
                   <path d={d} fill="none" stroke={color} strokeWidth={w} strokeDasharray={ho ? "6,4" : isBack ? "4,3" : "none"} markerEnd={mk} className="pointer-events-none" style={{ transition: "stroke 0.2s" }} />
                   {!isBack && !self && <path d={d} fill="none" stroke={isSel ? "rgba(45,212,191,0.4)" : "rgba(148,163,184,0.12)"} strokeWidth={isSel ? 4 : 2} strokeDasharray="4,12" className="pointer-events-none edge-flow-anim" />}
-                  {edge.label && (() => {
+                  {(() => {
                     const canExpandEdge = edge.edgeId && onToggleEdge;
                     const isEdgeExp = edge.edgeId ? expandedEdges?.has(edge.edgeId) : false;
                     const tgtNode = nodes.find((n) => n.id === edge.target);
@@ -332,11 +333,15 @@ export function LineageGraph({
                     // Show either tool or group button (prioritize group)
                     const showBtn = showGroupBtn || showToolBtn;
                     const btnX = lx + 22;
+                    const showAny = edge.label || showBtn || (tgtNode?.splitLabel && tgtNode?.groupId);
+                    if (!showAny) return null;
                     return (
                       <g>
                         {/* Label pill */}
-                        <rect x={lx - 16} y={ly - 9} width={32} height={16} rx={5} fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth={0.5} opacity={0.9} className="pointer-events-none" />
-                        <text x={lx} y={ly + 2} textAnchor="middle" fill={isSel ? C_SELECTED : "hsl(var(--muted-foreground))"} fontSize={8} fontWeight={600} fontFamily="var(--font-geist-mono)" className="pointer-events-none">{edge.label}</text>
+                        {edge.label && <>
+                          <rect x={lx - 16} y={ly - 9} width={32} height={16} rx={5} fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth={0.5} opacity={0.9} className="pointer-events-none" />
+                          <text x={lx} y={ly + 2} textAnchor="middle" fill={isSel ? C_SELECTED : "hsl(var(--muted-foreground))"} fontSize={8} fontWeight={600} fontFamily="var(--font-geist-mono)" className="pointer-events-none">{edge.label}</text>
+                        </>}
                         {/* Circular expand/collapse button */}
                         {showBtn && (
                           <g className="cursor-pointer" onClick={(e) => {
@@ -463,7 +468,7 @@ export function LineageGraph({
                       {/* Row 2: metric pills */}
                       {hasMet && (
                         <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
-                          {node.callCount != null && node.callCount > 0 && <span className="text-[8px] px-1.5 py-[2px] rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)" }}>{node.callCount} calls</span>}
+                          {node.callCount != null && node.callCount > 0 && <span className="text-[8px] px-1.5 py-[2px] rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)" }}>{node.callCount} {node.callCount === 1 ? "call" : "calls"}</span>}
                           {node.errorCount != null && node.errorCount > 0 && <span className="text-[8px] px-1.5 py-[2px] rounded-full" style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{node.errorCount} err</span>}
                           {node.avgLatencyMs != null && <span className="text-[8px] px-1.5 py-[2px] rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)" }}>{Math.round(node.avgLatencyMs)}ms</span>}
                           {errRate > 0 && <div className="h-[3px] rounded-full overflow-hidden" style={{ background: "hsl(var(--muted))", width: 32 }}><div className="h-full rounded-full" style={{ width: `${Math.min(100, errRate * 100)}%`, background: errRate > 0.5 ? "#ef4444" : errRate > 0.1 ? "#f59e0b" : "#10b981" }} /></div>}
@@ -474,14 +479,14 @@ export function LineageGraph({
                         <button className="flex items-center gap-1 mt-1.5 w-full text-left hover:underline" style={{ fontSize: 9, color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}
                           onClick={(e) => { e.stopPropagation(); onToggleEdge?.(node.expandableEdgeId!); }}>
                           <span style={{ fontSize: 8 }}>{"\u25BE"}</span>
-                          <span>{node.expandItemCount} calls</span>
+                          <span>{node.expandItemCount} {node.expandItemCount === 1 ? "call" : "calls"}</span>
                           {expandPreview && <span className="text-muted-foreground truncate" style={{ fontSize: 8 }}>{expandPreview}</span>}
                         </button>
                       )}
                       {canExpandCalls && isCallsExpanded && (
                         <button className="flex items-center gap-1 mt-1.5 hover:underline" style={{ fontSize: 9, color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}
                           onClick={(e) => { e.stopPropagation(); onToggleEdge?.(node.expandableEdgeId!); }}>
-                          <span style={{ fontSize: 8 }}>{"\u25B4"}</span><span>collapse calls</span>
+                          <span style={{ fontSize: 8 }}>{"\u25B4"}</span><span>collapse</span>
                         </button>
                       )}
                     </div>

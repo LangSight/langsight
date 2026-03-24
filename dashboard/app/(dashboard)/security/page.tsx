@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Shield, Scan, AlertTriangle, CheckCircle } from "lucide-react";
 import { triggerSecurityScan } from "@/lib/api";
+import { useProject } from "@/lib/project-context";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { SecurityScanResult } from "@/lib/types";
@@ -58,9 +59,16 @@ function StatCard({
 
 /* ── Page ───────────────────────────────────────────────────── */
 export default function SecurityPage() {
+  const { activeProject } = useProject();
   const [results, setResults] = useState<SecurityScanResult[] | null>(null);
   const [scanning, setScanning] = useState(false);
   const didAutoScan = useRef(false);
+
+  // Re-scan when project changes
+  useEffect(() => {
+    didAutoScan.current = false;
+    setResults(null);
+  }, [activeProject?.id]);
 
   // Auto-trigger first scan on page load
   useEffect(() => {
@@ -73,7 +81,7 @@ export default function SecurityPage() {
   async function runScan() {
     setScanning(true);
     try {
-      const data = await triggerSecurityScan();
+      const data = await triggerSecurityScan(activeProject?.id);
       setResults(data);
       const total    = data.reduce((n, r) => n + r.findings_count, 0);
       const critical = data.reduce((n, r) => n + r.critical_count, 0);

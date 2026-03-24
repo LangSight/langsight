@@ -194,6 +194,7 @@ export default function OverviewPage() {
   const down     = servers?.filter((s) => s.status === "down").length ?? 0;
   const degraded = servers?.filter((s) => s.status === "degraded").length ?? 0;
   const sessTotal  = sessions?.length ?? 0;
+  const agentCount = sessions ? new Set(sessions.map((s) => s.agent_name).filter(Boolean)).size : 0;
   const sessFailed = sessions?.filter((s) => s.failed_calls > 0).length ?? 0;
 
   const spark = [3,5,4,6,5,8,7,9,8,10].map((v) => v);
@@ -276,8 +277,8 @@ export default function OverviewPage() {
             />
             <MetricCard
               label="Agents Running"
-              value={Math.max(sessTotal - sessFailed, 0)}
-              sub={sessFailed > 0 ? `${sessFailed} with errors` : "no issues detected"}
+              value={agentCount}
+              sub={sessFailed > 0 ? `${sessFailed} sessions with errors` : "no issues detected"}
               icon={Bot}
               color={sessFailed > 0 ? "#eab308" : "#22c55e"}
               href="/agents"

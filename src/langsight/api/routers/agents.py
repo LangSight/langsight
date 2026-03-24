@@ -62,6 +62,10 @@ class AgentSession(BaseModel):
     duration_ms: float
     servers_used: list[str]
     health_tag: str | None = None  # v0.3 — auto-classified session health tag
+    total_input_tokens: int | None = None
+    total_output_tokens: int | None = None
+    model_id: str | None = None
+    est_cost_usd: float | None = None
 
 
 class SpanNode(BaseModel):
@@ -162,6 +166,24 @@ async def list_sessions(
         project_id=project_id,
         health_tag=health_tag,
     )
+
+    # Build pricing lookup for cost estimation
+    pricing: dict[str, tuple[float, float]] = {}
+    if hasattr(storage, "list_model_pricing"):
+        for mp in await storage.list_model_pricing():
+            pricing[mp.model_id] = (mp.input_per_1m_usd, mp.output_per_1m_usd)
+
+    def _est_cost(r: dict[str, Any]) -> float | None:
+        in_tok = r.get("total_input_tokens") or 0
+        out_tok = r.get("total_output_tokens") or 0
+        mid = r.get("model_id") or ""
+        if not mid or (in_tok == 0 and out_tok == 0):
+            return None
+        prices = pricing.get(mid)
+        if not prices:
+            return None
+        return round(in_tok / 1_000_000 * prices[0] + out_tok / 1_000_000 * prices[1], 6)
+
     return [
         AgentSession(
             session_id=r["session_id"] or "unknown",
@@ -173,6 +195,10 @@ async def list_sessions(
             duration_ms=float(r.get("duration_ms") or 0),
             servers_used=list(r.get("servers_used") or []),
             health_tag=r.get("health_tag") or None,
+            total_input_tokens=int(r["total_input_tokens"]) if r.get("total_input_tokens") else None,
+            total_output_tokens=int(r["total_output_tokens"]) if r.get("total_output_tokens") else None,
+            model_id=r.get("model_id") or None,
+            est_cost_usd=_est_cost(r),
         )
         for r in rows
     ]
@@ -414,6 +440,47 @@ class AgentMetadataResponse(BaseModel):
     project_id: str | None
     created_at: str
     updated_at: str
+
+
+@router.post(
+    "/discover",
+    summary="Auto-register agents seen in traces",
+    response_model=dict[str, Any],
+)
+async def discover_agents_from_spans(
+    storage: StorageBackend = Depends(get_storage),
+    project_id: str | None = Depends(get_active_project_id),
+    _admin: None = Depends(require_admin),
+) -> dict[str, Any]:
+    """Scan recent spans for agent_name values and register any that are not
+    already in the agent catalog.
+
+    Mirrors POST /api/servers/discover. Useful after initial SDK instrumentation
+    to populate the Agents page from existing trace data.
+    """
+    if not hasattr(storage, "get_distinct_span_agent_names"):
+        return {"discovered": 0, "agents": []}
+
+    span_agents = await storage.get_distinct_span_agent_names(project_id=project_id)
+
+    existing = await storage.get_all_agent_metadata(project_id=project_id)
+    existing_names = {m["agent_name"] for m in existing}
+    new_agents = span_agents - existing_names
+
+    registered = []
+    for name in sorted(new_agents):
+        await storage.upsert_agent_metadata(
+            agent_name=name,
+            description="Auto-discovered from traces",
+            owner="",
+            tags=[],
+            status="active",
+            runbook_url="",
+            project_id=project_id,
+        )
+        registered.append(name)
+
+    return {"discovered": len(registered), "agents": registered}
 
 
 @router.get("/metadata", response_model=list[AgentMetadataResponse])

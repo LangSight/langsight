@@ -124,8 +124,8 @@ export const deactivateModelPricing = (id: string) =>
   del(`/costs/models/${encodeURIComponent(id)}`);
 
 // ─── Security ─────────────────────────────────────────────────────────────────
-export const triggerSecurityScan = () =>
-  post<SecurityScanResult[]>("/security/scan");
+export const triggerSecurityScan = (projectId?: string | null) =>
+  post<SecurityScanResult[]>(projectId ? `/security/scan?project_id=${encodeURIComponent(projectId)}` : "/security/scan");
 
 // ─── API Keys ─────────────────────────────────────────────────────────────────
 export const getApiKeys = () => get<ApiKeyResponse[]>("/auth/api-keys");

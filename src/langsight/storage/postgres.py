@@ -290,6 +290,13 @@ _DDL_STATEMENTS = [
     CREATE INDEX IF NOT EXISTS idx_prevention_config_project
         ON prevention_config (project_id, agent_name)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS instance_settings (
+        id              TEXT    PRIMARY KEY DEFAULT 'singleton',
+        redact_payloads BOOLEAN NOT NULL DEFAULT FALSE,
+        settings_json   JSONB   NOT NULL DEFAULT '{}'
+    )
+    """,
 ]
 
 
@@ -799,6 +806,36 @@ class PostgresBackend:
             """,
             slack_webhook,
             json.dumps(alert_types),
+        )
+
+    # ── Instance settings (global, singleton) ────────────────────────────────
+
+    async def get_instance_settings(self) -> dict[str, Any]:
+        """Return global instance settings, with defaults if never saved."""
+        row = await self._pool.fetchrow(
+            "SELECT redact_payloads, settings_json FROM instance_settings WHERE id = 'singleton'"
+        )
+        if row is None:
+            return {"redact_payloads": False}
+        extra = row["settings_json"] or {}
+        if isinstance(extra, str):
+            extra = json.loads(extra)
+        return {"redact_payloads": row["redact_payloads"], **extra}
+
+    async def save_instance_settings(self, settings: dict[str, Any]) -> None:
+        """Upsert the singleton instance settings row."""
+        redact = settings.get("redact_payloads", False)
+        extra = {k: v for k, v in settings.items() if k != "redact_payloads"}
+        await self._pool.execute(
+            """
+            INSERT INTO instance_settings (id, redact_payloads, settings_json)
+            VALUES ('singleton', $1, $2::jsonb)
+            ON CONFLICT (id) DO UPDATE SET
+                redact_payloads = EXCLUDED.redact_payloads,
+                settings_json   = EXCLUDED.settings_json
+            """,
+            redact,
+            json.dumps(extra),
         )
 
     # ── Audit logs ────────────────────────────────────────────────────────────

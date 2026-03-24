@@ -5,6 +5,13 @@ description: "Trace every tool call in LangChain agents, LangGraph workflows, an
 
 A single callback handler covers LangChain and every framework built on top of it — including **Langflow**, **LangGraph**, and **LangServe**.
 
+Since v0.4, the callback has **two modes**:
+
+| Mode | When to use | How it works |
+|------|-------------|-------------|
+| **Auto-detect** | Multi-agent LangGraph workflows | Omit `server_name` — agents, parent links, and prompts are detected automatically |
+| **Fixed** | Single-agent LangChain tools | Pass `server_name` and `agent_name` explicitly |
+
 ## Installation
 
 ```bash
@@ -19,18 +26,66 @@ pip install langsight langchain
   `langchain-core` is sufficient — it ships `BaseCallbackHandler` and is installed automatically with `langgraph`. The full `langchain` package is only needed if you use `langchain` directly.
 </Note>
 
-## Setup
+## Auto-detect mode (recommended for LangGraph)
+
+Omit `server_name` to enable auto-detection. The callback automatically:
+
+- Detects agent names from LangGraph graph names via `on_chain_start`
+- Builds the parent-child span tree across agent handoffs
+- Captures the first human message as the session prompt
+- Links sub-agent spans to their parent tool call via a thread-local stack
 
 ```python
+import uuid
 from langsight.sdk import LangSightClient
 from langsight.integrations.langchain import LangSightLangChainCallback
 
 client = LangSightClient(
     url="http://localhost:8000",
-    project_id="my-project",      # scope traces to a project
-    redact_payloads=True,          # redact tool args/outputs — recommended if tool args contain PII
+    project_id="my-project",
 )
 
+session_id = str(uuid.uuid4())
+trace_id = str(uuid.uuid4())
+
+# No server_name → auto-detect mode
+cb = LangSightLangChainCallback(
+    client=client,
+    session_id=session_id,
+    trace_id=trace_id,
+)
+
+# Pass to ANY agent — works across supervisor + sub-agents
+result = await supervisor.ainvoke(
+    {"input": "Analyze Q4 sales"},
+    config={"callbacks": [cb]},
+)
+```
+
+### What auto-detect captures
+
+For a multi-agent LangGraph workflow like `supervisor -> call_analyst -> analyst -> read_query`, auto-detect produces this span tree:
+
+```
+Session: sess-abc123
+├── supervisor (agent span)
+│   ├── call_analyst                      120ms  success
+│   │   └── analyst (agent span)
+│   │       └── read_query                 42ms  success
+│   └── summarize                          15ms  success
+```
+
+Each named graph in your LangGraph workflow becomes an **agent span** (`span_type="agent"`). Tool calls are nested under their enclosing agent. Cross-`ainvoke` calls are linked via a thread-local tool stack that works across separate callback instances.
+
+<Tip>
+  Auto-detect filters out framework-internal names like `RunnableSequence`, `ChannelWrite`, `ChatOpenAI`, etc. Only user-defined graph/agent names become agent spans.
+</Tip>
+
+## Fixed mode (backward-compatible)
+
+Pass `server_name` to use fixed mode — the v0.3 behavior where every tool span gets the same server and agent name.
+
+```python
 callback = LangSightLangChainCallback(
     client=client,
     server_name="my-tools",        # shown in langsight sessions
@@ -41,7 +96,7 @@ callback = LangSightLangChainCallback(
 
 ## Sending data to a project
 
-Every span must be tagged with a `project_id` so it appears in the right project dashboard. Get your project ID from **Settings → Projects** (click the ID pill to copy), then pass it to the client:
+Every span must be tagged with a `project_id` so it appears in the right project dashboard. Get your project ID from **Settings -> Projects** (click the ID pill to copy), then pass it to the client:
 
 ```python
 import os
@@ -50,7 +105,7 @@ from langsight.sdk import LangSightClient
 client = LangSightClient(
     url=os.getenv("LANGSIGHT_URL", "http://localhost:8000"),
     api_key=os.getenv("LANGSIGHT_API_KEY"),
-    project_id=os.getenv("LANGSIGHT_PROJECT_ID"),  # copy from Settings → Projects
+    project_id=os.getenv("LANGSIGHT_PROJECT_ID"),  # copy from Settings -> Projects
 )
 ```
 
@@ -73,6 +128,28 @@ LANGSIGHT_PROJECT_ID=abc123def456...
   The API key authenticates you globally. The `project_id` is what tags every span and routes it to the right project. Without it, spans are stored with no project and won't appear in any project dashboard.
 </Info>
 
+## Prompt capture
+
+The callback captures the user's prompt and the agent's final answer, shown in the session detail page.
+
+### Auto-capture (default in auto-detect mode)
+
+`on_chat_model_start` automatically captures the first human message in the conversation as the session prompt. No code changes needed.
+
+### Explicit capture
+
+Override auto-capture or use in fixed mode:
+
+```python
+cb.set_input("What were Q4 sales for EMEA?")
+
+result = await agent.ainvoke(input, config={"callbacks": [cb]})
+
+cb.set_output(result["output"])
+```
+
+`set_input()` overrides any auto-captured prompt. `set_output()` stores the agent's final answer. Both are displayed in the session detail view in the dashboard.
+
 ## LangChain agents
 
 ```python
@@ -82,7 +159,7 @@ agent = initialize_agent(
     tools=tools,
     llm=llm,
     agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-    callbacks=[callback],          # ← one line
+    callbacks=[callback],          # one line
 )
 
 agent.run("What is the weather in Berlin?")
@@ -99,7 +176,7 @@ graph = StateGraph(...)
 # Pass callback in config
 graph.invoke(
     {"input": "your task"},
-    config={"callbacks": [callback]},   # ← one line
+    config={"callbacks": [callback]},   # one line
 )
 ```
 
@@ -125,15 +202,59 @@ callback = LangSightLangChainCallback(
 )
 ```
 
+## Cross-ainvoke parent linking
+
+When a supervisor agent calls a tool (e.g., `call_analyst`) that internally invokes a sub-agent via `ainvoke()`, the callback automatically links the sub-agent's spans to the parent tool call. This works via a module-level thread-local stack shared across all callback instances.
+
+```python
+# In supervisor graph — "call_analyst" tool defined as:
+async def call_analyst(query: str) -> str:
+    return await analyst_graph.ainvoke(
+        {"input": query},
+        config={"callbacks": [cb]},  # same callback instance
+    )
+```
+
+Result in the dashboard:
+
+```
+supervisor
+  └── call_analyst          120ms
+        └── analyst (agent)
+              └── read_query  42ms
+```
+
+No manual `parent_span_id` wiring needed. The thread-local stack handles it.
+
+## LangSightLangGraphCallback alias
+
+`LangSightLangGraphCallback` is now an alias for `LangSightLangChainCallback`. Both imports work:
+
+```python
+# Canonical import (recommended)
+from langsight.integrations.langchain import LangSightLangChainCallback
+
+# Backward-compatible import (still works)
+from langsight.integrations.langgraph import LangSightLangGraphCallback
+```
+
+Both point to the same unified callback class. The separate LangGraph callback from v0.3 has been merged.
+
 ## What gets traced
 
-Every time a LangChain `Tool` is called — whether it's a database lookup, web search, API call, or MCP server tool — LangSight records:
-
-- Tool name
-- Start time + latency
-- Success / error / timeout status
-- Error message (if failed)
-- Agent name + session ID
+| Field | Auto-detect mode | Fixed mode |
+|-------|-----------------|------------|
+| `tool_name` | Tool function name | Tool function name |
+| `server_name` | Agent name (auto-detected) | Value from constructor |
+| `agent_name` | Auto-detected from graph names | Value from constructor |
+| `span_type` | `"agent"` for agents, `"tool_call"` for tools | `"tool_call"` |
+| `parent_span_id` | Auto-linked via chain hierarchy + tool stack | Manual or `None` |
+| `input_str` | Tool input arguments | Tool input arguments |
+| `output` | Tool result | Tool result |
+| `session_input` | First human message (auto) or `set_input()` | `set_input()` only |
+| `session_output` | `set_output()` | `set_output()` |
+| `latency_ms` | Auto-computed | Auto-computed |
+| `status` | `success`, `error`, or `timeout` | `success`, `error`, or `timeout` |
 
 ## View traces
 
@@ -143,40 +264,18 @@ langsight sessions
 Agent Sessions  (last 24h)
 ────────────────────────────────────────────────────────────
 Session          Agent           Calls   Failed   Duration
-sess-abc123      langflow-agent  8       1        3.4s
+sess-abc123      supervisor      8       1        3.4s
 ```
 
 ```bash
 langsight sessions --id sess-abc123
 
-Trace: sess-abc123  (langflow-agent)
-├── 🔧 search-tool/search           340ms  ✓
-├── 🔧 postgres-mcp/query            42ms  ✓
-├── 🔧 calculator/evaluate            1ms  ✓
-└── 🔧 slack-mcp/post_message          —   ✗  timeout
-```
-
-## Multi-agent (LangGraph)
-
-For LangGraph workflows with multiple agents, pass `trace_id` to group all agents under one task:
-
-```python
-import uuid
-trace_id = str(uuid.uuid4())
-
-orchestrator_callback = LangSightLangChainCallback(
-    client=client,
-    agent_name="orchestrator",
-    trace_id=trace_id,
-    session_id=session_id,
-)
-
-researcher_callback = LangSightLangChainCallback(
-    client=client,
-    agent_name="researcher",
-    trace_id=trace_id,       # same trace_id — links all agents
-    session_id=session_id,
-)
+Trace: sess-abc123  (supervisor)
+├── supervisor (agent)
+│   ├── call_analyst                      120ms  success
+│   │   └── analyst (agent)
+│   │       └── read_query                 42ms  success
+│   └── summarize                          15ms  success
 ```
 
 ## MCP servers in LangChain

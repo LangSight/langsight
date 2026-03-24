@@ -190,6 +190,26 @@ Use `agent_name: "*"` for the project-level default that applies to all agents w
 | `PUT` | `/api/agents/metadata/{agent_name}` | Create or update metadata for one agent |
 | `DELETE` | `/api/agents/metadata/{agent_name}` | Delete metadata for one agent |
 
+### Auto-Discovery
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/agents/discover` | Scan ClickHouse for distinct `agent_name` values and auto-register any missing from the catalog (admin only) |
+| `POST` | `/api/servers/discover` | Scan ClickHouse for distinct `server_name` values and auto-register any missing from the catalog (admin only) |
+
+**Discovery response**:
+
+```json
+{
+  "discovered": 3,
+  "agents": ["supervisor", "analyst", "billing-agent"]
+}
+```
+
+<Note>
+  Auto-discovery also happens on every `POST /api/traces/spans` call — unseen `agent_name` and `server_name` values are registered automatically. The `/discover` endpoints are for batch backfill of existing trace data. See [Auto-Discovery](/guides/auto-discovery) for details.
+</Note>
+
 ### Projects
 
 | Method | Path | Description |
@@ -280,6 +300,23 @@ Query params for `/api/costs/breakdown`: `project_id`, `window` (24h, 7d, 30d).
 ```
 
 `POST /api/alerts/test` returns `{"ok": true}` on success or `{"ok": false, "error": "<message>"}` if the webhook call fails.
+
+### Instance Settings
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/settings` | Read global instance settings (e.g., `redact_payloads`) |
+| `PUT` | `/api/settings` | Update global instance settings (admin only) |
+
+**Settings object**:
+
+```json
+{
+  "redact_payloads": false
+}
+```
+
+When `redact_payloads` is `true`, the server strips `input_args`, `output_result`, `llm_input`, and `llm_output` from all incoming spans before storage — overriding individual SDK settings. See [Configuration](/self-hosting/configuration) for details.
 
 ### Audit
 

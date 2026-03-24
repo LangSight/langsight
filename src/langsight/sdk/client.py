@@ -262,6 +262,56 @@ class LangSightClient:
                 pass  # no event loop (e.g. sync context) — constructor defaults apply
         return proxy
 
+    def wrap_llm(
+        self,
+        llm_client: object,
+        agent_name: str | None = None,
+        session_id: str | None = None,
+        trace_id: str | None = None,
+    ) -> object:
+        """Wrap an LLM SDK client to auto-trace tool calls from responses.
+
+        Auto-detects the SDK (OpenAI, Anthropic, Gemini) and returns a
+        transparent proxy that intercepts generation calls. Every tool_use
+        block in the LLM response becomes a ToolCallSpan automatically.
+
+        Args:
+            llm_client: An OpenAI, Anthropic, or Gemini client/model object.
+            agent_name: Name of the agent using this LLM.
+            session_id: Groups all calls in one agent run/conversation.
+            trace_id: Groups all spans across a multi-agent task.
+
+        Returns:
+            A wrapped client that auto-traces. If the SDK is not recognized,
+            returns the original client unchanged (fail-open).
+
+        Usage::
+
+            # OpenAI
+            from openai import OpenAI
+            client = ls.wrap_llm(OpenAI(), agent_name="my-agent")
+            response = client.chat.completions.create(model="gpt-4o", tools=[...], ...)
+
+            # Anthropic
+            from anthropic import Anthropic
+            client = ls.wrap_llm(Anthropic(), agent_name="my-agent")
+            response = client.messages.create(model="claude-sonnet-4-6", tools=[...], ...)
+
+            # Gemini
+            import google.generativeai as genai
+            model = ls.wrap_llm(genai.GenerativeModel("gemini-2.5-flash"), agent_name="analyst")
+            response = model.generate_content(prompt, tools=[...])
+        """
+        from langsight.sdk.llm_wrapper import wrap_llm
+
+        return wrap_llm(
+            client=llm_client,
+            langsight=self,
+            agent_name=agent_name,
+            session_id=session_id,
+            trace_id=trace_id,
+        )
+
     async def send_span(self, span: ToolCallSpan) -> None:
         """Buffer a span for batched delivery. Never blocks, never raises.
 
@@ -614,7 +664,18 @@ class MCPClientProxy:
 
         try:
             result = await client.call_tool(name, arguments)
-            if not redact:
+            # Detect silent MCP errors — MCP SDK returns errors as JSON-RPC
+            # responses (isError=True) instead of raising exceptions.
+            if getattr(result, "isError", False):
+                status = ToolCallStatus.ERROR
+                error = str(getattr(result, "content", "MCP error response"))
+                logger.warning(
+                    "sdk.mcp_silent_error",
+                    server=server_name,
+                    tool=name,
+                    error=error,
+                )
+            elif not redact:
                 try:
                     output_result = json.dumps(result, default=str)
                 except Exception:  # noqa: BLE001

@@ -2,12 +2,13 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import {
   ChevronRight, GitBranch, Clock, Zap, AlertCircle,
   Search, Filter, ChevronLeft, ChevronsLeft, ChevronsRight,
+  ArrowUp, ArrowDown, ArrowUpDown,
 } from "lucide-react";
 import { fetcher } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
@@ -19,9 +20,80 @@ import { HealthTagBadge } from "@/components/health-tag-badge";
 
 const PAGE_SIZE = 20;
 
+/* ── Sortable column header ───────────────────────────────── */
+type SortDir = "asc" | "desc" | null;
+type SortKey =
+  | "session_id"
+  | "agent_name"
+  | "health_tag"
+  | "tool_calls"
+  | "failed_calls"
+  | "duration_ms"
+  | "tokens"
+  | "est_cost_usd"
+  | "servers_used"
+  | "first_call_at"
+  | "timestamp";
+
+function SortHeader({
+  label,
+  sortKey,
+  currentKey,
+  currentDir,
+  align,
+  onSort,
+}: {
+  label: string;
+  sortKey: SortKey;
+  currentKey: SortKey | null;
+  currentDir: SortDir;
+  align: string;
+  onSort: (key: SortKey) => void;
+}) {
+  const isActive = currentKey === sortKey;
+  return (
+    <th
+      className={cn(
+        "px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-foreground transition-colors",
+        align
+      )}
+      onClick={() => onSort(sortKey)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {isActive && currentDir === "asc" ? (
+          <ArrowUp size={10} className="text-primary" />
+        ) : isActive && currentDir === "desc" ? (
+          <ArrowDown size={10} className="text-primary" />
+        ) : (
+          <ArrowUpDown size={10} className="opacity-30" />
+        )}
+      </span>
+    </th>
+  );
+}
+
+/* ── Compute fallback health tag ─────────────────────────── */
+function effectiveHealthTag(s: AgentSession): HealthTag | null {
+  if (s.health_tag) return s.health_tag;
+  if (s.failed_calls > 0) return "tool_failure";
+  if (s.tool_calls > 0) return "success";
+  return null;
+}
+
 /* ── Page ───────────────────────────────────────────────────── */
 export default function SessionsPage() {
   const router = useRouter();
+  // Prevent parent <main> from scrolling — this page manages its own scroll
+  const pageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const main = pageRef.current?.closest("main");
+    if (main) {
+      main.style.overflow = "hidden";
+      return () => { main.style.overflow = ""; };
+    }
+  }, []);
+
   const [hours, setHours] = useState(24);
   const [customFrom, setCustomFrom] = useState<string | null>(null);
   const [customTo, setCustomTo] = useState<string | null>(null);
@@ -30,6 +102,8 @@ export default function SessionsPage() {
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [healthTagFilter, setHealthTagFilter] = useState<string>("all");
   const [page, setPage] = useState(0);
+  const [sortKey, setSortKey] = useState<SortKey | null>("first_call_at");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const { activeProject } = useProject();
   const p = activeProject ? `&project_id=${activeProject.id}` : "";
@@ -47,13 +121,24 @@ export default function SessionsPage() {
     return Array.from(new Set(sessions.map((s) => s.agent_name ?? "unknown"))).sort();
   }, [sessions]);
 
+  const handleSort = useCallback((key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : d === "desc" ? null : "asc"));
+      if (sortDir === null) setSortKey(null);
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+    setPage(0);
+  }, [sortKey, sortDir]);
+
   const filtered = useMemo(() => {
     if (!sessions) return [];
-    return sessions.filter((s) => {
+    let list = sessions.filter((s) => {
       if (statusFilter === "clean" && s.failed_calls > 0) return false;
       if (statusFilter === "failed" && s.failed_calls === 0) return false;
       if (agentFilter !== "all" && (s.agent_name ?? "unknown") !== agentFilter) return false;
-      if (healthTagFilter !== "all" && (s.health_tag ?? "") !== healthTagFilter) return false;
+      if (healthTagFilter !== "all" && (effectiveHealthTag(s) ?? "") !== healthTagFilter) return false;
       if (search) {
         const q = search.toLowerCase();
         if (
@@ -64,7 +149,33 @@ export default function SessionsPage() {
       }
       return true;
     });
-  }, [sessions, statusFilter, agentFilter, healthTagFilter, search]);
+
+    // Sort
+    if (sortKey && sortDir) {
+      list = [...list].sort((a, b) => {
+        let va: number | string = 0;
+        let vb: number | string = 0;
+        switch (sortKey) {
+          case "session_id":    va = a.session_id; vb = b.session_id; break;
+          case "agent_name":    va = a.agent_name ?? ""; vb = b.agent_name ?? ""; break;
+          case "health_tag":    va = effectiveHealthTag(a) ?? ""; vb = effectiveHealthTag(b) ?? ""; break;
+          case "tool_calls":    va = a.tool_calls; vb = b.tool_calls; break;
+          case "failed_calls":  va = a.failed_calls; vb = b.failed_calls; break;
+          case "duration_ms":   va = a.duration_ms; vb = b.duration_ms; break;
+          case "tokens":        va = (a.total_input_tokens ?? 0) + (a.total_output_tokens ?? 0); vb = (b.total_input_tokens ?? 0) + (b.total_output_tokens ?? 0); break;
+          case "est_cost_usd":  va = a.est_cost_usd ?? 0; vb = b.est_cost_usd ?? 0; break;
+          case "servers_used":  va = (a.servers_used || []).length; vb = (b.servers_used || []).length; break;
+          case "first_call_at": va = a.first_call_at; vb = b.first_call_at; break;
+          case "timestamp":     va = a.first_call_at; vb = b.first_call_at; break;
+        }
+        if (typeof va === "string" && typeof vb === "string") {
+          return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
+        }
+        return sortDir === "asc" ? (va as number) - (vb as number) : (vb as number) - (va as number);
+      });
+    }
+    return list;
+  }, [sessions, statusFilter, agentFilter, healthTagFilter, search, sortKey, sortDir]);
 
   const countAll    = sessions?.length ?? 0;
   const countClean  = sessions?.filter((s) => s.failed_calls === 0).length ?? 0;
@@ -74,8 +185,22 @@ export default function SessionsPage() {
   const totalCalls  = filtered.reduce((n, s) => n + s.tool_calls, 0);
   const totalFailed = filtered.reduce((n, s) => n + s.failed_calls, 0);
 
+  const columns: { label: string; key: SortKey; align: string }[] = [
+    { label: "Session ID", key: "session_id", align: "text-left" },
+    { label: "Agent", key: "agent_name", align: "text-left" },
+    { label: "Health", key: "health_tag", align: "text-left" },
+    { label: "Calls", key: "tool_calls", align: "text-right" },
+    { label: "Failed", key: "failed_calls", align: "text-right" },
+    { label: "Duration", key: "duration_ms", align: "text-right" },
+    { label: "Tokens", key: "tokens", align: "text-right" },
+    { label: "Cost", key: "est_cost_usd", align: "text-right" },
+    { label: "Servers", key: "servers_used", align: "text-left" },
+    { label: "Started", key: "first_call_at", align: "text-left" },
+    { label: "Timestamp", key: "timestamp", align: "text-left" },
+  ];
+
   return (
-    <div className="page-in flex flex-col" style={{ height: "calc(100vh - 4rem)" }}>
+    <div ref={pageRef} className="page-in flex flex-col" style={{ maxHeight: "calc(100dvh - 92px)" }}>
       {/* ── Header ────────────────────────────────────────────── */}
       <div className="flex-shrink-0 px-0 pb-3">
         <div className="flex items-center justify-between gap-4">
@@ -176,12 +301,12 @@ export default function SessionsPage() {
         </div>
       </div>
 
-      {/* ── Session list (full width) ────────────────────────── */}
+      {/* ── Session list (full width, horizontally scrollable) ── */}
       <div
-        className="flex-1 rounded-xl border overflow-hidden flex flex-col min-h-0"
-        style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
+        className="rounded-xl border overflow-auto min-h-0"
+        style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))", flex: "0 1 auto" }}
       >
-        <div className="flex-1 overflow-y-auto">
+        <div>
           {isLoading ? (
             <div className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
               {Array.from({ length: 8 }).map((_, i) => (
@@ -221,7 +346,7 @@ export default function SessionsPage() {
             </div>
           ) : (
             <>
-              <table className="w-full">
+              <table className="w-full" style={{ minWidth: 1200 }}>
                 <thead>
                   <tr
                     className="sticky top-0 z-10"
@@ -230,60 +355,50 @@ export default function SessionsPage() {
                       background: "hsl(var(--card-raised))",
                     }}
                   >
-                    {[
-                      ["Session ID", "text-left"],
-                      ["Agent", "text-left"],
-                      ["Health", "text-left"],
-                      ["Calls", "text-right"],
-                      ["Failed", "text-right"],
-                      ["Duration", "text-right"],
-                      ["Servers", "text-left"],
-                      ["Started", "text-left"],
-                      ["Timestamp", "text-left"],
-                    ].map(([h, align]) => (
-                      <th
-                        key={h}
-                        className={cn(
-                          "px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide",
-                          align
-                        )}
-                      >
-                        {h}
-                      </th>
+                    {columns.map((col) => (
+                      <SortHeader
+                        key={col.key}
+                        label={col.label}
+                        sortKey={col.key}
+                        currentKey={sortKey}
+                        currentDir={sortDir}
+                        align={col.align}
+                        onSort={handleSort}
+                      />
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
                   {paginated.map((s) => (
                     <tr
-                      key={s.session_id}
+                      key={`${s.session_id}-${s.agent_name}`}
                       onClick={() => router.push(`/sessions/${s.session_id}`)}
                       className="cursor-pointer transition-colors text-sm group hover:bg-accent/40 border-l-[3px] border-l-transparent"
                     >
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          <ChevronRight size={12} className="text-muted-foreground group-hover:text-primary transition-colors w-4" />
+                          <ChevronRight size={12} className="text-muted-foreground group-hover:text-primary transition-colors w-4 flex-shrink-0" />
                           <span
                             className="text-[12px] font-mono text-foreground"
                             style={{ fontFamily: "var(--font-geist-mono)" }}
                           >
-                            {s.session_id.slice(0, 16)}...
+                            {s.session_id}
                           </span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-[12px] text-muted-foreground">
+                      <td className="px-4 py-3 text-[12px] text-muted-foreground whitespace-nowrap">
                         {s.agent_name || "—"}
                       </td>
-                      <td className="px-4 py-3">
-                        <HealthTagBadge tag={s.health_tag} />
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <HealthTagBadge tag={effectiveHealthTag(s)} />
                       </td>
-                      <td className="px-4 py-3 text-[12px] text-right">
+                      <td className="px-4 py-3 text-[12px] text-right whitespace-nowrap">
                         <span className="flex items-center justify-end gap-1 text-muted-foreground">
                           <Zap size={10} />
                           {s.tool_calls}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-[12px] text-right">
+                      <td className="px-4 py-3 text-[12px] text-right whitespace-nowrap">
                         {s.failed_calls > 0 ? (
                           <span className="font-semibold" style={{ color: "hsl(var(--danger))" }}>
                             {s.failed_calls}
@@ -293,13 +408,29 @@ export default function SessionsPage() {
                         )}
                       </td>
                       <td
-                        className="px-4 py-3 text-[12px] text-right text-muted-foreground"
+                        className="px-4 py-3 text-[12px] text-right text-muted-foreground whitespace-nowrap"
                         style={{ fontFamily: "var(--font-geist-mono)" }}
                       >
                         {formatDuration(s.duration_ms)}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1">
+                      <td className="px-4 py-3 text-[11px] text-right text-muted-foreground whitespace-nowrap" style={{ fontFamily: "var(--font-geist-mono)" }}>
+                        {(s.total_input_tokens || s.total_output_tokens) ? (
+                          <span>
+                            ↑{(s.total_input_tokens ?? 0).toLocaleString()} ↓{(s.total_output_tokens ?? 0).toLocaleString()}
+                          </span>
+                        ) : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-[11px] text-right whitespace-nowrap" style={{ fontFamily: "var(--font-geist-mono)" }}>
+                        {s.est_cost_usd != null ? (
+                          <span style={{ color: "hsl(var(--foreground))" }}>
+                            ${s.est_cost_usd < 0.01 ? s.est_cost_usd.toFixed(4) : s.est_cost_usd.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex flex-nowrap gap-1">
                           {(s.servers_used || []).slice(0, 2).map((srv) => (
                             <span
                               key={srv}
@@ -321,13 +452,13 @@ export default function SessionsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-[12px] text-muted-foreground">
+                      <td className="px-4 py-3 text-[12px] text-muted-foreground whitespace-nowrap">
                         <div className="flex items-center gap-1">
                           <Clock size={11} />
                           <Timestamp iso={s.first_call_at} compact />
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-[11px] text-muted-foreground tabular-nums" style={{ fontFamily: "var(--font-geist-mono)", opacity: 0.7 }}>
+                      <td className="px-4 py-3 text-[11px] text-muted-foreground tabular-nums whitespace-nowrap" style={{ fontFamily: "var(--font-geist-mono)", opacity: 0.7 }}>
                         {formatExact(s.first_call_at)}
                       </td>
                     </tr>
@@ -335,52 +466,82 @@ export default function SessionsPage() {
                 </tbody>
               </table>
 
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div
-                  className="sticky bottom-0 flex items-center justify-between px-4 py-3 border-t text-xs text-muted-foreground"
-                  style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card-raised))" }}
-                >
-                  <span>
-                    {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}
-                  </span>
-                  <div className="flex items-center gap-0.5">
-                    <button
-                      onClick={() => setPage(0)}
-                      disabled={page === 0}
-                      className="p-1.5 rounded hover:bg-accent disabled:opacity-30 transition-colors"
-                    >
-                      <ChevronsLeft size={13} />
-                    </button>
-                    <button
-                      onClick={() => setPage((p) => Math.max(0, p - 1))}
-                      disabled={page === 0}
-                      className="p-1.5 rounded hover:bg-accent disabled:opacity-30 transition-colors"
-                    >
-                      <ChevronLeft size={13} />
-                    </button>
-                    <span className="px-2 tabular-nums">{page + 1} / {totalPages}</span>
-                    <button
-                      onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                      disabled={page >= totalPages - 1}
-                      className="p-1.5 rounded hover:bg-accent disabled:opacity-30 transition-colors"
-                    >
-                      <ChevronRight size={13} />
-                    </button>
-                    <button
-                      onClick={() => setPage(totalPages - 1)}
-                      disabled={page >= totalPages - 1}
-                      className="p-1.5 rounded hover:bg-accent disabled:opacity-30 transition-colors"
-                    >
-                      <ChevronsRight size={13} />
-                    </button>
-                  </div>
-                </div>
-              )}
             </>
           )}
         </div>
       </div>
+
+      {/* Pagination — below the table, right-aligned */}
+      {filtered.length > 0 && (
+        <div className="flex-shrink-0 flex items-center justify-between pt-3 text-xs text-muted-foreground">
+          <span>
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}
+          </span>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => setPage(0)}
+              disabled={page === 0}
+              className="p-1.5 rounded hover:bg-accent disabled:opacity-30 transition-colors"
+            >
+              <ChevronsLeft size={13} />
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+              className="p-1.5 rounded hover:bg-accent disabled:opacity-30 transition-colors"
+            >
+              <ChevronLeft size={13} />
+            </button>
+
+            {/* Numbered page buttons */}
+            {(() => {
+              const pages: (number | "...")[] = [];
+              if (totalPages <= 7) {
+                for (let i = 0; i < totalPages; i++) pages.push(i);
+              } else {
+                pages.push(0);
+                if (page > 2) pages.push("...");
+                for (let i = Math.max(1, page - 1); i <= Math.min(totalPages - 2, page + 1); i++) pages.push(i);
+                if (page < totalPages - 3) pages.push("...");
+                pages.push(totalPages - 1);
+              }
+              return pages.map((p, idx) =>
+                p === "..." ? (
+                  <span key={`ellipsis-${idx}`} className="px-1 text-muted-foreground">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={cn(
+                      "min-w-[28px] h-[28px] rounded text-[11px] font-medium tabular-nums transition-colors",
+                      page === p
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-accent text-muted-foreground"
+                    )}
+                  >
+                    {p + 1}
+                  </button>
+                )
+              );
+            })()}
+
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1}
+              className="p-1.5 rounded hover:bg-accent disabled:opacity-30 transition-colors"
+            >
+              <ChevronRight size={13} />
+            </button>
+            <button
+              onClick={() => setPage(totalPages - 1)}
+              disabled={page >= totalPages - 1}
+              className="p-1.5 rounded hover:bg-accent disabled:opacity-30 transition-colors"
+            >
+              <ChevronsRight size={13} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

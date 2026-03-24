@@ -105,30 +105,11 @@ async def discover_servers_from_spans(
     Useful after initial SDK instrumentation — run once to populate the
     MCP Servers page from existing trace data without manual registration.
     """
-    if not hasattr(storage, "query"):
+    if not hasattr(storage, "get_distinct_span_server_names"):
         # ClickHouse not available — nothing to discover
         return {"discovered": 0, "servers": []}
 
-    # Query distinct server names from ClickHouse spans for this project
-    project_filter = ""
-    params: dict[str, Any] = {}
-    if project_id:
-        project_filter = "AND project_id = {project_id:String}"
-        params["project_id"] = project_id
-
-    result = await storage.query(  # type: ignore[attr-defined]
-        f"""
-        SELECT DISTINCT server_name
-        FROM mcp_tool_calls
-        WHERE server_name != ''
-          AND span_type = 'tool_call'
-          {project_filter}
-        ORDER BY server_name
-        LIMIT 100
-        """,
-        parameters=params,
-    )
-    span_servers = {row[0] for row in result.result_rows}
+    span_servers = await storage.get_distinct_span_server_names(project_id=project_id)
 
     # Find which ones are not yet in the catalog
     existing = await storage.get_all_server_metadata(project_id=project_id)
@@ -140,7 +121,7 @@ async def discover_servers_from_spans(
     for name in sorted(new_servers):
         await storage.upsert_server_metadata(
             server_name=name,
-            description=f"Auto-discovered from traces",
+            description="Auto-discovered from traces",
             project_id=project_id,
         )
         registered.append(name)

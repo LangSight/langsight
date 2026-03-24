@@ -82,8 +82,10 @@ export function buildSessionGraph(
   const pathData = new Map<string, { agentName: string; serverName: string; spans: SpanNode[] }>();
   const agents = new Set<string>();
   const servers = new Set<string>();
-  const handoffs: { source: string; target: string; count: number }[] = [];
+  const handoffs: { source: string; target: string; count: number; parentToolSpanId?: string }[] = [];
   const handoffMap = new Map<string, number>();
+  // Track which tool span triggered each delegation (for tool→agent edges)
+  const delegationToolSpan = new Map<string, string>(); // "fromAgent→toAgent" → parent span_id
   const agentErrors = new Set<string>();
 
   for (const span of trace.spans_flat) {
@@ -109,9 +111,28 @@ export function buildSessionGraph(
     }
   }
 
+  // Infer delegation from parent_span_id: when a child span has a different
+  // agent_name than its parent span, the parent agent delegated to the child.
+  const spanById = new Map(trace.spans_flat.map((s) => [s.span_id, s]));
+  for (const span of trace.spans_flat) {
+    if (span.parent_span_id && span.agent_name) {
+      const parent = spanById.get(span.parent_span_id);
+      if (parent?.agent_name && parent.agent_name !== span.agent_name) {
+        agents.add(parent.agent_name);
+        agents.add(span.agent_name);
+        const hKey = `${parent.agent_name}→${span.agent_name}`;
+        handoffMap.set(hKey, (handoffMap.get(hKey) ?? 0) + 1);
+        // Remember the parent tool span so we can draw tool→agent edge
+        if (parent.span_type === "tool_call" && !delegationToolSpan.has(hKey)) {
+          delegationToolSpan.set(hKey, parent.span_id);
+        }
+      }
+    }
+  }
+
   for (const [key, count] of handoffMap) {
     const [src, tgt] = key.split("→");
-    handoffs.push({ source: src, target: tgt, count });
+    handoffs.push({ source: src, target: tgt, count, parentToolSpanId: delegationToolSpan.get(key) });
   }
 
   const edgeMetrics = new Map<string, PathMetrics>();
@@ -207,6 +228,7 @@ export function buildSessionGraph(
         avgLatencyMs: latency,
         groupId: pathKey,
         splitLabel: server,
+        spanId: span.span_id,
       });
 
       const callPathKey = `${sourceId}→${callNodeId}`;
@@ -337,8 +359,17 @@ export function buildSessionGraph(
   }
 
   for (const handoff of handoffs) {
+    // If we know the specific tool span that triggered the delegation,
+    // draw the edge from the tool call node (e.g. call_analyst) → agent node.
+    // This shows: supervisor → direct-tools → call_analyst → analyst
+    // instead of: supervisor ──dashed──→ analyst
+    let source = `agent:${handoff.source}`;
+    if (handoff.parentToolSpanId) {
+      const toolNode = nodes.find((n) => n.spanId === handoff.parentToolSpanId);
+      if (toolNode) source = toolNode.id;
+    }
     graphEdges.push({
-      source: `agent:${handoff.source}`,
+      source,
       target: `agent:${handoff.target}`,
       type: "handoff",
       edgeId: `agent:${handoff.source}→h→agent:${handoff.target}`,

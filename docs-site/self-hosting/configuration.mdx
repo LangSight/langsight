@@ -98,6 +98,50 @@ All settings can be overridden with environment variables using the `LANGSIGHT_`
   `NEXT_PUBLIC_LANGSIGHT_API_KEY` is no longer required for the dashboard. Dashboard authentication is handled server-side via NextAuth — the session is never exposed to the browser. API keys are for SDK and CLI access only.
 </Note>
 
+## Global payload redaction (server-side)
+
+An admin can enforce payload redaction at the instance level, overriding individual SDK `redact_payloads` settings. When enabled, the server strips `input_args`, `output_result`, `llm_input`, and `llm_output` from **all** incoming spans before they are stored.
+
+### Via the dashboard
+
+Go to **Settings -> Instance -> Data Privacy** and toggle **Redact all payloads** on.
+
+### Via the API
+
+```bash
+# Check current setting
+curl http://localhost:8000/api/settings \
+  -H "X-API-Key: lsk_your_key"
+
+# Enable global redaction
+curl -X PUT http://localhost:8000/api/settings \
+  -H "X-API-Key: lsk_your_key" \
+  -H "Content-Type: application/json" \
+  -d '{"redact_payloads": true}'
+```
+
+**Settings object**:
+
+```json
+{
+  "redact_payloads": true
+}
+```
+
+### How it works
+
+| Layer | Setting | Effect |
+|-------|---------|--------|
+| SDK | `LangSightClient(redact_payloads=True)` | Client omits payloads before sending |
+| Server | `PUT /api/settings {"redact_payloads": true}` | Server strips payloads on ingestion |
+| Both | Server setting wins | Even if SDK sends payloads, server strips them |
+
+The server-side toggle is enforced in the `POST /api/traces/spans` handler before spans are written to storage. This guarantees no payload data reaches ClickHouse regardless of how individual SDK clients are configured.
+
+<Warning>
+  Enabling global redaction disables session replay payload inspection and Playground Replay across the entire instance. Span timing, status, cost, and token counts are still captured.
+</Warning>
+
 ## Slack alert configuration
 
 Slack alerts can be configured in two ways.

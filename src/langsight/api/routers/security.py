@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi import status as http_status
 from pydantic import BaseModel
 
-from langsight.api.dependencies import get_config, get_storage, require_admin
+from langsight.api.dependencies import get_active_project_id, get_config, get_storage, require_admin
 from langsight.config import LangSightConfig
 from langsight.security.models import ScanResult
 from langsight.security.scanner import SecurityScanner
@@ -59,30 +59,42 @@ def _scan_to_response(scan: ScanResult) -> SecurityScanResponse:
     "/scan",
     response_model=list[SecurityScanResponse],
     status_code=http_status.HTTP_200_OK,
-    summary="Trigger on-demand security scan for all servers",
+    summary="Trigger on-demand security scan for servers",
     dependencies=[Depends(require_admin)],
 )
 async def trigger_security_scan(
     request: Request,
+    project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
     config: LangSightConfig = Depends(get_config),
 ) -> list[SecurityScanResponse]:
-    """Run a full security scan (OWASP MCP Top 10 + CVEs + poisoning) on all servers.
+    """Run a full security scan (OWASP MCP Top 10 + CVEs + poisoning).
 
-    Each scan runs a health check first to retrieve the live tools list,
-    then evaluates all security rules concurrently.
+    When *project_id* is provided, only servers registered in that project's
+    metadata are scanned.  Otherwise (admin / open install) all configured
+    servers are scanned.
     """
+    servers = list(config.servers)
+
+    # ── Project-scope: filter to servers that belong to this project ──────
+    if project_id and hasattr(storage, "get_all_server_metadata"):
+        project_servers = await storage.get_all_server_metadata(project_id=project_id)
+        allowed_names = {row["server_name"] for row in project_servers}
+        servers = [s for s in servers if s.name in allowed_names]
+
     logger.info(
         "audit.security_scan.triggered",
         client_ip=request.client.host if request.client else "unknown",
-        server_count=len(config.servers),
+        project_id=project_id,
+        server_count=len(servers),
     )
-    if not config.servers:
+    if not servers:
         return []
     scanner = SecurityScanner(storage=storage)
-    scans = await scanner.scan_many(config.servers)
+    scans = await scanner.scan_many(servers)
     logger.info(
         "audit.security_scan.complete",
+        project_id=project_id,
         server_count=len(scans),
         critical_total=sum(s.critical_count for s in scans),
     )

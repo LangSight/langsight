@@ -318,6 +318,14 @@ class DualStorage:
     ) -> None:
         return await self._meta.save_alert_config(slack_webhook, alert_types)
 
+    # Instance settings → Postgres
+
+    async def get_instance_settings(self) -> dict[str, Any]:
+        return await self._meta.get_instance_settings()
+
+    async def save_instance_settings(self, settings: dict[str, Any]) -> None:
+        return await self._meta.save_instance_settings(settings)
+
     # Audit logs → Postgres
 
     async def append_audit_log(
