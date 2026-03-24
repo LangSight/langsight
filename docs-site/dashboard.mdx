@@ -1,16 +1,17 @@
 ---
 title: "Dashboard"
-description: "Overview tab — error breakdown by category, Tools tab — calls per session and tool retry rate"
+description: "Overview tab — error breakdown by category, Tools tab — calls per session, tool retry rate, and silent failures, Models tab — context window pressure"
 ---
 
 ## Overview
 
-The **Dashboard** at `/dashboard` is the first page you land on. It has two tabs: **Overview** and **Tools**.
+The **Dashboard** at `/dashboard` is the first page you land on. It has three tabs: **Overview**, **Tools**, and **Models**.
 
 - **Overview tab** — aggregate health across all agents: session counts, error totals, anomaly alerts, SLO status, and the [Error Breakdown](#error-breakdown) section
-- **Tools tab** — per-tool reliability table: call counts, error rates, latencies, and [Calls per Session](#calls-per-session--tool-retry-rate)
+- **Tools tab** — per-tool reliability table: call counts, error rates, latencies, [Calls per Session](#calls-per-session--tool-retry-rate), and [Silent Failures](#silent-failures)
+- **Models tab** — per-model usage table: call counts, token totals, estimated cost, and [Context Window Pressure](#context-window-pressure)
 
-Both tabs respect the time window selected in the top-right corner: **1h**, **6h**, **24h**, or **7d**.
+All tabs respect the time window selected in the top-right corner: **1h**, **6h**, **24h**, or **7d**.
 
 ---
 
@@ -108,6 +109,48 @@ For loop detection with automatic prevention, see [Session Health — loop_detec
 
 ---
 
+## Silent Failures
+
+The **Silent Failures** column in the **Tools tab** counts MCP tool calls where the protocol reported success (`isError=False`) but the response content itself contained an error message.
+
+### Why this matters
+
+A tool returning `isError=False` with `"Error: database connection failed"` in its content is the hardest failure mode to debug. The MCP protocol says "success", so the error does not appear in the regular Error Breakdown or error rate columns. The agent receives the broken content, treats it as a valid result, and passes it upstream — where the failure surfaces much later as a hallucination or a wrong answer.
+
+Silent failures are invisible to every metric except this one.
+
+### What triggers a silent failure count
+
+LangSight's SDK inspects the first content block of every MCP tool response at the time of the call. A call is flagged as a silent failure when `isError=False` and the content starts with any of the following prefixes:
+
+- `Error:` or `ERROR:`
+- `Exception:`
+- `Traceback`
+- `[ERROR]`
+- `Failed:` or `FAILED:`
+
+Only `tool_call` spans (MCP calls) are inspected. LLM generation spans are not included.
+
+### Display
+
+- **Amber** — one or more silent failures detected for this tool in the time window
+- **Grey / zero** — no silent failures (clean)
+
+### Interpreting the column
+
+| Silent Failures | Error rate | Interpretation |
+|---|---|---|
+| 0 | Low | Tool is healthy |
+| > 0 | Low | Tool is returning error text despite `isError=False` — fix the MCP server's error handling |
+| > 0 | High | Both protocol-level and content-level errors — the tool has multiple failure modes |
+| 0 | High | Clean protocol errors only — these are visible in the standard Error Breakdown |
+
+<Note>
+  A non-zero Silent Failures count paired with a low error rate is a red flag: it means the tool's error rate is understated. The true failure rate is `(Errors + Silent Failures) / Calls`.
+</Note>
+
+---
+
 ## Overview tab — full column reference
 
 | Panel | Description |
@@ -129,10 +172,81 @@ For loop detection with automatic prevention, see [Session Health — loop_detec
 | Tool | Tool name as reported in spans |
 | Server | MCP server that provides the tool |
 | Calls | Total calls in the time window |
-| Errors | Failed calls |
+| Errors | Failed calls (`isError=True` or exception) |
 | Error rate | Errors / total calls (%) |
 | Avg latency | Mean call duration (ms) |
 | p99 latency | 99th percentile call duration (ms) |
-| Calls/Session | Average calls per session — see [above](#calls-per-session--tool-retry-rate) |
+| Calls/Session | Average calls per session — see [Calls per Session](#calls-per-session--tool-retry-rate) |
+| Silent Failures | `isError=False` calls whose content contained error text — see [Silent Failures](#silent-failures) |
 
 Click any tool row to open the [MCP Servers](/mcp-servers) catalog entry for that server, filtered to that tool.
+
+---
+
+## Context Window Pressure
+
+The **Ctx Usage** column in the **Models tab** shows what percentage of a model's context window is being consumed on average per call.
+
+### Calculation
+
+```
+ctx_usage = avg input tokens per call ÷ model context limit × 100
+```
+
+### Why this matters
+
+An agent consistently at 80%+ context usage is operating near its limit. When the context window fills, one of two things happens:
+
+1. The model returns `MAX_TOKENS` — the call fails outright
+2. The model silently truncates the input — responses degrade without an explicit error
+
+Context Window Pressure is a **leading indicator**: it warns you before `MAX_TOKENS` errors start appearing. If you see high Ctx Usage in the Models tab and `Max Tokens Hit` in the [Error Breakdown](#error-breakdown) on the Overview tab, you have found the root cause.
+
+### Display
+
+| Colour | Condition | Meaning |
+|---|---|---|
+| Red | > 80% | Agent is near the context limit — expect MAX_TOKENS errors |
+| Amber | > 50% | Worth watching — usage is elevated |
+| Grey | <= 50% | Healthy |
+| `—` | No token data or unknown model | Context limit not available for this model |
+
+### Model context limits
+
+LangSight uses the following context limits when calculating Ctx Usage:
+
+| Model | Context limit (tokens) |
+|---|---|
+| Gemini 2.5 Flash / Pro | 1,048,576 |
+| Gemini 2.0 Flash | 1,048,576 |
+| Gemini 1.5 Pro / Flash | 1,048,576 |
+| GPT-4o / GPT-4o Mini | 128,000 |
+| o3 / o3-mini | 200,000 |
+| Claude Opus 4.6 | 200,000 |
+| Claude Sonnet 4.6 | 200,000 |
+| Claude Haiku 4.5 | 200,000 |
+
+Models not in this list show `—` for Ctx Usage.
+
+### Relationship with Error Breakdown
+
+If the Error Breakdown (Overview tab) shows a spike in **Max Tokens Hit** and the Models tab shows red Ctx Usage for the same model, the problem is clear: the agent is passing too much context. Common causes:
+
+- System prompt is too large
+- Agent is accumulating the full conversation history instead of windowing it
+- Tool responses are returned in full when only a subset is needed
+
+---
+
+## Models tab — full column reference
+
+| Column | Description |
+|---|---|
+| Model | Model name as reported in spans |
+| Calls | Total LLM generation calls in the time window |
+| Input tokens | Total input tokens across all calls |
+| Output tokens | Total output tokens across all calls |
+| Avg input/call | Mean input tokens per individual call |
+| Avg output/call | Mean output tokens per individual call |
+| Estimated cost | Cost estimate based on model pricing — see [Cost Model](/costs-model-pricing) |
+| Ctx Usage | Average context window utilisation — see [Context Window Pressure](#context-window-pressure) |

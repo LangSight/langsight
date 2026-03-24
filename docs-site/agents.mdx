@@ -23,6 +23,8 @@ A full-width sortable table. Columns:
 | Sessions | Total session count in the selected time window |
 | Errors | Failed tool calls across all sessions |
 | Avg duration | Mean session wall-clock time |
+| Tokens/Session | Average total tokens consumed per session — see [Token Efficiency](#token-efficiency) below |
+| Loops | Count of loop detection events — see [Loop Detection Count](#loop-detection-count) below |
 | Last active | Time since the most recent span arrived |
 
 Click any row to open the agent detail panel (State 2).
@@ -126,6 +128,67 @@ Per-tool reliability breakdown for this agent: call count, error rate, p99 laten
 ### Topology tab
 
 Full-width call graph showing every MCP server this agent has connected to. Edges are weighted by call volume. Click an edge to see the per-tool breakdown. Click a server node to jump to that server's entry in the [MCP Servers](/mcp-servers) catalog.
+
+---
+
+## Token Efficiency
+
+The **Tokens/Session** column in the agents table shows the average total tokens (input + output, across all LLM calls) consumed per session for each agent.
+
+### Display
+
+Large numbers are abbreviated: `2,400` → `2.4k`, `18,000` → `18k`. A sub-label `avg/session` appears below the number to distinguish it from a session total.
+
+### Why it matters
+
+Tokens/Session is the per-session driver behind the Cost column. Where Cost tells you what you spent, Tokens/Session tells you why.
+
+Use it to:
+
+- **Identify expensive agents** — which agent is consuming the most tokens per run, and why?
+- **Detect prompt bloat** — if an agent's Tokens/Session is growing over time, its system prompt or accumulated context is growing. This is a leading indicator for eventual `MAX_TOKENS` failures (see [Context Window Pressure](/dashboard#context-window-pressure)).
+- **Compare agents directly** — `orchestrator: 2,400 tokens/session` vs `analyst: 890 tokens/session` means the orchestrator costs roughly 3× more per run. Is that justified by its task complexity?
+
+### Relationship with Cost column
+
+Cost is estimated from model pricing and depends on both token count and model. Two agents with similar Tokens/Session can have very different costs if they use different models. Tokens/Session isolates the usage volume from the pricing effect.
+
+---
+
+## Loop Detection Count
+
+The **Loops** column in the agents table shows a red badge with the count of loop detection events for each agent in the selected time window.
+
+A loop detection event occurs when LangSight's SDK detects a repeating tool-call pattern and **prevents** the call from being made. The prevented call is recorded with `status=prevented` and the session is tagged `loop_detected`.
+
+### What counts as a loop
+
+LangSight detects three patterns before each tool call:
+
+| Pattern | Description |
+|---|---|
+| **Repetition** | Same tool called with identical arguments N times in a row (default threshold: 3) |
+| **Ping-pong** | Alternating between two tool+argument pairs repeatedly (A→B→A→B→A) |
+| **Retry without progress** | Same tool failing with the same error repeatedly |
+
+When any of these patterns is detected, the call is blocked and the Loops counter increments.
+
+### Display
+
+- **Red badge with count** — one or more loop events in the time window
+- `—` — no loops detected (clean)
+
+The badge is always red. A loop is always a reliability problem worth investigating — even if the agent ultimately recovered (tagged `success_with_fallback`), each prevented loop call represents wasted tool calls and unnecessary cost.
+
+### What to do when you see loops
+
+1. Click the agent row to open the detail panel
+2. Go to the **Sessions** tab and filter by the `loop_detected` health tag
+3. Click any affected session to open the full trace
+4. In the trace, look for the span with `status=prevented` — the span detail shows which tool was looping and the exact arguments that were repeated
+5. Fix the agent logic: add a guard condition, change the arguments passed on retry, or add a fallback path that breaks the cycle
+
+For the full definition of the `loop_detected` health tag and how it composes with other tags, see [Session Health](/session-health#health-tags).
 
 ---
 
