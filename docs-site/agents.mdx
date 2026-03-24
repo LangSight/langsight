@@ -31,7 +31,7 @@ Click any row to open the agent detail panel (State 2).
 
 ### State 2 — Agent selected
 
-A 280px left sidebar lists all agents with their status dot and health score. The main panel shows the selected agent's details in four tabs: **Overview**, **Sessions**, **Tools**, and **Topology**.
+A 280px left sidebar lists all agents with their status dot and health score. The main panel shows the selected agent's details in five tabs: **About**, **Overview**, **Sessions**, **Topology**, and **SLOs**.
 
 ### State 3 — Topology full-width
 
@@ -119,9 +119,81 @@ The SLO badge refreshes every 2 minutes. It does not update in real time as span
 
 The SLO badge is the fastest way to know that a reliability target is being missed without opening the SLOs page. Scan the Agents table: any red `SLO ✗` badge means that agent is out of spec right now.
 
-Clicking the agent row opens the detail panel. The **Overview** tab in the detail panel shows the individual SLO values — which specific target is breached and by how much.
+Clicking the agent row opens the detail panel. Switch to the **SLOs** tab to see exactly which SLO is breached, by how much, and to add or remove SLOs for that agent.
 
-For details on creating SLOs, configuring targets, and understanding measurement windows, see [Agent SLOs](/slos).
+For background on SLO concepts, measurement windows, and the API, see [Agent SLOs](/slos).
+
+---
+
+## Configuring SLOs
+
+SLOs for an agent are created and managed directly inside the agent detail panel. Click any agent row to open the panel, then select the **SLOs** tab.
+
+### SLOs tab layout
+
+The tab has two parts: the list of existing SLOs for this agent, and the **+ Add SLO** button.
+
+**Existing SLO cards**
+
+Each defined SLO is shown as a card with:
+
+| Field | Description |
+|---|---|
+| Metric | `Success Rate` or `Latency p99` |
+| Status | **Passing** (green), **Breached** (red), or **No data** (grey) |
+| Target | The threshold you set — e.g. `95%` or `2000ms` |
+| Current | The agent's actual metric value right now |
+| Window | The evaluation period — e.g. `24h` |
+| Delete | Removes the SLO immediately |
+
+When no SLOs are defined, the tab shows a dashed empty state with a prompt to add the first one.
+
+**+ Add SLO form**
+
+Clicking **+ Add SLO** opens an inline form in the tab. Fields:
+
+| Field | Options | Notes |
+|---|---|---|
+| Metric | Success Rate / Latency p99 | Toggle — select one |
+| Target | Number | Percentage (0–100) for Success Rate; milliseconds for Latency p99 |
+| Window | 1h, 6h, 24h, 7d | Evaluation window for this SLO |
+
+After you click **Create SLO**, the tab refreshes immediately and the new card appears with its evaluated status.
+
+### Metric definitions
+
+| Metric | What it measures | Good starting target |
+|---|---|---|
+| **Success Rate** | % of sessions in the window tagged `success` or `success_with_fallback` | 95% for production agents |
+| **Latency p99** | 99th percentile session duration in milliseconds | 5000ms for interactive agents |
+
+<Note>
+  The `success_rate` metric used in SLOs is based on session health tags (`success` / `success_with_fallback`), not raw tool call error rate. A session where the agent retried a tool and recovered is still counted as successful. This matches the [Health score](#health-score) calculation.
+</Note>
+
+### Choosing a good target
+
+**Success Rate**
+
+Start at 90% and tighten as the agent matures. 95%+ is production-grade. Below 80% means the agent is failing more than 1 in 5 sessions — investigate before raising the target.
+
+**Latency p99**
+
+Think about the user-facing timeout. If your users expect a response in 10 seconds, set p99 ≤ 8000ms to give yourself headroom before the user experience degrades. Set it tighter (≤ 3000ms) for low-latency interactive use cases.
+
+**Window**
+
+- **24h** — the right default for operational alerting. Catches today's problems.
+- **7d** — better for trend and capacity planning. Smooths over one-off incidents.
+- **1h / 6h** — useful during active incidents to track recovery in near-real-time.
+
+### Why SLOs live in the agent detail panel
+
+SLOs are reliability contracts for a specific agent. Placing them in the detail panel means you see the contract, the current performance, and the full session history in one place — no context switching to a separate configuration page.
+
+The `SLO ✓` / `SLO ✗` badge in the agent table reflects the worst SLO status across all SLOs for that agent. Clicking the badge row and opening the **SLOs** tab shows exactly which SLO is breached and by how much.
+
+For the full API reference (creating SLOs programmatically, bulk status checks), see [Agent SLOs](/slos).
 
 ---
 
@@ -156,6 +228,10 @@ Per-tool reliability breakdown for this agent: call count, error rate, p99 laten
 ### Topology tab
 
 Full-width call graph showing every MCP server this agent has connected to. Edges are weighted by call volume. Click an edge to see the per-tool breakdown. Click a server node to jump to that server's entry in the [MCP Servers](/mcp-servers) catalog.
+
+### SLOs tab
+
+Shows all SLOs defined for this agent and lets you create or delete them without leaving the page. See [Configuring SLOs](#configuring-slos) for the full walkthrough.
 
 ---
 

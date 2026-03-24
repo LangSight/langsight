@@ -11,12 +11,18 @@ An Agent SLO (Service Level Objective) defines a performance target for a specif
 
 | Metric | What it measures | Target format |
 |---|---|---|
-| `success_rate` | % of sessions with zero failed tool calls | percentage 0–100 (e.g. `95.0`) |
-| `latency_p99` | max session duration as a proxy for p99 latency | milliseconds (e.g. `30000`) |
+| `success_rate` | % of sessions tagged `success` or `success_with_fallback` in the evaluation window | percentage 0–100 (e.g. `95.0`) |
+| `latency_p99` | 99th percentile session duration in milliseconds | milliseconds (e.g. `5000`) |
 
 ## Creating an SLO
 
-Via API:
+### From the Agents page (recommended)
+
+Open the **Agents** page, click an agent row to open the detail panel, then select the **SLOs** tab. Click **+ Add SLO**, choose a metric, set your target and window, and click **Create SLO**. The new SLO appears immediately with its evaluated status — no API call required.
+
+For a full walkthrough of the form fields and target guidance, see [Configuring SLOs](/agents#configuring-slos).
+
+### Via API
 
 ```bash
 curl -X POST http://localhost:8000/api/slos \
@@ -29,8 +35,6 @@ curl -X POST http://localhost:8000/api/slos \
     "window_hours": 24
   }'
 ```
-
-Via dashboard: Settings → (coming soon — use API for now)
 
 ## Checking SLO status
 
