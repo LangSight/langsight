@@ -13,6 +13,7 @@ const PAGE_META: Record<string, { title: string; description: string }> = {
   "/costs":     { title: "Cost Attribution", description: "Per-tool, per-agent, and per-session cost breakdown" },
   "/health":    { title: "Tool Health",    description: "Proactive health checks across all MCP servers" },
   "/security":  { title: "MCP Security",  description: "CVE detection · OWASP MCP Top 10 · Tool poisoning" },
+  "/alerts":    { title: "Alerts",        description: "Alert rules, incomplete sessions, and active anomalies" },
   "/settings":  { title: "Settings",      description: "Manage users, model pricing, API keys, and instance config" },
 };
 

@@ -29,6 +29,7 @@ const PRIMARY_NAV = [
 const INFRA_NAV = [
   { href: "/health",   label: "Tool Health",  icon: Activity, color: "#f59e0b" },
   { href: "/security", label: "MCP Security", icon: Shield,   color: "#ef4444" },
+  { href: "/alerts",   label: "Alerts",       icon: Zap,      color: "#f97316" },
 ];
 
 /* ── Nav item ───────────────────────────────────────────────── */
