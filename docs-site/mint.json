@@ -101,9 +101,10 @@
     {
       "group": "Reliability Features",
       "pages": [
+        "dashboard",
+        "agents",
         "live-view",
         "session-health",
-        "session-replay",
         "mcp-servers",
         "costs-model-pricing",
         "slos",

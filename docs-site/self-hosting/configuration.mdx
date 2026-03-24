@@ -66,7 +66,7 @@ costs:
       cost_per_call: 0.001
 
 # PII protection — omit input_args and output_result from all spans
-# Disables session replay payload inspection and Playground Replay
+# When enabled, payload panels in the Trace tab are empty
 redact_payloads: false
 ```
 
@@ -139,7 +139,7 @@ curl -X PUT http://localhost:8000/api/settings \
 The server-side toggle is enforced in the `POST /api/traces/spans` handler before spans are written to storage. This guarantees no payload data reaches ClickHouse regardless of how individual SDK clients are configured.
 
 <Warning>
-  Enabling global redaction disables session replay payload inspection and Playground Replay across the entire instance. Span timing, status, cost, and token counts are still captured.
+  Enabling global redaction means payload panels in the Trace tab will be empty across the entire instance. Span timing, status, cost, and token counts are still captured.
 </Warning>
 
 ## Slack alert configuration

@@ -4,6 +4,25 @@ All meaningful changes to LangSight are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- **Agent Health Score** — Agents page now shows a Health column with a colour-coded progress bar (green >= 90%, amber 70–89%, red < 70%) showing the percentage of sessions that completed as `success` or `success_with_fallback`. Sub-label shows `X/Y sessions`. Column is sortable. Status dot (healthy/degraded/failing) is now driven by this score.
+- **Error Breakdown** — Dashboard Overview tab now shows a per-category horizontal bar chart at the bottom of the page when errors exist in the selected time window. Categories: Safety Filter, Max Tokens Hit, API Unavailable, Timeout, Rate Limited (429), Auth Error (401/403), Agent Crash, Other. Respects the selected time range.
+- **Calls/Session column** — Dashboard Tools tab now shows average tool calls per session as `X.X×`. Highlighted amber when > 5× to flag potential loops or redundant call patterns.
+- **`docs-site/agents.mdx`** — new Mintlify page documenting the Agents catalog, health score calculation, status thresholds, and three-state layout
+- **`docs-site/dashboard.mdx`** — new Mintlify page documenting the Dashboard Overview and Tools tabs, including Error Breakdown and Calls/Session
+
+### Removed
+- **Session Replay and Session Compare** — both features removed from the product. `docs-site/session-replay.mdx` deleted. All cross-references removed from `introduction.mdx`, `agents.mdx`, `session-health.mdx`, `cli/sessions.mdx`, `api-reference/overview.mdx`, `api-reference/traces.mdx`, `self-hosting/configuration.mdx`, and `sdk/python.mdx`. Removed from `mint.json` navigation. The `/api/agents/sessions/compare` and `/api/agents/sessions/{id}/replay` endpoints and the `replay_of` span field are no longer documented.
+
+### Fixed (docs)
+- **`session-health.mdx` triage workflow** — removed stale reference to the Compare button (feature removed). Updated to instruct users to use the Failures toggle and filter the Sessions page instead.
+- **`agents.mdx` Sessions tab** — removed broken link to `/session-replay`. Sessions now open the session detail page with lineage graph and span trace.
+- **`self-hosting/configuration.mdx` and `sdk/python.mdx`** — updated `redact_payloads` warning to remove Playground Replay mention.
+
+---
+
 ## [0.5.6] — 2026-03-24
 
 ### Added

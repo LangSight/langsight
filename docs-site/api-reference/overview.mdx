@@ -105,8 +105,6 @@ Once the API is running:
 |--------|------|-------------|
 | `GET` | `/api/agents/sessions` | List agent sessions with aggregated cost, call count, failure count |
 | `GET` | `/api/agents/sessions/{session_id}` | Full span tree for one session with `parent_span_id` hierarchy |
-| `GET` | `/api/agents/sessions/compare?a=<id>&b=<id>` | Compare two session traces side-by-side |
-| `POST` | `/api/agents/sessions/{session_id}/replay` | Replay stored tool calls against live MCP servers (admin only) |
 
 **Session object**:
 

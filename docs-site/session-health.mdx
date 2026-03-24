@@ -86,4 +86,4 @@ A typical triage flow when something breaks overnight:
 5. In the **Details** tab, enable the **Failures toggle** (`e`) to isolate the error chain in the lineage graph
 6. Switch to the **Trace** tab to inspect the exact span that failed, including input args and error text
 
-For recurring failures, compare against a known-good session using the **Compare** button on the Trace tab to identify what changed between runs.
+For recurring failures, use the **Failures toggle** (`e`) in the lineage graph to isolate the error chain, then filter the Sessions page to a known-good time window to inspect what changed between runs.

@@ -1,0 +1,138 @@
+---
+title: "Agents"
+description: "Browse every agent LangSight has observed — health scores, session counts, topology view, and per-agent reliability metrics"
+---
+
+## Overview
+
+The **Agents** page at `/agents` is a catalog of every agent name that has appeared in at least one span. It uses a three-state adaptive layout that expands from a summary table into a full topology view.
+
+---
+
+## Three-state layout
+
+### State 1 — No agent selected
+
+A full-width sortable table. Columns:
+
+| Column | Description |
+|---|---|
+| Agent | Agent name from the `agent_name` span attribute |
+| Status | Reliability status dot — see [Status thresholds](#status-thresholds) below |
+| Health | Session health score — see [Health score](#health-score) below |
+| Sessions | Total session count in the selected time window |
+| Errors | Failed tool calls across all sessions |
+| Avg duration | Mean session wall-clock time |
+| Last active | Time since the most recent span arrived |
+
+Click any row to open the agent detail panel (State 2).
+
+### State 2 — Agent selected
+
+A 280px left sidebar lists all agents with their status dot and health score. The main panel shows the selected agent's details in four tabs: **Overview**, **Sessions**, **Tools**, and **Topology**.
+
+### State 3 — Topology full-width
+
+Click **Topology** in the detail tabs to expand into full-width mode, which shows the agent's call graph across all sessions: which MCP servers it connects to, call volumes per edge, and error counts per server.
+
+---
+
+## Health score
+
+The health score is the single most important reliability number per agent. It answers: "In this time window, what fraction of sessions did this agent complete successfully?"
+
+### Calculation
+
+```
+health_score = (sessions with health tag "success" or "success_with_fallback")
+               ─────────────────────────────────────────────────────────────
+                         total sessions in the time window
+```
+
+Only `success` and `success_with_fallback` count as healthy. All other health tags — `tool_failure`, `timeout`, `loop_detected`, `budget_exceeded`, `circuit_breaker_open`, `schema_drift`, `incomplete` — count as unhealthy.
+
+For details on what each health tag means, see [Session Health](/session-health).
+
+### Display
+
+The **Health** column shows a percentage with a colour-coded progress bar and a sub-label showing `X/Y sessions` (healthy sessions / total sessions in the window):
+
+- **Green** bar — health score >= 90%
+- **Amber** bar — health score 70–89%
+- **Red** bar — health score < 70%
+
+The column is sortable — click the column header to rank agents by health score.
+
+### Why health score instead of error rate?
+
+Error rate (failed tool calls / total tool calls) is a noisy signal. A single session where the agent retried a tool call and recovered inflates the error rate even though the mission succeeded. Health score measures at the session level: did the agent complete its objective or not?
+
+| Scenario | Error rate | Health score |
+|---|---|---|
+| 1 retry, agent recovered and succeeded | > 0% | 100% |
+| Consistent single-attempt success | 0% | 100% |
+| Agent crashed halfway through | 100% for that session | Lower (< 100%) |
+
+Use error rate (on the [Dashboard Tools tab](/dashboard#calls-per-session--tool-retry-rate)) to investigate which specific tools are unreliable. Use health score to answer the business question: "Is this agent working?"
+
+---
+
+## Status thresholds
+
+The status dot next to each agent name reflects the current health score:
+
+| Dot | Label | Health score |
+|---|---|---|
+| Green | healthy | >= 90% |
+| Amber | degraded | 70–89% |
+| Red | failing | < 70% |
+
+The status dot updates whenever the health score changes — either because new sessions arrive or the selected time window changes.
+
+<Note>
+  An agent with zero sessions in the current time window shows a grey dot with no label. This means the agent has not run recently — it does not indicate a failure.
+</Note>
+
+---
+
+## Time window
+
+The health score and session count both respect the time window selected in the top-right corner of the page: **1h**, **6h**, **24h**, or **7d**. Changing the window immediately recalculates health scores and re-sorts the table.
+
+For SLO tracking across a fixed measurement period, see [Agent SLOs](/slos).
+
+---
+
+## Detail panel tabs
+
+### Overview tab
+
+Summary cards for the selected agent:
+
+- Total sessions, healthy sessions, and health score in the current window
+- Avg/p99 session duration
+- Total token usage and estimated cost
+- Most-used MCP servers (top 5 by call count)
+- Most-called tools (top 5 by call count)
+
+### Sessions tab
+
+Filterable list of sessions for this agent in the current time window. Shows health tag, call count, error count, duration, and cost per session. Click any row to open the full session detail page with lineage graph and span trace.
+
+### Tools tab
+
+Per-tool reliability breakdown for this agent: call count, error rate, p99 latency, and calls-per-session. See [Dashboard — Calls per Session](/dashboard#calls-per-session--tool-retry-rate) for how calls-per-session is calculated and interpreted.
+
+### Topology tab
+
+Full-width call graph showing every MCP server this agent has connected to. Edges are weighted by call volume. Click an edge to see the per-tool breakdown. Click a server node to jump to that server's entry in the [MCP Servers](/mcp-servers) catalog.
+
+---
+
+## API reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/agents` | List all known agent names with session counts and health scores |
+| `GET` | `/api/agents/{name}/sessions` | Sessions for a specific agent (supports `window`, `health_tag`, `limit` query params) |
+| `GET` | `/api/agents/{name}/health` | Health score and status for an agent in a given window |

@@ -1,0 +1,138 @@
+---
+title: "Dashboard"
+description: "Overview tab — error breakdown by category, Tools tab — calls per session and tool retry rate"
+---
+
+## Overview
+
+The **Dashboard** at `/dashboard` is the first page you land on. It has two tabs: **Overview** and **Tools**.
+
+- **Overview tab** — aggregate health across all agents: session counts, error totals, anomaly alerts, SLO status, and the [Error Breakdown](#error-breakdown) section
+- **Tools tab** — per-tool reliability table: call counts, error rates, latencies, and [Calls per Session](#calls-per-session--tool-retry-rate)
+
+Both tabs respect the time window selected in the top-right corner: **1h**, **6h**, **24h**, or **7d**.
+
+---
+
+## Error Breakdown
+
+The Error Breakdown section appears at the bottom of the **Overview tab** whenever there are failed spans in the selected time window. It shows exactly what kinds of errors are occurring — not just that errors happened.
+
+### Categories
+
+| Category | Meaning |
+|---|---|
+| **Safety Filter** | LLM call blocked by the provider's content safety policy (`finish_reason = SAFETY`, `PROHIBITED_CONTENT`, or `content_filter`) |
+| **Max Tokens Hit** | LLM output was truncated because the response reached the context or token limit (`finish_reason = MAX_TOKENS` or `length`) |
+| **API Unavailable** | An upstream LLM provider or MCP server returned a 5xx error or `UNAVAILABLE` status |
+| **Timeout** | A tool call or LLM generation exceeded the configured timeout threshold |
+| **Rate Limited (429)** | Too many requests — the API rate limit was hit |
+| **Auth Error (401/403)** | Authentication or authorisation failure on a tool call or LLM API request |
+| **Agent Crash** | The agent process threw an unhandled exception — `TaskGroup` error, `RuntimeError`, or similar |
+| **Other** | Errors that do not match any of the patterns above |
+
+### Display
+
+Each category is shown as a horizontal bar with:
+
+- **Percentage** of all errors in the time window
+- **Count** of failed spans in that category
+
+Categories are sorted by percentage descending — the most common error type is at the top.
+
+Only failed spans are counted. Successful spans are excluded from the breakdown entirely.
+
+### Why it matters
+
+"Error rate is 12%" tells you something is wrong. "48% of errors are API Unavailable, 45% are Safety Filter hits" tells you what to fix. The breakdown converts a number into an actionable diagnosis.
+
+Common patterns to look for:
+
+| Pattern | What it usually means |
+|---|---|
+| High **Safety Filter** | Prompt is generating content the provider blocks — review prompt templates |
+| High **Rate Limited** | Agent is hitting API quotas — add retry backoff or request a quota increase |
+| High **API Unavailable** | Upstream provider or MCP server is unreliable — check provider status and consider adding retries |
+| High **Timeout** | Tools or LLM calls are slow — check MCP server health on the [MCP Servers](/mcp-servers) page |
+| High **Agent Crash** | Unhandled exception in agent code — check session traces for the stack trace |
+| High **Auth Error** | Credentials rotated or expired — check API key configuration |
+
+### Session-level drill-down
+
+Click any error category bar to navigate to the [Sessions page](/session-health) filtered to sessions containing errors of that type. From there you can open individual session traces to see the exact span that failed.
+
+<Note>
+  The Error Breakdown section is hidden when there are zero errors in the selected time window. This is intentional — if everything is working, the section does not appear.
+</Note>
+
+---
+
+## Calls per Session / Tool Retry Rate
+
+The **Calls/Session** column in the **Tools tab** shows how many times each tool is called on average per session. It is the primary signal for detecting tool loops and redundant calling patterns.
+
+### Display
+
+The column shows the average as `X.X×` (e.g. `3.2×`).
+
+- **Amber** — value > 5×, signalling a potential loop or redundant call pattern
+- **Grey** (normal) — value <= 5×
+
+### How to interpret it
+
+| Value | Meaning |
+|---|---|
+| `1.0×` | Tool called exactly once per session — clean, efficient use |
+| `2–3×` | Normal for iterative agents that refine results across multiple calls |
+| `5–8×` | Worth investigating — the agent may be retrying on errors or looping on the same query |
+| `10×+` | Almost certainly a loop or a design issue — review the agent's tool-use logic |
+
+### Using calls/session alongside error rate
+
+Calls/session and error rate tell different stories about the same tool. Use them together:
+
+| Calls/session | Error rate | Interpretation |
+|---|---|---|
+| High | Low | Tool is called successfully many times — possible redundancy or iterative logic |
+| High | High | Tool is failing and being retried — reliability problem, investigate the failures |
+| Low | High | Tool fails on the first or only attempt — not a retry loop, a clean failure |
+| Low | Low | Tool is healthy and used efficiently |
+
+For example: a `read_file` tool showing `8.2×` and `2%` error rate means the agent reads the same file many times per session but it rarely fails. That is a design pattern to review, not a reliability incident. The same tool at `8.2×` and `60%` error rate means the agent is retrying a broken read — fix the tool.
+
+### Relationship to [Session Health Score](/agents#health-score)
+
+If an agent's health score is degraded and a tool shows high calls/session plus high error rate, that tool's retry loop is likely dragging sessions into `tool_failure` or `loop_detected` state. Start your investigation there.
+
+For loop detection with automatic prevention, see [Session Health — loop_detected](/session-health#health-tags).
+
+---
+
+## Overview tab — full column reference
+
+| Panel | Description |
+|---|---|
+| Total sessions | Session count in the time window |
+| Healthy sessions | Sessions tagged `success` or `success_with_fallback` |
+| Health rate | Healthy / total sessions (same calculation as per-agent [Health Score](/agents#health-score)) |
+| Total errors | Failed spans across all sessions |
+| Anomalies | Count of active anomalies from [Anomaly Detection](/anomaly-detection) |
+| SLO status | Pass/breach status for defined [Agent SLOs](/slos) |
+| Error Breakdown | Per-category error distribution — see above |
+
+---
+
+## Tools tab — full column reference
+
+| Column | Description |
+|---|---|
+| Tool | Tool name as reported in spans |
+| Server | MCP server that provides the tool |
+| Calls | Total calls in the time window |
+| Errors | Failed calls |
+| Error rate | Errors / total calls (%) |
+| Avg latency | Mean call duration (ms) |
+| p99 latency | 99th percentile call duration (ms) |
+| Calls/Session | Average calls per session — see [above](#calls-per-session--tool-retry-rate) |
+
+Click any tool row to open the [MCP Servers](/mcp-servers) catalog entry for that server, filtered to that tool.
