@@ -19,7 +19,6 @@ import pytest
 from langsight.models import PreventionConfig
 from langsight.storage.postgres import PostgresBackend
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

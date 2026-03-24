@@ -61,7 +61,7 @@ async def _consume_connection_comment(gen) -> None:
     assert first.startswith(": connected at"), f"Unexpected first message: {first!r}"
 
 
-async def _next_event(gen, timeout: float = 1.0) -> str:
+async def _next_event(gen, timeout: float = 1.0) -> str:  # noqa: ASYNC109
     """Return the next event from gen, failing the test if nothing arrives."""
     return await asyncio.wait_for(gen.__anext__(), timeout=timeout)
 

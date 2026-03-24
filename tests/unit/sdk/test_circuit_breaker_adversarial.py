@@ -178,7 +178,7 @@ class TestRapidCycling:
         )
         cb = CircuitBreaker("flaky-srv", config, _clock=clock)
 
-        for cycle in range(5):
+        for _cycle in range(5):
             # Trip open
             if cb.state == CircuitBreakerState.CLOSED:
                 cb.record_failure()
@@ -399,7 +399,7 @@ class TestLargeHalfOpenMaxCalls:
         cb.record_failure()  # -> OPEN
         cb.should_allow()  # -> HALF_OPEN
 
-        for i in range(9):
+        for _i in range(9):
             cb.record_success()
             assert cb.state == CircuitBreakerState.HALF_OPEN
 

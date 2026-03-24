@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from langsight.sdk.budget import BudgetConfig, BudgetViolation, BudgetWarning, SessionBudget
+from langsight.sdk.budget import BudgetConfig, SessionBudget
 
 
 class _FakeClock:

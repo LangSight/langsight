@@ -18,11 +18,8 @@ Security invariants tested:
 
 from __future__ import annotations
 
-import hashlib
-import json
-import sys
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -37,7 +34,7 @@ from langsight.sdk.circuit_breaker import (
     CircuitBreakerConfig,
     CircuitBreakerState,
 )
-from langsight.sdk.client import LangSightClient, MCPClientProxy, _check_prevention
+from langsight.sdk.client import LangSightClient, _check_prevention
 from langsight.sdk.loop_detector import (
     LoopDetector,
     LoopDetectorConfig,
@@ -403,7 +400,7 @@ class TestCircuitBreakerTimingAttack:
         )
         cb = CircuitBreaker("test", config, _clock=clock)
 
-        for cycle in range(100):
+        for _cycle in range(100):
             # Trigger open
             cb.record_failure()
             assert cb.state == CircuitBreakerState.OPEN
@@ -1051,7 +1048,7 @@ class TestPreventedSpanIntegrity:
         # max_steps=0 means even the first call exceeds limit
         # step_count is 0, next would be 1 > 0 = violation
 
-        result = _check_prevention(
+        _check_prevention(
             client, "srv", "sess", "delete_all_data", {"confirm": True},
             datetime.now(UTC), None, None, None, False, None,
         )

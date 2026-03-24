@@ -15,7 +15,7 @@ from langsight.exceptions import (
     CircuitBreakerOpenError,
     LoopDetectedError,
 )
-from langsight.sdk.client import LangSightClient, MCPClientProxy
+from langsight.sdk.client import LangSightClient
 from langsight.sdk.models import ToolCallStatus
 
 

@@ -12,11 +12,8 @@ using Starlette's Request constructor from a minimal ASGI scope.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 from starlette.requests import Request
-from starlette.testclient import TestClient
 
 from langsight.api.rate_limit import _rate_limit_key
 

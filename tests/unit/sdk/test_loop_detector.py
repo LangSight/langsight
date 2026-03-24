@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 
 from langsight.sdk.loop_detector import (
-    LoopDetection,
     LoopDetector,
     LoopDetectorConfig,
     _hash_args,

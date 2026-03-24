@@ -25,7 +25,7 @@ pytestmark = pytest.mark.unit
 # ---------------------------------------------------------------------------
 
 
-async def _next(gen, timeout: float = 1.0) -> str:
+async def _next(gen, timeout: float = 1.0) -> str:  # noqa: ASYNC109
     return await asyncio.wait_for(gen.__anext__(), timeout=timeout)
 
 

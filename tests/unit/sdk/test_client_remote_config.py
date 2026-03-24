@@ -13,13 +13,8 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
-from langsight.sdk.budget import BudgetConfig
-from langsight.sdk.circuit_breaker import CircuitBreakerConfig
 from langsight.sdk.client import LangSightClient
-from langsight.sdk.loop_detector import LoopAction, LoopDetectorConfig
-
+from langsight.sdk.loop_detector import LoopAction
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -235,7 +235,7 @@ class TestUpsertConfig:
             "budget_soft_alert": 0.80, "cb_enabled": True, "cb_failure_threshold": 5,
             "cb_cooldown_seconds": 60.0, "cb_half_open_max_calls": 2,
         }
-        httpx.put(
+        httpx.put(  # noqa: ASYNC210
             f"{_BASE_URL}/api/agents/{clean_agent}/prevention-config",
             headers=headers, params={"project_id": project_id}, json=base, timeout=5,
         )
@@ -297,7 +297,7 @@ class TestDeleteConfig:
             "budget_soft_alert": 0.80, "cb_enabled": True, "cb_failure_threshold": 5,
             "cb_cooldown_seconds": 60.0, "cb_half_open_max_calls": 2,
         }
-        httpx.put(
+        httpx.put(  # noqa: ASYNC210
             f"{_BASE_URL}/api/agents/{clean_agent}/prevention-config",
             headers=headers, params={"project_id": project_id}, json=body, timeout=5,
         )
@@ -354,7 +354,7 @@ class TestSDKFetch:
             "budget_soft_alert": 0.80, "cb_enabled": False, "cb_failure_threshold": 5,
             "cb_cooldown_seconds": 60.0, "cb_half_open_max_calls": 2,
         }
-        httpx.put(
+        httpx.put(  # noqa: ASYNC210
             f"{_BASE_URL}/api/agents/{clean_agent}/prevention-config",
             headers=headers, params={"project_id": project_id}, json=body, timeout=5,
         )

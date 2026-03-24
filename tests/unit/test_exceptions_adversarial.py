@@ -17,7 +17,6 @@ from langsight.exceptions import (
     LoopDetectedError,
 )
 
-
 # ---------------------------------------------------------------------------
 # LoopDetectedError edge cases
 # ---------------------------------------------------------------------------
@@ -58,7 +57,7 @@ class TestLoopDetectedErrorEdgeCases:
             raise LoopDetectedError("query", 3, "abc", "repetition")
 
     def test_catchable_as_exception(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             raise LoopDetectedError("query", 3, "abc", "repetition")
 
     def test_pickle_roundtrip(self) -> None:

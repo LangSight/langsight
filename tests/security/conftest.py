@@ -17,8 +17,8 @@ def _clear_api_key_cache() -> None:
     from langsight.api.dependencies import invalidate_api_key_cache
 
     invalidate_api_key_cache()
-import yaml
-from fastapi import Request
+import yaml  # noqa: E402
+from fastapi import Request  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Low-level request builder (for dependency-function unit tests)

@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from langsight.models import PreventionConfig, Project, ProjectMember, ProjectRole, User, UserRole
+from langsight.models import PreventionConfig, Project
 
 pytestmark = pytest.mark.integration
 

@@ -29,11 +29,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import yaml
-from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]

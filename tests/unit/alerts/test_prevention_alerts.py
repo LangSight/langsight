@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from langsight.alerts.engine import Alert, AlertEngine, AlertSeverity, AlertType
+from langsight.alerts.engine import AlertEngine, AlertSeverity, AlertType
 from langsight.sdk.models import PreventionEvent
 
 

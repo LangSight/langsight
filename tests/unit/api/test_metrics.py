@@ -9,7 +9,6 @@ from httpx import ASGITransport, AsyncClient
 
 from langsight.api.metrics import _normalize_path
 
-
 # ---------------------------------------------------------------------------
 # Path normalization
 # ---------------------------------------------------------------------------
@@ -42,6 +41,7 @@ class TestMetricsEndpoint:
     @pytest.fixture
     async def client(self, tmp_path):
         import yaml
+
         from langsight.api.main import create_app
         from langsight.config import load_config
 

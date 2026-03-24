@@ -8,16 +8,12 @@ from __future__ import annotations
 
 import datetime
 
-import pytest
-
 from langsight.sdk.loop_detector import (
-    LoopDetection,
     LoopDetector,
     LoopDetectorConfig,
     _hash_args,
     _hash_error,
 )
-
 
 # ---------------------------------------------------------------------------
 # threshold=1 — every call is a "loop"
@@ -137,14 +133,14 @@ class TestNonSerializableArguments:
     """
 
     def test_datetime_in_args(self) -> None:
-        dt = datetime.datetime(2025, 6, 15, 12, 0, 0, tzinfo=datetime.timezone.utc)
+        dt = datetime.datetime(2025, 6, 15, 12, 0, 0, tzinfo=datetime.UTC)
         args = {"timestamp": dt, "value": 42}
         h = _hash_args(args)
         assert isinstance(h, str)
         assert len(h) == 16
 
     def test_datetime_args_deterministic(self) -> None:
-        dt = datetime.datetime(2025, 6, 15, 12, 0, 0, tzinfo=datetime.timezone.utc)
+        dt = datetime.datetime(2025, 6, 15, 12, 0, 0, tzinfo=datetime.UTC)
         args = {"timestamp": dt}
         assert _hash_args(args) == _hash_args(args)
 
@@ -163,7 +159,7 @@ class TestNonSerializableArguments:
     def test_nested_non_serializable(self) -> None:
         args = {
             "obj": {
-                "inner_dt": datetime.datetime.now(datetime.timezone.utc),
+                "inner_dt": datetime.datetime.now(datetime.UTC),
                 "inner_bytes": b"\x00\x01",
             }
         }
@@ -173,7 +169,7 @@ class TestNonSerializableArguments:
 
     def test_detection_with_non_serializable_args(self) -> None:
         """Non-serializable args should still allow loop detection to work."""
-        dt = datetime.datetime(2025, 6, 15, tzinfo=datetime.timezone.utc)
+        dt = datetime.datetime(2025, 6, 15, tzinfo=datetime.UTC)
         args = {"when": dt, "what": "test"}
         config = LoopDetectorConfig(threshold=2, window_size=5)
         detector = LoopDetector(config)

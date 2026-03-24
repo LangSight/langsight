@@ -19,7 +19,6 @@ from pydantic import ValidationError
 
 from langsight.models import PreventionConfig
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
