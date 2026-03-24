@@ -226,16 +226,25 @@ export function buildSessionGraph(
   const graphEdges: GraphEdge[] = [];
 
   for (const agent of agents) {
+    // Real MCP tool calls (not LLM intent spans)
     const agentToolSpans = trace.spans_flat.filter(
       (span) =>
         span.agent_name === agent &&
         span.span_type === "tool_call" &&
         !llmIntentSpanIds.has(span.span_id),
     );
-    const callCount = agentToolSpans.length;
-    const errorCount = agentToolSpans.filter((span) => span.status !== "success").length;
+    // LLM generation spans (agent type) — used for stats when no direct MCP calls
+    const agentLlmSpans = trace.spans_flat.filter(
+      (span) => span.agent_name === agent && span.span_type === "agent",
+    );
+
+    // Show MCP call count if any, otherwise show LLM call count
+    const hasDirectCalls = agentToolSpans.length > 0;
+    const countSpans = hasDirectCalls ? agentToolSpans : agentLlmSpans;
+    const callCount = countSpans.length;
+    const errorCount = countSpans.filter((span) => span.status !== "success").length;
     const avgLatencyMs = callCount > 0
-      ? agentToolSpans.reduce((sum, span) => sum + (span.latency_ms ?? 0), 0) / callCount
+      ? countSpans.reduce((sum, span) => sum + (span.latency_ms ?? 0), 0) / callCount
       : 0;
 
     nodes.push({

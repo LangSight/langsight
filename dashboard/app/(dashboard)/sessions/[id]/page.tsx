@@ -175,7 +175,11 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
 
       {/* Per-agent breakdown (server nodes called by 2+ agents) */}
       {!isAgent && (() => {
-        const callers = serverCallers.get(name) ?? [];
+        // For "via X" split nodes, scope to that single agent
+        const allCallers = serverCallers.get(name) ?? [];
+        const callers = viaAgent
+          ? allCallers.filter((c) => c.agentLabel === viaAgent)
+          : allCallers;
         if (callers.length < 2) return null;
         return (
           <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
