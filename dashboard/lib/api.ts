@@ -260,11 +260,11 @@ export interface MonitoringTool {
   avg_latency_ms: number; p99_latency_ms: number; success_rate: number;
 }
 export const getMonitoringTimeseries = (hours: number, projectId?: string | null) =>
-  get<MonitoringBucket[]>(withProject(`/monitoring/timeseries?hours=${hours}`, projectId));
+  get<MonitoringBucket[]>(`/monitoring/timeseries?hours=${hours}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
 export const getMonitoringModels = (hours: number, projectId?: string | null) =>
-  get<MonitoringModel[]>(withProject(`/monitoring/models?hours=${hours}`, projectId));
+  get<MonitoringModel[]>(`/monitoring/models?hours=${hours}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
 export const getMonitoringTools = (hours: number, projectId?: string | null) =>
-  get<MonitoringTool[]>(withProject(`/monitoring/tools?hours=${hours}`, projectId));
+  get<MonitoringTool[]>(`/monitoring/tools?hours=${hours}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
 
 // ── Server Metadata (Catalog) ─────────────────────────────────────────────────
 export const listServerMetadata = (projectId?: string | null) =>
