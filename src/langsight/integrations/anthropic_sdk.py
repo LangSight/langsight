@@ -227,7 +227,7 @@ class LangSightClaudeAgentHooks(BaseIntegration):
         """Called when a tool execution completes."""
         try:
             started_at = self._pending.pop(tool_name, datetime.now(UTC))
-            await self._record(
+            self._record(
                 tool_name=tool_name,
                 started_at=started_at,
                 status=ToolCallStatus.SUCCESS,
@@ -240,7 +240,7 @@ class LangSightClaudeAgentHooks(BaseIntegration):
         """Called when a tool execution fails."""
         try:
             started_at = self._pending.pop(tool_name, datetime.now(UTC))
-            await self._record(
+            self._record(
                 tool_name=tool_name,
                 started_at=started_at,
                 status=ToolCallStatus.ERROR,

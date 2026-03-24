@@ -103,7 +103,7 @@ class LangSightOpenAIHooks(BaseIntegration):
         try:
             key = self._tool_key(agent, tool)
             started_at = self._pending.pop(key, datetime.now(UTC))
-            await self._record(
+            self._record(
                 tool_name=self._tool_name(tool),
                 started_at=started_at,
                 status=ToolCallStatus.SUCCESS,
@@ -119,7 +119,7 @@ class LangSightOpenAIHooks(BaseIntegration):
         try:
             key = self._tool_key(agent, tool)
             started_at = self._pending.pop(key, datetime.now(UTC))
-            await self._record(
+            self._record(
                 tool_name=self._tool_name(tool),
                 started_at=started_at,
                 status=ToolCallStatus.ERROR,

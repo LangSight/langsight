@@ -81,7 +81,7 @@ class LangSightCrewAICallback(BaseIntegration):
     ) -> None:
         """Called by CrewAI when a tool call completes successfully."""
         started_at = self._pending.pop(tool_name, datetime.now(UTC))
-        await self._record(
+        self._record(
             tool_name=tool_name,
             started_at=started_at,
             status=ToolCallStatus.SUCCESS,
@@ -95,7 +95,7 @@ class LangSightCrewAICallback(BaseIntegration):
     ) -> None:
         """Called by CrewAI when a tool call fails."""
         started_at = self._pending.pop(tool_name, datetime.now(UTC))
-        await self._record(
+        self._record(
             tool_name=tool_name,
             started_at=started_at,
             status=ToolCallStatus.ERROR,
