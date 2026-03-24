@@ -549,6 +549,12 @@ export function LineageGraph({
         </div>
       )}
 
+      {/* ── Legend ── */}
+      <div className="absolute bottom-4 left-4 z-10 flex items-center gap-3 rounded-lg px-2.5 py-1.5 text-[9px] text-muted-foreground" style={{ background: "hsl(var(--card) / 0.9)", border: "1px solid hsl(var(--border))", backdropFilter: "blur(8px)" }}>
+        <div className="flex items-center gap-1.5"><svg width="16" height="2"><line x1="0" y1="1" x2="16" y2="1" stroke="currentColor" strokeWidth="1.5" /></svg><span>calls</span></div>
+        <div className="flex items-center gap-1.5"><svg width="16" height="2"><line x1="0" y1="1" x2="16" y2="1" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3,2" /></svg><span>handoff</span></div>
+      </div>
+
       {/* ── Minimap ── */}
       {minimap && containerSize.w > 0 && (
         <div className="absolute bottom-4 right-4 rounded-xl overflow-hidden z-10"

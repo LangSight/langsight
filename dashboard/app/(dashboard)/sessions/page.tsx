@@ -466,82 +466,43 @@ export default function SessionsPage() {
                 </tbody>
               </table>
 
+              {/* Pagination */}
+              {filtered.length > 0 && (
+                <div className="flex items-center justify-between px-4 py-2 border-t text-[10px] text-muted-foreground" style={{ borderColor: "hsl(var(--border))" }}>
+                  <span>
+                    {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}
+                  </span>
+                  <div className="flex items-center gap-px">
+                    <button onClick={() => setPage(0)} disabled={page === 0} className="p-1 rounded hover:bg-accent disabled:opacity-30 transition-colors"><ChevronsLeft size={10} /></button>
+                    <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="p-1 rounded hover:bg-accent disabled:opacity-30 transition-colors"><ChevronLeft size={10} /></button>
+                    {(() => {
+                      const pages: (number | "...")[] = [];
+                      if (totalPages <= 7) {
+                        for (let i = 0; i < totalPages; i++) pages.push(i);
+                      } else {
+                        pages.push(0);
+                        if (page > 2) pages.push("...");
+                        for (let i = Math.max(1, page - 1); i <= Math.min(totalPages - 2, page + 1); i++) pages.push(i);
+                        if (page < totalPages - 3) pages.push("...");
+                        pages.push(totalPages - 1);
+                      }
+                      return pages.map((p, idx) =>
+                        p === "..." ? (
+                          <span key={`ellipsis-${idx}`} className="px-1 text-muted-foreground">…</span>
+                        ) : (
+                          <button key={p} onClick={() => setPage(p)} className={cn("min-w-[20px] h-[20px] rounded text-[9px] font-medium tabular-nums transition-colors", page === p ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground")}>{p + 1}</button>
+                        )
+                      );
+                    })()}
+                    <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="p-1 rounded hover:bg-accent disabled:opacity-30 transition-colors"><ChevronRight size={10} /></button>
+                    <button onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1} className="p-1 rounded hover:bg-accent disabled:opacity-30 transition-colors"><ChevronsRight size={10} /></button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
       </div>
-
-      {/* Pagination — below the table, right-aligned */}
-      {filtered.length > 0 && (
-        <div className="flex-shrink-0 flex items-center justify-between pt-3 text-xs text-muted-foreground">
-          <span>
-            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}
-          </span>
-          <div className="flex items-center gap-0.5">
-            <button
-              onClick={() => setPage(0)}
-              disabled={page === 0}
-              className="p-1.5 rounded hover:bg-accent disabled:opacity-30 transition-colors"
-            >
-              <ChevronsLeft size={13} />
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-              className="p-1.5 rounded hover:bg-accent disabled:opacity-30 transition-colors"
-            >
-              <ChevronLeft size={13} />
-            </button>
-
-            {/* Numbered page buttons */}
-            {(() => {
-              const pages: (number | "...")[] = [];
-              if (totalPages <= 7) {
-                for (let i = 0; i < totalPages; i++) pages.push(i);
-              } else {
-                pages.push(0);
-                if (page > 2) pages.push("...");
-                for (let i = Math.max(1, page - 1); i <= Math.min(totalPages - 2, page + 1); i++) pages.push(i);
-                if (page < totalPages - 3) pages.push("...");
-                pages.push(totalPages - 1);
-              }
-              return pages.map((p, idx) =>
-                p === "..." ? (
-                  <span key={`ellipsis-${idx}`} className="px-1 text-muted-foreground">…</span>
-                ) : (
-                  <button
-                    key={p}
-                    onClick={() => setPage(p)}
-                    className={cn(
-                      "min-w-[28px] h-[28px] rounded text-[11px] font-medium tabular-nums transition-colors",
-                      page === p
-                        ? "bg-primary text-primary-foreground"
-                        : "hover:bg-accent text-muted-foreground"
-                    )}
-                  >
-                    {p + 1}
-                  </button>
-                )
-              );
-            })()}
-
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-              disabled={page >= totalPages - 1}
-              className="p-1.5 rounded hover:bg-accent disabled:opacity-30 transition-colors"
-            >
-              <ChevronRight size={13} />
-            </button>
-            <button
-              onClick={() => setPage(totalPages - 1)}
-              disabled={page >= totalPages - 1}
-              className="p-1.5 rounded hover:bg-accent disabled:opacity-30 transition-colors"
-            >
-              <ChevronsRight size={13} />
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

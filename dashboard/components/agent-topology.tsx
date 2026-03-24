@@ -91,33 +91,28 @@ export function AgentTopology({ agentName, lineageGraph, isLoading, className }:
         />
       </div>
 
-      {/* Inline detail card for selected node */}
+      {/* Inline detail bar for selected node */}
       {selectedDetail && (
-        <div className="mt-3 rounded-lg px-4 py-3" style={{ background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
-          <div className="flex items-center gap-2 mb-2">
+        <div className="flex-shrink-0 flex items-center gap-4 px-4 py-2 border-t" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card))" }}>
+          <div className="flex items-center gap-2">
             {selectedDetail.type === "agent"
-              ? <Bot size={12} style={{ color: "hsl(var(--primary))" }} />
-              : <Server size={12} className="text-muted-foreground" />}
-            <span className="text-[12px] font-bold text-foreground">{selectedDetail.label}</span>
+              ? <Bot size={11} style={{ color: "hsl(var(--primary))" }} />
+              : <Server size={11} className="text-muted-foreground" />}
+            <span className="text-[11px] font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{selectedDetail.label}</span>
             <span className="text-[9px] text-muted-foreground">{selectedDetail.type}</span>
           </div>
-          <div className="grid grid-cols-4 gap-3 text-[10px]">
-            <div>
-              <span className="text-muted-foreground">Calls</span>
-              <p className="font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{selectedDetail.metrics.total_calls ?? 0}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Errors</span>
-              <p className="font-bold" style={{ color: (selectedDetail.metrics.error_count ?? 0) > 0 ? "#ef4444" : "hsl(var(--foreground))", fontFamily: "var(--font-geist-mono)" }}>{selectedDetail.metrics.error_count ?? 0}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Avg Latency</span>
-              <p className="font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(selectedDetail.metrics.avg_latency_ms ?? 0)}ms</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Sessions</span>
-              <p className="font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{selectedDetail.metrics.sessions ?? 0}</p>
-            </div>
+          <div className="flex items-center gap-4 text-[10px] ml-auto">
+            {[
+              { label: "Calls", value: String(selectedDetail.metrics.total_calls ?? 0) },
+              { label: "Errors", value: String(selectedDetail.metrics.error_count ?? 0), danger: (selectedDetail.metrics.error_count ?? 0) > 0 },
+              { label: "Avg Latency", value: `${Math.round(selectedDetail.metrics.avg_latency_ms ?? 0)}ms` },
+              { label: "Sessions", value: String(selectedDetail.metrics.sessions ?? 0) },
+            ].map((s) => (
+              <div key={s.label} className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">{s.label}</span>
+                <span className="font-semibold" style={{ fontFamily: "var(--font-geist-mono)", color: s.danger ? "#ef4444" : "hsl(var(--foreground))" }}>{s.value}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}

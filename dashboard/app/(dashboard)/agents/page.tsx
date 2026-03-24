@@ -74,9 +74,9 @@ function StatusDot({ status, pulse }: { status: string; pulse?: boolean }) {
 
 function StatTile({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
   return (
-    <div className="rounded-lg p-3" style={{ background: "hsl(var(--muted))", border: "0.5px solid hsl(var(--border))" }}>
-      <p className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1">{label}</p>
-      <p className="text-[14px] font-bold" style={{ fontFamily: "var(--font-geist-mono)", color: danger ? "#ef4444" : "hsl(var(--foreground))" }}>{value}</p>
+    <div className="flex items-center justify-between py-1.5">
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <span className={cn("text-[12px] font-semibold", danger ? "text-red-500" : "text-foreground")} style={{ fontFamily: "var(--font-geist-mono)" }}>{value}</span>
     </div>
   );
 }
@@ -180,10 +180,9 @@ function AgentTable({ agents, metaByName, onSelect, hours }: { agents: AgentSumm
               <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Owner</th>
               <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Tags</th>
               <ThCell col="sessions" label="Sessions" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <ThCell col="errorRate" label="Err %" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              <ThCell col="errorRate" label="Error %" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="cost" label={`Cost ${hours}h`} sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <ThCell col="lastActive" label="Last Active" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Timestamp</th>
+              <ThCell col="lastActive" label="Last Seen" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
             </tr>
           </thead>
           <tbody>
@@ -226,13 +225,15 @@ function AgentTable({ agents, metaByName, onSelect, hours }: { agents: AgentSumm
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-[11px] text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{agent.total_cost_usd > 0 ? formatUsd(agent.total_cost_usd) : <span className="opacity-30">—</span>}</td>
-                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground"><Timestamp iso={agent.latest_started_at} compact /></td>
-                  <td className="px-3 py-2.5 text-[10px] text-muted-foreground tabular-nums" style={{ fontFamily: "var(--font-geist-mono)", opacity: 0.7 }}>{formatExact(agent.latest_started_at)}</td>
+                  <td className="px-3 py-2.5">
+                    <div className="text-[11px] text-muted-foreground"><Timestamp iso={agent.latest_started_at} compact /></div>
+                    <div className="text-[9px] text-muted-foreground opacity-60 mt-0.5" style={{ fontFamily: "var(--font-geist-mono)" }}>{formatExact(agent.latest_started_at)}</div>
+                  </td>
                 </tr>
               );
             })}
             {sorted.length === 0 && (
-              <tr><td colSpan={9} className="text-center py-12 text-sm text-muted-foreground">No agents match</td></tr>
+              <tr><td colSpan={8} className="text-center py-12 text-sm text-muted-foreground">No agents match</td></tr>
             )}
           </tbody>
         </table>
@@ -558,7 +559,7 @@ export default function AgentsPage() {
                     {/* OVERVIEW */}
                     {activeTab === "overview" && (
                       <div className="space-y-5">
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="divide-y" style={{ borderColor: "hsl(var(--border) / 0.5)" }}>
                           <StatTile label="Sessions" value={selected.sessions.toLocaleString()} />
                           <StatTile label="Tool Calls" value={selected.tool_calls.toLocaleString()} />
                           <StatTile label="Failures" value={selected.failed_calls.toLocaleString()} danger={selected.failed_calls > 0} />
@@ -602,19 +603,19 @@ export default function AgentsPage() {
                             return <button key={f} onClick={() => setSessionFilter(f)} className={cn("px-2 py-1 rounded text-[10px] font-medium transition-all capitalize", sessionFilter === f ? "text-foreground bg-accent" : "text-muted-foreground hover:text-foreground")}>{f} <span className="text-muted-foreground">{count}</span></button>;
                           })}
                         </div>
-                        <div className="space-y-1">
+                        <div className="divide-y" style={{ borderColor: "hsl(var(--border) / 0.5)" }}>
                           {selectedSessions.map((s) => (
-                            <Link key={s.session_id} href={`/sessions/${s.session_id}`} className="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-accent/30 transition-colors" style={{ borderTop: "1px solid hsl(var(--border))", borderRight: "1px solid hsl(var(--border))", borderBottom: "1px solid hsl(var(--border))", borderLeft: `3px solid ${s.failed_calls > 0 ? "#ef4444" : "#22c55e"}` }}>
+                            <Link key={s.session_id} href={`/sessions/${s.session_id}`} className="flex items-center justify-between py-2 hover:bg-accent/20 transition-colors -mx-1 px-1 rounded">
                               <div className="flex items-center gap-2 min-w-0">
                                 <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", s.failed_calls > 0 ? "bg-red-500" : "bg-emerald-500")} />
-                                <span className="text-[11px] font-medium text-foreground truncate" style={{ fontFamily: "var(--font-geist-mono)" }}>{s.session_id.slice(0, 20)}</span>
+                                <span className="text-[10px] font-medium text-foreground truncate" style={{ fontFamily: "var(--font-geist-mono)" }}>{s.session_id.slice(0, 20)}</span>
                               </div>
-                              <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-shrink-0">
-                                <span>{s.tool_calls} calls</span>
+                              <div className="flex items-center gap-2.5 text-[9px] text-muted-foreground flex-shrink-0">
+                                <span>{s.tool_calls} {s.tool_calls === 1 ? "call" : "calls"}</span>
                                 {s.failed_calls > 0 && <span style={{ color: "#ef4444" }}>{s.failed_calls} failed</span>}
                                 <span style={{ fontFamily: "var(--font-geist-mono)" }}>{formatDuration(s.duration_ms)}</span>
-                                <Timestamp iso={s.first_call_at} />
-                                <ChevronRight size={12} />
+                                <Timestamp iso={s.first_call_at} compact />
+                                <ChevronRight size={10} />
                               </div>
                             </Link>
                           ))}

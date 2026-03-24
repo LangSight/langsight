@@ -17,7 +17,7 @@ import { SessionTimeline } from "@/components/session-timeline";
 import { fetcher, getSessionTrace, compareSessions, replaySession } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { buildSessionGraph, type SessionGraphResult } from "@/lib/session-graph";
-import { cn, timeAgo, formatDuration, CALL_STATUS_COLOR, SPAN_TYPE_ICON } from "@/lib/utils";
+import { cn, timeAgo, formatDuration, formatExact, CALL_STATUS_COLOR, SPAN_TYPE_ICON } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
 import type { AgentSession, SessionTrace, SpanNode, SessionComparison, DiffEntry, PathMetrics, ServerCallerInfo } from "@/lib/types";
 import { HealthTagBadge } from "@/components/health-tag-badge";
@@ -1127,6 +1127,8 @@ export default function SessionDetailPage() {
                   <>
                     <span className="opacity-40">·</span>
                     <span className="flex items-center gap-1"><Clock size={9} /><Timestamp iso={session.first_call_at} compact /></span>
+                    <span className="opacity-40">·</span>
+                    <span>{formatExact(session.first_call_at)}</span>
                   </>
                 )}
               </div>
