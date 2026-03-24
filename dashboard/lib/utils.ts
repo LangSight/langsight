@@ -19,8 +19,23 @@ export function formatDuration(ms: number | null): string {
   return `${(ms / 60_000).toFixed(1)}m`;
 }
 
+/**
+ * Ensure a timestamp string is parsed as UTC.
+ * ClickHouse returns naive timestamps ("2026-03-24 10:48:07.704000") without
+ * a timezone indicator.  Without the trailing "Z", browsers parse them as
+ * local time, which shifts every display by the user's UTC offset.
+ */
+function asUTC(iso: string): Date {
+  let s = iso.trim();
+  // Add "T" separator if missing (ClickHouse uses space)
+  if (s.length >= 19 && s[10] === " ") s = s.slice(0, 10) + "T" + s.slice(11);
+  // Append Z if no timezone indicator present
+  if (!s.endsWith("Z") && !s.includes("+") && !/[+-]\d{2}:\d{2}$/.test(s)) s += "Z";
+  return new Date(s);
+}
+
 export function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, {
+  return asUTC(iso).toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -28,7 +43,8 @@ export function formatTime(iso: string): string {
 }
 
 export function timeAgo(iso: string): string {
-  const secs = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  const secs = Math.floor((Date.now() - asUTC(iso).getTime()) / 1000);
+  if (secs < 0) return "just now";
   if (secs < 60) return `${secs}s ago`;
   if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
   if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
@@ -36,8 +52,7 @@ export function timeAgo(iso: string): string {
 }
 
 export function formatExact(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString("en-US", {
+  return asUTC(iso).toLocaleString("en-US", {
     month: "short", day: "numeric", year: "numeric",
     hour: "2-digit", minute: "2-digit", second: "2-digit",
     hour12: false, timeZoneName: "short",
