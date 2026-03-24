@@ -1352,7 +1352,8 @@ class ClickHouseBackend:
                    100)                                               AS success_rate,
                 if(countDistinct(session_id) > 0,
                    round(count() / countDistinct(session_id), 2),
-                   0)                                                 AS calls_per_session
+                   0)                                                 AS calls_per_session,
+                countIf(error LIKE 'ContentError:%')                  AS content_errors
             FROM mcp_tool_calls
             {where}
             GROUP BY server_name, tool_name
@@ -1360,8 +1361,31 @@ class ClickHouseBackend:
             """,
             parameters=params,
         )
-        cols = ["server_name", "tool_name", "calls", "errors", "avg_latency_ms", "p99_latency_ms", "success_rate", "calls_per_session"]
+        cols = ["server_name", "tool_name", "calls", "errors", "avg_latency_ms", "p99_latency_ms", "success_rate", "calls_per_session", "content_errors"]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+    async def get_agent_loop_counts(
+        self,
+        hours: int = 24,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return per-agent loop detection counts from prevented spans."""
+        where = "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR AND status = 'prevented' AND error LIKE '%loop%'"
+        params: dict[str, Any] = {"hours": hours}
+        if project_id:
+            where += " AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+        result = await self._client.query(
+            f"""
+            SELECT agent_name, count() AS loop_count
+            FROM mcp_tool_calls
+            {where}
+            GROUP BY agent_name
+            ORDER BY loop_count DESC
+            """,
+            parameters=params,
+        )
+        return [{"agent_name": r[0], "loop_count": int(r[1])} for r in result.result_rows]
 
     async def get_error_breakdown(
         self,

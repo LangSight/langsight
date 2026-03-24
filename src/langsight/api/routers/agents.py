@@ -184,6 +184,20 @@ async def list_sessions(
     ]
 
 
+@router.get(
+    "/loop-counts",
+    response_model=list[dict[str, Any]],
+    summary="Per-agent loop detection counts",
+)
+async def get_loop_counts(
+    hours: int = Query(default=24, ge=1, le=720),
+    project_id: str | None = Depends(get_active_project_id),
+    storage: StorageBackend = Depends(get_storage),
+) -> list[dict[str, Any]]:
+    """Return how many loop-detection events fired per agent in the time window."""
+    if not hasattr(storage, "get_agent_loop_counts"):
+        return []
+    return await storage.get_agent_loop_counts(hours=hours, project_id=project_id)
 
 
 @router.get(

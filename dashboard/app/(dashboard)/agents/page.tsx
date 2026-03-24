@@ -10,7 +10,7 @@ import {
   Bot, ChevronRight, Search, Network, X, Server, GitBranch,
   ChevronUp, ChevronDown, ChevronLast, AlertTriangle,
 } from "lucide-react";
-import { fetcher, getCostsBreakdown, listAgentMetadata, upsertAgentMetadata } from "@/lib/api";
+import { fetcher, getCostsBreakdown, listAgentMetadata, upsertAgentMetadata, getAgentLoopCounts } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, formatDuration, timeAgo, formatExact } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
@@ -25,8 +25,11 @@ type AgentSummary = {
   total_duration_ms: number; avg_duration_ms: number; total_cost_usd: number;
   servers_used: string[]; latest_started_at: string; session_ids: string[];
   error_rate: number; status: "healthy" | "degraded" | "failing";
-  health_score: number;        // % of sessions tagged success or success_with_fallback
-  healthy_sessions: number;    // sessions with success/success_with_fallback
+  health_score: number;
+  healthy_sessions: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  avg_tokens_per_session: number;
 };
 type DetailTab = "about" | "overview" | "topology" | "sessions";
 type SortCol = "name" | "healthScore" | "errorRate" | "cost" | "lastActive" | "sessions";
@@ -55,6 +58,7 @@ function aggregateAgents(sessions: AgentSession[], costs: CostsBreakdownResponse
         total_duration_ms: 0, avg_duration_ms: 0, total_cost_usd: costByAgent.get(name) ?? 0,
         servers_used: [], latest_started_at: session.first_call_at, session_ids: [],
         error_rate: 0, status: "healthy", health_score: 100, healthy_sessions: 0,
+        total_input_tokens: 0, total_output_tokens: 0, avg_tokens_per_session: 0,
       };
       next.sessions += 1; next.tool_calls += session.tool_calls; next.failed_calls += session.failed_calls;
       next.total_duration_ms += session.duration_ms; next.avg_duration_ms = next.total_duration_ms / next.sessions;
@@ -62,6 +66,11 @@ function aggregateAgents(sessions: AgentSession[], costs: CostsBreakdownResponse
       next.healthy_sessions += isHealthy ? 1 : 0;
       next.health_score = Math.round(next.healthy_sessions / next.sessions * 100);
       next.status = next.health_score < 70 ? "failing" : next.health_score < 90 ? "degraded" : "healthy";
+      next.total_input_tokens += session.total_input_tokens ?? 0;
+      next.total_output_tokens += session.total_output_tokens ?? 0;
+      next.avg_tokens_per_session = next.sessions > 0
+        ? Math.round((next.total_input_tokens + next.total_output_tokens) / next.sessions)
+        : 0;
       next.latest_started_at = new Date(session.first_call_at) > new Date(next.latest_started_at) ? session.first_call_at : next.latest_started_at;
       if (!next.session_ids.includes(session.session_id)) next.session_ids.push(session.session_id);
       next.servers_used = Array.from(servers).sort();
@@ -108,7 +117,7 @@ function ThCell({ col, label, sortCol, sortDir, onSort, className }: { col: Sort
 }
 
 /* ── State 1: Full-width sortable table ─────────────────────── */
-function AgentTable({ agents, metaByName, onSelect, hours }: { agents: AgentSummary[]; metaByName: Map<string, AgentMetadata>; onSelect: (name: string) => void; hours: number }) {
+function AgentTable({ agents, metaByName, onSelect, hours, loopByAgent }: { agents: AgentSummary[]; metaByName: Map<string, AgentMetadata>; onSelect: (name: string) => void; hours: number; loopByAgent: Map<string, number> }) {
   const [sortCol, setSortCol] = useState<SortCol>("errorRate");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [search, setSearch] = useState("");
@@ -195,6 +204,8 @@ function AgentTable({ agents, metaByName, onSelect, hours }: { agents: AgentSumm
               <ThCell col="sessions" label="Sessions" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="healthScore" label="Health" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="errorRate" label="Error %" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Tokens/Session</th>
+              <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide" title="Loop detections in time window">Loops</th>
               <ThCell col="cost" label={`Cost ${hours}h`} sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="lastActive" label="Last Seen" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
             </tr>
@@ -255,6 +266,29 @@ function AgentTable({ agents, metaByName, onSelect, hours }: { agents: AgentSumm
                       )}
                     </div>
                   </td>
+                  <td className="px-3 py-2.5">
+                    {agent.avg_tokens_per_session > 0 ? (
+                      <div>
+                        <span className="text-[11px] font-mono text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>
+                          {agent.avg_tokens_per_session >= 1000
+                            ? `${(agent.avg_tokens_per_session / 1000).toFixed(1)}k`
+                            : agent.avg_tokens_per_session}
+                        </span>
+                        <div className="text-[9px] text-muted-foreground mt-0.5">
+                          avg/session
+                        </div>
+                      </div>
+                    ) : <span className="opacity-30 text-[11px]">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {(loopByAgent.get(agent.agent_name) ?? 0) > 0 ? (
+                      <span className="flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full w-fit"
+                        style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>
+                        <AlertTriangle size={9} />
+                        {loopByAgent.get(agent.agent_name)}
+                      </span>
+                    ) : <span className="opacity-30 text-[11px]">—</span>}
+                  </td>
                   <td className="px-3 py-2.5 text-[11px] text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{agent.total_cost_usd > 0 ? formatUsd(agent.total_cost_usd) : <span className="opacity-30">—</span>}</td>
                   <td className="px-3 py-2.5">
                     <div className="text-[11px] text-muted-foreground"><Timestamp iso={agent.latest_started_at} compact /></div>
@@ -264,7 +298,7 @@ function AgentTable({ agents, metaByName, onSelect, hours }: { agents: AgentSumm
               );
             })}
             {sorted.length === 0 && (
-              <tr><td colSpan={8} className="text-center py-12 text-sm text-muted-foreground">No agents match</td></tr>
+              <tr><td colSpan={10} className="text-center py-12 text-sm text-muted-foreground">No agents match</td></tr>
             )}
           </tbody>
         </table>
@@ -410,6 +444,12 @@ export default function AgentsPage() {
   const pid = activeProject?.id ?? null;
   const { data: metadata, mutate: mutateMetadata } = useSWR<AgentMetadata[]>(`/api/agents/metadata${p}`, () => listAgentMetadata(pid), { refreshInterval: 300_000 });
   const { data: healthServers } = useSWR<HealthResult[]>("/api/health/servers", fetcher, { refreshInterval: 30_000 });
+  const { data: loopCounts } = useSWR<{ agent_name: string; loop_count: number }[]>(
+    `/api/agents/loop-counts?hours=${hours}${p}`,
+    () => getAgentLoopCounts(hours, pid),
+    { refreshInterval: 120_000 },
+  );
+  const loopByAgent = useMemo(() => new Map((loopCounts ?? []).map(l => [l.agent_name, l.loop_count])), [loopCounts]);
 
   const metaByName = useMemo(() => { const m = new Map<string, AgentMetadata>(); for (const meta of metadata ?? []) m.set(meta.agent_name, meta); return m; }, [metadata]);
   const agents = useMemo(() => sessions ? aggregateAgents(sessions, costs) : [], [sessions, costs]);
@@ -485,7 +525,7 @@ export default function AgentsPage() {
           {/* State 1: No agent selected — full-width table */}
           {!selectedAgent && (
             <div className="flex-1 min-h-0">
-              <AgentTable agents={agents} metaByName={metaByName} onSelect={selectAgent} hours={hours} />
+              <AgentTable agents={agents} metaByName={metaByName} onSelect={selectAgent} hours={hours} loopByAgent={loopByAgent} />
             </div>
           )}
 

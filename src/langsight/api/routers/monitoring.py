@@ -55,6 +55,7 @@ class ToolMetrics(BaseModel):
     p99_latency_ms: float = 0.0
     success_rate: float = 100.0
     calls_per_session: float = 0.0
+    content_errors: int = 0
 
 
 class ErrorCategory(BaseModel):

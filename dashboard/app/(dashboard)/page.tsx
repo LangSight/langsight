@@ -362,6 +362,7 @@ export default function DashboardPage() {
                   <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Output Tokens</th>
                   <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Avg Latency</th>
                   <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Errors</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Ctx Usage</th>
                   <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Est. Cost</th>
                 </tr>
               </thead>
@@ -374,6 +375,26 @@ export default function DashboardPage() {
                     <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{m.output_tokens.toLocaleString()}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{formatLatency(m.avg_latency_ms)}</td>
                     <td className={cn("px-4 py-2.5 text-right font-mono", m.error_count > 0 ? "text-red-400" : "text-muted-foreground")}>{m.error_count}</td>
+                    <td className="px-4 py-2.5 text-right font-mono whitespace-nowrap">
+                      {(() => {
+                        const limits: Record<string, number> = {
+                          "gemini-2.5-flash": 1_048_576, "gemini-2.5-pro": 1_048_576,
+                          "gemini-2.0-flash": 1_048_576, "gemini-1.5-pro": 1_048_576,
+                          "gemini-1.5-flash": 1_048_576,
+                          "gpt-4o": 128_000, "gpt-4o-mini": 128_000, "o3": 200_000, "o3-mini": 200_000,
+                          "claude-opus-4-6": 200_000, "claude-sonnet-4-6": 200_000, "claude-haiku-4-5-20251001": 200_000,
+                        };
+                        const limit = limits[m.model_id];
+                        if (!limit || m.input_tokens === 0) return <span className="opacity-30">—</span>;
+                        const avgPerCall = m.input_tokens / Math.max(m.calls, 1);
+                        const pct = Math.round(avgPerCall / limit * 100);
+                        return (
+                          <span className={pct > 80 ? "text-red-400 font-semibold" : pct > 50 ? "text-amber-400" : "text-muted-foreground"}>
+                            {pct}%
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="px-4 py-2.5 text-right font-mono text-emerald-400">{m.est_cost_usd != null ? `$${m.est_cost_usd.toFixed(4)}` : "—"}</td>
                   </tr>
                 ))}
@@ -427,6 +448,7 @@ export default function DashboardPage() {
                   <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground">Tool</th>
                   <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Calls</th>
                   <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Errors</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground" title="isError=False responses that contained error text">Silent Failures</th>
                   <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Avg Latency</th>
                   <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">p99 Latency</th>
                   <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Calls/Session</th>
@@ -440,6 +462,9 @@ export default function DashboardPage() {
                     <td className="px-4 py-2.5 font-mono font-medium text-foreground">{t.tool_name}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{t.calls.toLocaleString()}</td>
                     <td className={cn("px-4 py-2.5 text-right font-mono", t.errors > 0 ? "text-red-400" : "text-muted-foreground")}>{t.errors}</td>
+                    <td className={cn("px-4 py-2.5 text-right font-mono", t.content_errors > 0 ? "text-amber-400 font-semibold" : "text-muted-foreground opacity-40")}>
+                      {t.content_errors > 0 ? t.content_errors : "0"}
+                    </td>
                     <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{formatLatency(t.avg_latency_ms)}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{formatLatency(t.p99_latency_ms)}</td>
                     <td className={cn("px-4 py-2.5 text-right font-mono font-semibold", t.calls_per_session > 5 ? "text-amber-400" : "text-muted-foreground")}>

@@ -252,7 +252,7 @@ export interface MonitoringModel {
 export interface MonitoringTool {
   server_name: string; tool_name: string; calls: number; errors: number;
   avg_latency_ms: number; p99_latency_ms: number; success_rate: number;
-  calls_per_session: number;
+  calls_per_session: number; content_errors: number;
 }
 export const getMonitoringTimeseries = (hours: number, projectId?: string | null) =>
   get<MonitoringBucket[]>(`/monitoring/timeseries?hours=${hours}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
@@ -265,6 +265,8 @@ export interface ErrorCategory {
 }
 export const getMonitoringErrors = (hours: number, projectId?: string | null) =>
   get<ErrorCategory[]>(`/monitoring/errors?hours=${hours}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
+export const getAgentLoopCounts = (hours: number, projectId?: string | null) =>
+  get<{ agent_name: string; loop_count: number }[]>(`/agents/loop-counts?hours=${hours}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
 
 // ── Server Metadata (Catalog) ─────────────────────────────────────────────────
 export const listServerMetadata = (projectId?: string | null) =>
