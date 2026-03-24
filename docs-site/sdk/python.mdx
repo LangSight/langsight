@@ -17,6 +17,30 @@ pip install langsight
 uv add langsight
 ```
 
+## Quick start with `init()`
+
+```python
+import langsight
+
+ls = langsight.init()  # reads LANGSIGHT_URL, LANGSIGHT_API_KEY, LANGSIGHT_PROJECT_ID from env
+
+# Wrap MCP sessions
+traced = ls.wrap(mcp_session, server_name="my-server", session_id="sess-001")
+
+# Wrap LLM clients (OpenAI, Anthropic, Gemini — auto-detected)
+client = ls.wrap_llm(genai.Client(), agent_name="analyst", session_id="sess-001")
+```
+
+Set the environment variables:
+
+```bash
+export LANGSIGHT_URL=http://localhost:8000
+export LANGSIGHT_API_KEY=lsk_your_key
+export LANGSIGHT_PROJECT_ID=my-project
+```
+
+`init()` returns `None` if `LANGSIGHT_URL` is not set — safe to call unconditionally. All extra kwargs are forwarded to `LangSightClient` (e.g. `loop_detection=True`, `max_steps=25`).
+
 ## 2-line integration
 
 ```python

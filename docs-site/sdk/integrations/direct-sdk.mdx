@@ -1,175 +1,73 @@
 ---
-title: "Direct LLM SDKs (OpenAI, Anthropic, Gemini)"
+title: "Direct LLM SDKs"
 description: "Auto-trace tool calls from raw LLM SDK responses — wrap once, trace everything"
 ---
 
-`wrap_llm()` wraps OpenAI, Anthropic, and Gemini SDK clients directly. Every LLM generation call and tool use block in the response is automatically traced — no callback wiring needed.
+`wrap_llm()` wraps LLM SDK clients directly. Every LLM generation call and tool use block in the response is automatically traced — no callback wiring needed.
 
 ## When to use this
 
 | Scenario | Use |
 |----------|-----|
 | Agent built with LangChain/LangGraph | [LangChain callback](/sdk/integrations/langchain) |
-| Agent using raw OpenAI/Anthropic/Gemini SDK | **`wrap_llm()` (this page)** |
+| Agent using raw OpenAI/Anthropic/Gemini SDK | **`wrap_llm()` — see pages below** |
 | Agent using MCP sessions directly | [`wrap()`](/sdk/python) |
 
-## Installation
+## Supported SDKs
 
-```bash
-pip install langsight
+<CardGroup cols={3}>
+  <Card title="Gemini SDK" icon="bolt" href="/sdk/integrations/gemini-sdk">
+    `google.genai.Client` — new SDK with function calling
+  </Card>
+  <Card title="OpenAI SDK" icon="robot" href="/sdk/integrations/openai-sdk">
+    `openai.OpenAI` / `AsyncOpenAI` — chat completions + tools
+  </Card>
+  <Card title="Anthropic SDK" icon="message" href="/sdk/integrations/anthropic-sdk">
+    `anthropic.Anthropic` / `AsyncAnthropic` — messages + tool_use
+  </Card>
+</CardGroup>
 
-# Plus whichever SDK you use:
-pip install openai        # OpenAI
-pip install anthropic     # Anthropic
-pip install google-generativeai  # Gemini
-```
-
-## Setup
-
-```python
-from langsight.sdk import LangSightClient
-
-ls = LangSightClient(
-    url="http://localhost:8000",
-    project_id="my-project",
-)
-```
-
-## OpenAI
+## How it works
 
 ```python
-from openai import OpenAI
+import langsight
 
-raw_client = OpenAI()
-client = ls.wrap_llm(raw_client, agent_name="my-agent", session_id="sess-001")
-
-response = client.chat.completions.create(
-    model="gpt-4o",
-    tools=[{"type": "function", "function": {"name": "get_weather", ...}}],
-    messages=[{"role": "user", "content": "What's the weather in Berlin?"}],
-)
-# response is unchanged — same OpenAI response object
-# LangSight auto-traces: LLM generation span + tool_use spans
+ls = langsight.init()  # reads LANGSIGHT_URL from env
+client = ls.wrap_llm(your_llm_client, agent_name="my-agent", session_id="sess-001")
+# Use client exactly as before — all calls auto-traced
 ```
 
-The wrapper intercepts `client.chat.completions.create()` (sync) and `client.chat.completions.acreate()` (async). All other attributes and methods forward to the original client unchanged.
-
-## Anthropic
-
-```python
-from anthropic import Anthropic
-
-raw_client = Anthropic()
-client = ls.wrap_llm(raw_client, agent_name="my-agent", session_id="sess-001")
-
-response = client.messages.create(
-    model="claude-sonnet-4-6",
-    max_tokens=1024,
-    tools=[{"name": "get_weather", "description": "...", "input_schema": {...}}],
-    messages=[{"role": "user", "content": "What's the weather in Berlin?"}],
-)
-# response is unchanged — same Anthropic response object
-# tool_use content blocks auto-traced as tool_call spans
-```
-
-The wrapper intercepts `client.messages.create()` (sync) and `client.messages.acreate()` (async).
-
-## Gemini
-
-```python
-import google.generativeai as genai
-
-raw_model = genai.GenerativeModel("gemini-2.5-flash")
-model = ls.wrap_llm(raw_model, agent_name="analyst", session_id="sess-001")
-
-response = model.generate_content(
-    "Analyze this data",
-    tools=[...],
-)
-# response is unchanged — same Gemini response object
-# function_call parts auto-traced as tool_call spans
-```
-
-The wrapper intercepts `model.generate_content()` (sync) and `model.generate_content_async()` (async).
-
-## What gets traced
-
-For each `wrap_llm()` call, LangSight emits two types of spans:
-
-### LLM generation span
-
-| Field | Value |
-|-------|-------|
-| `server_name` | `"openai"`, `"anthropic"`, or `"gemini"` |
-| `tool_name` | `"generate/{model}"` (e.g., `"generate/gpt-4o"`) |
-| `span_type` | `"agent"` |
-| `input_tokens` | From response usage metadata |
-| `output_tokens` | From response usage metadata |
-| `model_id` | Model name from the response |
-
-### Tool call spans (one per tool use block)
-
-| Field | Value |
-|-------|-------|
-| `server_name` | `agent_name` or the SDK name |
-| `tool_name` | Function/tool name from the response |
-| `span_type` | `"tool_call"` |
-| `parent_span_id` | Links to the LLM generation span |
-| `input_args` | Tool arguments (redacted if `redact_payloads=True`) |
-
-### Example span tree
-
-```
-Session: sess-001
-├── openai/generate/gpt-4o          1200ms  success  (512 in / 128 out tokens)
-│   ├── get_weather                                   success
-│   └── get_forecast                                  success
-```
-
-## Parameters
-
-```python
-client = ls.wrap_llm(
-    llm_client,                # required — OpenAI, Anthropic, or Gemini client
-    agent_name="my-agent",     # optional — shown in dashboard
-    session_id="sess-001",     # optional — groups spans into a session
-    trace_id="trace-abc",      # optional — links across multi-agent tasks
-)
-```
-
-## PII redaction
-
-When `redact_payloads=True` is set on the `LangSightClient`, tool arguments from response tool_use blocks are not captured:
-
-```python
-ls = LangSightClient(
-    url="http://localhost:8000",
-    project_id="my-project",
-    redact_payloads=True,      # tool args omitted from spans
-)
-```
-
-## Auto-detection
-
-`wrap_llm()` auto-detects the SDK based on the client class name and module. If the SDK is not recognized, it returns the original client unchanged (fail-open) — your code is never broken by LangSight.
+`wrap_llm()` auto-detects the SDK based on the client class:
 
 | Class | Detected SDK |
 |-------|-------------|
 | `openai.OpenAI`, `openai.AsyncOpenAI` | OpenAI |
 | `anthropic.Anthropic`, `anthropic.AsyncAnthropic` | Anthropic |
-| `google.generativeai.GenerativeModel` | Gemini |
-| Anything else | Returned unchanged (warning logged) |
+| `google.genai.Client` | Gemini (new SDK) |
+| `google.generativeai.GenerativeModel` | Gemini (legacy) |
+| Anything else | Returned unchanged (fail-open) |
+
+## What gets traced
+
+For each generation call, LangSight emits:
+
+1. **LLM generation span** — model, tokens, latency, `span_type="agent"`
+2. **Tool call spans** (one per tool use) — tool name, arguments, `parent_span_id` linking to the LLM span
 
 ## Combining with MCP tracing
 
 `wrap_llm()` and `wrap()` work independently. Use both when your agent calls LLM APIs directly and also uses MCP servers:
 
 ```python
-# Trace LLM calls
-client = ls.wrap_llm(OpenAI(), agent_name="my-agent", session_id=sid)
-
-# Trace MCP tool calls
+client = ls.wrap_llm(genai.Client(), agent_name="my-agent", session_id=sid)
 traced_mcp = ls.wrap(mcp_session, server_name="postgres-mcp", session_id=sid)
 ```
 
 Both share the same `session_id`, so all spans appear in a single session trace.
+
+## PII redaction
+
+```python
+ls = LangSightClient(url="http://localhost:8000", redact_payloads=True)
+# Tool arguments from LLM responses are not captured
+```

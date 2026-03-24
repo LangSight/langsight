@@ -1,0 +1,63 @@
+---
+title: "OpenAI SDK"
+description: "Auto-trace OpenAI tool calls with wrap_llm() — one line, zero code changes"
+---
+
+Wrap an `OpenAI` or `AsyncOpenAI` client with `wrap_llm()` to auto-trace every `chat.completions.create()` call and tool use block in the response.
+
+<Note>
+Using OpenAI Agents SDK? See the dedicated [OpenAI Agents integration](/sdk/integrations/openai-agents) — lifecycle hooks cover the full agent runner.
+</Note>
+
+## Installation
+
+```bash
+pip install langsight openai
+```
+
+## Quick start
+
+```python
+import langsight
+from openai import OpenAI
+
+ls = langsight.init()
+
+raw_client = OpenAI()
+client = ls.wrap_llm(raw_client, agent_name="my-agent", session_id="sess-001")
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    tools=[{"type": "function", "function": {"name": "get_weather", ...}}],
+    messages=[{"role": "user", "content": "What's the weather in Berlin?"}],
+)
+# response is unchanged — same OpenAI response object
+# LangSight auto-traces: LLM generation span + tool_use spans
+```
+
+The wrapper intercepts `client.chat.completions.create()` (sync) and `client.chat.completions.acreate()` (async).
+
+## What gets traced
+
+| Span | Fields |
+|------|--------|
+| **LLM generation** | `server_name="openai"`, `tool_name="generate/gpt-4o"`, `span_type="agent"`, tokens, model_id |
+| **Tool call** (per tool) | `tool_name` from response, `span_type="tool_call"`, `parent_span_id`, `input_args` |
+
+```
+Session: sess-001
+├── openai/generate/gpt-4o          1200ms  success  (512 in / 128 out tokens)
+│   ├── get_weather                                   success
+│   └── get_forecast                                  success
+```
+
+## Parameters
+
+```python
+client = ls.wrap_llm(
+    OpenAI(),                  # required — openai.OpenAI or openai.AsyncOpenAI
+    agent_name="my-agent",     # optional — shown in dashboard
+    session_id="sess-001",     # optional — groups spans into a session
+    trace_id="trace-abc",      # optional — links across multi-agent tasks
+)
+```

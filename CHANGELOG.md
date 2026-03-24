@@ -4,6 +4,19 @@ All meaningful changes to LangSight are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.5.0] — 2026-03-24
+
+### Added
+- **`langsight.init()`** — one-line setup from env vars (`LANGSIGHT_URL`, `LANGSIGHT_API_KEY`, `LANGSIGHT_PROJECT_ID`), returns `None` when URL not set (like Sentry)
+- **`google.genai.Client` support** — `wrap_llm()` now auto-detects the new `google-genai` SDK and intercepts `client.models.generate_content()` (sync) and `client.aio.models.generate_content()` (async) via `GenaiClientProxy`
+- **Separate docs pages** — Gemini SDK, OpenAI SDK, and Anthropic SDK each have dedicated integration pages
+
+### Fixed
+- **`_emit_spans()` in LLM wrappers** now uses sync `buffer_span()` instead of the old `send_spans()` async/threading pattern (was missed in v0.4 migration)
+- **Gemini auto-detection** — `google.genai.Client` no longer silently falls through to the legacy `GeminiProxy` which couldn't intercept the new SDK's nested API surface
+
+---
+
 ## [0.4.0] — 2026-03-24
 
 ### Added

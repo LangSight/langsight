@@ -1,0 +1,129 @@
+---
+title: "Gemini SDK"
+description: "Auto-trace Gemini function calls with wrap_llm() — one line, zero loop changes"
+---
+
+Wrap a `google.genai.Client` with `wrap_llm()` to auto-trace every `generate_content()` call and function call in the response.
+
+## Installation
+
+```bash
+pip install langsight google-genai
+```
+
+## Quick start
+
+```python
+import langsight
+from google import genai
+
+ls = langsight.init()  # reads LANGSIGHT_URL, LANGSIGHT_API_KEY, LANGSIGHT_PROJECT_ID
+session_id = "sess-001"
+
+raw_client = genai.Client()
+client = ls.wrap_llm(raw_client, agent_name="analyst", session_id=session_id)
+
+# Async — your existing code, unchanged
+response = await client.aio.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=[...],
+    config=config,
+)
+# Auto-traced: LLM generation span + function_call spans
+
+# Sync works too
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents="Analyze this data",
+    config=config,
+)
+```
+
+The wrapper intercepts `client.models.generate_content()` (sync) and `client.aio.models.generate_content()` (async). All other attributes and methods forward to the original client unchanged.
+
+## Multi-agent example
+
+For agents that share MCP servers and use Gemini for reasoning:
+
+```python
+import langsight
+from google import genai
+
+ls = langsight.init()
+session_id = str(uuid.uuid4())
+
+# Wrap MCP sessions
+catalog_session = ls.wrap(raw_catalog_session, server_name="catalog", session_id=session_id)
+inventory_session = ls.wrap(raw_inventory_session, server_name="inventory", session_id=session_id)
+
+# Wrap each agent's Gemini client
+orchestrator = ls.wrap_llm(genai.Client(), agent_name="orchestrator", session_id=session_id)
+analyst = ls.wrap_llm(genai.Client(), agent_name="analyst", session_id=session_id)
+procurement = ls.wrap_llm(genai.Client(), agent_name="procurement", session_id=session_id)
+
+# Function-calling loops stay exactly the same — no changes needed
+response = await orchestrator.aio.models.generate_content(
+    model="gemini-2.5-flash", contents=contents, config=config,
+)
+```
+
+All spans share the same `session_id`, so the dashboard shows the full multi-agent call tree.
+
+## What gets traced
+
+| Span | Fields |
+|------|--------|
+| **LLM generation** | `server_name="gemini"`, `tool_name="generate/gemini-2.5-flash"`, `span_type="agent"`, tokens, model_id |
+| **Function call** (per tool) | `tool_name` from response, `span_type="tool_call"`, `parent_span_id` linking to the LLM span, `input_args` |
+
+```
+Session: sess-001
+├── gemini/generate/gemini-2.5-flash  1200ms  success  (512 in / 128 out)
+│   ├── list_products                                    success
+│   └── get_stock_level                                  success
+```
+
+## Combining with MCP tracing
+
+`wrap_llm()` and `wrap()` work independently. Use both when your agent calls Gemini directly and also uses MCP servers:
+
+```python
+# Trace LLM calls
+client = ls.wrap_llm(genai.Client(), agent_name="analyst", session_id=sid)
+
+# Trace MCP tool calls
+traced_mcp = ls.wrap(mcp_session, server_name="postgres-mcp", session_id=sid)
+```
+
+## Parameters
+
+```python
+client = ls.wrap_llm(
+    genai.Client(),            # required — google.genai.Client instance
+    agent_name="my-agent",     # optional — shown in dashboard
+    session_id="sess-001",     # optional — groups spans into a session
+    trace_id="trace-abc",      # optional — links across multi-agent tasks
+)
+```
+
+## PII redaction
+
+```python
+ls = LangSightClient(url="http://localhost:8000", redact_payloads=True)
+# Tool arguments from function_call parts are not captured
+```
+
+<Accordion title="Legacy SDK (google-generativeai)">
+If you're using the older `google-generativeai` package (`pip install google-generativeai`):
+
+```python
+import google.generativeai as genai
+
+raw_model = genai.GenerativeModel("gemini-2.5-flash")
+model = ls.wrap_llm(raw_model, agent_name="analyst", session_id="sess-001")
+
+response = model.generate_content("Analyze this data", tools=[...])
+```
+
+The legacy wrapper intercepts `model.generate_content()` (sync) and `model.generate_content_async()` (async).
+</Accordion>

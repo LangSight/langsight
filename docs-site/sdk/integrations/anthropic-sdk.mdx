@@ -1,0 +1,63 @@
+---
+title: "Anthropic SDK"
+description: "Auto-trace Anthropic tool_use blocks with wrap_llm() — one line, zero code changes"
+---
+
+Wrap an `Anthropic` or `AsyncAnthropic` client with `wrap_llm()` to auto-trace every `messages.create()` call and tool_use block in the response.
+
+<Note>
+Using Claude Agent SDK? See the dedicated [Anthropic integration](/sdk/integrations/anthropic) — `LangSightClaudeAgentHooks` covers the full agent runner lifecycle.
+</Note>
+
+## Installation
+
+```bash
+pip install langsight anthropic
+```
+
+## Quick start
+
+```python
+import langsight
+from anthropic import Anthropic
+
+ls = langsight.init()
+
+raw_client = Anthropic()
+client = ls.wrap_llm(raw_client, agent_name="my-agent", session_id="sess-001")
+
+response = client.messages.create(
+    model="claude-sonnet-4-6",
+    max_tokens=1024,
+    tools=[{"name": "get_weather", "description": "...", "input_schema": {...}}],
+    messages=[{"role": "user", "content": "What's the weather in Berlin?"}],
+)
+# response is unchanged — same Anthropic response object
+# tool_use content blocks auto-traced as tool_call spans
+```
+
+The wrapper intercepts `client.messages.create()` (sync) and `client.messages.acreate()` (async).
+
+## What gets traced
+
+| Span | Fields |
+|------|--------|
+| **LLM generation** | `server_name="anthropic"`, `tool_name="generate/claude-sonnet-4-6"`, `span_type="agent"`, tokens, model_id |
+| **Tool use** (per block) | `tool_name` from response, `span_type="tool_call"`, `parent_span_id`, `input_args` |
+
+```
+Session: sess-001
+├── anthropic/generate/claude-sonnet-4-6  800ms  success  (200 in / 80 out tokens)
+│   └── get_weather                                       success
+```
+
+## Parameters
+
+```python
+client = ls.wrap_llm(
+    Anthropic(),               # required — anthropic.Anthropic or anthropic.AsyncAnthropic
+    agent_name="my-agent",     # optional — shown in dashboard
+    session_id="sess-001",     # optional — groups spans into a session
+    trace_id="trace-abc",      # optional — links across multi-agent tasks
+)
+```

@@ -20,7 +20,12 @@ Usage::
     from anthropic import Anthropic
     client = ls.wrap_llm(Anthropic(), agent_name="my-agent")
 
-    # Gemini
+    # Gemini (new google.genai SDK)
+    from google import genai
+    client = ls.wrap_llm(genai.Client(), agent_name="analyst")
+    response = await client.aio.models.generate_content(model="gemini-2.5-flash", ...)
+
+    # Gemini (legacy google.generativeai SDK)
     import google.generativeai as genai
     model = ls.wrap_llm(genai.GenerativeModel("gemini-2.5-flash"), agent_name="analyst")
 
@@ -67,21 +72,10 @@ class _LLMProxyBase:
         return getattr(object.__getattribute__(self, "_client"), name)
 
     def _emit_spans(self, spans: list[ToolCallSpan]) -> None:
-        """Fire-and-forget send spans to LangSight."""
-        import asyncio
-        import threading
-
+        """Buffer spans synchronously. Thread-safe, no event loop needed."""
         langsight = object.__getattribute__(self, "_langsight")
-        coro = langsight.send_spans(spans)
-        try:
-            loop = asyncio.get_running_loop()
-            if loop.is_running() and not loop.is_closed():
-                loop.create_task(coro)
-                return
-        except RuntimeError:
-            pass
-        thread = threading.Thread(target=asyncio.run, args=(coro,), daemon=True)
-        thread.start()
+        for span in spans:
+            langsight.buffer_span(span)
 
 
 # ---------------------------------------------------------------------------
@@ -347,18 +341,30 @@ class GeminiProxy(_LLMProxyBase):
 
 
 def _process_gemini_response(
-    proxy: GeminiProxy, response: Any, kwargs: dict[str, Any], started_at: datetime
+    proxy: _LLMProxyBase,
+    response: Any,
+    kwargs: dict[str, Any],
+    started_at: datetime,
+    model_override: str | None = None,
 ) -> None:
-    """Extract function calls and token usage from a Gemini response."""
+    """Extract function calls and token usage from a Gemini response.
+
+    Shared by both GeminiProxy (old SDK) and GenaiClientProxy (new SDK).
+    When ``model_override`` is set (new SDK), it is used directly.
+    Otherwise the model name is extracted from the wrapped client object.
+    """
     agent_name = object.__getattribute__(proxy, "_agent_name")
     session_id = object.__getattribute__(proxy, "_session_id")
     trace_id = object.__getattribute__(proxy, "_trace_id")
     project_id = object.__getattribute__(proxy, "_project_id")
     redact = object.__getattribute__(proxy, "_redact")
 
-    # Model name from the wrapped model object
-    client = object.__getattribute__(proxy, "_client")
-    model = getattr(client, "model_name", None) or getattr(client, "_model_name", "gemini")
+    if model_override:
+        model = model_override
+    else:
+        # Legacy SDK — model name stored on the GenerativeModel object
+        client = object.__getattribute__(proxy, "_client")
+        model = getattr(client, "model_name", None) or getattr(client, "_model_name", "gemini")
 
     # Token usage from usage_metadata
     usage = getattr(response, "usage_metadata", None)
@@ -427,6 +433,119 @@ def _process_gemini_response(
 
 
 # ---------------------------------------------------------------------------
+# Google GenAI (new SDK: google.genai.Client)
+# ---------------------------------------------------------------------------
+
+
+class GenaiClientProxy(_LLMProxyBase):
+    """Wraps a ``google.genai.Client`` to auto-trace LLM calls and function calls.
+
+    The new Google GenAI SDK uses a nested property chain::
+
+        client.models.generate_content(model="gemini-2.5-flash", ...)       # sync
+        await client.aio.models.generate_content(model="gemini-2.5-flash", ...)  # async
+
+    This proxy intercepts both paths via nested sub-proxies, identical to
+    how ``OpenAIProxy`` intercepts ``client.chat.completions.create()``.
+    """
+
+    @property
+    def models(self) -> _GenaiModelsProxy:
+        return _GenaiModelsProxy(self)
+
+    @property
+    def aio(self) -> _GenaiAioProxy:
+        return _GenaiAioProxy(self)
+
+
+class _GenaiModelsProxy:
+    """Proxy for ``client.models`` that intercepts ``generate_content()``."""
+
+    def __init__(self, parent: GenaiClientProxy) -> None:
+        self._parent = parent
+
+    def generate_content(self, *, model: str, **kwargs: Any) -> Any:
+        """Intercept sync models.generate_content()."""
+        client = object.__getattribute__(self._parent, "_client")
+        started_at = datetime.now(UTC)
+        response = client.models.generate_content(model=model, **kwargs)
+        _process_gemini_response(self._parent, response, kwargs, started_at, model_override=model)
+        return response
+
+    def generate_content_stream(self, *, model: str, **kwargs: Any) -> Any:
+        """Pass through sync streaming — trace the call start only."""
+        client = object.__getattribute__(self._parent, "_client")
+        started_at = datetime.now(UTC)
+        # Record the generation span immediately (we can't intercept stream end)
+        _process_gemini_response(
+            self._parent,
+            _NullResponse(),
+            kwargs,
+            started_at,
+            model_override=model,
+        )
+        return client.models.generate_content_stream(model=model, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        client = object.__getattribute__(self._parent, "_client")
+        return getattr(client.models, name)
+
+
+class _GenaiAioProxy:
+    """Proxy for ``client.aio`` that returns an async models proxy."""
+
+    def __init__(self, parent: GenaiClientProxy) -> None:
+        self._parent = parent
+
+    @property
+    def models(self) -> _GenaiAioModelsProxy:
+        return _GenaiAioModelsProxy(self._parent)
+
+    def __getattr__(self, name: str) -> Any:
+        client = object.__getattribute__(self._parent, "_client")
+        return getattr(client.aio, name)
+
+
+class _GenaiAioModelsProxy:
+    """Proxy for ``client.aio.models`` that intercepts async ``generate_content()``."""
+
+    def __init__(self, parent: GenaiClientProxy) -> None:
+        self._parent = parent
+
+    async def generate_content(self, *, model: str, **kwargs: Any) -> Any:
+        """Intercept async aio.models.generate_content()."""
+        client = object.__getattribute__(self._parent, "_client")
+        started_at = datetime.now(UTC)
+        response = await client.aio.models.generate_content(model=model, **kwargs)
+        _process_gemini_response(self._parent, response, kwargs, started_at, model_override=model)
+        return response
+
+    async def generate_content_stream(self, *, model: str, **kwargs: Any) -> Any:
+        """Pass through async streaming — trace the call start only."""
+        client = object.__getattribute__(self._parent, "_client")
+        started_at = datetime.now(UTC)
+        _process_gemini_response(
+            self._parent,
+            _NullResponse(),
+            kwargs,
+            started_at,
+            model_override=model,
+        )
+        return client.aio.models.generate_content_stream(model=model, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        client = object.__getattribute__(self._parent, "_client")
+        return getattr(client.aio.models, name)
+
+
+class _NullResponse:
+    """Stub response for streaming calls where we can't inspect the full response."""
+
+    candidates: list[Any] = []
+    usage_metadata = None
+
+
+# ---------------------------------------------------------------------------
 # Auto-detection factory
 # ---------------------------------------------------------------------------
 
@@ -443,7 +562,8 @@ def wrap_llm(
     Supports:
     - ``openai.OpenAI`` / ``openai.AsyncOpenAI``
     - ``anthropic.Anthropic`` / ``anthropic.AsyncAnthropic``
-    - ``google.generativeai.GenerativeModel``
+    - ``google.genai.Client`` (new SDK)
+    - ``google.generativeai.GenerativeModel`` (legacy SDK)
 
     Returns the original client if the SDK is not recognized (fail-open).
     """
@@ -460,9 +580,14 @@ def wrap_llm(
         logger.debug("llm_wrapper.detected", sdk="anthropic", client_type=cls_name)
         return AnthropicProxy(client, langsight, agent_name, session_id, trace_id)
 
-    # Gemini
-    if "google" in module or "generativeai" in module or cls_name == "GenerativeModel":
-        logger.debug("llm_wrapper.detected", sdk="gemini", client_type=cls_name)
+    # New google.genai.Client — check BEFORE the legacy SDK (more specific match)
+    if cls_name == "Client" and "google.genai" in module:
+        logger.debug("llm_wrapper.detected", sdk="google-genai", client_type=cls_name)
+        return GenaiClientProxy(client, langsight, agent_name, session_id, trace_id)
+
+    # Legacy google.generativeai.GenerativeModel
+    if "generativeai" in module or cls_name == "GenerativeModel":
+        logger.debug("llm_wrapper.detected", sdk="gemini-legacy", client_type=cls_name)
         return GeminiProxy(client, langsight, agent_name, session_id, trace_id)
 
     # Unknown — return original (fail-open)
