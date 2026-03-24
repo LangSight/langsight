@@ -639,6 +639,12 @@ class MCPClientProxy:
         redact = object.__getattribute__(self, "_redact_payloads")
         project_id = object.__getattribute__(self, "_project_id")
 
+        # Auto-link: if no explicit parent, check if wrap_llm() registered this tool
+        if not parent_span_id:
+            from langsight.sdk.context import claim_pending_tool
+
+            parent_span_id = claim_pending_tool(name)
+
         started_at = datetime.now(UTC)
 
         # --- Pre-call prevention checks ---

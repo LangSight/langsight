@@ -4,6 +4,13 @@ All meaningful changes to LangSight are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.5.1] — 2026-03-24
+
+### Fixed
+- **Cross-layer span linking** — MCP execution spans from `wrap()` now auto-link to LLM function_call spans from `wrap_llm()` via thread-local context propagation. Dashboard lineage graph shows connected trees instead of orphaned MCP nodes. Works across all SDKs (OpenAI, Anthropic, Gemini).
+
+---
+
 ## [0.5.0] — 2026-03-24
 
 ### Added

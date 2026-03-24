@@ -43,6 +43,7 @@ from typing import Any
 
 import structlog
 
+from langsight.sdk.context import register_pending_tool
 from langsight.sdk.models import ToolCallSpan, ToolCallStatus
 
 logger = structlog.get_logger()
@@ -196,6 +197,10 @@ def _process_openai_response(
 
     if spans:
         proxy._emit_spans(spans)
+        # Register tool_call spans so wrap() can claim them as parents
+        for s in spans:
+            if s.span_type == "tool_call":
+                register_pending_tool(s.tool_name, s.span_id)
         logger.debug(
             "llm_wrapper.openai_traced",
             model=model,
@@ -303,6 +308,9 @@ def _process_anthropic_response(
 
     if spans:
         proxy._emit_spans(spans)
+        for s in spans:
+            if s.span_type == "tool_call":
+                register_pending_tool(s.tool_name, s.span_id)
         logger.debug(
             "llm_wrapper.anthropic_traced",
             model=model,
@@ -423,6 +431,9 @@ def _process_gemini_response(
 
     if spans:
         proxy._emit_spans(spans)
+        for s in spans:
+            if s.span_type == "tool_call":
+                register_pending_tool(s.tool_name, s.span_id)
         logger.debug(
             "llm_wrapper.gemini_traced",
             model=model,
