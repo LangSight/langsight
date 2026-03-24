@@ -143,7 +143,7 @@ class TestLangSightOpenAIHooksOnToolEnd:
         key = hooks._tool_key(agent, tool)
         assert key in hooks._pending
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await hooks.on_tool_end(context=None, agent=agent, tool=tool, result="ok")
 
         assert key not in hooks._pending
@@ -161,7 +161,7 @@ class TestLangSightOpenAIHooksOnToolEnd:
         agent = _make_agent()
         tool = _make_tool("orphan_tool")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await hooks.on_tool_end(context=None, agent=agent, tool=tool)
 
         mock_send.assert_called_once()
@@ -177,7 +177,7 @@ class TestLangSightOpenAIHooksOnToolEnd:
         tool = _make_tool("fail_tool")
         await hooks.on_tool_start(context=None, agent=agent, tool=tool)
 
-        with patch.object(client, "send_span", new_callable=AsyncMock, side_effect=RuntimeError("network")):
+        with patch.object(client, "buffer_span", side_effect=RuntimeError("network")):
             await hooks.on_tool_end(context=None, agent=agent, tool=tool)
         # No exception raised
 
@@ -204,7 +204,7 @@ class TestLangSightOpenAIHooksOnToolError:
         await hooks.on_tool_start(context=None, agent=agent, tool=tool)
         key = hooks._tool_key(agent, tool)
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await hooks.on_tool_error(
                 context=None, agent=agent, tool=tool, error=ValueError("bad input")
             )
@@ -220,7 +220,7 @@ class TestLangSightOpenAIHooksOnToolError:
         agent = _make_agent()
         tool = _make_tool("orphan_error")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await hooks.on_tool_error(
                 context=None, agent=agent, tool=tool, error="timeout"
             )
@@ -248,7 +248,7 @@ class TestLangSightOpenAIHooksOnToolError:
         tool = _make_tool("err_tool")
         await hooks.on_tool_start(context=None, agent=agent, tool=tool)
 
-        with patch.object(client, "send_span", new_callable=AsyncMock, side_effect=RuntimeError("network")):
+        with patch.object(client, "buffer_span", side_effect=RuntimeError("network")):
             await hooks.on_tool_error(
                 context=None, agent=agent, tool=tool, error="boom"
             )
@@ -262,7 +262,7 @@ class TestLangSightOpenAIHooksOnHandoff:
         from_agent = _make_agent("orchestrator")
         to_agent = _make_agent("billing-agent")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await hooks.on_handoff(
                 context=None, from_agent=from_agent, to_agent=to_agent
             )
@@ -278,7 +278,7 @@ class TestLangSightOpenAIHooksOnHandoff:
     async def test_on_handoff_fail_open(
         self, hooks: LangSightOpenAIHooks, client: LangSightClient
     ) -> None:
-        with patch.object(client, "send_span", new_callable=AsyncMock, side_effect=RuntimeError("network")):
+        with patch.object(client, "buffer_span", side_effect=RuntimeError("network")):
             await hooks.on_handoff(
                 context=None,
                 from_agent=_make_agent("a"),
@@ -293,7 +293,7 @@ class TestLangSightOpenAIHooksOnHandoff:
         from_agent = SimpleNamespace()  # no name
         to_agent = SimpleNamespace()  # no name
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await hooks.on_handoff(context=None, from_agent=from_agent, to_agent=to_agent)
 
         span = mock_send.call_args[0][0]
@@ -315,7 +315,7 @@ class TestLangsightOpenAIToolDecorator:
         async def search(query: str) -> str:
             return f"results for {query}"
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             result = await search("hello")
 
         assert result == "results for hello"
@@ -331,7 +331,7 @@ class TestLangsightOpenAIToolDecorator:
         async def failing_tool() -> str:
             raise ValueError("bad input")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             with pytest.raises(ValueError, match="bad input"):
                 await failing_tool()
 
@@ -344,7 +344,7 @@ class TestLangsightOpenAIToolDecorator:
         async def slow_tool() -> str:
             raise TimeoutError("took too long")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             with pytest.raises(TimeoutError):
                 await slow_tool()
 
@@ -364,7 +364,7 @@ class TestLangsightOpenAIToolDecorator:
         async def default_tool() -> str:
             return "ok"
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await default_tool()
 
         span = mock_send.call_args[0][0]
@@ -377,7 +377,7 @@ class TestLangsightOpenAIToolDecorator:
         async def exploding_tool() -> str:
             raise RuntimeError("boom")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             with pytest.raises(RuntimeError):
                 await exploding_tool()
 
@@ -389,7 +389,7 @@ class TestLangsightOpenAIToolDecorator:
         async def traced_tool() -> str:
             return "ok"
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await traced_tool()
 
         span = mock_send.call_args[0][0]

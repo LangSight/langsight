@@ -108,7 +108,7 @@ class TestMultiAgentSDKIntegration:
         mock_mcp.call_tool = AsyncMock(return_value={})
         langsight = LangSightClient(url="http://localhost:8000")
 
-        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(langsight, "buffer_span") as mock_send:
             proxy = langsight.wrap(
                 mock_mcp,
                 server_name="crm-mcp",
@@ -125,11 +125,11 @@ class TestMultiAgentSDKIntegration:
         langsight = LangSightClient(url="http://localhost:8000")
         sent_spans: list[ToolCallSpan] = []
 
-        async def capture_span(span: ToolCallSpan) -> None:
+        def capture_span(span: ToolCallSpan) -> None:
             sent_spans.append(span)
 
         with patch.object(langsight, "_post_spans", new_callable=AsyncMock):
-            with patch.object(langsight, "send_span", side_effect=capture_span):
+            with patch.object(langsight, "buffer_span", side_effect=capture_span):
 
                 # Orchestrator calls jira-mcp
                 mock_jira = MagicMock()
@@ -147,7 +147,7 @@ class TestMultiAgentSDKIntegration:
                     started_at=datetime.now(UTC),
                     trace_id="trace-abc", session_id="sess-123",
                 )
-                await langsight.send_span(handoff)
+                langsight.buffer_span(handoff)
 
                 # Billing agent calls crm-mcp with parent_span_id = handoff.span_id
                 mock_crm = MagicMock()

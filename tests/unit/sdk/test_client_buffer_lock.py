@@ -83,10 +83,11 @@ class TestConcurrentSendSpanNoLoss:
         for tool in expected_tools:
             assert tool in buffered_tools
 
-    async def test_lock_is_an_asyncio_lock_instance(self) -> None:
-        """The _lock attribute must be an asyncio.Lock (not a threading.Lock)."""
+    def test_lock_is_a_threading_lock_instance(self) -> None:
+        """The _lock attribute must be a threading.Lock (thread-safe for cross-loop buffering)."""
+        import threading
         client = LangSightClient(url="http://localhost:8000")
-        assert isinstance(client._lock, asyncio.Lock)
+        assert isinstance(client._lock, type(threading.Lock()))
 
 
 # ---------------------------------------------------------------------------

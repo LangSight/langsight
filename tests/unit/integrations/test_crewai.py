@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -32,7 +32,7 @@ class TestLangSightCrewAICallback:
         self, callback: LangSightCrewAICallback, client: LangSightClient
     ) -> None:
         callback.on_tool_start("query", "SELECT 1")
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await callback.on_tool_end("query", [{"id": 1}])
 
         mock_send.assert_called_once()
@@ -46,7 +46,7 @@ class TestLangSightCrewAICallback:
         self, callback: LangSightCrewAICallback, client: LangSightClient
     ) -> None:
         callback.on_tool_start("query", "SELECT 1")
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await callback.on_tool_error("query", RuntimeError("db error"))
 
         span = mock_send.call_args[0][0]
@@ -57,7 +57,7 @@ class TestLangSightCrewAICallback:
         self, callback: LangSightCrewAICallback, client: LangSightClient
     ) -> None:
         callback.on_tool_start("query", "SELECT 1")
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             await callback.on_tool_end("query", [])
         assert "query" not in callback._pending
 
@@ -65,7 +65,7 @@ class TestLangSightCrewAICallback:
         self, callback: LangSightCrewAICallback, client: LangSightClient
     ) -> None:
         callback.on_tool_start("query", "SELECT 1")
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             await callback.on_tool_error("query", "error")
         assert "query" not in callback._pending
 
@@ -73,7 +73,7 @@ class TestLangSightCrewAICallback:
         self, callback: LangSightCrewAICallback, client: LangSightClient
     ) -> None:
         # Should handle missing start gracefully
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             await callback.on_tool_end("unknown_tool", [])
 
 
@@ -87,7 +87,7 @@ class TestLangSightPydanticAIDecorator:
         async def my_tool(sql: str) -> list:
             return [{"id": 1}]
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             result = await my_tool("SELECT 1")
 
         assert result == [{"id": 1}]
@@ -105,7 +105,7 @@ class TestLangSightPydanticAIDecorator:
         async def failing_tool() -> list:
             raise ValueError("bad input")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             with pytest.raises(ValueError):
                 await failing_tool()
 

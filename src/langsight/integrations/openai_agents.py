@@ -139,7 +139,7 @@ class LangSightOpenAIHooks(BaseIntegration):
                 trace_id=self._trace_id,
                 session_id=self._session_id,
             )
-            await self._client.send_span(handoff)
+            self._client.buffer_span(handoff)
         except Exception:  # noqa: BLE001
             logger.debug("openai_agents.on_handoff_failed")
 
@@ -198,7 +198,7 @@ def langsight_openai_tool(
                         agent_name=agent_name,
                         session_id=session_id,
                     )
-                    await client.send_span(span)
+                    client.buffer_span(span)
                 except Exception:  # noqa: BLE001
                     pass  # fail-open: tracing must never break tool calls
 

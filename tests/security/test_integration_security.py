@@ -62,9 +62,11 @@ def _make_client(
         redact_payloads=redact_payloads,
     )
     if send_span_side_effect:
-        client.send_span = AsyncMock(side_effect=send_span_side_effect)
+        client.buffer_span = MagicMock(side_effect=send_span_side_effect)
+        client.buffer_span = MagicMock(side_effect=send_span_side_effect)
     else:
-        client.send_span = AsyncMock()
+        client.buffer_span = MagicMock()
+        client.buffer_span = MagicMock()
     client.flush = AsyncMock()
     client.close = AsyncMock()
     return client
@@ -259,7 +261,7 @@ class TestFailOpenGuaranteeDecorators:
 
         result = await my_tool(q="hello")
         assert result == "found: hello"
-        client.send_span.assert_called_once()
+        client.buffer_span.assert_called_once()
 
     async def test_anthropic_tool_decorator_succeeds_when_send_span_works(self) -> None:
         """When send_span works normally, the decorator returns the tool result."""
@@ -273,7 +275,7 @@ class TestFailOpenGuaranteeDecorators:
 
         result = await my_tool(location="SF")
         assert result == "sunny in SF"
-        client.send_span.assert_called_once()
+        client.buffer_span.assert_called_once()
 
 
 # ===========================================================================
@@ -338,8 +340,8 @@ class TestMaliciousToolNames:
         await hooks.on_tool_end(context=None, agent=agent, tool=tool, result="ok")
 
         # Verify span was recorded (not silently dropped)
-        if client.send_span.called:
-            span = client.send_span.call_args[0][0]
+        if client.buffer_span.called:
+            span = client.buffer_span.call_args[0][0]
             assert isinstance(span, ToolCallSpan)
 
     @pytest.mark.parametrize(
@@ -488,7 +490,7 @@ class TestMaliciousToolInput:
         response.content = [block]
 
         await tracer.trace_response(response)
-        client.send_span.assert_called_once()
+        client.buffer_span.assert_called_once()
 
 
 # ===========================================================================
@@ -533,7 +535,7 @@ class TestConcurrentSafetyOpenAI:
         # All pending entries consumed
         assert len(hooks._pending) == 0
         # Three spans recorded
-        assert client.send_span.call_count == 3
+        assert client.buffer_span.call_count == 3
 
     async def test_tool_end_without_start_does_not_crash(self) -> None:
         """If on_tool_end is called without a matching on_tool_start,
@@ -548,7 +550,7 @@ class TestConcurrentSafetyOpenAI:
 
         # End without start — should use datetime.now(UTC) as fallback
         await hooks.on_tool_end(context=None, agent=agent, tool=tool, result="ok")
-        client.send_span.assert_called_once()
+        client.buffer_span.assert_called_once()
 
     async def test_tool_error_without_start_does_not_crash(self) -> None:
         """on_tool_error without matching on_tool_start must not crash."""
@@ -563,7 +565,7 @@ class TestConcurrentSafetyOpenAI:
         await hooks.on_tool_error(
             context=None, agent=agent, tool=tool, error=Exception("boom")
         )
-        client.send_span.assert_called_once()
+        client.buffer_span.assert_called_once()
 
 
 class TestConcurrentSafetyClaude:
@@ -597,7 +599,7 @@ class TestConcurrentSafetyClaude:
         # Second end: no pending entry — uses fallback datetime.now(UTC)
         await hooks.on_tool_end(tool_name="search", tool_output="result2")
         # Both calls recorded — no crash
-        assert client.send_span.call_count == 2
+        assert client.buffer_span.call_count == 2
 
     async def test_different_tool_names_concurrent_no_corruption(self) -> None:
         """Different tool names running concurrently must not interfere."""
@@ -613,7 +615,7 @@ class TestConcurrentSafetyClaude:
         await hooks.on_tool_end(tool_name="query", tool_output="q-result")
         await hooks.on_tool_end(tool_name="search", tool_output="s-result")
         assert len(hooks._pending) == 0
-        assert client.send_span.call_count == 2
+        assert client.buffer_span.call_count == 2
 
 
 class TestConcurrentSafetyLangGraph:
@@ -652,7 +654,7 @@ class TestConcurrentSafetyLangGraph:
         # End for a run_id that was never started
         callback.on_tool_end(output="orphan", run_id=uuid4())
         # No span sent (early return guard)
-        client.send_span.assert_not_called()
+        client.buffer_span.assert_not_called()
 
     async def test_tool_error_with_unknown_run_id_is_silently_ignored(self) -> None:
         """on_tool_error for an unknown run_id must not crash."""
@@ -662,7 +664,7 @@ class TestConcurrentSafetyLangGraph:
         callback = LangSightLangGraphCallback(client=client, agent_name="test")
 
         callback.on_tool_error(error=RuntimeError("boom"), run_id=uuid4())
-        client.send_span.assert_not_called()
+        client.buffer_span.assert_not_called()
 
 
 # ===========================================================================
@@ -739,7 +741,7 @@ class TestPIIRedaction:
         inner_client.call_tool = AsyncMock(return_value={"data": "secret"})
 
         ls_client = LangSightClient(url="http://localhost:8000", redact_payloads=True)
-        ls_client.send_span = AsyncMock()
+        ls_client.buffer_span = MagicMock()
 
         proxy = ls_client.wrap(
             inner_client,
@@ -749,7 +751,7 @@ class TestPIIRedaction:
 
         await proxy.call_tool("query", {"sql": "SELECT ssn FROM users"})
 
-        span = ls_client.send_span.call_args[0][0]
+        span = ls_client.buffer_span.call_args[0][0]
         assert span.input_args is None, "input_args must be None when redact_payloads=True"
         assert span.output_result is None, "output_result must be None when redact_payloads=True"
 
@@ -759,7 +761,7 @@ class TestPIIRedaction:
         inner_client.call_tool = AsyncMock(return_value={"data": "public"})
 
         ls_client = LangSightClient(url="http://localhost:8000", redact_payloads=False)
-        ls_client.send_span = AsyncMock()
+        ls_client.buffer_span = MagicMock()
 
         proxy = ls_client.wrap(
             inner_client,
@@ -769,7 +771,7 @@ class TestPIIRedaction:
 
         await proxy.call_tool("query", {"sql": "SELECT 1"})
 
-        span = ls_client.send_span.call_args[0][0]
+        span = ls_client.buffer_span.call_args[0][0]
         assert span.input_args == {"sql": "SELECT 1"}, "input_args must be captured when not redacted"
         assert span.output_result is not None, "output_result must be captured when not redacted"
 
@@ -793,7 +795,7 @@ class TestPIIRedaction:
         sensitive_input = {"ssn": "123-45-6789"}
         await tracer.execute_and_trace("lookup", sensitive_input, handler)
 
-        span = client.send_span.call_args[0][0]
+        span = client.buffer_span.call_args[0][0]
         # Currently: input_args IS captured (no redaction support)
         assert span.input_args == sensitive_input, (
             "AnthropicToolTracer does not yet support redaction"
@@ -827,7 +829,7 @@ class TestPIIRedaction:
 
         await tracer.trace_response(response)
 
-        span = client.send_span.call_args[0][0]
+        span = client.buffer_span.call_args[0][0]
         assert span.input_args is None, (
             "Non-dict tool_input must not be stored in input_args"
         )
@@ -859,7 +861,7 @@ class TestExceptionClassificationDecorators:
         with pytest.raises(TimeoutError):
             await slow_tool(q="hello")
 
-        span = client.send_span.call_args[0][0]
+        span = client.buffer_span.call_args[0][0]
         assert span.status == ToolCallStatus.TIMEOUT, (
             f"TimeoutError must be TIMEOUT, not {span.status}"
         )
@@ -878,7 +880,7 @@ class TestExceptionClassificationDecorators:
         with pytest.raises(ValueError):
             await bad_tool(q="hello")
 
-        span = client.send_span.call_args[0][0]
+        span = client.buffer_span.call_args[0][0]
         assert span.status == ToolCallStatus.ERROR, (
             f"ValueError must be ERROR, not {span.status}"
         )
@@ -896,7 +898,7 @@ class TestExceptionClassificationDecorators:
         with pytest.raises(TimeoutError):
             await slow_tool(location="NYC")
 
-        span = client.send_span.call_args[0][0]
+        span = client.buffer_span.call_args[0][0]
         assert span.status == ToolCallStatus.TIMEOUT
 
     async def test_anthropic_tool_runtime_error_recorded_as_error_status(self) -> None:
@@ -912,7 +914,7 @@ class TestExceptionClassificationDecorators:
         with pytest.raises(RuntimeError):
             await broken_tool(location="NYC")
 
-        span = client.send_span.call_args[0][0]
+        span = client.buffer_span.call_args[0][0]
         assert span.status == ToolCallStatus.ERROR
 
     async def test_anthropic_execute_and_trace_timeout_is_timeout_status(self) -> None:
@@ -928,7 +930,7 @@ class TestExceptionClassificationDecorators:
         with pytest.raises(TimeoutError):
             await tracer.execute_and_trace("search", {"q": "test"}, slow_handler)
 
-        span = client.send_span.call_args[0][0]
+        span = client.buffer_span.call_args[0][0]
         assert span.status == ToolCallStatus.TIMEOUT
         assert "10s exceeded" in span.error
 
@@ -947,7 +949,7 @@ class TestExceptionClassificationDecorators:
         with pytest.raises(ValueError):
             await tracer.execute_and_trace("search", {"q": "test"}, bad_handler)
 
-        span = client.send_span.call_args[0][0]
+        span = client.buffer_span.call_args[0][0]
         assert span.status == ToolCallStatus.ERROR
 
 
@@ -969,7 +971,7 @@ class TestExceptionClassificationHooks:
             context=None, agent=agent, tool=tool, error=RuntimeError("crash")
         )
 
-        span = client.send_span.call_args[0][0]
+        span = client.buffer_span.call_args[0][0]
         assert span.status == ToolCallStatus.ERROR
         assert "crash" in span.error
 
@@ -986,7 +988,7 @@ class TestExceptionClassificationHooks:
         await hooks.on_tool_start(context=None, agent=agent, tool=tool)
         await hooks.on_tool_end(context=None, agent=agent, tool=tool, result="ok")
 
-        span = client.send_span.call_args[0][0]
+        span = client.buffer_span.call_args[0][0]
         assert span.status == ToolCallStatus.SUCCESS
 
     async def test_claude_hooks_on_tool_error_records_error_status(self) -> None:
@@ -999,7 +1001,7 @@ class TestExceptionClassificationHooks:
         await hooks.on_tool_start(tool_name="query")
         await hooks.on_tool_error(tool_name="query", error=Exception("db timeout"))
 
-        span = client.send_span.call_args[0][0]
+        span = client.buffer_span.call_args[0][0]
         assert span.status == ToolCallStatus.ERROR
         assert "db timeout" in span.error
 
@@ -1138,7 +1140,7 @@ class TestHandoffSpanIntegrity:
 
         await hooks.on_handoff(context=None, from_agent=from_agent, to_agent=to_agent)
 
-        span = client.send_span.call_args[0][0]
+        span = client.buffer_span.call_args[0][0]
         assert span.span_type == "handoff"
         assert span.server_name == "orchestrator"
         assert "billing-agent" in span.tool_name
@@ -1152,7 +1154,7 @@ class TestHandoffSpanIntegrity:
 
         await hooks.on_handoff(from_agent="orchestrator", to_agent="researcher")
 
-        span = client.send_span.call_args[0][0]
+        span = client.buffer_span.call_args[0][0]
         assert span.span_type == "handoff"
         assert span.server_name == "orchestrator"
         assert "researcher" in span.tool_name

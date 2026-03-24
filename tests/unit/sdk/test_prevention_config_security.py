@@ -548,7 +548,7 @@ class TestRemoteConfigFetchSecurity:
 
         mcp = _FakeMCPClient(result="ok")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             proxy = client.wrap(mcp, server_name="srv", agent_name="agent-x")
             result = await proxy.call_tool("echo", {"msg": "hello"})
 
@@ -613,7 +613,7 @@ class TestSDKConfigRaceCondition:
 
         async def run_call() -> None:
             try:
-                with patch.object(client, "send_span", new_callable=AsyncMock):
+                with patch.object(client, "buffer_span"):
                     await proxy.call_tool("tool", {"x": 1})
             except (LoopDetectedError, BudgetExceededError, CircuitBreakerOpenError):
                 pass  # known, expected prevention exceptions
@@ -798,7 +798,7 @@ class TestOfflineFallbackIntegrity:
         mcp = _FakeMCPClient(result="ok")
         proxy = client.wrap(mcp, server_name="srv", session_id="offline-sess")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             await proxy.call_tool("a", {})
             await proxy.call_tool("b", {})
             with pytest.raises(BudgetExceededError) as exc_info:
@@ -821,7 +821,7 @@ class TestOfflineFallbackIntegrity:
         mcp = _FakeMCPClient(result="ok")
         proxy = client.wrap(mcp, server_name="srv", session_id="offline-loop-sess")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             await proxy.call_tool("repeat_tool", {"arg": "value"})
             with pytest.raises(LoopDetectedError):
                 await proxy.call_tool("repeat_tool", {"arg": "value"})

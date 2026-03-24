@@ -6,7 +6,7 @@ handling, error propagation, and backward compatibility.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -79,7 +79,7 @@ class TestAllPreventionFeaturesActive:
         mcp = _FakeMCPClient(result="ok")
         proxy = full_client.wrap(mcp, server_name="srv", session_id="sess-1")
 
-        with patch.object(full_client, "send_span", new_callable=AsyncMock):
+        with patch.object(full_client, "buffer_span"):
             await proxy.call_tool("query", {"sql": "SELECT 1"})
             await proxy.call_tool("query", {"sql": "SELECT 1"})
             with pytest.raises(LoopDetectedError):
@@ -94,7 +94,7 @@ class TestAllPreventionFeaturesActive:
         mcp = _FakeMCPClient(result="ok")
         proxy = full_client.wrap(mcp, server_name="srv", session_id="sess-2")
 
-        with patch.object(full_client, "send_span", new_callable=AsyncMock):
+        with patch.object(full_client, "buffer_span"):
             for i in range(5):
                 await proxy.call_tool(f"tool_{i}", {"i": i})
 
@@ -111,7 +111,7 @@ class TestAllPreventionFeaturesActive:
         mcp = _FakeMCPClient(error=RuntimeError("down"))
         proxy = full_client.wrap(mcp, server_name="failing-srv", session_id="sess-3")
 
-        with patch.object(full_client, "send_span", new_callable=AsyncMock):
+        with patch.object(full_client, "buffer_span"):
             with pytest.raises(RuntimeError):
                 await proxy.call_tool("query", {"sql": "SELECT 1"})
             with pytest.raises(RuntimeError):
@@ -138,7 +138,7 @@ class TestDefaultSessionKey:
         mcp = _FakeMCPClient(result="ok")
         proxy = client.wrap(mcp, server_name="srv")  # no session_id
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             await proxy.call_tool("query", {"x": 1})
             with pytest.raises(LoopDetectedError):
                 await proxy.call_tool("query", {"x": 1})
@@ -151,7 +151,7 @@ class TestDefaultSessionKey:
         mcp = _FakeMCPClient(result="ok")
         proxy = client.wrap(mcp, server_name="srv")  # no session_id
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             await proxy.call_tool("query", {"x": 1})
             with pytest.raises(BudgetExceededError):
                 await proxy.call_tool("query", {"x": 2})
@@ -167,7 +167,7 @@ class TestDefaultSessionKey:
         proxy_a = client.wrap(mcp, server_name="srv", session_id="a")
         proxy_b = client.wrap(mcp, server_name="srv", session_id="b")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             # Session A: one call
             await proxy_a.call_tool("query", {"x": 1})
             # Session B: one call
@@ -190,7 +190,7 @@ class TestDefaultSessionKey:
         proxy1 = client.wrap(mcp, server_name="srv")
         proxy2 = client.wrap(mcp, server_name="srv")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             await proxy1.call_tool("query", {"x": 1})
             await proxy2.call_tool("query", {"x": 1})
             # Third call through either proxy should trigger loop
@@ -213,10 +213,10 @@ class TestBudgetExceededMidSession:
         proxy = client.wrap(mcp, server_name="srv", session_id="sess")
         sent_spans: list = []
 
-        async def capture_span(span: object) -> None:
+        def capture_span(span: object) -> None:
             sent_spans.append(span)
 
-        with patch.object(client, "send_span", side_effect=capture_span):
+        with patch.object(client, "buffer_span", side_effect=capture_span):
             r1 = await proxy.call_tool("a", {})
             r2 = await proxy.call_tool("b", {})
             r3 = await proxy.call_tool("c", {})
@@ -248,7 +248,7 @@ class TestAllPreventionDisabled:
         mcp = _FakeMCPClient(result="ok")
         proxy = client.wrap(mcp, server_name="srv", session_id="sess")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             for _ in range(50):
                 result = await proxy.call_tool("query", {"sql": "SELECT 1"})
                 assert result == "ok"
@@ -260,7 +260,7 @@ class TestAllPreventionDisabled:
         mcp = _FakeMCPClient(error=RuntimeError("down"))
         proxy = client.wrap(mcp, server_name="srv")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             for _ in range(20):
                 with pytest.raises(RuntimeError):
                     await proxy.call_tool("query", {})
@@ -293,7 +293,7 @@ class TestToolCallErrorWithCircuitBreaker:
         mcp = _FakeMCPClient(error=TimeoutError("read timeout"))
         proxy = client.wrap(mcp, server_name="srv")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             with pytest.raises(TimeoutError):
                 await proxy.call_tool("query", {})
             with pytest.raises(TimeoutError):
@@ -320,7 +320,7 @@ class TestToolCallErrorWithCircuitBreaker:
         mcp = _FlakyMCPClient(outcomes)
         proxy = client.wrap(mcp, server_name="srv")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             with pytest.raises(RuntimeError):
                 await proxy.call_tool("a", {})
             with pytest.raises(RuntimeError):
@@ -351,17 +351,12 @@ class TestSendSpanFailureDoesNotBreakPrevention:
         mcp = _FakeMCPClient(result="important_result")
         proxy = client.wrap(mcp, server_name="srv")
 
-        async def failing_send(span: object) -> None:
+        def failing_buffer(span: object) -> None:
             raise ConnectionError("LangSight API unreachable")
 
-        with patch.object(client, "send_span", side_effect=failing_send):
-            # send_span is called inside call_tool. It should not break the call.
-            # Looking at client.py: send_span is awaited directly after the finally block,
-            # so if it raises, it will propagate. Let's verify this behavior.
-            # Actually in prevented path: send_span is awaited then exception is raised.
-            # In normal path: send_span is awaited in the finally block.
-            # The send_span IS awaited — so its error WILL propagate unless caught.
-            # This test documents current behavior: send_span errors DO propagate.
+        with patch.object(client, "buffer_span", side_effect=failing_buffer):
+            # buffer_span is called synchronously inside call_tool.
+            # If it raises, the error propagates. This documents current behavior.
             with pytest.raises(ConnectionError):
                 await proxy.call_tool("query", {})
 
@@ -375,7 +370,7 @@ class TestSendSpanFailureDoesNotBreakPrevention:
         mcp = _FakeMCPClient(result="ok")
         proxy = client.wrap(mcp, server_name="srv", session_id="sess")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             await proxy.call_tool("query", {"x": 1})
             with pytest.raises(LoopDetectedError):
                 await proxy.call_tool("query", {"x": 1})
@@ -396,10 +391,10 @@ class TestPreventedSpanMetadata:
         proxy = client.wrap(mcp, server_name="my-srv", session_id="my-sess")
         sent_spans: list = []
 
-        async def capture(span: object) -> None:
+        def capture(span: object) -> None:
             sent_spans.append(span)
 
-        with patch.object(client, "send_span", side_effect=capture):
+        with patch.object(client, "buffer_span", side_effect=capture):
             with pytest.raises(BudgetExceededError):
                 await proxy.call_tool("query", {"sql": "X"})
 
@@ -420,10 +415,10 @@ class TestPreventedSpanMetadata:
         proxy = client.wrap(mcp, server_name="srv")
         sent_spans: list = []
 
-        async def capture(span: object) -> None:
+        def capture(span: object) -> None:
             sent_spans.append(span)
 
-        with patch.object(client, "send_span", side_effect=capture):
+        with patch.object(client, "buffer_span", side_effect=capture):
             with pytest.raises(BudgetExceededError):
                 await proxy.call_tool("query", {"sql": "SELECT 1"})
 
@@ -440,10 +435,10 @@ class TestPreventedSpanMetadata:
         proxy = client.wrap(mcp, server_name="srv")
         sent_spans: list = []
 
-        async def capture(span: object) -> None:
+        def capture(span: object) -> None:
             sent_spans.append(span)
 
-        with patch.object(client, "send_span", side_effect=capture):
+        with patch.object(client, "buffer_span", side_effect=capture):
             with pytest.raises(BudgetExceededError):
                 await proxy.call_tool("query", {"sql": "SELECT 1"})
 
@@ -468,7 +463,7 @@ class TestCircuitBreakerPerServer:
         proxy_a = client.wrap(mcp_a, server_name="server-a")
         proxy_b = client.wrap(mcp_b, server_name="server-b")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             # Trip server-a
             with pytest.raises(RuntimeError):
                 await proxy_a.call_tool("query", {})
@@ -497,7 +492,7 @@ class TestWarnModeDoesNotBlockButBudgetDoes:
         mcp = _FakeMCPClient(result="ok")
         proxy = client.wrap(mcp, server_name="srv", session_id="sess")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             # These trigger loop warning but NOT termination
             await proxy.call_tool("query", {"x": 1})
             await proxy.call_tool("query", {"x": 1})

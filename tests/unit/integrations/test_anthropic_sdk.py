@@ -108,7 +108,7 @@ class TestAnthropicToolTracerTraceResponse:
             ]
         )
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await tracer.trace_response(response)
 
         assert mock_send.call_count == 2
@@ -122,7 +122,7 @@ class TestAnthropicToolTracerTraceResponse:
     ) -> None:
         response = _make_response(content=[_make_text_block("Hello"), _make_text_block("World")])
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await tracer.trace_response(response)
 
         mock_send.assert_not_called()
@@ -137,7 +137,7 @@ class TestAnthropicToolTracerTraceResponse:
             output_tokens=75,
         )
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await tracer.trace_response(response)
 
         span = mock_send.call_args[0][0]
@@ -152,7 +152,7 @@ class TestAnthropicToolTracerTraceResponse:
             content=[_make_tool_use_block("search", {"query": "AI agents"})],
         )
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await tracer.trace_response(response)
 
         span = mock_send.call_args[0][0]
@@ -163,7 +163,7 @@ class TestAnthropicToolTracerTraceResponse:
     ) -> None:
         response = _make_response(content=[])
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await tracer.trace_response(response)
 
         mock_send.assert_not_called()
@@ -173,7 +173,7 @@ class TestAnthropicToolTracerTraceResponse:
     ) -> None:
         response = SimpleNamespace(content=None, usage=None, model=None)
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await tracer.trace_response(response)
 
         mock_send.assert_not_called()
@@ -184,7 +184,7 @@ class TestAnthropicToolTracerTraceResponse:
         """Response object missing content/usage/model attributes entirely."""
         response = object()
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await tracer.trace_response(response)
 
         mock_send.assert_not_called()
@@ -198,7 +198,7 @@ class TestAnthropicToolTracerTraceResponse:
             model="claude-sonnet-4-6",
         )
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await tracer.trace_response(response)
 
         span = mock_send.call_args[0][0]
@@ -210,7 +210,7 @@ class TestAnthropicToolTracerTraceResponse:
     ) -> None:
         response = _make_response(content=[_make_tool_use_block("tool1")])
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await tracer.trace_response(response)
 
         span = mock_send.call_args[0][0]
@@ -221,7 +221,7 @@ class TestAnthropicToolTracerTraceResponse:
     ) -> None:
         response = _make_response(content=[_make_tool_use_block("tool1")])
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await tracer.trace_response(response)
 
         span = mock_send.call_args[0][0]
@@ -234,7 +234,7 @@ class TestAnthropicToolTracerTraceResponse:
         """Exception in send_span should not propagate."""
         response = _make_response(content=[_make_tool_use_block("boom")])
 
-        with patch.object(client, "send_span", new_callable=AsyncMock, side_effect=RuntimeError("network")):
+        with patch.object(client, "buffer_span", side_effect=RuntimeError("network")):
             await tracer.trace_response(response)
         # No exception raised
 
@@ -246,7 +246,7 @@ class TestAnthropicToolTracerTraceResponse:
             content=[block], usage=None, model=None
         )
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await tracer.trace_response(response)
 
         span = mock_send.call_args[0][0]
@@ -259,7 +259,7 @@ class TestAnthropicToolTracerTraceResponse:
         block = SimpleNamespace(type="tool_use", name="tool1", input="raw string")
         response = SimpleNamespace(content=[block], usage=None, model=None)
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await tracer.trace_response(response)
 
         span = mock_send.call_args[0][0]
@@ -278,7 +278,7 @@ class TestAnthropicToolTracerExecuteAndTrace:
         async def handler(location: str) -> str:
             return f"72F in {location}"
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             result = await tracer.execute_and_trace("get_weather", {"location": "NYC"}, handler)
 
         assert result == "72F in NYC"
@@ -296,7 +296,7 @@ class TestAnthropicToolTracerExecuteAndTrace:
         async def bad_handler(location: str) -> str:
             raise ValueError("unknown location")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             with pytest.raises(ValueError, match="unknown location"):
                 await tracer.execute_and_trace("get_weather", {"location": "Mars"}, bad_handler)
 
@@ -310,7 +310,7 @@ class TestAnthropicToolTracerExecuteAndTrace:
         async def slow_handler(**kwargs: object) -> str:
             raise TimeoutError("too slow")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             with pytest.raises(TimeoutError):
                 await tracer.execute_and_trace("slow_tool", {}, slow_handler)
 
@@ -324,7 +324,7 @@ class TestAnthropicToolTracerExecuteAndTrace:
         async def exploding(**kwargs: object) -> str:
             raise RuntimeError("boom")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             with pytest.raises(RuntimeError):
                 await tracer.execute_and_trace("exploding", {}, exploding)
 
@@ -336,7 +336,7 @@ class TestAnthropicToolTracerExecuteAndTrace:
         async def handler(**kwargs: object) -> str:
             return "ok"
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await tracer.execute_and_trace("tool1", {}, handler)
 
         span = mock_send.call_args[0][0]
@@ -355,7 +355,7 @@ class TestAnthropicToolTracerExecuteAndTrace:
         async def handler(**kwargs: object) -> CustomObj:
             return CustomObj()
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             result = await tracer.execute_and_trace("tool1", {}, handler)
 
         assert isinstance(result, CustomObj)
@@ -422,7 +422,7 @@ class TestClaudeAgentHooksOnToolEnd:
     ) -> None:
         await hooks.on_tool_start("search", {})
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await hooks.on_tool_end("search", tool_output="result")
 
         assert "search" not in hooks._pending
@@ -436,7 +436,7 @@ class TestClaudeAgentHooksOnToolEnd:
     async def test_without_start_still_sends(
         self, hooks: LangSightClaudeAgentHooks, client: LangSightClient
     ) -> None:
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await hooks.on_tool_end("orphan_tool", tool_output="data")
 
         mock_send.assert_called_once()
@@ -456,7 +456,7 @@ class TestClaudeAgentHooksOnToolEnd:
     ) -> None:
         await hooks.on_tool_start("tool", {})
 
-        with patch.object(client, "send_span", new_callable=AsyncMock, side_effect=RuntimeError("network")):
+        with patch.object(client, "buffer_span", side_effect=RuntimeError("network")):
             await hooks.on_tool_end("tool")
         # No exception raised
 
@@ -467,7 +467,7 @@ class TestClaudeAgentHooksOnToolError:
     ) -> None:
         await hooks.on_tool_start("search", {})
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await hooks.on_tool_error("search", error=ValueError("bad"))
 
         assert "search" not in hooks._pending
@@ -488,7 +488,7 @@ class TestClaudeAgentHooksOnToolError:
     async def test_without_start_still_sends(
         self, hooks: LangSightClaudeAgentHooks, client: LangSightClient
     ) -> None:
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await hooks.on_tool_error("orphan", error="timeout")
 
         mock_send.assert_called_once()
@@ -498,7 +498,7 @@ class TestClaudeAgentHooksOnToolError:
     ) -> None:
         await hooks.on_tool_start("tool", {})
 
-        with patch.object(client, "send_span", new_callable=AsyncMock, side_effect=RuntimeError("network")):
+        with patch.object(client, "buffer_span", side_effect=RuntimeError("network")):
             await hooks.on_tool_error("tool", error="boom")
         # No exception raised
 
@@ -512,7 +512,7 @@ class TestClaudeAgentHooksOnHandoff:
     async def test_creates_handoff_span(
         self, hooks: LangSightClaudeAgentHooks, client: LangSightClient
     ) -> None:
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await hooks.on_handoff(from_agent="orchestrator", to_agent="billing")
 
         mock_send.assert_called_once()
@@ -526,7 +526,7 @@ class TestClaudeAgentHooksOnHandoff:
     async def test_fail_open(
         self, hooks: LangSightClaudeAgentHooks, client: LangSightClient
     ) -> None:
-        with patch.object(client, "send_span", new_callable=AsyncMock, side_effect=RuntimeError("network")):
+        with patch.object(client, "buffer_span", side_effect=RuntimeError("network")):
             await hooks.on_handoff(from_agent="a", to_agent="b")
         # No exception raised
 
@@ -542,7 +542,7 @@ class TestLangsightAnthropicToolDecorator:
         async def get_weather(location: str) -> str:
             return f"72F in {location}"
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             result = await get_weather("NYC")
 
         assert result == "72F in NYC"
@@ -558,7 +558,7 @@ class TestLangsightAnthropicToolDecorator:
         async def failing_tool() -> str:
             raise ValueError("bad input")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             with pytest.raises(ValueError, match="bad input"):
                 await failing_tool()
 
@@ -571,7 +571,7 @@ class TestLangsightAnthropicToolDecorator:
         async def slow_tool() -> str:
             raise TimeoutError("too slow")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             with pytest.raises(TimeoutError):
                 await slow_tool()
 
@@ -590,7 +590,7 @@ class TestLangsightAnthropicToolDecorator:
         async def exploding() -> str:
             raise RuntimeError("boom")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             with pytest.raises(RuntimeError):
                 await exploding()
 
@@ -601,7 +601,7 @@ class TestLangsightAnthropicToolDecorator:
         async def default_tool() -> str:
             return "ok"
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await default_tool()
 
         span = mock_send.call_args[0][0]
@@ -613,7 +613,7 @@ class TestLangsightAnthropicToolDecorator:
         async def tracked_tool() -> str:
             return "ok"
 
-        with patch.object(client, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(client, "buffer_span") as mock_send:
             await tracked_tool()
 
         span = mock_send.call_args[0][0]

@@ -51,7 +51,7 @@ class BaseIntegration:
         except (json.JSONDecodeError, TypeError):
             return {"input": input_str} if input_str else None
 
-    def _record(
+    async def _record(
         self,
         tool_name: str,
         started_at: datetime,

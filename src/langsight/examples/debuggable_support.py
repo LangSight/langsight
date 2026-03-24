@@ -88,8 +88,11 @@ class RecordingLangSightClient(LangSightClient):
         self.recorded_spans.clear()
         self.captured_tools.clear()
 
-    async def send_span(self, span: ToolCallSpan) -> None:
+    def buffer_span(self, span: ToolCallSpan) -> None:
         self.recorded_spans.append(span)
+
+    async def send_span(self, span: ToolCallSpan) -> None:
+        self.buffer_span(span)
 
     async def record_tool_schemas(
         self,
@@ -159,7 +162,7 @@ class DebuggableSupportProject:
             trace_id=trace_id,
             session_id=session_id,
         )
-        await self._client.send_span(billing_handoff)
+        self._client.buffer_span(billing_handoff)
 
         billing = self._client.wrap(
             self._servers["billing-mcp"],
@@ -201,7 +204,7 @@ class DebuggableSupportProject:
             session_id=session_id,
             parent_span_id=billing_handoff.span_id,
         )
-        await self._client.send_span(comms_handoff)
+        self._client.buffer_span(comms_handoff)
 
         comms = self._client.wrap(
             self._servers["comms-mcp"],

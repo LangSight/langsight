@@ -39,15 +39,14 @@ class TestLangSightClient:
     async def test_send_span_buffers_and_flushes(self) -> None:
         client = LangSightClient(url="http://localhost:8000", batch_size=2)
         with patch.object(client, "_post_spans", new_callable=AsyncMock) as mock_post:
-            await client.send_span(_span())
-            # Buffer not full yet — no post
+            client.buffer_span(_span())
             assert len(client._buffer) == 1
             mock_post.assert_not_called()
 
-            await client.send_span(_span())
-            # Buffer hits batch_size=2 — triggers flush task
-            import asyncio
-            await asyncio.sleep(0)  # let flush task run
+            client.buffer_span(_span())
+            assert len(client._buffer) == 2
+            # Explicit flush since buffer_span doesn't auto-flush
+            await client.flush()
             mock_post.assert_called_once()
             assert len(mock_post.call_args[0][0]) == 2
 
@@ -104,7 +103,7 @@ class TestMCPClientProxy:
         mock_mcp.call_tool = AsyncMock(return_value={"rows": []})
         langsight = LangSightClient(url="http://localhost:8000")
 
-        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(langsight, "buffer_span") as mock_send:
             proxy = langsight.wrap(mock_mcp, server_name="pg")
             result = await proxy.call_tool("query", {"sql": "SELECT 1"})
 
@@ -121,7 +120,7 @@ class TestMCPClientProxy:
         mock_mcp.call_tool = AsyncMock(side_effect=RuntimeError("db connection lost"))
         langsight = LangSightClient(url="http://localhost:8000")
 
-        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(langsight, "buffer_span") as mock_send:
             proxy = langsight.wrap(mock_mcp, server_name="pg")
             with pytest.raises(RuntimeError):
                 await proxy.call_tool("query", {"sql": "SELECT 1"})
@@ -135,7 +134,7 @@ class TestMCPClientProxy:
         mock_mcp.call_tool = AsyncMock(side_effect=TimeoutError("timed out"))
         langsight = LangSightClient(url="http://localhost:8000")
 
-        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(langsight, "buffer_span") as mock_send:
             proxy = langsight.wrap(mock_mcp, server_name="pg")
             with pytest.raises(TimeoutError):
                 await proxy.call_tool("query", {})
@@ -148,7 +147,7 @@ class TestMCPClientProxy:
         mock_mcp.call_tool = AsyncMock(return_value={})
         langsight = LangSightClient(url="http://localhost:8000")
 
-        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(langsight, "buffer_span") as mock_send:
             proxy = langsight.wrap(
                 mock_mcp,
                 server_name="pg",
@@ -168,7 +167,7 @@ class TestMCPClientProxy:
         mock_mcp.call_tool = AsyncMock(return_value={})
         langsight = LangSightClient(url="http://localhost:8000")
 
-        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(langsight, "buffer_span") as mock_send:
             proxy = langsight.wrap(mock_mcp, server_name="pg")
             await proxy.call_tool("query", {})
 
@@ -196,7 +195,7 @@ class TestMCPClientProxyPayloads:
         mock_mcp.call_tool = AsyncMock(return_value={"rows": []})
         langsight = LangSightClient(url="http://localhost:8000")
 
-        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(langsight, "buffer_span") as mock_send:
             proxy = langsight.wrap(mock_mcp, server_name="pg")
             await proxy.call_tool("query", {"sql": "SELECT 1"})
 
@@ -213,7 +212,7 @@ class TestMCPClientProxyPayloads:
         mock_mcp.call_tool = AsyncMock(return_value=return_value)
         langsight = LangSightClient(url="http://localhost:8000")
 
-        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(langsight, "buffer_span") as mock_send:
             proxy = langsight.wrap(mock_mcp, server_name="pg")
             await proxy.call_tool("query", {"sql": "SELECT 1"})
 
@@ -227,7 +226,7 @@ class TestMCPClientProxyPayloads:
         mock_mcp.call_tool = AsyncMock(return_value={"rows": []})
         langsight = LangSightClient(url="http://localhost:8000")
 
-        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(langsight, "buffer_span") as mock_send:
             proxy = langsight.wrap(mock_mcp, server_name="pg", redact_payloads=True)
             await proxy.call_tool("query", {"sql": "SELECT 1"})
 
@@ -243,7 +242,7 @@ class TestMCPClientProxyPayloads:
         # Client has redact off — wrap-level override turns it on
         langsight = LangSightClient(url="http://localhost:8000", redact_payloads=False)
 
-        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(langsight, "buffer_span") as mock_send:
             proxy = langsight.wrap(mock_mcp, server_name="pg", redact_payloads=True)
             await proxy.call_tool("query", {"sql": "SELECT 1"})
 
@@ -258,7 +257,7 @@ class TestMCPClientProxyPayloads:
         mock_mcp.call_tool = AsyncMock(side_effect=RuntimeError("db error"))
         langsight = LangSightClient(url="http://localhost:8000")
 
-        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(langsight, "buffer_span") as mock_send:
             proxy = langsight.wrap(mock_mcp, server_name="pg")
             with pytest.raises(RuntimeError):
                 await proxy.call_tool("query", {"sql": "SELECT 1"})
@@ -278,7 +277,7 @@ class TestMCPClientProxyPayloads:
         mock_mcp.call_tool = AsyncMock(return_value=unserializable)
         langsight = LangSightClient(url="http://localhost:8000")
 
-        with patch.object(langsight, "send_span", new_callable=AsyncMock) as mock_send:
+        with patch.object(langsight, "buffer_span") as mock_send:
             proxy = langsight.wrap(mock_mcp, server_name="pg")
             await proxy.call_tool("inspect", {})
 

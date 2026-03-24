@@ -76,7 +76,7 @@ def langsight_tool(
                         agent_name=agent_name,
                         session_id=session_id,
                     )
-                    await client.send_span(span)
+                    client.buffer_span(span)
                 except Exception:  # noqa: BLE001
                     pass  # fail-open: tracing must never break tool calls
 

@@ -232,7 +232,7 @@ class LangSightClient:
                 started_at=datetime.now(UTC),
                 trace_id=trace_id, session_id=session_id,
             )
-            await client.send_span(handoff)
+            client.buffer_span(handoff)
 
             # Sub-agent wraps its client with parent_span_id=handoff.span_id
             billing_mcp = client.wrap(mcp, server_name="crm-mcp",
@@ -327,43 +327,18 @@ class LangSightClient:
                 logger.warning("sdk.buffer_overflow", dropped=dropped, max=self._max_buffer_size)
 
     async def send_span(self, span: ToolCallSpan) -> None:
-        """Buffer a span for batched delivery. Never blocks, never raises.
+        """Async wrapper around buffer_span for backward compatibility.
 
-        Spans are flushed automatically when the buffer reaches ``batch_size``
-        or every ``flush_interval`` seconds — whichever comes first.
-        If the buffer exceeds ``max_buffer_size``, oldest spans are dropped
-        to prevent unbounded memory growth when the backend is slow/down.
-
-        Thread-safe: uses a threading.Lock so spans from fire-and-forget
-        threads (cross-ainvoke sub-agent callbacks) are safely buffered.
+        .. deprecated:: 0.4.1
+            Use :meth:`buffer_span` instead. ``send_span`` is kept for backward
+            compatibility with existing integrations and tests.
         """
-        with self._lock:
-            self._buffer.append(span)
-            if len(self._buffer) > self._max_buffer_size:
-                dropped = len(self._buffer) - self._max_buffer_size
-                self._buffer = self._buffer[dropped:]
-                logger.warning("sdk.buffer_overflow", dropped=dropped, max=self._max_buffer_size)
-        self._ensure_flush_loop()
-        if len(self._buffer) >= self._batch_size:
-            try:
-                asyncio.get_running_loop().create_task(self.flush())
-            except RuntimeError:
-                pass  # No running loop — atexit or flush() will handle it
+        self.buffer_span(span)
 
     async def send_spans(self, spans: list[ToolCallSpan]) -> None:
-        """Buffer multiple spans. Triggers immediate flush if threshold reached."""
-        with self._lock:
-            self._buffer.extend(spans)
-            if len(self._buffer) > self._max_buffer_size:
-                dropped = len(self._buffer) - self._max_buffer_size
-                self._buffer = self._buffer[dropped:]
-                logger.warning("sdk.buffer_overflow", dropped=dropped, max=self._max_buffer_size)
-        self._ensure_flush_loop()
-        if len(self._buffer) >= self._batch_size:
-            try:
-                asyncio.get_running_loop().create_task(self.flush())
-            except RuntimeError:
-                pass
+        """Buffer multiple spans. Backward-compatible async wrapper."""
+        for span in spans:
+            self.buffer_span(span)
 
     async def flush(self) -> None:
         """Flush all buffered spans to the API. Safe to call at any time.
@@ -685,7 +660,7 @@ class MCPClientProxy:
             # Send the prevented span fire-and-forget — never let delivery failure
             # mask the prevention exception that the caller needs to handle.
             try:
-                await langsight.send_span(span)
+                langsight.buffer_span(span)
             except Exception:  # noqa: BLE001
                 pass
             raise exc
@@ -748,7 +723,7 @@ class MCPClientProxy:
                 span,
                 status,
             )
-            await langsight.send_span(span)
+            langsight.buffer_span(span)
 
 
 # ---------------------------------------------------------------------------

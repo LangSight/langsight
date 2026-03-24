@@ -19,7 +19,7 @@ Security invariants tested:
 from __future__ import annotations
 
 import time
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -544,7 +544,7 @@ class TestPreventionBypassSendSpanFailure:
             if call_count == 3:
                 raise ConnectionError("API unreachable")
 
-        with patch.object(client, "send_span", side_effect=fail_on_prevented_span):
+        with patch.object(client, "buffer_span", side_effect=fail_on_prevented_span):
             await proxy.call_tool("query", {"sql": "SELECT 1"})
             await proxy.call_tool("query", {"sql": "SELECT 1"})
 
@@ -573,7 +573,7 @@ class TestPreventionBypassSendSpanFailure:
             if call_count == 3:
                 raise ConnectionError("API unreachable")
 
-        with patch.object(client, "send_span", side_effect=fail_on_prevented_span):
+        with patch.object(client, "buffer_span", side_effect=fail_on_prevented_span):
             await proxy.call_tool("a", {})
             await proxy.call_tool("b", {})
 
@@ -594,7 +594,7 @@ class TestPreventionBypassSendSpanFailure:
         mcp = _FakeMCPClient(result="ok")
         proxy = client.wrap(mcp, server_name="test", session_id="sess-1")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             await proxy.call_tool("query", {"sql": "SELECT 1"})
             await proxy.call_tool("query", {"sql": "SELECT 1"})
 
@@ -619,7 +619,7 @@ class TestPreventionBypassNoneSessionId:
         mcp = _FakeMCPClient(result="ok")
         proxy = client.wrap(mcp, server_name="test", session_id=None)
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             await proxy.call_tool("query", {"sql": "SELECT 1"})
             await proxy.call_tool("query", {"sql": "SELECT 1"})
 
@@ -635,7 +635,7 @@ class TestPreventionBypassNoneSessionId:
         mcp = _FakeMCPClient(result="ok")
         proxy = client.wrap(mcp, server_name="test", session_id=None)
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             await proxy.call_tool("a", {})
             await proxy.call_tool("b", {})
 
@@ -661,7 +661,7 @@ class TestPreventionBypassConcurrentState:
         proxy1 = client.wrap(mcp1, server_name="test", session_id="shared")
         proxy2 = client.wrap(mcp2, server_name="test", session_id="shared")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             await proxy1.call_tool("query", {"sql": "X"})
             await proxy2.call_tool("query", {"sql": "X"})
 
@@ -682,7 +682,7 @@ class TestPreventionBypassConcurrentState:
         proxy1 = client.wrap(failing_mcp, server_name="srv", session_id="s1")
         proxy2 = client.wrap(ok_mcp, server_name="srv", session_id="s2")
 
-        with patch.object(client, "send_span", new_callable=AsyncMock):
+        with patch.object(client, "buffer_span"):
             # proxy1 triggers 2 failures
             with pytest.raises(RuntimeError):
                 await proxy1.call_tool("q", {})
