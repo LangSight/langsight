@@ -12,9 +12,7 @@ import type {
   ModelPricingEntry,
   ProjectMember,
   ProjectResponse,
-  ReplayResponse,
   SecurityScanResult,
-  SessionComparison,
   SessionTrace,
   SLOStatus,
 } from "./types";
@@ -139,10 +137,6 @@ export const getSessions = (hours = 24, limit = 50) =>
   get<AgentSession[]>(`/agents/sessions?hours=${hours}&limit=${limit}`);
 export const getSessionTrace = (sessionId: string, projectId?: string) =>
   get<SessionTrace>(`/agents/sessions/${encodeURIComponent(sessionId)}${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""}`);
-export const compareSessions = (a: string, b: string, projectId?: string) =>
-  get<SessionComparison>(`/agents/sessions/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
-export const replaySession = (sessionId: string, timeoutPerCall = 10, totalTimeout = 60, projectId?: string) =>
-  post<ReplayResponse>(`/agents/sessions/${encodeURIComponent(sessionId)}/replay?timeout_per_call=${timeoutPerCall}&total_timeout=${totalTimeout}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
 
 // ─── Lineage (agent action DAG) ──────────────────────────────────────────────
 export const getLineageGraph = (hours = 168, projectId?: string) =>

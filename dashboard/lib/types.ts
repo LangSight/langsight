@@ -190,33 +190,6 @@ export interface InviteResponse {
   invite_url: string;
 }
 
-export interface ReplayResponse {
-  original_session_id: string;
-  replay_session_id: string;
-  total_spans: number;
-  replayed: number;
-  skipped: number;
-  failed: number;
-  duration_ms: number;
-}
-
-export interface DiffEntry {
-  tool_key: string;
-  status: "matched" | "diverged" | "only_a" | "only_b";
-  span_a: Record<string, unknown> | null;
-  span_b: Record<string, unknown> | null;
-  latency_delta_pct: number | null;
-  status_changed: boolean;
-}
-
-export interface SessionComparison {
-  session_a: string;
-  session_b: string;
-  spans_a: Record<string, unknown>[];
-  spans_b: Record<string, unknown>[];
-  diff: DiffEntry[];
-  summary: { matched: number; diverged: number; only_a: number; only_b: number };
-}
 
 export interface SLOStatus {
   slo_id: string;

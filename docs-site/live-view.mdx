@@ -1,0 +1,66 @@
+---
+title: "Live View"
+description: "Real-time monitoring of agent sessions as they run — watch spans tick up, catch errors immediately, and spot hung agents before they waste budget"
+---
+
+# Live View
+
+The Live page shows all agent sessions that are currently running or recently active, updated every 3 seconds. It is a real-time control room — you can watch span counts increment as your agent calls tools, see errors appear immediately, and catch hung agents before they drain budget.
+
+## How to use it
+
+1. Open the **Live** page in the sidebar (Radio icon under Infrastructure)
+2. Run your instrumented agent
+3. Sessions appear within 3 seconds of the first span arriving
+4. Click any row to open the full session trace
+
+No configuration is required. As long as the SDK is sending spans to the API, sessions surface here automatically.
+
+## Status badges
+
+Each session row shows a status badge that reflects whether the agent is still sending spans.
+
+| Status | Colour | Meaning |
+|--------|--------|---------|
+| **running** | Green pulse | Received a new span in the last 30 seconds — agent is actively executing |
+| **idle** | Amber dot | No new spans for 30 seconds to 2 minutes — agent may be waiting on a slow LLM call or long-running tool |
+| **verifying...** | Amber pulse | No new spans for more than 2 minutes — LangSight is checking if the agent is still alive. Could be a very long tool call or a hung agent |
+| **done** | Grey | Session completed. No new spans expected |
+
+<Note>
+  The **verifying...** state does not mean the agent has failed. Some tool calls (filesystem operations, database queries on large datasets, external API calls) take several minutes. Check the Errors column and click the row for the full trace before concluding the agent is stuck.
+</Note>
+
+## Columns
+
+| Column | What it shows |
+|--------|---------------|
+| **Session** | Truncated session ID. Click the row to open the full trace |
+| **Agent** | The agent name that last sent a span (orchestrator, analyst, sub-agent, etc.) |
+| **Status** | Current session health — see status badges above |
+| **Spans** | Total number of spans received for this session. Increments in real-time as the agent runs |
+| **Errors** | Number of failed tool calls or LLM errors. Shown in red — click the row to see which tools failed and why |
+| **Duration** | Time elapsed between the first and last span received |
+| **Last seen** | How long ago the most recent span arrived |
+
+## Error count
+
+When the **Errors** column shows a red number, at least one tool call or LLM generation failed in this session. Click the row to open the full session trace, which shows exactly which tool failed, the error message, and the full input/output payload.
+
+An error count of zero does not guarantee the session completed successfully — a hung agent that never sends a final span will show zero errors. Use the **Status** badge alongside the error count.
+
+## Session auto-expiry
+
+Sessions disappear from the Live page after **10 minutes of inactivity**. They are not deleted — they remain permanently in the Sessions list and can be inspected at any time.
+
+The Live page is intentionally short-lived: it shows what is happening now. The Sessions page is the historical record.
+
+## The LIVE badge
+
+The green pulsing **LIVE** badge in the top-right corner of the page confirms that the frontend is polling the backend every 3 seconds. It is always active while the page is open. If the page loses connectivity, the badge dims — refresh the page to reconnect.
+
+## Architecture
+
+The Live page polls `GET /api/agents/sessions/live` every 3 seconds using SWR. The API returns all sessions that have received a span in the last 10 minutes, with the latest status computed server-side. There is no WebSocket or SSE connection on this page — polling is sufficient for 3-second granularity.
+
+For sub-second event streaming (custom dashboards, alerting integrations), use the [SSE live event feed](/monitoring#sse-live-event-feed) at `GET /api/live/events`.

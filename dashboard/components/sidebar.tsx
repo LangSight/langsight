@@ -8,7 +8,7 @@ import useSWR from "swr";
 import {
   LayoutDashboard, Activity, Shield, GitBranch, DollarSign, Bot,
   LogOut, Settings, Folder, ChevronDown, Plus, Check,
-  Zap, ChevronRight, Server,
+  Zap, ChevronRight, Server, Radio,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -18,15 +18,15 @@ import type { ProjectResponse } from "@/lib/types";
 
 /* ── Nav config ─────────────────────────────────────────────── */
 const PRIMARY_NAV = [
-  { href: "/",           label: "Dashboard",    icon: LayoutDashboard, color: "#14B8A6" },
-  { href: "/monitoring", label: "Monitoring",   icon: Activity,        color: "#8b5cf6" },
-  { href: "/sessions",   label: "Sessions",     icon: GitBranch,       color: "#0EA5E9" },
-  { href: "/agents",     label: "Agents",       icon: Bot,             color: "#06b6d4" },
-  { href: "/servers",    label: "MCP Servers",  icon: Server,          color: "#0EA5E9" },
-  { href: "/costs",      label: "Costs",        icon: DollarSign,      color: "#10b981" },
+  { href: "/",         label: "Dashboard",   icon: LayoutDashboard, color: "#14B8A6" },
+  { href: "/sessions", label: "Sessions",    icon: GitBranch,       color: "#0EA5E9" },
+  { href: "/agents",   label: "Agents",      icon: Bot,             color: "#06b6d4" },
+  { href: "/servers",  label: "MCP Servers", icon: Server,          color: "#0EA5E9" },
+  { href: "/costs",    label: "Costs",       icon: DollarSign,      color: "#10b981" },
 ];
 
 const INFRA_NAV = [
+  { href: "/live",     label: "Live",         icon: Radio,    color: "#22c55e" },
   { href: "/health",   label: "Tool Health",  icon: Activity, color: "#f59e0b" },
   { href: "/security", label: "MCP Security", icon: Shield,   color: "#ef4444" },
   { href: "/alerts",   label: "Alerts",       icon: Zap,      color: "#f97316" },

@@ -3,516 +3,406 @@
 export const dynamic = "force-dynamic";
 
 import useSWR from "swr";
-import { useState } from "react";
-import { AreaChart, Area, ResponsiveContainer } from "recharts";
+import { useMemo, useState } from "react";
 import {
-  RefreshCw, Server, GitBranch, Bot, AlertTriangle,
-  CheckCircle, ArrowUpRight, Activity,
+  AreaChart, Area, BarChart, Bar, LineChart, Line,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+} from "recharts";
+import {
+  Activity, Zap, AlertTriangle, Clock, Coins, Cpu, Server,
 } from "lucide-react";
-import { fetcher, triggerHealthCheck } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
-import { cn, timeAgo, formatLatency } from "@/lib/utils";
-import { Timestamp } from "@/components/timestamp";
-import { toast } from "sonner";
-import Link from "next/link";
-import type { HealthResult, AgentSession, AnomalyResult, SLOStatus } from "@/lib/types";
+import { cn, formatLatency } from "@/lib/utils";
+import type { MonitoringBucket, MonitoringModel, MonitoringTool } from "@/lib/api";
+import {
+  getMonitoringTimeseries, getMonitoringModels, getMonitoringTools,
+} from "@/lib/api";
 
-/* ── Helpers ────────────────────────────────────────────────── */
-function Skeleton({ className }: { className?: string }) {
-  return <div className={cn("skeleton", className)} />;
-}
+/* ── Time range selector ──────────────────────────────────────── */
+const RANGES = [
+  { label: "1h", hours: 1 },
+  { label: "6h", hours: 6 },
+  { label: "24h", hours: 24 },
+  { label: "7d", hours: 168 },
+] as const;
 
-function StatusDot({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    up: "#22c55e", degraded: "#eab308", down: "#ef4444",
-    stale: "#71717a", unknown: "#71717a",
-  };
-  const color = map[status] ?? "#71717a";
-  return (
-    <span className="relative inline-flex w-2 h-2 flex-shrink-0">
-      {status === "up" && (
-        <span
-          className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60"
-          style={{ background: color }}
-        />
-      )}
-      <span className="relative inline-flex rounded-full w-2 h-2" style={{ background: color }} />
-    </span>
-  );
-}
+/* ── Tab type ─────────────────────────────────────────────────── */
+type Tab = "overview" | "models" | "tools";
 
-/* ── Metric card ────────────────────────────────────────────── */
-function MetricCard({
-  label, value, sub, icon: Icon, trend, color, href,
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  icon: React.ElementType;
-  trend?: number[];
-  color: string;
-  href?: string;
+/* ── Chart tooltip ────────────────────────────────────────────── */
+function ChartTooltip({ active, payload, label, formatter }: {
+  active?: boolean; payload?: Array<{ value: number; name: string; color: string }>;
+  label?: string; formatter?: (v: number) => string;
 }) {
-  const inner = (
-    <div
-      className={cn(
-        "metric-card flex flex-col gap-4",
-        href && "cursor-pointer"
-      )}
-      style={{ "--card-accent": color } as React.CSSProperties}
-    >
-      {/* Top row: icon + sparkline */}
-      <div className="flex items-start justify-between">
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm"
-          style={{
-            background: `linear-gradient(135deg, ${color}22, ${color}12)`,
-            border: `1px solid ${color}25`,
-          }}
-        >
-          <Icon size={18} style={{ color }} />
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-lg border px-3 py-2 shadow-lg" style={{
+      background: "hsl(var(--card))", borderColor: "hsl(var(--border))",
+      fontSize: "11px",
+    }}>
+      <p className="text-muted-foreground mb-1" style={{ fontFamily: "var(--font-geist-mono)" }}>
+        {label}
+      </p>
+      {payload.map((p, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
+          <span className="text-muted-foreground">{p.name}:</span>
+          <span className="font-semibold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>
+            {formatter ? formatter(p.value) : p.value.toLocaleString()}
+          </span>
         </div>
-        {trend && trend.length > 0 && (
-          <div className="h-10 w-24 opacity-70">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trend.map((v, i) => ({ v, i }))}>
-                <Area
-                  type="monotone"
-                  dataKey="v"
-                  stroke={color}
-                  fill={color}
-                  fillOpacity={0.15}
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </div>
-
-      {/* Bottom: number + label */}
-      <div>
-        <p
-          className="font-bold leading-none mb-1.5"
-          style={{
-            fontSize: "1.75rem",
-            color: "hsl(var(--foreground))",
-            letterSpacing: "-0.03em",
-          }}
-        >
-          {value}
-        </p>
-        <p
-          className="text-[12.5px] font-medium"
-          style={{ color: "hsl(var(--muted-foreground))" }}
-        >
-          {label}
-        </p>
-        {sub && (
-          <p className="text-[11px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.7 }}>
-            {sub}
-          </p>
-        )}
-      </div>
-
-      {/* Bottom accent line */}
-      <div
-        className="absolute bottom-0 left-0 right-0 h-[2px] rounded-b-xl opacity-40"
-        style={{ background: `linear-gradient(90deg, ${color}, transparent)` }}
-      />
+      ))}
     </div>
   );
-  return href ? <Link href={href}>{inner}</Link> : inner;
 }
 
-/* ── Session row ────────────────────────────────────────────── */
-function SessionRow({ session }: { session: AgentSession }) {
-  const failed = session.failed_calls > 0;
+/* ── Stat card ────────────────────────────────────────────────── */
+function StatCard({ label, value, sub, icon: Icon, color }: {
+  label: string; value: string | number; sub?: string;
+  icon: React.ElementType; color: string;
+}) {
   return (
-    <Link
-      href={`/sessions/${session.session_id}`}
-      className="flex items-center justify-between px-5 py-3 hover:bg-accent/50 transition-colors group"
-    >
-      <div className="flex items-center gap-3 min-w-0">
-        <StatusDot status={failed ? "down" : "up"} />
-        <div className="min-w-0">
-          <span
-            className="text-[13px] font-mono block truncate text-foreground"
-            style={{ fontFamily: "var(--font-geist-mono)" }}
-          >
-            {session.session_id.slice(0, 18)}…
-          </span>
-          <span className="text-[11px] text-muted-foreground">
-            {session.agent_name || "unknown"} · <Timestamp iso={session.first_call_at} compact />
-          </span>
+    <div className="rounded-xl border p-4" style={{
+      background: "hsl(var(--card))", borderColor: "hsl(var(--border))",
+    }}>
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{
+          background: `${color}18`, border: `1px solid ${color}30`,
+        }}>
+          <Icon size={13} style={{ color }} />
         </div>
+        <span className="text-[11px] text-muted-foreground font-medium">{label}</span>
       </div>
-      <div className="flex items-center gap-3 flex-shrink-0">
-        <span className="text-[11px] font-mono text-muted-foreground hidden sm:block">
-          {session.tool_calls} calls
-        </span>
-        <span
-          className={cn(
-            "text-[10px] px-2 py-0.5 rounded-full font-semibold",
-            failed ? "badge-danger" : "badge-success"
-          )}
-        >
-          {failed ? `${session.failed_calls} failed` : "clean"}
-        </span>
-        <ArrowUpRight size={13} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-      </div>
-    </Link>
+      <p className="text-xl font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>
+        {value}
+      </p>
+      {sub && <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>}
+    </div>
   );
 }
 
-/* ── Page ───────────────────────────────────────────────────── */
-export default function OverviewPage() {
-  const { activeProject, isLoading: projectLoading } = useProject();
-  const p = activeProject ? `&project_id=${activeProject.id}` : "";
+/* ── Chart wrapper ────────────────────────────────────────────── */
+function ChartCard({ title, children, className }: {
+  title: string; children: React.ReactNode; className?: string;
+}) {
+  return (
+    <div className={cn("rounded-xl border p-4", className)} style={{
+      background: "hsl(var(--card))", borderColor: "hsl(var(--border))",
+    }}>
+      <h3 className="text-[12px] font-semibold text-muted-foreground mb-3 uppercase tracking-wider">{title}</h3>
+      <div className="h-52">{children}</div>
+    </div>
+  );
+}
 
-  // Suspend all fetches until project context is resolved — prevents a flash
-  // of cross-project data (e.g. sample project servers appearing in a new project).
-  const ready = !projectLoading;
+/* ── Format bucket label ──────────────────────────────────────── */
+function fmtBucket(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+}
 
-  const { data: servers, isLoading: serversLoading, mutate } =
-    useSWR<HealthResult[]>(
-      ready ? (activeProject ? `/api/health/servers?project_id=${activeProject.id}` : "/api/health/servers") : null,
-      fetcher,
-      { refreshInterval: 30_000 },
-    );
-  const { data: sessions, isLoading: sessionsLoading } =
-    useSWR<AgentSession[]>(ready ? `/api/agents/sessions?hours=24&limit=8${p}` : null, fetcher, { refreshInterval: 30_000 });
-  const { data: anomalies } =
-    useSWR<AnomalyResult[]>(ready ? `/api/reliability/anomalies?current_hours=1&z_threshold=2${p}` : null, fetcher, { refreshInterval: 60_000 });
-  const { data: sloStatuses } =
-    useSWR<SLOStatus[]>(ready ? `/api/slos/status${p ? `?${p.slice(1)}` : ""}` : null, fetcher, { refreshInterval: 60_000 });
-  const [checking, setChecking] = useState(false);
+/* ── Main page ────────────────────────────────────────────────── */
+export default function DashboardPage() {
+  const { activeProject } = useProject();
+  const pid = activeProject?.id ?? null;
+  const [hours, setHours] = useState(24);
+  const [tab, setTab] = useState<Tab>("overview");
 
-  const up       = servers?.filter((s) => s.status === "up").length ?? 0;
-  const total    = servers?.length ?? 0;
-  const down     = servers?.filter((s) => s.status === "down").length ?? 0;
-  const degraded = servers?.filter((s) => s.status === "degraded").length ?? 0;
-  const sessTotal  = sessions?.length ?? 0;
-  const agentCount = sessions ? new Set(sessions.map((s) => s.agent_name).filter(Boolean)).size : 0;
-  const sessFailed = sessions?.filter((s) => s.failed_calls > 0).length ?? 0;
+  const { data: timeseries } = useSWR(
+    pid ? `/monitoring/ts/${hours}/${pid}` : null,
+    () => getMonitoringTimeseries(hours, pid),
+    { refreshInterval: 60_000 },
+  );
+  const { data: models } = useSWR(
+    pid && tab === "models" ? `/monitoring/models/${hours}/${pid}` : null,
+    () => getMonitoringModels(hours, pid),
+    { refreshInterval: 120_000 },
+  );
+  const { data: tools } = useSWR(
+    pid && tab === "tools" ? `/monitoring/tools/${hours}/${pid}` : null,
+    () => getMonitoringTools(hours, pid),
+    { refreshInterval: 120_000 },
+  );
 
-  const spark = [3,5,4,6,5,8,7,9,8,10].map((v) => v);
+  // Aggregate summary from timeseries
+  const summary = useMemo(() => {
+    if (!timeseries?.length) return null;
+    const totalSessions = timeseries.reduce((s, b) => s + b.sessions, 0);
+    const totalToolCalls = timeseries.reduce((s, b) => s + b.tool_calls, 0);
+    const totalErrors = timeseries.reduce((s, b) => s + b.errors, 0);
+    const totalInputTokens = timeseries.reduce((s, b) => s + b.input_tokens, 0);
+    const totalOutputTokens = timeseries.reduce((s, b) => s + b.output_tokens, 0);
+    const avgLatency = totalToolCalls > 0
+      ? timeseries.reduce((s, b) => s + b.avg_latency_ms * b.tool_calls, 0) / totalToolCalls
+      : 0;
+    const errorRate = totalToolCalls > 0 ? (totalErrors / totalToolCalls * 100) : 0;
+    const maxAgents = Math.max(...timeseries.map(b => b.agents), 0);
+    return {
+      totalSessions, totalToolCalls, totalErrors, totalInputTokens,
+      totalOutputTokens, avgLatency, errorRate, maxAgents,
+    };
+  }, [timeseries]);
 
-  const systemStatus =
-    down > 0 ? "down" : degraded > 0 ? "degraded" : "all_up";
-  const systemLabel =
-    systemStatus === "all_up" ? "All Systems Operational"
-    : systemStatus === "degraded" ? "Systems Degraded"
-    : "Outage Detected";
-  const systemColor =
-    systemStatus === "all_up" ? "#22c55e"
-    : systemStatus === "degraded" ? "#eab308"
-    : "#ef4444";
+  // Chart data with formatted labels
+  const chartData = useMemo(() =>
+    (timeseries ?? []).map(b => ({ ...b, label: fmtBucket(b.bucket) })),
+    [timeseries],
+  );
 
-  async function runCheck() {
-    setChecking(true);
-    try {
-      await triggerHealthCheck();
-      await mutate();
-      toast.success("Health check complete");
-    } catch {
-      toast.error("Health check failed");
-    } finally {
-      setChecking(false);
-    }
-  }
+  // Filter tools: exclude LLM intent spans (server_name matches an agent pattern)
+  const realTools = useMemo(() => {
+    if (!tools) return [];
+    const agentServers = new Set(["orchestrator", "analyst", "procurement"]);
+    return tools.filter(t => !agentServers.has(t.server_name));
+  }, [tools]);
+
+  const AXIS_STYLE = { fontSize: 10, fill: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)" };
+  const GRID_STYLE = { stroke: "hsl(var(--border))", strokeDasharray: "3 3" };
 
   return (
-    <div className="space-y-5 page-in">
-      {/* ── Actions bar ───────────────────────────────────────── */}
-      <div className="flex items-center justify-end gap-2.5">
-          {!serversLoading && (
-            <div
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border"
-              style={{
-                background: systemColor + "12",
-                borderColor: systemColor + "40",
-                color: systemColor,
-              }}
+    <div className="space-y-4 page-in">
+      {/* ── Header bar ─────────────────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1 rounded-lg border overflow-hidden" style={{
+          borderColor: "hsl(var(--border))", background: "hsl(var(--muted))",
+        }}>
+          {(["overview", "models", "tools"] as Tab[]).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={cn(
+                "px-3 py-1.5 text-[12px] font-medium transition-colors capitalize",
+                tab === t
+                  ? "bg-background text-foreground shadow-sm rounded-md"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
             >
-              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: systemColor }} />
-              {systemLabel}
-            </div>
-          )}
-          <button
-            onClick={runCheck}
-            disabled={checking}
-            className="btn btn-secondary"
-          >
-            <RefreshCw size={13} className={checking ? "animate-spin" : ""} />
-            {checking ? "Checking…" : "Run Check"}
-          </button>
+              {t}
+            </button>
+          ))}
         </div>
 
-      {/* ── Metric cards ──────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {serversLoading ? (
-          Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="rounded-xl border p-5 space-y-3"
-              style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
+        <div className="flex items-center gap-1 rounded-lg border overflow-hidden" style={{
+          borderColor: "hsl(var(--border))", background: "hsl(var(--muted))",
+        }}>
+          {RANGES.map(r => (
+            <button
+              key={r.hours}
+              onClick={() => setHours(r.hours)}
+              className={cn(
+                "px-2.5 py-1.5 text-[12px] font-medium transition-colors",
+                hours === r.hours
+                  ? "bg-background text-foreground shadow-sm rounded-md"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
             >
-              <Skeleton className="w-9 h-9 rounded-lg" />
-              <Skeleton className="h-7 w-16" />
-              <Skeleton className="h-3 w-24" />
-            </div>
-          ))
-        ) : (
-          <>
-            <MetricCard
-              label="Active Sessions"
-              value={sessTotal}
-              sub={sessFailed > 0 ? `${sessFailed} with failures` : "all clean"}
-              icon={GitBranch}
-              trend={spark}
-              color="#14B8A6"
-              href="/sessions"
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── OVERVIEW TAB ──────────────────────────────────────── */}
+      {tab === "overview" && (
+        <>
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard label="Sessions" value={summary?.totalSessions ?? "—"} icon={Activity} color="#14b8a6" sub={`last ${hours}h`} />
+            <StatCard label="Tool Calls" value={summary?.totalToolCalls?.toLocaleString() ?? "—"} icon={Zap} color="#0ea5e9" sub={`${summary?.totalErrors ?? 0} errors`} />
+            <StatCard label="Error Rate" value={summary ? `${summary.errorRate.toFixed(1)}%` : "—"} icon={AlertTriangle} color={summary && summary.errorRate > 5 ? "#ef4444" : "#22c55e"} />
+            <StatCard label="Avg Latency" value={summary ? formatLatency(summary.avgLatency) : "—"} icon={Clock} color="#8b5cf6" />
+          </div>
+
+          {/* Charts row 1: Sessions + Error Rate */}
+          <div className="grid lg:grid-cols-2 gap-3">
+            <ChartCard title="Agent Runs">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid {...GRID_STYLE} />
+                  <XAxis dataKey="label" tick={AXIS_STYLE} />
+                  <YAxis tick={AXIS_STYLE} width={35} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="sessions" name="Sessions" fill="#14b8a6" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard title="Error Rate">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData}>
+                  <CartesianGrid {...GRID_STYLE} />
+                  <XAxis dataKey="label" tick={AXIS_STYLE} />
+                  <YAxis tick={AXIS_STYLE} width={35} tickFormatter={v => `${(v * 100).toFixed(0)}%`} />
+                  <Tooltip content={<ChartTooltip formatter={v => `${(v * 100).toFixed(1)}%`} />} />
+                  <Line type="monotone" dataKey="error_rate" name="Error Rate" stroke="#ef4444" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+
+          {/* Charts row 2: Latency + Tokens */}
+          <div className="grid lg:grid-cols-2 gap-3">
+            <ChartCard title="Latency (p99)">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData}>
+                  <CartesianGrid {...GRID_STYLE} />
+                  <XAxis dataKey="label" tick={AXIS_STYLE} />
+                  <YAxis tick={AXIS_STYLE} width={45} tickFormatter={v => formatLatency(v)} />
+                  <Tooltip content={<ChartTooltip formatter={v => formatLatency(v)} />} />
+                  <Line type="monotone" dataKey="p99_latency_ms" name="p99" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="avg_latency_ms" name="avg" stroke="#8b5cf680" strokeWidth={1} dot={false} strokeDasharray="4 2" />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard title="Token Usage">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <CartesianGrid {...GRID_STYLE} />
+                  <XAxis dataKey="label" tick={AXIS_STYLE} />
+                  <YAxis tick={AXIS_STYLE} width={45} tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Area type="monotone" dataKey="input_tokens" name="Input" stackId="1" stroke="#0ea5e9" fill="#0ea5e920" />
+                  <Area type="monotone" dataKey="output_tokens" name="Output" stackId="1" stroke="#14b8a6" fill="#14b8a620" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+        </>
+      )}
+
+      {/* ── MODELS TAB ────────────────────────────────────────── */}
+      {tab === "models" && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard
+              label="Total Models"
+              value={models?.length ?? "—"}
+              icon={Cpu}
+              color="#8b5cf6"
             />
-            <MetricCard
-              label="Agents Running"
-              value={agentCount}
-              sub={sessFailed > 0 ? `${sessFailed} sessions with errors` : "no issues detected"}
-              icon={Bot}
-              color={sessFailed > 0 ? "#eab308" : "#22c55e"}
-              href="/agents"
+            <StatCard
+              label="Total Tokens"
+              value={models ? `${((models.reduce((s, m) => s + m.input_tokens + m.output_tokens, 0)) / 1000).toFixed(0)}k` : "—"}
+              icon={Coins}
+              color="#0ea5e9"
             />
-            <MetricCard
-              label="Tools Online"
-              value={total > 0 ? `${up}/${total}` : "—"}
-              sub={
-                total === 0 ? "run langsight init"
-                : degraded > 0 || down > 0 ? `${degraded} degraded · ${down} down`
-                : "all healthy"
-              }
+            <StatCard
+              label="Total Cost"
+              value={models ? `$${models.reduce((s, m) => s + (m.est_cost_usd ?? 0), 0).toFixed(3)}` : "—"}
+              icon={Coins}
+              color="#10b981"
+            />
+            <StatCard
+              label="Avg Latency"
+              value={models?.length ? formatLatency(models.reduce((s, m) => s + m.avg_latency_ms * m.calls, 0) / models.reduce((s, m) => s + m.calls, 0)) : "—"}
+              icon={Clock}
+              color="#f59e0b"
+            />
+          </div>
+
+          {/* Model table */}
+          <div className="rounded-xl border overflow-hidden" style={{
+            background: "hsl(var(--card))", borderColor: "hsl(var(--border))",
+          }}>
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b" style={{ borderColor: "hsl(var(--border))" }}>
+                  <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground">Model</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Calls</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Input Tokens</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Output Tokens</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Avg Latency</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Errors</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Est. Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(models ?? []).map(m => (
+                  <tr key={m.model_id} className="border-b last:border-0 hover:bg-accent/30" style={{ borderColor: "hsl(var(--border))" }}>
+                    <td className="px-4 py-2.5 font-mono font-medium text-foreground">{m.model_id}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{m.calls.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{m.input_tokens.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{m.output_tokens.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{formatLatency(m.avg_latency_ms)}</td>
+                    <td className={cn("px-4 py-2.5 text-right font-mono", m.error_count > 0 ? "text-red-400" : "text-muted-foreground")}>{m.error_count}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-emerald-400">{m.est_cost_usd != null ? `$${m.est_cost_usd.toFixed(4)}` : "—"}</td>
+                  </tr>
+                ))}
+                {(!models || models.length === 0) && (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No model data for this period</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* ── TOOLS TAB ─────────────────────────────────────────── */}
+      {tab === "tools" && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard
+              label="Unique Tools"
+              value={realTools.length}
               icon={Server}
-              trend={spark}
-              color={down > 0 ? "#ef4444" : degraded > 0 ? "#eab308" : "#6366f1"}
-              href="/health"
+              color="#0ea5e9"
             />
-            <MetricCard
-              label="Anomalies"
-              value={anomalies === undefined ? "—" : anomalies.length}
-              sub={
-                anomalies === undefined ? "loading…"
-                : anomalies.length === 0 ? "all tools normal"
-                : `${anomalies.filter((a) => a.severity === "critical").length} critical`
-              }
+            <StatCard
+              label="Total Calls"
+              value={realTools.reduce((s, t) => s + t.calls, 0).toLocaleString()}
+              icon={Zap}
+              color="#14b8a6"
+            />
+            <StatCard
+              label="Total Errors"
+              value={realTools.reduce((s, t) => s + t.errors, 0)}
               icon={AlertTriangle}
-              color={
-                !anomalies || anomalies.length === 0 ? "#22c55e"
-                : anomalies.some((a) => a.severity === "critical") ? "#ef4444"
-                : "#eab308"
-              }
+              color={realTools.some(t => t.errors > 0) ? "#ef4444" : "#22c55e"}
             />
-          </>
-        )}
-      </div>
-
-      {/* ── Main content grid ─────────────────────────────────── */}
-      <div className="grid lg:grid-cols-5 gap-4">
-
-        {/* Recent sessions — 3 cols */}
-        <div
-          className="lg:col-span-3 rounded-xl border overflow-hidden"
-          style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-        >
-          <div className="section-header">
-            <h2>Recent Sessions</h2>
-            <Link
-              href="/sessions"
-              className="text-xs font-medium text-primary hover:underline underline-offset-2"
-            >
-              View all →
-            </Link>
+            <StatCard
+              label="Avg Latency"
+              value={realTools.length ? formatLatency(realTools.reduce((s, t) => s + t.avg_latency_ms * t.calls, 0) / Math.max(realTools.reduce((s, t) => s + t.calls, 0), 1)) : "—"}
+              icon={Clock}
+              color="#8b5cf6"
+            />
           </div>
 
-          {sessionsLoading ? (
-            <div className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center justify-between px-5 py-3 gap-4">
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="w-2 h-2 rounded-full flex-shrink-0" />
-                    <div className="space-y-1.5">
-                      <Skeleton className="h-3.5 w-36" />
-                      <Skeleton className="h-2.5 w-24" />
-                    </div>
-                  </div>
-                  <Skeleton className="h-5 w-14 rounded-full" />
-                </div>
-              ))}
-            </div>
-          ) : !sessions || sessions.length === 0 ? (
-            <div className="p-12 text-center">
-              <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
-                style={{ background: "hsl(var(--muted))" }}
-              >
-                <GitBranch size={22} className="text-muted-foreground" />
-              </div>
-              <p className="text-sm font-semibold text-foreground mb-1">No sessions yet</p>
-              <p className="text-xs text-muted-foreground">
-                Instrument an agent with the LangSight SDK to start seeing sessions
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
-              {sessions.map((s) => (
-                <SessionRow key={s.session_id} session={s} />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Tool health — 2 cols */}
-        <div
-          className="lg:col-span-2 rounded-xl border overflow-hidden"
-          style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-        >
-          <div className="section-header">
-            <h2>Tools &amp; MCPs</h2>
-            <Link
-              href="/health"
-              className="text-xs font-medium text-primary hover:underline underline-offset-2"
-            >
-              View all →
-            </Link>
+          {/* Tool table */}
+          <div className="rounded-xl border overflow-hidden" style={{
+            background: "hsl(var(--card))", borderColor: "hsl(var(--border))",
+          }}>
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b" style={{ borderColor: "hsl(var(--border))" }}>
+                  <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground">Server</th>
+                  <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground">Tool</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Calls</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Errors</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Avg Latency</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">p99 Latency</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Success Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {realTools.map(t => (
+                  <tr key={`${t.server_name}:${t.tool_name}`} className="border-b last:border-0 hover:bg-accent/30" style={{ borderColor: "hsl(var(--border))" }}>
+                    <td className="px-4 py-2.5 font-mono text-muted-foreground">{t.server_name}</td>
+                    <td className="px-4 py-2.5 font-mono font-medium text-foreground">{t.tool_name}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{t.calls.toLocaleString()}</td>
+                    <td className={cn("px-4 py-2.5 text-right font-mono", t.errors > 0 ? "text-red-400" : "text-muted-foreground")}>{t.errors}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{formatLatency(t.avg_latency_ms)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{formatLatency(t.p99_latency_ms)}</td>
+                    <td className={cn("px-4 py-2.5 text-right font-mono font-semibold", t.success_rate < 95 ? "text-red-400" : "text-emerald-400")}>{t.success_rate.toFixed(1)}%</td>
+                  </tr>
+                ))}
+                {realTools.length === 0 && (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No tool data for this period</td></tr>
+                )}
+              </tbody>
+            </table>
           </div>
-
-          {serversLoading ? (
-            <div className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="px-5 py-3 space-y-1.5">
-                  <Skeleton className="h-3.5 w-28" />
-                  <Skeleton className="h-2.5 w-40" />
-                </div>
-              ))}
-            </div>
-          ) : !servers || servers.length === 0 ? (
-            <div className="p-10 text-center">
-              <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
-                style={{ background: "hsl(var(--muted))" }}
-              >
-                <Server size={22} className="text-muted-foreground" />
-              </div>
-              <p className="text-sm font-semibold text-foreground mb-1">No tools configured</p>
-              <p className="text-xs text-muted-foreground font-mono">langsight init</p>
-            </div>
-          ) : (
-            <div className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
-              {servers.map((s) => (
-                <Link
-                  href="/health"
-                  key={s.server_name}
-                  className="flex items-center justify-between px-5 py-3 hover:bg-accent/50 transition-colors group"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <StatusDot status={s.status} />
-                    <div className="min-w-0">
-                      <span
-                        className="text-[13px] font-mono font-medium text-foreground block truncate"
-                        style={{ fontFamily: "var(--font-geist-mono)" }}
-                      >
-                        {s.server_name}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {s.tools_count} tools · {formatLatency(s.latency_ms)} · <Timestamp iso={s.checked_at} compact />
-                      </span>
-                    </div>
-                  </div>
-                  {s.status === "up" ? (
-                    <CheckCircle size={13} className="text-emerald-500 flex-shrink-0" />
-                  ) : (
-                    <span
-                      className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                      style={{
-                        background: s.status === "down" ? "hsl(var(--danger-bg))" : "hsl(var(--warning-bg))",
-                        color: s.status === "down" ? "hsl(var(--danger))" : "hsl(var(--warning))",
-                      }}
-                    >
-                      {s.status}
-                    </span>
-                  )}
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── SLO Status ────────────────────────────────────────── */}
-      {sloStatuses && sloStatuses.length > 0 && (
-        <div
-          className="rounded-xl border overflow-hidden"
-          style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-        >
-          <div className="section-header">
-            <div className="flex items-center gap-2">
-              <Activity size={14} className="text-primary" />
-              <h2>Agent SLOs</h2>
-            </div>
-            <span className="text-xs text-muted-foreground">
-              {sloStatuses.filter((s) => s.status === "ok").length}/{sloStatuses.length} meeting target
-            </span>
-          </div>
-          <div className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
-            {sloStatuses.map((slo) => {
-              const ok = slo.status === "ok";
-              const noData = slo.status === "no_data";
-              const statusColor = ok ? "#22c55e" : noData ? "#71717a" : "#ef4444";
-              const metricLabel = slo.metric === "success_rate" ? "Success Rate" : "p99 Latency";
-              const targetLabel = slo.metric === "success_rate"
-                ? `≥ ${slo.target}%` : `≤ ${slo.target}ms`;
-              const currentLabel =
-                slo.current_value === null ? "no data"
-                : slo.metric === "success_rate" ? `${slo.current_value.toFixed(1)}%`
-                : `${slo.current_value.toFixed(0)}ms`;
-
-              return (
-                <div
-                  key={slo.slo_id}
-                  className="flex items-center justify-between px-5 py-3 gap-4"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span
-                      className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ background: statusColor }}
-                    />
-                    <div className="min-w-0">
-                      <span
-                        className="text-[13px] font-mono text-foreground"
-                        style={{ fontFamily: "var(--font-geist-mono)" }}
-                      >
-                        {slo.agent_name}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground ml-2">
-                        {metricLabel} · {slo.window_hours}h window
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 flex-shrink-0 text-xs">
-                    <span className="text-muted-foreground hidden sm:block">
-                      target: {targetLabel}
-                    </span>
-                    <span
-                      className="font-mono font-semibold"
-                      style={{ color: statusColor }}
-                    >
-                      {currentLabel}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        </>
       )}
     </div>
   );

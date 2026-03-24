@@ -75,23 +75,29 @@ def tag_from_spans(spans: list[dict[str, Any]]) -> HealthTag:
         if status == "error":
             has_error = True
 
-        # Track for fallback detection
-        tool_name = span.get("tool_name", "")
-        if tool_name:
-            tool_results.setdefault(tool_name, []).append(status)
+        # Track for fallback detection — only MCP tool_call spans.
+        # LLM generation spans (span_type="agent") are excluded: retrying the LLM
+        # is not an MCP fallback. Mixing them caused false success_with_fallback tags
+        # when a session ended on a Gemini/OpenAI error.
+        if span.get("span_type") == "tool_call":
+            tool_name = span.get("tool_name", "")
+            if tool_name:
+                tool_results.setdefault(tool_name, []).append(status)
 
     if has_schema_drift:
         return HealthTag.SCHEMA_DRIFT
 
-    # Priority 7: Fallback detection — checked before TIMEOUT/TOOL_FAILURE because
-    # a successful retry makes the session a partial success, not a plain failure.
-    # "Same tool called multiple times, had failures, but ultimately succeeded"
-    for statuses in tool_results.values():
-        if len(statuses) > 1:
-            tool_has_failure = any(s in ("error", "timeout") for s in statuses)
-            tool_has_success = any(s == "success" for s in statuses)
-            if tool_has_failure and tool_has_success:
-                return HealthTag.SUCCESS_WITH_FALLBACK
+    # Priority 7: Fallback detection — only fires when the session ultimately
+    # succeeded despite some MCP tool call failures (retried and recovered).
+    # Requires at least one success AND one failure on the same MCP tool,
+    # AND no unresolved errors remain (has_error must be False).
+    if not has_error and not has_timeout:
+        for statuses in tool_results.values():
+            if len(statuses) > 1:
+                tool_has_failure = any(s in ("error", "timeout") for s in statuses)
+                tool_has_success = any(s == "success" for s in statuses)
+                if tool_has_failure and tool_has_success:
+                    return HealthTag.SUCCESS_WITH_FALLBACK
 
     if has_timeout:
         return HealthTag.TIMEOUT

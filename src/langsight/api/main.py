@@ -85,6 +85,8 @@ _MODEL_PRICING_SEED: list[tuple[str, str, str, float, float, float, str]] = [
     ("google", "gemini-1.5-pro", "Gemini 1.5 Pro", 1.25, 5.00, 0.00, "Public pricing 2026-03"),
     ("google", "gemini-1.5-flash", "Gemini 1.5 Flash", 0.075, 0.30, 0.00, "Public pricing 2026-03"),
     ("google", "gemini-2.0-flash", "Gemini 2.0 Flash", 0.10, 0.40, 0.00, "Public pricing 2026-03"),
+    ("google", "gemini-2.5-flash", "Gemini 2.5 Flash", 0.15, 0.60, 0.0375, "Public pricing 2026-03"),
+    ("google", "gemini-2.5-pro", "Gemini 2.5 Pro", 1.25, 10.00, 0.31, "Public pricing 2026-03"),
     ("meta", "llama-3.1-70b", "Llama 3.1 70B", 0.00, 0.00, 0.00, "Self-hosted — no API cost"),
     ("meta", "llama-3.3-70b", "Llama 3.3 70B", 0.00, 0.00, 0.00, "Self-hosted — no API cost"),
     ("aws", "amazon.nova-pro-v1", "Amazon Nova Pro", 0.80, 3.20, 0.00, "Public pricing 2026-03"),
@@ -103,10 +105,12 @@ async def _seed_model_pricing(storage: Any) -> None:
         return
     try:
         existing = await storage.list_model_pricing()
-        if existing:
-            return  # already seeded
+        existing_ids = {e.model_id for e in existing}
         now = datetime.now(UTC)
+        added = 0
         for provider, model_id, display_name, inp, out, cache, notes in _MODEL_PRICING_SEED:
+            if model_id in existing_ids:
+                continue  # already present — skip
             entry = ModelPricing(
                 id=uuid.uuid4().hex,
                 provider=provider,
@@ -120,7 +124,9 @@ async def _seed_model_pricing(storage: Any) -> None:
                 is_custom=False,
             )
             await storage.create_model_pricing(entry)
-        logger.info("api.startup.model_pricing_seeded", count=len(_MODEL_PRICING_SEED))
+            added += 1
+        if added:
+            logger.info("api.startup.model_pricing_seeded", count=added)
     except Exception as exc:  # noqa: BLE001
         logger.warning("api.startup.model_pricing_seed_error", error=str(exc))
 

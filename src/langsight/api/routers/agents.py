@@ -13,8 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 from pydantic import BaseModel
 
-from langsight.api.dependencies import get_active_project_id, get_config, get_storage, require_admin
-from langsight.config import LangSightConfig
+from langsight.api.dependencies import get_active_project_id, get_storage, require_admin
 from langsight.storage.base import StorageBackend
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -103,27 +102,6 @@ class SessionTrace(BaseModel):
     duration_ms: float | None
 
 
-class SessionComparison(BaseModel):
-    """Side-by-side comparison of two session traces."""
-
-    session_a: str
-    session_b: str
-    spans_a: list[dict[str, Any]]
-    spans_b: list[dict[str, Any]]
-    diff: list[dict[str, Any]]  # per-tool diff entries
-    summary: dict[str, int]  # matched / diverged / only_a / only_b
-
-
-class ReplayResponse(BaseModel):
-    """Result of a session replay execution."""
-
-    original_session_id: str
-    replay_session_id: str
-    total_spans: int
-    replayed: int
-    skipped: int
-    failed: int
-    duration_ms: float
 
 
 # ---------------------------------------------------------------------------
@@ -206,76 +184,6 @@ async def list_sessions(
     ]
 
 
-# NOTE: /sessions/compare MUST be registered before /sessions/{session_id}
-# or FastAPI will match "compare" as a session_id value.
-@router.get(
-    "/sessions/compare",
-    response_model=SessionComparison,
-    summary="Compare two session traces side-by-side",
-    responses={
-        404: {"description": "One or both sessions not found"},
-        503: {"description": "Requires ClickHouse backend"},
-    },
-)
-async def compare_sessions(
-    a: str = Query(..., description="First session ID"),
-    b: str = Query(..., description="Second session ID"),
-    project_id: str | None = Depends(get_active_project_id),
-    storage: StorageBackend = Depends(get_storage),
-) -> SessionComparison:
-    """Return a side-by-side diff of two sessions.
-
-    Aligns spans by (server_name, tool_name) call order. Each diff entry
-    has status: 'matched' | 'diverged' | 'only_a' | 'only_b'.
-
-    Diverged = status changed OR latency difference >= 20%.
-    """
-    if not hasattr(storage, "compare_sessions"):
-        raise HTTPException(
-            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Session comparison requires ClickHouse backend.",
-        )
-    if a == b:
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="Session IDs must be different.",
-        )
-
-    result = await storage.compare_sessions(a, b, project_id=project_id)
-
-    # Project isolation: if a project filter is active, both sessions must belong to it.
-    # Spans with no project_id (ingested before project tagging was introduced) are
-    # treated as belonging to any project — they are not rejected.
-    if project_id:
-        spans_a_in_project = [
-            s
-            for s in result["spans_a"]
-            if s.get("project_id") is None or s.get("project_id") == project_id
-        ]
-        spans_b_in_project = [
-            s
-            for s in result["spans_b"]
-            if s.get("project_id") is None or s.get("project_id") == project_id
-        ]
-        if result["spans_a"] and not spans_a_in_project:
-            raise HTTPException(
-                status_code=http_status.HTTP_404_NOT_FOUND, detail="Session not found."
-            )
-        if result["spans_b"] and not spans_b_in_project:
-            raise HTTPException(
-                status_code=http_status.HTTP_404_NOT_FOUND, detail="Session not found."
-            )
-        # Replace with filtered spans — prevents returning foreign-project span data
-        # even when the session IDs matched (ownership check passed above).
-        result = {**result, "spans_a": spans_a_in_project, "spans_b": spans_b_in_project}
-
-    if not result["spans_a"] and not result["spans_b"]:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail="Neither session was found.",
-        )
-
-    return SessionComparison(**result)
 
 
 @router.get(
@@ -336,62 +244,6 @@ async def get_session(
     )
 
 
-@router.post(
-    "/sessions/{session_id}/replay",
-    response_model=ReplayResponse,
-    status_code=202,
-    summary="Replay a session's tool calls against live MCP servers",
-    responses={
-        404: {"description": "Session not found"},
-        503: {"description": "Requires ClickHouse backend"},
-    },
-)
-async def replay_session(
-    session_id: str,
-    timeout_per_call: float = Query(default=10.0, ge=1.0, le=60.0),
-    total_timeout: float = Query(default=60.0, ge=5.0, le=300.0),
-    project_id: str | None = Depends(get_active_project_id),
-    storage: StorageBackend = Depends(get_storage),
-    config: LangSightConfig = Depends(get_config),
-) -> ReplayResponse:
-    """Re-execute all tool calls from a session against live MCP servers.
-
-    Callers must be a member of the project that owns the session (or a global
-    admin). Non-admin authenticated users must supply ?project_id= — the same
-    project scoping enforced on all other analytics endpoints.
-
-    Each tool call is replayed with the exact input_args stored from the original
-    run (requires P5.1 payload capture to be enabled — redact_payloads must be false).
-
-    The replay is stored as a new session. Use the returned replay_session_id
-    with GET /api/agents/sessions/compare to diff original vs replay.
-
-    Requires ClickHouse backend and reachable MCP servers.
-    """
-    from langsight.replay.engine import ReplayEngine
-
-    if not hasattr(storage, "get_session_trace"):
-        raise HTTPException(
-            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Session replay requires ClickHouse backend.",
-        )
-
-    engine = ReplayEngine(
-        storage=storage,
-        config=config,
-        timeout_per_call=timeout_per_call,
-        total_timeout=total_timeout,
-    )
-
-    try:
-        result = await engine.replay(session_id, project_id=project_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
-
-    return ReplayResponse(**result.to_dict())
 
 
 # ---------------------------------------------------------------------------

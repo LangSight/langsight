@@ -101,6 +101,8 @@
     {
       "group": "Reliability Features",
       "pages": [
+        "live-view",
+        "session-health",
         "session-replay",
         "mcp-servers",
         "costs-model-pricing",

@@ -115,6 +115,9 @@ export function buildSessionGraph(
         const hKey = `${agent}→${target}`;
         handoffMap.set(hKey, (handoffMap.get(hKey) ?? 0) + 1);
       }
+    } else if (span.span_type === "agent" && span.status !== "success") {
+      // LLM generation span failed (e.g. Gemini 503, safety filter) — mark agent as errored
+      agentErrors.add(agent);
     } else if (span.span_type === "tool_call" && span.server_name) {
       // Skip LLM intent spans — they are NOT real MCP server calls
       if (llmIntentSpanIds.has(span.span_id)) continue;
