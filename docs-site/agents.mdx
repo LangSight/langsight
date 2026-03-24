@@ -97,6 +97,34 @@ The status dot updates whenever the health score changes — either because new 
 
 ---
 
+## SLO badges
+
+Each agent row in the table shows a small badge next to the agent name indicating whether that agent is currently meeting its defined SLOs.
+
+| Badge | Colour | Meaning |
+|---|---|---|
+| `SLO ✓` | Green | All SLOs for this agent are passing |
+| `SLO ✗` | Red | At least one SLO for this agent is breached |
+| _(no badge)_ | — | No SLOs have been defined for this agent yet |
+
+### Status resolution when multiple SLOs exist
+
+When an agent has more than one SLO (for example, both a `success_rate` SLO and a `latency_p99` SLO), the badge reflects the worst status across all of them. Precedence: **breached > no\_data > ok**. A single breach turns the badge red regardless of how many other SLOs are passing.
+
+### Refresh interval
+
+The SLO badge refreshes every 2 minutes. It does not update in real time as spans arrive — it reflects the last completed SLO evaluation cycle.
+
+### How to use the badge
+
+The SLO badge is the fastest way to know that a reliability target is being missed without opening the SLOs page. Scan the Agents table: any red `SLO ✗` badge means that agent is out of spec right now.
+
+Clicking the agent row opens the detail panel. The **Overview** tab in the detail panel shows the individual SLO values — which specific target is breached and by how much.
+
+For details on creating SLOs, configuring targets, and understanding measurement windows, see [Agent SLOs](/slos).
+
+---
+
 ## Time window
 
 The health score and session count both respect the time window selected in the top-right corner of the page: **1h**, **6h**, **24h**, or **7d**. Changing the window immediately recalculates health scores and re-sorts the table.

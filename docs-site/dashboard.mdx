@@ -165,6 +165,56 @@ Only `tool_call` spans (MCP calls) are inspected. LLM generation spans are not i
 
 ---
 
+## Week-over-week trend badges
+
+When the **7d** time window is selected, the three top-level stat cards on the Overview tab — **Sessions**, **Error Rate**, and **Avg Latency** — each display a small trend badge comparing the last 7 days against the previous 7 days.
+
+### Format
+
+```
+↑12.4% vs last 7d
+↓8.2% vs last 7d
+```
+
+The arrow indicates direction of change. The percentage is calculated as:
+
+```
+trend = (current 7d value − previous 7d value) / previous 7d value × 100
+```
+
+### Colour logic
+
+Direction does not determine colour uniformly — the colour depends on whether the change is good or bad for each metric:
+
+| Card | Up (↑) | Down (↓) |
+|---|---|---|
+| **Sessions** | Green — more sessions = more agent activity | Red — sessions are declining |
+| **Error Rate** | Red — error rate is rising | Green — error rate is falling |
+| **Avg Latency** | Red — agents are slower | Green — agents are faster |
+
+### When the badge appears
+
+The trend badge is only shown when the **7d** window is selected. For the **1h**, **6h**, and **24h** windows, the badges are hidden — there is no meaningful previous period of the same length to compare against.
+
+### What it means for engineers
+
+| Trend | Common interpretation |
+|---|---|
+| `Error Rate ↑40% vs last 7d` after a deploy | The deploy introduced regressions — investigate sessions from the last 7 days |
+| `Avg Latency ↓18% vs last 7d` | Performance improved — result of an optimization or infrastructure upgrade |
+| `Sessions ↑25% vs last 7d` | More agent activity — growing traffic, new users, or newly deployed agents |
+| `Sessions ↓30% vs last 7d` | Usage dropped — check for deployment issues or agents that stopped running |
+
+### Complement with SLO targets
+
+Trend badges show relative change but carry no pass/fail judgement. A 10% error rate increase is concerning if your baseline was already high; it is less urgent if your baseline was 0.1%. Pair trend badges with [Agent SLOs](/slos) to apply absolute thresholds that fire alerts when a hard limit is crossed.
+
+<Note>
+  Trend badges require at least one session in both the current 7-day window and the previous 7-day window. If either window has no data, the badge is hidden and the card shows only the current value.
+</Note>
+
+---
+
 ## Tools tab — full column reference
 
 | Column | Description |
