@@ -61,6 +61,7 @@ class AgentSession(BaseModel):
     failed_calls: int
     duration_ms: float
     servers_used: list[str]
+    agents_used: list[str] = []
     health_tag: str | None = None  # v0.3 — auto-classified session health tag
     total_input_tokens: int | None = None
     total_output_tokens: int | None = None
@@ -194,6 +195,7 @@ async def list_sessions(
             failed_calls=int(r.get("failed_calls") or 0),
             duration_ms=float(r.get("duration_ms") or 0),
             servers_used=list(r.get("servers_used") or []),
+            agents_used=list(r.get("agents_used") or []),
             health_tag=r.get("health_tag") or None,
             total_input_tokens=int(r["total_input_tokens"]) if r.get("total_input_tokens") else None,
             total_output_tokens=int(r["total_output_tokens"]) if r.get("total_output_tokens") else None,
