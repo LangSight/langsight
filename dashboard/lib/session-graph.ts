@@ -172,6 +172,54 @@ export function buildSessionGraph(
     }
   }
 
+  // Infer delegation by timing: if an agent has no incoming handoff edge,
+  // find the agent whose last span ended closest before this agent's first
+  // span started. This catches implicit delegations in application code
+  // (e.g., main.py calls analyst.analyze() inside call_procurement handler).
+  if (agents.size >= 2) {
+    const agentsWithIncoming = new Set<string>();
+    for (const key of handoffMap.keys()) {
+      const tgt = key.split("→")[1];
+      agentsWithIncoming.add(tgt);
+    }
+
+    // Build first-span-time per agent
+    const agentFirstTime = new Map<string, number>();
+    for (const span of trace.spans_flat) {
+      if (!span.agent_name || !agents.has(span.agent_name)) continue;
+      const t = new Date(span.started_at).getTime();
+      const cur = agentFirstTime.get(span.agent_name);
+      if (cur === undefined || t < cur) agentFirstTime.set(span.agent_name, t);
+    }
+
+    // Sort agents by first appearance
+    const sortedAgents = [...agents].sort(
+      (a, b) => (agentFirstTime.get(a) ?? 0) - (agentFirstTime.get(b) ?? 0),
+    );
+
+    for (const agent of sortedAgents) {
+      if (agentsWithIncoming.has(agent)) continue;
+      // Find the agent that appeared most recently before this one
+      const myStart = agentFirstTime.get(agent) ?? 0;
+      let bestParent: string | null = null;
+      let bestTime = -Infinity;
+      for (const other of sortedAgents) {
+        if (other === agent) continue;
+        const otherStart = agentFirstTime.get(other) ?? 0;
+        if (otherStart < myStart && otherStart > bestTime) {
+          bestTime = otherStart;
+          bestParent = other;
+        }
+      }
+      if (bestParent) {
+        const hKey = `${bestParent}→${agent}`;
+        if (!handoffMap.has(hKey)) {
+          handoffMap.set(hKey, 1);
+        }
+      }
+    }
+  }
+
   for (const [key, count] of handoffMap) {
     const [src, tgt] = key.split("→");
     handoffs.push({ source: src, target: tgt, count, parentToolSpanId: delegationToolSpan.get(key) });
