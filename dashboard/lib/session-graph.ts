@@ -88,6 +88,22 @@ export function buildSessionGraph(
   const delegationToolSpan = new Map<string, string>(); // "fromAgent→toAgent" → parent span_id
   const agentErrors = new Set<string>();
 
+  // Build span lookup first — needed for LLM intent detection and delegation
+  const spanById = new Map(trace.spans_flat.map((s) => [s.span_id, s]));
+
+  // Identify LLM intent spans: tool_call spans whose parent is an "agent" span.
+  // These represent "the LLM decided to call this tool" (from wrap_llm), NOT
+  // actual MCP server executions. They should not create server nodes.
+  const llmIntentSpanIds = new Set<string>();
+  for (const span of trace.spans_flat) {
+    if (span.span_type === "tool_call" && span.parent_span_id) {
+      const parent = spanById.get(span.parent_span_id);
+      if (parent?.span_type === "agent") {
+        llmIntentSpanIds.add(span.span_id);
+      }
+    }
+  }
+
   for (const span of trace.spans_flat) {
     const agent = span.agent_name ?? "unknown";
     if (span.agent_name) agents.add(agent);
@@ -100,6 +116,9 @@ export function buildSessionGraph(
         handoffMap.set(hKey, (handoffMap.get(hKey) ?? 0) + 1);
       }
     } else if (span.span_type === "tool_call" && span.server_name) {
+      // Skip LLM intent spans — they are NOT real MCP server calls
+      if (llmIntentSpanIds.has(span.span_id)) continue;
+
       const server = span.server_name;
       servers.add(server);
       if (span.status !== "success") agentErrors.add(agent);
@@ -113,7 +132,6 @@ export function buildSessionGraph(
 
   // Infer delegation from parent_span_id: when a child span has a different
   // agent_name than its parent span, the parent agent delegated to the child.
-  const spanById = new Map(trace.spans_flat.map((s) => [s.span_id, s]));
   for (const span of trace.spans_flat) {
     if (span.parent_span_id && span.agent_name) {
       const parent = spanById.get(span.parent_span_id);
@@ -127,6 +145,30 @@ export function buildSessionGraph(
           delegationToolSpan.set(hKey, parent.span_id);
         }
       }
+    }
+  }
+
+  // Infer delegation from tool name patterns: if an LLM intent span is named
+  // "call_X" or "delegate_X" and an agent named "X" exists in this session,
+  // treat it as a delegation from the calling agent to agent X.
+  for (const spanId of llmIntentSpanIds) {
+    const span = spanById.get(spanId);
+    if (!span) continue;
+    const callerAgent = span.agent_name;
+    if (!callerAgent) continue;
+
+    const toolName = span.tool_name;
+    // Match patterns: call_analyst, delegate_procurement, invoke_researcher
+    const match = toolName.match(/^(?:call|delegate|invoke|run)_(.+)$/);
+    if (!match) continue;
+    const targetAgent = match[1];
+
+    // Only infer if the target agent actually exists in this session
+    if (!agents.has(targetAgent)) continue;
+
+    const hKey = `${callerAgent}→${targetAgent}`;
+    if (!handoffMap.has(hKey)) {
+      handoffMap.set(hKey, 1);
     }
   }
 
@@ -185,7 +227,10 @@ export function buildSessionGraph(
 
   for (const agent of agents) {
     const agentToolSpans = trace.spans_flat.filter(
-      (span) => span.agent_name === agent && span.span_type === "tool_call",
+      (span) =>
+        span.agent_name === agent &&
+        span.span_type === "tool_call" &&
+        !llmIntentSpanIds.has(span.span_id),
     );
     const callCount = agentToolSpans.length;
     const errorCount = agentToolSpans.filter((span) => span.status !== "success").length;
