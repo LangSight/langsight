@@ -240,6 +240,7 @@ class TestEndpointProjectIsolation:
         """
         c, mock_storage, _ = auth_client
         mock_storage.get_agent_sessions = AsyncMock(return_value=[])
+        mock_storage.list_model_pricing = AsyncMock(return_value=[])
         mock_storage.list_members = AsyncMock(return_value=[])
         mock_storage.list_api_keys = AsyncMock(return_value=[])
 
@@ -255,6 +256,7 @@ class TestEndpointProjectIsolation:
         """Env key (admin) + project_id → data returned (not blocked)."""
         c, mock_storage, _ = auth_client
         mock_storage.get_agent_sessions = AsyncMock(return_value=[])
+        mock_storage.list_model_pricing = AsyncMock(return_value=[])
         mock_storage.list_members = AsyncMock(return_value=[])
 
         response = await c.get(

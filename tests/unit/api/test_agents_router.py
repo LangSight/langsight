@@ -22,6 +22,7 @@ def config_file(tmp_path: Path) -> Path:
 async def client(config_file: Path):
     mock_storage = MagicMock()
     mock_storage.get_health_history = AsyncMock(return_value=[])
+    mock_storage.list_model_pricing = AsyncMock(return_value=[])
     mock_storage.close = AsyncMock()
 
     app = create_app(config_path=config_file)

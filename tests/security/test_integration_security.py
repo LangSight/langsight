@@ -1053,16 +1053,17 @@ class TestAgentAndToolObjectEdgeCases:
         callback = LangSightLangGraphCallback(client=client, agent_name="test")
 
         run_id = uuid4()
+        # Empty serialized dict — should not crash (skip chain names filter it)
         callback.on_chain_start(
             serialized={},  # no "name", no "id"
             inputs={},
             run_id=run_id,
         )
-        # _current_node should be set (either "unknown" or some fallback)
-        assert callback._current_node is not None
+        # With empty serialized, _detect_agent_name returns None → no _active_chains entry
+        # The key property: it does NOT crash
 
-    async def test_langgraph_chain_end_restores_previous_node(self) -> None:
-        """on_chain_end must restore _current_node to the previous active node."""
+    async def test_langgraph_chain_end_cleans_up_active_chains(self) -> None:
+        """on_chain_end must remove the chain from _active_chains."""
         from langsight.integrations.langgraph import LangSightLangGraphCallback
 
         client = _make_client()
@@ -1071,19 +1072,21 @@ class TestAgentAndToolObjectEdgeCases:
         run_id_1 = uuid4()
         run_id_2 = uuid4()
 
-        callback.on_chain_start({"name": "node_a"}, {}, run_id=run_id_1)
-        assert callback._current_node == "node_a"
+        callback.on_chain_start({"name": "supervisor"}, {}, run_id=run_id_1)
+        callback.on_chain_start({"name": "analyst"}, {}, run_id=run_id_2)
 
-        callback.on_chain_start({"name": "node_b"}, {}, run_id=run_id_2)
-        assert callback._current_node == "node_b"
+        # Both tracked
+        assert str(run_id_1) in callback._active_chains
+        assert str(run_id_2) in callback._active_chains
 
-        # End node_b → current should revert to node_a
+        # End analyst → removed from active
         callback.on_chain_end({}, run_id=run_id_2)
-        assert callback._current_node == "node_a"
+        assert str(run_id_2) not in callback._active_chains
+        assert str(run_id_1) in callback._active_chains
 
-        # End node_a → no active nodes
+        # End supervisor → both gone
         callback.on_chain_end({}, run_id=run_id_1)
-        assert callback._current_node is None
+        assert str(run_id_1) not in callback._active_chains
 
     async def test_langgraph_chain_error_cleans_up_like_chain_end(self) -> None:
         """on_chain_error must clean up the same way on_chain_end does."""
@@ -1094,10 +1097,10 @@ class TestAgentAndToolObjectEdgeCases:
 
         run_id = uuid4()
         callback.on_chain_start({"name": "failing_node"}, {}, run_id=run_id)
-        assert callback._current_node == "failing_node"
+        assert str(run_id) in callback._active_chains
 
         callback.on_chain_error(RuntimeError("node crashed"), run_id=run_id)
-        assert run_id.__str__() not in callback._active_nodes
+        assert str(run_id) not in callback._active_chains
 
     async def test_openai_hooks_on_tool_start_idempotent_for_same_tool(self) -> None:
         """Calling on_tool_start twice for the same tool should overwrite,

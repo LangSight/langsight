@@ -32,6 +32,7 @@ async def client(config_file: Path):
 
     mock_storage = MagicMock()
     mock_storage.get_health_history = AsyncMock(return_value=[])
+    mock_storage.list_model_pricing = AsyncMock(return_value=[])
     mock_storage.close = AsyncMock()
 
     app.state.storage = mock_storage
