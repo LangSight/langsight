@@ -82,6 +82,25 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
     if storage is not None and hasattr(storage, "save_tool_call_spans"):
         await storage.save_tool_call_spans(spans)
 
+    # Auto-tag session health after ingestion (fail-open)
+    if storage is not None and hasattr(storage, "save_session_health_tag"):
+        from langsight.tagging.engine import tag_from_spans as _tag
+        # Compute health tags for each unique session in this batch
+        session_spans: dict[str, list[dict]] = {}
+        for span in spans:
+            if span.session_id:
+                session_spans.setdefault(span.session_id, []).append({
+                    "status": span.status,
+                    "error": span.error or "",
+                    "tool_name": span.tool_name,
+                })
+        for session_id, batch_spans in session_spans.items():
+            try:
+                tag = _tag(batch_spans)
+                await storage.save_session_health_tag(session_id, str(tag))
+            except Exception:  # noqa: BLE001
+                pass  # fail-open — tagging must never block ingestion
+
     # Auto-register unseen agents and servers (fire-and-forget, fail-open)
     # The _seen cache is per-process — always upsert if we haven't seen it this
     # process lifetime. The storage layer uses ON CONFLICT DO UPDATE so repeated
