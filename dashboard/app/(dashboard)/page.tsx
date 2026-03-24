@@ -13,9 +13,9 @@ import {
 } from "lucide-react";
 import { useProject } from "@/lib/project-context";
 import { cn, formatLatency } from "@/lib/utils";
-import type { MonitoringBucket, MonitoringModel, MonitoringTool } from "@/lib/api";
+import type { MonitoringBucket, MonitoringModel, MonitoringTool, ErrorCategory } from "@/lib/api";
 import {
-  getMonitoringTimeseries, getMonitoringModels, getMonitoringTools,
+  getMonitoringTimeseries, getMonitoringModels, getMonitoringTools, getMonitoringErrors,
 } from "@/lib/api";
 
 /* ── Time range selector ──────────────────────────────────────── */
@@ -121,6 +121,11 @@ export default function DashboardPage() {
   const { data: tools } = useSWR(
     pid && tab === "tools" ? `/monitoring/tools/${hours}/${pid}` : null,
     () => getMonitoringTools(hours, pid),
+    { refreshInterval: 120_000 },
+  );
+  const { data: errorBreakdown } = useSWR(
+    pid && tab === "overview" ? `/monitoring/errors/${hours}/${pid}` : null,
+    () => getMonitoringErrors(hours, pid),
     { refreshInterval: 120_000 },
   );
 
@@ -268,6 +273,49 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             </ChartCard>
           </div>
+
+          {/* Error breakdown — only show when there are errors */}
+          {errorBreakdown && errorBreakdown.length > 0 && (
+            <div className="rounded-xl border p-4" style={{
+              background: "hsl(var(--card))", borderColor: "hsl(var(--border))",
+            }}>
+              <h3 className="text-[12px] font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Error Breakdown</h3>
+              <div className="space-y-2">
+                {errorBreakdown.map(e => {
+                  const color = e.category === "safety_filter" ? "#f59e0b"
+                    : e.category === "max_tokens" ? "#8b5cf6"
+                    : e.category === "api_unavailable" ? "#ef4444"
+                    : e.category === "timeout" ? "#f97316"
+                    : e.category === "rate_limit" ? "#eab308"
+                    : e.category === "auth_error" ? "#ec4899"
+                    : e.category === "agent_crash" ? "#ef4444"
+                    : "#6b7280";
+                  const label = e.category === "safety_filter" ? "Safety Filter"
+                    : e.category === "max_tokens" ? "Max Tokens Hit"
+                    : e.category === "api_unavailable" ? "API Unavailable (5xx)"
+                    : e.category === "timeout" ? "Timeout"
+                    : e.category === "rate_limit" ? "Rate Limited (429)"
+                    : e.category === "auth_error" ? "Auth Error (401/403)"
+                    : e.category === "agent_crash" ? "Agent Crash"
+                    : "Other";
+                  return (
+                    <div key={e.category} className="flex items-center gap-3">
+                      <span className="text-[11px] text-muted-foreground w-36 flex-shrink-0">{label}</span>
+                      <div className="flex-1 h-[6px] rounded-full overflow-hidden" style={{ background: "hsl(var(--muted))" }}>
+                        <div className="h-full rounded-full" style={{ width: `${e.pct}%`, background: color }} />
+                      </div>
+                      <span className="text-[11px] font-mono font-semibold w-10 text-right flex-shrink-0" style={{ color, fontFamily: "var(--font-geist-mono)" }}>
+                        {e.pct}%
+                      </span>
+                      <span className="text-[10px] text-muted-foreground w-10 text-right flex-shrink-0" style={{ fontFamily: "var(--font-geist-mono)" }}>
+                        {e.count}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -381,6 +429,7 @@ export default function DashboardPage() {
                   <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Errors</th>
                   <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Avg Latency</th>
                   <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">p99 Latency</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Calls/Session</th>
                   <th className="text-right px-4 py-2.5 font-semibold text-muted-foreground">Success Rate</th>
                 </tr>
               </thead>
@@ -393,6 +442,9 @@ export default function DashboardPage() {
                     <td className={cn("px-4 py-2.5 text-right font-mono", t.errors > 0 ? "text-red-400" : "text-muted-foreground")}>{t.errors}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{formatLatency(t.avg_latency_ms)}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{formatLatency(t.p99_latency_ms)}</td>
+                    <td className={cn("px-4 py-2.5 text-right font-mono font-semibold", t.calls_per_session > 5 ? "text-amber-400" : "text-muted-foreground")}>
+                      {t.calls_per_session > 0 ? `${t.calls_per_session.toFixed(1)}×` : "—"}
+                    </td>
                     <td className={cn("px-4 py-2.5 text-right font-mono font-semibold", t.success_rate < 95 ? "text-red-400" : "text-emerald-400")}>{t.success_rate.toFixed(1)}%</td>
                   </tr>
                 ))}

@@ -25,9 +25,11 @@ type AgentSummary = {
   total_duration_ms: number; avg_duration_ms: number; total_cost_usd: number;
   servers_used: string[]; latest_started_at: string; session_ids: string[];
   error_rate: number; status: "healthy" | "degraded" | "failing";
+  health_score: number;        // % of sessions tagged success or success_with_fallback
+  healthy_sessions: number;    // sessions with success/success_with_fallback
 };
 type DetailTab = "about" | "overview" | "topology" | "sessions";
-type SortCol = "name" | "errorRate" | "cost" | "lastActive" | "sessions";
+type SortCol = "name" | "healthScore" | "errorRate" | "cost" | "lastActive" | "sessions";
 
 /* ── Helpers ────────────────────────────────────────────────── */
 function formatUsd(v: number) {
@@ -47,15 +49,19 @@ function aggregateAgents(sessions: AgentSession[], costs: CostsBreakdownResponse
       const existing = summaries.get(name);
       const servers = new Set(existing?.servers_used ?? []);
       for (const s of session.servers_used ?? []) servers.add(s);
+      const isHealthy = session.health_tag === "success" || session.health_tag === "success_with_fallback";
       const next: AgentSummary = existing ?? {
         agent_name: name, sessions: 0, tool_calls: 0, failed_calls: 0,
         total_duration_ms: 0, avg_duration_ms: 0, total_cost_usd: costByAgent.get(name) ?? 0,
-        servers_used: [], latest_started_at: session.first_call_at, session_ids: [], error_rate: 0, status: "healthy",
+        servers_used: [], latest_started_at: session.first_call_at, session_ids: [],
+        error_rate: 0, status: "healthy", health_score: 100, healthy_sessions: 0,
       };
       next.sessions += 1; next.tool_calls += session.tool_calls; next.failed_calls += session.failed_calls;
       next.total_duration_ms += session.duration_ms; next.avg_duration_ms = next.total_duration_ms / next.sessions;
       next.error_rate = next.tool_calls > 0 ? next.failed_calls / next.tool_calls : 0;
-      next.status = next.error_rate > 0.2 ? "failing" : next.error_rate > 0.05 ? "degraded" : "healthy";
+      next.healthy_sessions += isHealthy ? 1 : 0;
+      next.health_score = Math.round(next.healthy_sessions / next.sessions * 100);
+      next.status = next.health_score < 70 ? "failing" : next.health_score < 90 ? "degraded" : "healthy";
       next.latest_started_at = new Date(session.first_call_at) > new Date(next.latest_started_at) ? session.first_call_at : next.latest_started_at;
       if (!next.session_ids.includes(session.session_id)) next.session_ids.push(session.session_id);
       next.servers_used = Array.from(servers).sort();
@@ -127,6 +133,7 @@ function AgentTable({ agents, metaByName, onSelect, hours }: { agents: AgentSumm
     return [...base].sort((a, b) => {
       let diff = 0;
       if (sortCol === "name") diff = a.agent_name.localeCompare(b.agent_name);
+      else if (sortCol === "healthScore") diff = b.health_score - a.health_score;
       else if (sortCol === "errorRate") diff = b.error_rate - a.error_rate;
       else if (sortCol === "cost") diff = b.total_cost_usd - a.total_cost_usd;
       else if (sortCol === "sessions") diff = b.sessions - a.sessions;
@@ -186,6 +193,7 @@ function AgentTable({ agents, metaByName, onSelect, hours }: { agents: AgentSumm
               <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Owner</th>
               <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Tags</th>
               <ThCell col="sessions" label="Sessions" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              <ThCell col="healthScore" label="Health" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="errorRate" label="Error %" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="cost" label={`Cost ${hours}h`} sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="lastActive" label="Last Seen" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
@@ -218,6 +226,23 @@ function AgentTable({ agents, metaByName, onSelect, hours }: { agents: AgentSumm
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-[11px] text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{agent.sessions}</td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12px] font-bold" style={{
+                        fontFamily: "var(--font-geist-mono)",
+                        color: agent.health_score >= 90 ? "#22c55e" : agent.health_score >= 70 ? "#eab308" : "#ef4444",
+                      }}>
+                        {agent.health_score}%
+                      </span>
+                      <div className="w-14 h-[4px] rounded-full overflow-hidden" style={{ background: "hsl(var(--muted))" }}>
+                        <div className="h-full rounded-full transition-all" style={{
+                          width: `${agent.health_score}%`,
+                          background: agent.health_score >= 90 ? "#22c55e" : agent.health_score >= 70 ? "#eab308" : "#ef4444",
+                        }} />
+                      </div>
+                    </div>
+                    <div className="text-[9px] text-muted-foreground mt-0.5">{agent.healthy_sessions}/{agent.sessions} sessions</div>
+                  </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-semibold" style={{ fontFamily: "var(--font-geist-mono)", color: agent.error_rate > 0.2 ? "#ef4444" : agent.error_rate > 0.05 ? "#eab308" : "#22c55e" }}>

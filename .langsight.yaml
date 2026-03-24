@@ -1,37 +1,10 @@
-# LangSight configuration — demo setup
-# These servers match the seeded demo data in the Sample Project.
-# Health checks require real MCP servers to be running.
 servers:
-  - name: postgres-mcp
-    transport: stdio
-    command: echo
-    tags: [demo, database]
-
-  - name: jira-mcp
-    transport: stdio
-    command: echo
-    tags: [demo, devtools]
-
-  - name: slack-mcp
-    transport: stdio
-    command: echo
-    tags: [demo, communication]
-
-  - name: s3-mcp
-    transport: stdio
-    command: echo
-    tags: [demo, storage]
-
-  - name: github-mcp
-    transport: stdio
-    command: echo
-    tags: [demo, devtools]
-
-storage:
-  mode: dual
-
-costs:
-  rules:
-    - server: "*"
-      tool: "*"
-      cost_per_call: 0.001
+- name: datahub
+  transport: stdio
+  command: uvx
+  args:
+  - mcp-server-datahub@latest
+  env:
+    DATAHUB_GMS_URL: https://datahub.prod.gotphoto.io/api/gms
+    DATAHUB_GMS_TOKEN: eyJhbGciOiJIUzI1NiJ9.eyJhY3RvclR5cGUiOiJVU0VSIiwiYWN0b3JJZCI6InN1bWFuLnNhaG9vQGZvdG9ncmFmLmRlIiwidHlwZSI6IlBFUlNPTkFMIiwidmVyc2lvbiI6IjIiLCJqdGkiOiJlZmUxYzFmZS0xM2M1LTRkYjMtODc5Mi1kNzQyZTdmY2EzZTQiLCJzdWIiOiJzdW1hbi5zYWhvb0Bmb3RvZ3JhZi5kZSIsImlzcyI6ImRhdGFodWItbWV0YWRhdGEtc2VydmljZSJ9.nCmK2l_lB8IQr5N7ptXGHOj9sjO73O0zsidnw6eFMPM
+    DATAHUB_SKIP_SSL_VERIFICATION: 'true'

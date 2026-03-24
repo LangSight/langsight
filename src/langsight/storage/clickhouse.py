@@ -1343,13 +1343,16 @@ class ClickHouseBackend:
             SELECT
                 server_name,
                 tool_name,
-                count()                                          AS calls,
-                countIf(status != 'success')                    AS errors,
-                avg(latency_ms)                                  AS avg_latency_ms,
-                quantile(0.99)(latency_ms)                       AS p99_latency_ms,
+                count()                                               AS calls,
+                countIf(status != 'success')                         AS errors,
+                avg(latency_ms)                                       AS avg_latency_ms,
+                quantile(0.99)(latency_ms)                            AS p99_latency_ms,
                 if(count() > 0,
                    countIf(status = 'success') / count() * 100,
-                   100)                                          AS success_rate
+                   100)                                               AS success_rate,
+                if(countDistinct(session_id) > 0,
+                   round(count() / countDistinct(session_id), 2),
+                   0)                                                 AS calls_per_session
             FROM mcp_tool_calls
             {where}
             GROUP BY server_name, tool_name
@@ -1357,8 +1360,63 @@ class ClickHouseBackend:
             """,
             parameters=params,
         )
-        cols = ["server_name", "tool_name", "calls", "errors", "avg_latency_ms", "p99_latency_ms", "success_rate"]
+        cols = ["server_name", "tool_name", "calls", "errors", "avg_latency_ms", "p99_latency_ms", "success_rate", "calls_per_session"]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
+
+    async def get_error_breakdown(
+        self,
+        hours: int = 24,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Error taxonomy breakdown — categorises all failed spans by error type.
+
+        Categories: safety_filter, max_tokens, api_unavailable, timeout,
+                    rate_limit, auth_error, agent_crash, other_error.
+        """
+        where = "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR AND status != 'success'"
+        params: dict[str, Any] = {"hours": hours}
+        if project_id:
+            where += " AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+
+        result = await self._client.query(
+            f"""
+            SELECT
+                multiIf(
+                    error LIKE 'FinishReason:SAFETY%'       OR error LIKE 'FinishReason:PROHIBITED%',
+                        'safety_filter',
+                    error LIKE 'FinishReason:MAX_TOKENS%'   OR error LIKE 'FinishReason:length%',
+                        'max_tokens',
+                    error LIKE 'FinishReason:RECITATION%',
+                        'recitation',
+                    error LIKE '%503%'                      OR error LIKE '%UNAVAILABLE%',
+                        'api_unavailable',
+                    status = 'timeout'                      OR error LIKE '%timeout%' OR error LIKE '%timed out%',
+                        'timeout',
+                    error LIKE '%rate limit%'               OR error LIKE '%429%' OR error LIKE '%too many%',
+                        'rate_limit',
+                    error LIKE '%auth%'                     OR error LIKE '%401%' OR error LIKE '%403%' OR error LIKE '%forbidden%',
+                        'auth_error',
+                    error LIKE '%AgentCrash%'               OR error LIKE '%TaskGroup%',
+                        'agent_crash',
+                    'other_error'
+                ) AS category,
+                count()                                     AS count,
+                countIf(span_type = 'agent')                AS llm_errors,
+                countIf(span_type = 'tool_call')            AS tool_errors
+            FROM mcp_tool_calls
+            {where}
+            GROUP BY category
+            ORDER BY count DESC
+            """,
+            parameters=params,
+        )
+        total = sum(int(r[1]) for r in result.result_rows) or 1
+        cols = ["category", "count", "llm_errors", "tool_errors"]
+        rows = [dict(zip(cols, r, strict=False)) for r in result.result_rows]
+        for r in rows:
+            r["pct"] = round(int(r["count"]) / total * 100, 1)
+        return rows
 
     async def get_incomplete_sessions(
         self,

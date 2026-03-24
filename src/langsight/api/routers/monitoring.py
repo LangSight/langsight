@@ -54,6 +54,15 @@ class ToolMetrics(BaseModel):
     avg_latency_ms: float = 0.0
     p99_latency_ms: float = 0.0
     success_rate: float = 100.0
+    calls_per_session: float = 0.0
+
+
+class ErrorCategory(BaseModel):
+    category: str
+    count: int = 0
+    llm_errors: int = 0
+    tool_errors: int = 0
+    pct: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -112,3 +121,16 @@ async def get_tools(
         return []
     rows = await storage.get_monitoring_tools(hours=hours, project_id=project_id)
     return [ToolMetrics(**r) for r in rows]
+
+
+@router.get("/errors", response_model=list[ErrorCategory])
+async def get_error_breakdown(
+    hours: int = Query(default=24, ge=1, le=720),
+    project_id: str | None = Depends(get_active_project_id),
+    storage: StorageBackend = Depends(get_storage),
+) -> list[ErrorCategory]:
+    """Return error taxonomy breakdown — what types of errors are failing."""
+    if not hasattr(storage, "get_error_breakdown"):
+        return []
+    rows = await storage.get_error_breakdown(hours=hours, project_id=project_id)
+    return [ErrorCategory(**r) for r in rows]
