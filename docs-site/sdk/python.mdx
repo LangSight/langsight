@@ -17,7 +17,33 @@ pip install langsight
 uv add langsight
 ```
 
-## Quick start with `init()`
+## Zero-code auto_patch()
+
+The fastest path — patches OpenAI, Anthropic, and Gemini SDK classes globally. No `wrap_llm()` needed:
+
+```python
+import langsight
+
+langsight.auto_patch()   # reads LANGSIGHT_URL, LANGSIGHT_API_KEY, LANGSIGHT_PROJECT_ID from env
+
+from google import genai
+
+async def run(question: str) -> str:
+    async with langsight.session(agent_name="orchestrator") as session_id:
+        client = genai.Client()   # automatically traced
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[question],
+        )
+        return response.text
+```
+
+`langsight.session()` is an async context manager that:
+- Generates a `session_id` (or use your own: `session(session_id="my-id")`)
+- Tags all LLM calls inside the block with that session
+- Calls `flush()` when the block exits
+
+## Quick start with `init()` + explicit wrapping
 
 ```python
 import langsight

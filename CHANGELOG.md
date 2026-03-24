@@ -4,6 +4,16 @@ All meaningful changes to LangSight are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.5.5] — 2026-03-24
+
+### Added
+- **`langsight.auto_patch()`** — monkey-patches OpenAI, Anthropic, google.genai, and google.generativeai SDK classes at import time. Zero explicit `wrap_llm()` calls needed. Follows Langfuse/Sentry/Datadog patterns.
+- **`langsight.session()`** async context manager — sets `session_id` and `agent_name` for all LLM calls inside the block.
+- **`langsight.set_context()` / `clear_context()`** — explicit context propagation using `contextvars.ContextVar` (async-safe, task-isolated).
+- **`langsight.unpatch()`** — restore original SDK methods (useful for testing).
+
+---
+
 ## [0.5.4] — 2026-03-24
 
 ### Fixed

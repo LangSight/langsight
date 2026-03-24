@@ -1,5 +1,5 @@
 """LangSight — agent runtime reliability."""
 
-from langsight.sdk import init
+from langsight.sdk import auto_patch, clear_context, init, session, set_context, unpatch
 
-__all__ = ["init"]
+__all__ = ["init", "auto_patch", "unpatch", "set_context", "clear_context", "session"]

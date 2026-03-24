@@ -1,17 +1,41 @@
 ---
 title: "Gemini SDK"
-description: "Auto-trace Gemini function calls with wrap_llm() — one line, zero loop changes"
+description: "Auto-trace Gemini function calls — zero-code auto_patch() or explicit wrap_llm()"
 ---
 
-Wrap a `google.genai.Client` with `wrap_llm()` to auto-trace every `generate_content()` call and function call in the response.
+Two integration options — choose what fits your project:
 
-## Installation
+## Option A: Zero-code auto_patch() (recommended)
 
 ```bash
 pip install langsight google-genai
 ```
 
-## Quick start
+```python
+import langsight
+
+langsight.auto_patch()   # patches all Gemini (and OpenAI/Anthropic) clients globally
+
+from google import genai
+
+async def run(question: str) -> str:
+    async with langsight.session(agent_name="analyst") as session_id:
+        client = genai.Client()   # automatically traced — no wrap_llm() needed
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[question],
+        )
+        return response.text
+```
+
+Set environment variables once:
+```bash
+export LANGSIGHT_URL=http://localhost:8000
+export LANGSIGHT_API_KEY=lsk_your_key
+export LANGSIGHT_PROJECT_ID=my-project
+```
+
+## Option B: Explicit wrap_llm()
 
 ```python
 import langsight

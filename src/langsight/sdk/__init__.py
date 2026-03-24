@@ -1,21 +1,24 @@
 """
 LangSight SDK — agent runtime reliability.
 
-Quick start::
+Zero-code auto-instrumentation::
+
+    import langsight
+    langsight.auto_patch()   # patches OpenAI, Anthropic, Google SDKs
+
+    from openai import OpenAI
+    client = OpenAI()        # automatically traced — no wrap_llm() needed
+
+    async with langsight.session(agent_name="orchestrator") as session_id:
+        response = await client.chat.completions.create(model="gpt-4o", ...)
+
+Explicit wrapping (original approach)::
 
     import langsight
 
     ls = langsight.init()  # reads LANGSIGHT_URL / API_KEY / PROJECT_ID from env
     traced_mcp = ls.wrap(mcp_session, server_name="postgres-mcp")
     result = await traced_mcp.call_tool("query", {"sql": "SELECT 1"})
-
-Explicit init::
-
-    from langsight.sdk import LangSightClient
-
-    client = LangSightClient(url="http://localhost:8000", project_id="my-project")
-    traced_llm = client.wrap_llm(OpenAI(), agent_name="my-agent")
-    response = traced_llm.chat.completions.create(model="gpt-4o", tools=[...])
 """
 
 from __future__ import annotations
@@ -25,6 +28,13 @@ from typing import Any
 
 import structlog
 
+from langsight.sdk.auto_patch import (
+    auto_patch,
+    clear_context,
+    session,
+    set_context,
+    unpatch,
+)
 from langsight.sdk.client import LangSightClient, MCPClientProxy
 from langsight.sdk.models import PreventionEvent, ToolCallSpan, ToolCallStatus
 
@@ -70,5 +80,10 @@ __all__ = [
     "PreventionEvent",
     "ToolCallSpan",
     "ToolCallStatus",
+    "auto_patch",
+    "clear_context",
     "init",
+    "session",
+    "set_context",
+    "unpatch",
 ]
