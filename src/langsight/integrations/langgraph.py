@@ -20,9 +20,9 @@ Migration:
     from langsight.integrations.langchain import LangSightLangChainCallback
 """
 
-from langsight.integrations.langchain import LangSightLangChainCallback, _fire_and_forget
+from langsight.integrations.langchain import LangSightLangChainCallback
 
 # Backward-compatible alias
 LangSightLangGraphCallback = LangSightLangChainCallback
 
-__all__ = ["LangSightLangGraphCallback", "_fire_and_forget"]
+__all__ = ["LangSightLangGraphCallback"]

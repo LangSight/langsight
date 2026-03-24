@@ -103,7 +103,7 @@ class LangSightClient:
         self._flush_interval = flush_interval
         self._max_buffer_size = max_buffer_size
         self._buffer: list[ToolCallSpan] = []
-        self._lock: asyncio.Lock = asyncio.Lock()
+        self._lock = threading.Lock()
         self._flush_task: asyncio.Task[None] | None = None
 
         # Flush any remaining buffered spans on program exit — no user code needed
@@ -312,6 +312,20 @@ class LangSightClient:
             trace_id=trace_id,
         )
 
+    def buffer_span(self, span: ToolCallSpan) -> None:
+        """Synchronously buffer a span. Thread-safe, no event loop required.
+
+        Use this from synchronous callbacks (LangChain on_tool_end etc.)
+        where no running event loop is guaranteed. The flush loop or
+        atexit handler will deliver buffered spans.
+        """
+        with self._lock:
+            self._buffer.append(span)
+            if len(self._buffer) > self._max_buffer_size:
+                dropped = len(self._buffer) - self._max_buffer_size
+                self._buffer = self._buffer[dropped:]
+                logger.warning("sdk.buffer_overflow", dropped=dropped, max=self._max_buffer_size)
+
     async def send_span(self, span: ToolCallSpan) -> None:
         """Buffer a span for batched delivery. Never blocks, never raises.
 
@@ -319,8 +333,11 @@ class LangSightClient:
         or every ``flush_interval`` seconds — whichever comes first.
         If the buffer exceeds ``max_buffer_size``, oldest spans are dropped
         to prevent unbounded memory growth when the backend is slow/down.
+
+        Thread-safe: uses a threading.Lock so spans from fire-and-forget
+        threads (cross-ainvoke sub-agent callbacks) are safely buffered.
         """
-        async with self._lock:
+        with self._lock:
             self._buffer.append(span)
             if len(self._buffer) > self._max_buffer_size:
                 dropped = len(self._buffer) - self._max_buffer_size
@@ -328,11 +345,14 @@ class LangSightClient:
                 logger.warning("sdk.buffer_overflow", dropped=dropped, max=self._max_buffer_size)
         self._ensure_flush_loop()
         if len(self._buffer) >= self._batch_size:
-            asyncio.create_task(self.flush())
+            try:
+                asyncio.get_running_loop().create_task(self.flush())
+            except RuntimeError:
+                pass  # No running loop — atexit or flush() will handle it
 
     async def send_spans(self, spans: list[ToolCallSpan]) -> None:
         """Buffer multiple spans. Triggers immediate flush if threshold reached."""
-        async with self._lock:
+        with self._lock:
             self._buffer.extend(spans)
             if len(self._buffer) > self._max_buffer_size:
                 dropped = len(self._buffer) - self._max_buffer_size
@@ -340,7 +360,10 @@ class LangSightClient:
                 logger.warning("sdk.buffer_overflow", dropped=dropped, max=self._max_buffer_size)
         self._ensure_flush_loop()
         if len(self._buffer) >= self._batch_size:
-            asyncio.create_task(self.flush())
+            try:
+                asyncio.get_running_loop().create_task(self.flush())
+            except RuntimeError:
+                pass
 
     async def flush(self) -> None:
         """Flush all buffered spans to the API. Safe to call at any time.
@@ -348,14 +371,13 @@ class LangSightClient:
         If the HTTP send fails (e.g. event loop is closing), spans are returned
         to the buffer so the atexit handler can deliver them.
         """
-        async with self._lock:
+        with self._lock:
             if not self._buffer:
                 return
             batch, self._buffer = self._buffer, []
         ok = await self._post_spans(batch)
         if not ok:
-            # Return spans to buffer — atexit handler will deliver them on exit
-            async with self._lock:
+            with self._lock:
                 self._buffer = batch + self._buffer
 
     async def _fetch_prevention_config(
@@ -437,21 +459,32 @@ class LangSightClient:
     def _flush_on_exit(self) -> None:
         """Synchronous atexit handler — flushes buffered spans when the program exits.
 
-        Called automatically at process shutdown so users never need to call
-        close() or use `async with`. Spawns a non-daemon thread with its own
-        event loop to deliver any spans that were buffered but not yet sent.
+        Uses a synchronous HTTP client to deliver spans, avoiding asyncio
+        entirely. This works reliably even during interpreter shutdown when
+        ``asyncio.run()`` and ``create_task()`` would fail.
         """
-        if not self._buffer:
-            return
-        batch, self._buffer = self._buffer, []
+        with self._lock:
+            if not self._buffer:
+                return
+            batch, self._buffer = self._buffer, []
         try:
-            thread = threading.Thread(
-                target=asyncio.run, args=(self._post_spans(batch),), daemon=False
-            )
-            thread.start()
-            thread.join(timeout=5.0)
-        except Exception:  # noqa: BLE001
-            pass  # best effort — interpreter may already be shutting down
+            payload = [s.model_dump(mode="json") for s in batch]
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if self._api_key:
+                headers["X-API-Key"] = self._api_key
+            # Use synchronous httpx — no event loop needed
+            with httpx.Client(timeout=5.0) as sync_http:
+                resp = sync_http.post(
+                    f"{self._url}/api/traces/spans",
+                    json=payload,
+                    headers=headers,
+                )
+                if resp.status_code < 300:
+                    logger.debug("sdk.atexit_flush_ok", count=len(batch))
+                else:
+                    logger.warning("sdk.atexit_flush_failed", status=resp.status_code)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("sdk.atexit_flush_error", count=len(batch), error=str(exc))
 
     async def close(self) -> None:
         """Flush remaining spans, cancel the flush loop, and close the HTTP client."""

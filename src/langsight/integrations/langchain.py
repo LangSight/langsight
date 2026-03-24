@@ -167,22 +167,19 @@ def _get_global_tool_stack() -> list[_ToolExecContext]:
 # ---------------------------------------------------------------------------
 
 
-def _fire_and_forget(coro: Any) -> None:
-    """Schedule a coroutine from a synchronous LangChain callback.
+def _try_flush(client: Any) -> None:
+    """Best-effort trigger a flush if a running event loop is available.
 
-    Tries create_task if a loop is already running and not closing (async context).
-    Falls back to running in a daemon thread (sync/test context or loop teardown)
-    to avoid 'coroutine was never awaited' and 'Event loop is closed' warnings.
+    Called after buffering spans to speed up delivery. If no loop is available
+    (between sub-agent ainvoke calls), the periodic flush loop or atexit handler
+    will deliver the spans — nothing is lost.
     """
     try:
         loop = asyncio.get_running_loop()
         if loop.is_running() and not loop.is_closed():
-            loop.create_task(coro)
-            return
-    except RuntimeError:
-        pass
-    thread = threading.Thread(target=asyncio.run, args=(coro,), daemon=True)
-    thread.start()
+            loop.create_task(client.flush())
+    except (RuntimeError, Exception):  # noqa: BLE001
+        pass  # Flush loop or atexit will handle it
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +410,8 @@ class LangSightLangChainCallback(BaseIntegration):
             span_type="agent",
             project_id=getattr(self._client, "_project_id", None) or "",
         )
-        _fire_and_forget(self._client.send_span(span))
+        self._client.buffer_span(span)
+        _try_flush(self._client)
         logger.debug(
             "integration.agent_span_emitted",
             agent=chain.name,
@@ -449,7 +447,8 @@ class LangSightLangChainCallback(BaseIntegration):
             span_type="agent",
             project_id=getattr(self._client, "_project_id", None) or "",
         )
-        _fire_and_forget(self._client.send_span(span))
+        self._client.buffer_span(span)
+        _try_flush(self._client)
 
     # -----------------------------------------------------------------------
     # LangChain callback interface — tool lifecycle
@@ -511,19 +510,18 @@ class LangSightLangChainCallback(BaseIntegration):
         if stack and stack[-1].run_id == key:
             stack.pop()
 
-        _fire_and_forget(
-            self._record(
-                tool_name=pending.tool_name,
-                started_at=pending.started_at,
-                status=ToolCallStatus.SUCCESS,
-                trace_id=self._trace_id,
-                input_str=pending.input_str,
-                output=output,
-                parent_span_id=pending.parent_span_id,
-                agent_name=pending.agent_name,
-                span_id=pending.span_id,
-            )
+        self._record(
+            tool_name=pending.tool_name,
+            started_at=pending.started_at,
+            status=ToolCallStatus.SUCCESS,
+            trace_id=self._trace_id,
+            input_str=pending.input_str,
+            output=output,
+            parent_span_id=pending.parent_span_id,
+            agent_name=pending.agent_name,
+            span_id=pending.span_id,
         )
+        _try_flush(self._client)
 
     def on_tool_error(
         self,
@@ -543,19 +541,18 @@ class LangSightLangChainCallback(BaseIntegration):
         if stack and stack[-1].run_id == key:
             stack.pop()
 
-        _fire_and_forget(
-            self._record(
-                tool_name=pending.tool_name,
-                started_at=pending.started_at,
-                status=ToolCallStatus.ERROR,
-                error=str(error),
-                trace_id=self._trace_id,
-                input_str=pending.input_str,
-                parent_span_id=pending.parent_span_id,
-                agent_name=pending.agent_name,
-                span_id=pending.span_id,
-            )
+        self._record(
+            tool_name=pending.tool_name,
+            started_at=pending.started_at,
+            status=ToolCallStatus.ERROR,
+            error=str(error),
+            trace_id=self._trace_id,
+            input_str=pending.input_str,
+            parent_span_id=pending.parent_span_id,
+            agent_name=pending.agent_name,
+            span_id=pending.span_id,
         )
+        _try_flush(self._client)
 
     # -----------------------------------------------------------------------
     # LangChain callback interface — LLM lifecycle (prompt capture)
@@ -664,7 +661,8 @@ class LangSightLangChainCallback(BaseIntegration):
             output_tokens=output_tokens,
             model_id=model_id,
         )
-        _fire_and_forget(self._client.send_span(span))
+        self._client.buffer_span(span)
+        _try_flush(self._client)
         logger.debug(
             "integration.llm_span_emitted",
             model=model_id,

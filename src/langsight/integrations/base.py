@@ -51,7 +51,7 @@ class BaseIntegration:
         except (json.JSONDecodeError, TypeError):
             return {"input": input_str} if input_str else None
 
-    async def _record(
+    def _record(
         self,
         tool_name: str,
         started_at: datetime,
@@ -67,12 +67,12 @@ class BaseIntegration:
         agent_name: str | None = None,
         span_id: str | None = None,
     ) -> None:
-        """Build and fire-and-forget a ToolCallSpan.
+        """Build a ToolCallSpan and synchronously buffer it for delivery.
 
-        The optional override parameters (parent_span_id, span_type,
-        server_name, agent_name, span_id) enable auto-detect mode where
-        values are resolved per-span rather than fixed on the integration
-        instance.  When None, the instance defaults are used.
+        This method is fully synchronous — no event loop required. Spans are
+        buffered via ``client.buffer_span()`` and delivered by the async flush
+        loop or the atexit handler.  This guarantees spans are never lost due
+        to event-loop state transitions between sub-agent ``ainvoke()`` calls.
         """
         redact = self._redact
         effective_server = server_name or self._server_name
@@ -93,7 +93,6 @@ class BaseIntegration:
             span_type=span_type,
         )
         if span_id is not None:
-            # Use constructor directly when span_id is pre-generated
             from datetime import UTC
             from datetime import datetime as _dt
 
@@ -105,7 +104,7 @@ class BaseIntegration:
             )
         else:
             span = ToolCallSpan.record(**common)
-        await self._client.send_span(span)
+        self._client.buffer_span(span)
         logger.debug(
             "integration.span_recorded",
             tool=tool_name,
