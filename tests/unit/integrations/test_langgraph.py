@@ -8,22 +8,17 @@ through the unified callback.
 
 from __future__ import annotations
 
-import asyncio
 import threading
-from datetime import UTC, datetime
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID, uuid4
+from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 
+from langsight.integrations.langchain import LangSightLangChainCallback
 from langsight.integrations.langgraph import (
     LangSightLangGraphCallback,
-    _fire_and_forget,
 )
-from langsight.integrations.langchain import LangSightLangChainCallback
 from langsight.sdk.client import LangSightClient
-from langsight.sdk.models import ToolCallStatus
 
 
 @pytest.fixture
@@ -64,9 +59,6 @@ class TestLangGraphAlias:
     def test_is_same_class(self) -> None:
         assert LangSightLangGraphCallback is LangSightLangChainCallback
 
-    def test_fire_and_forget_exported(self) -> None:
-        assert callable(_fire_and_forget)
-
 
 # =============================================================================
 # Constructor
@@ -82,36 +74,6 @@ class TestLangSightLangGraphCallbackConstructor:
     def test_constructor_handles_missing_langchain(self, client: LangSightClient) -> None:
         with patch("builtins.__import__", side_effect=ImportError("no langchain")):
             pass  # Constructor handles ImportError gracefully
-
-
-# =============================================================================
-# _fire_and_forget
-# =============================================================================
-
-
-class TestFireAndForget:
-    async def test_schedules_coroutine_in_running_loop(self) -> None:
-        called = False
-
-        async def coro() -> None:
-            nonlocal called
-            called = True
-
-        _fire_and_forget(coro())
-        await asyncio.sleep(0.05)
-        assert called
-
-    def test_runs_in_thread_when_no_loop(self) -> None:
-        called = False
-
-        async def coro() -> None:
-            nonlocal called
-            called = True
-
-        _fire_and_forget(coro())
-        import time
-        time.sleep(0.1)
-        assert called
 
 
 # =============================================================================
@@ -201,8 +163,7 @@ class TestLangGraphOnToolEnd:
         run_id = uuid4()
         callback.on_tool_start({"name": "search"}, "query", run_id=run_id)
 
-        with patch("langsight.integrations.langchain._fire_and_forget"):
-            callback.on_tool_end("result", run_id=run_id)
+        callback.on_tool_end("result", run_id=run_id)
 
         assert str(run_id) not in callback._pending
 
@@ -225,8 +186,7 @@ class TestLangGraphOnToolError:
         run_id = uuid4()
         callback.on_tool_start({"name": "search"}, "query", run_id=run_id)
 
-        with patch("langsight.integrations.langchain._fire_and_forget"):
-            callback.on_tool_error(RuntimeError("fail"), run_id=run_id)
+        callback.on_tool_error(RuntimeError("fail"), run_id=run_id)
 
         assert str(run_id) not in callback._pending
 

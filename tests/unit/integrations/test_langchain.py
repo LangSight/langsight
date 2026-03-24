@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import threading
-from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -10,7 +9,6 @@ import pytest
 from langsight.integrations.langchain import (
     LangSightLangChainCallback,
     _detect_agent_name,
-    _fire_and_forget,
     _get_global_tool_stack,
 )
 from langsight.sdk.client import LangSightClient
@@ -141,10 +139,7 @@ class TestFixedModeToolCalls:
         run_id = uuid4()
         callback.on_tool_start({"name": "my_tool"}, "input", run_id=run_id)
 
-        with patch(
-            "langsight.integrations.langchain._fire_and_forget"
-        ):
-            callback.on_tool_end("result", run_id=run_id)
+        callback.on_tool_end("result", run_id=run_id)
 
         assert str(run_id) not in callback._pending
 
@@ -154,10 +149,7 @@ class TestFixedModeToolCalls:
         run_id = uuid4()
         callback.on_tool_start({"name": "my_tool"}, "input", run_id=run_id)
 
-        with patch(
-            "langsight.integrations.langchain._fire_and_forget"
-        ):
-            callback.on_tool_error(ValueError("failed"), run_id=run_id)
+        callback.on_tool_error(ValueError("failed"), run_id=run_id)
 
         assert str(run_id) not in callback._pending
 
@@ -218,15 +210,11 @@ class TestAutoDetectAgentSpans:
         auto_callback.on_chain_start(
             {"name": "supervisor"}, {}, run_id=run_id
         )
-        auto_callback._client.send_span = AsyncMock()
+        auto_callback._client.buffer_span = lambda span: None
 
-        with patch(
-            "langsight.integrations.langchain._fire_and_forget"
-        ) as mock_ff:
-            auto_callback.on_chain_end({}, run_id=run_id)
+        auto_callback.on_chain_end({}, run_id=run_id)
 
-        # Agent span should have been fired
-        assert mock_ff.called
+        # Agent span should have been buffered and chain cleaned up
         assert str(run_id) not in auto_callback._active_chains
 
     def test_on_chain_error_emits_error_agent_span(
@@ -236,15 +224,12 @@ class TestAutoDetectAgentSpans:
         auto_callback.on_chain_start(
             {"name": "analyst"}, {}, run_id=run_id
         )
+        auto_callback._client.buffer_span = lambda span: None
 
-        with patch(
-            "langsight.integrations.langchain._fire_and_forget"
-        ) as mock_ff:
-            auto_callback.on_chain_error(
-                RuntimeError("LLM failed"), run_id=run_id
-            )
+        auto_callback.on_chain_error(
+            RuntimeError("LLM failed"), run_id=run_id
+        )
 
-        assert mock_ff.called
         assert str(run_id) not in auto_callback._active_chains
 
 
@@ -271,8 +256,7 @@ class TestCrossAinvokeLinking:
         auto_callback.on_tool_start(
             {"name": "call_analyst"}, "task", run_id=run_id
         )
-        with patch("langsight.integrations.langchain._fire_and_forget"):
-            auto_callback.on_tool_end("result", run_id=run_id)
+        auto_callback.on_tool_end("result", run_id=run_id)
         assert len(auto_callback._tool_stack) == 0
 
     def test_new_agent_chain_links_to_executing_tool(
