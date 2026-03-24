@@ -83,24 +83,31 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
         await storage.save_tool_call_spans(spans)
 
     # Auto-register unseen agents and servers (fire-and-forget, fail-open)
+    # The _seen cache is per-process — always upsert if we haven't seen it this
+    # process lifetime. The storage layer uses ON CONFLICT DO UPDATE so repeated
+    # calls are cheap and self-healing after volume wipes.
     if storage is not None and hasattr(storage, "upsert_agent_metadata"):
         project_id = _extract_project_id(spans)
-        for span in spans:
-            if span.agent_name and span.agent_name not in _seen_agents:
-                _seen_agents.add(span.agent_name)
-                try:
-                    await storage.upsert_agent_metadata(
-                        agent_name=span.agent_name,
-                        description="Auto-discovered from traces",
-                        owner="",
-                        tags=[],
-                        status="active",
-                        runbook_url="",
-                        project_id=project_id,
-                    )
-                    logger.debug("trace.agent_auto_registered", agent=span.agent_name)
-                except Exception:  # noqa: BLE001
-                    pass  # fail-open — auto-register is best-effort
+        # Collect all unique agents from this batch first
+        batch_agents = {span.agent_name for span in spans if span.agent_name}
+        for agent in batch_agents:
+            cache_key = f"{project_id}:{agent}"
+            if cache_key in _seen_agents:
+                continue
+            _seen_agents.add(cache_key)
+            try:
+                await storage.upsert_agent_metadata(
+                    agent_name=agent,
+                    description="Auto-discovered from traces",
+                    owner="",
+                    tags=[],
+                    status="active",
+                    runbook_url="",
+                    project_id=project_id,
+                )
+                logger.debug("trace.agent_auto_registered", agent=agent)
+            except Exception:  # noqa: BLE001
+                _seen_agents.discard(cache_key)  # retry next time
             if span.server_name and span.server_name not in _seen_servers:
                 _seen_servers.add(span.server_name)
                 try:

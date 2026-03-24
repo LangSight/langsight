@@ -53,6 +53,7 @@ export interface AgentSession {
   failed_calls: number;
   duration_ms: number;
   servers_used: string[];
+  agents_used?: string[];
   health_tag: HealthTag | null;  // v0.3
   total_input_tokens: number | null;
   total_output_tokens: number | null;

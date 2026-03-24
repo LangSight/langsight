@@ -38,24 +38,30 @@ function aggregateAgents(sessions: AgentSession[], costs: CostsBreakdownResponse
   const costByAgent = new Map((costs?.by_agent ?? []).map((e) => [e.agent_name, e.total_cost_usd]));
   const summaries = new Map<string, AgentSummary>();
   for (const session of sessions) {
-    const name = session.agent_name ?? "unknown agent";
-    const existing = summaries.get(name);
-    const servers = new Set(existing?.servers_used ?? []);
-    for (const s of session.servers_used ?? []) servers.add(s);
-    const next: AgentSummary = existing ?? {
-      agent_name: name, sessions: 0, tool_calls: 0, failed_calls: 0,
-      total_duration_ms: 0, avg_duration_ms: 0, total_cost_usd: costByAgent.get(name) ?? 0,
-      servers_used: [], latest_started_at: session.first_call_at, session_ids: [], error_rate: 0, status: "healthy",
-    };
-    next.sessions += 1; next.tool_calls += session.tool_calls; next.failed_calls += session.failed_calls;
-    next.total_duration_ms += session.duration_ms; next.avg_duration_ms = next.total_duration_ms / next.sessions;
-    next.error_rate = next.tool_calls > 0 ? next.failed_calls / next.tool_calls : 0;
-    next.status = next.error_rate > 0.2 ? "failing" : next.error_rate > 0.05 ? "degraded" : "healthy";
-    next.latest_started_at = new Date(session.first_call_at) > new Date(next.latest_started_at) ? session.first_call_at : next.latest_started_at;
-    next.session_ids = [...next.session_ids, session.session_id];
-    next.servers_used = Array.from(servers).sort();
-    next.total_cost_usd = costByAgent.get(name) ?? next.total_cost_usd;
-    summaries.set(name, next);
+    // Use agents_used (all agents in the session) if available, fall back to agent_name
+    const agentNames = session.agents_used?.length
+      ? session.agents_used
+      : [session.agent_name ?? "unknown agent"];
+
+    for (const name of agentNames) {
+      const existing = summaries.get(name);
+      const servers = new Set(existing?.servers_used ?? []);
+      for (const s of session.servers_used ?? []) servers.add(s);
+      const next: AgentSummary = existing ?? {
+        agent_name: name, sessions: 0, tool_calls: 0, failed_calls: 0,
+        total_duration_ms: 0, avg_duration_ms: 0, total_cost_usd: costByAgent.get(name) ?? 0,
+        servers_used: [], latest_started_at: session.first_call_at, session_ids: [], error_rate: 0, status: "healthy",
+      };
+      next.sessions += 1; next.tool_calls += session.tool_calls; next.failed_calls += session.failed_calls;
+      next.total_duration_ms += session.duration_ms; next.avg_duration_ms = next.total_duration_ms / next.sessions;
+      next.error_rate = next.tool_calls > 0 ? next.failed_calls / next.tool_calls : 0;
+      next.status = next.error_rate > 0.2 ? "failing" : next.error_rate > 0.05 ? "degraded" : "healthy";
+      next.latest_started_at = new Date(session.first_call_at) > new Date(next.latest_started_at) ? session.first_call_at : next.latest_started_at;
+      if (!next.session_ids.includes(session.session_id)) next.session_ids.push(session.session_id);
+      next.servers_used = Array.from(servers).sort();
+      next.total_cost_usd = costByAgent.get(name) ?? next.total_cost_usd;
+      summaries.set(name, next);
+    }
   }
   return Array.from(summaries.values()).sort((a, b) => b.failed_calls - a.failed_calls || b.tool_calls - a.tool_calls);
 }

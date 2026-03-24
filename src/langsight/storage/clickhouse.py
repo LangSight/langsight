@@ -567,6 +567,7 @@ class ClickHouseBackend:
             "total_input_tokens",
             "total_output_tokens",
             "model_id",
+            "agents_used",
         ]
 
         # mv_agent_sessions does not include project_id — query base table when filtering by project
@@ -599,7 +600,8 @@ class ClickHouseBackend:
                     any(sht.health_tag)                                  AS health_tag,
                     sum(t.input_tokens)                                  AS total_input_tokens,
                     sum(t.output_tokens)                                 AS total_output_tokens,
-                    anyIf(t.model_id, t.model_id != '')                  AS model_id
+                    anyIf(t.model_id, t.model_id != '')                  AS model_id,
+                    arrayFilter(x -> x != '', groupUniqArray(t.agent_name)) AS agents_used
                 FROM mcp_tool_calls t
                 LEFT JOIN (SELECT session_id, health_tag FROM session_health_tags FINAL) sht
                     ON t.session_id = sht.session_id
@@ -639,7 +641,8 @@ class ClickHouseBackend:
                 any(sht.health_tag)                                         AS health_tag,
                 sum(tok.total_input_tokens)                                 AS total_input_tokens,
                 sum(tok.total_output_tokens)                                AS total_output_tokens,
-                anyIf(tok.model_id, tok.model_id != '')                     AS model_id
+                anyIf(tok.model_id, tok.model_id != '')                     AS model_id,
+                arrayFilter(x -> x != '', groupUniqArray(mv.agent_name))    AS agents_used
             FROM mv_agent_sessions mv
             LEFT JOIN (
                 SELECT session_id, agent_name,
