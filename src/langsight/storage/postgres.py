@@ -161,6 +161,8 @@ _DDL_STATEMENTS = [
     """,
     "ALTER TABLE agent_slos ADD COLUMN IF NOT EXISTS project_id TEXT NOT NULL DEFAULT ''",
     "CREATE INDEX IF NOT EXISTS idx_agent_slos_project ON agent_slos(project_id)",
+    # Composite index for SLO evaluator — queries per-agent per-project
+    "CREATE INDEX IF NOT EXISTS idx_agent_slos_project_agent ON agent_slos(project_id, agent_name)",
     """
     CREATE TABLE IF NOT EXISTS alert_config (
         id            TEXT        PRIMARY KEY DEFAULT 'singleton',

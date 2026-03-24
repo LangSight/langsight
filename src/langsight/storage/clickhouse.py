@@ -171,6 +171,29 @@ _DDL = [
     ORDER BY (session_id)
     SETTINGS index_granularity = 8192
     """,
+    # ---------------------------------------------------------------------------
+    # Data skipping indexes (bloom filters) on mcp_tool_calls.
+    #
+    # The sort key (server_name, tool_name, started_at, span_id) is efficient
+    # for tool-level queries but leaves project_id, session_id, and agent_name
+    # unsorted — every equality filter on these columns scans all granules in
+    # the matching month partition (~8 192 rows each).
+    #
+    # Bloom filter indexes let ClickHouse skip granules where the column value
+    # is definitely absent, reducing I/O by ~90 % for selective predicates.
+    # GRANULARITY 1 = one bloom filter entry per index granule (8 192 rows).
+    # IF NOT EXISTS makes these idempotent on every startup.
+    # MATERIALIZE runs as a background mutation — does not block startup.
+    # ---------------------------------------------------------------------------
+    "ALTER TABLE mcp_tool_calls ADD INDEX IF NOT EXISTS idx_bf_project_id  project_id  TYPE bloom_filter GRANULARITY 1",
+    "ALTER TABLE mcp_tool_calls ADD INDEX IF NOT EXISTS idx_bf_session_id  session_id  TYPE bloom_filter GRANULARITY 1",
+    "ALTER TABLE mcp_tool_calls ADD INDEX IF NOT EXISTS idx_bf_agent_name  agent_name  TYPE bloom_filter GRANULARITY 1",
+    "ALTER TABLE mcp_tool_calls MATERIALIZE INDEX idx_bf_project_id",
+    "ALTER TABLE mcp_tool_calls MATERIALIZE INDEX idx_bf_session_id",
+    "ALTER TABLE mcp_tool_calls MATERIALIZE INDEX idx_bf_agent_name",
+    # session_health_tags: sort key is session_id only; project_id queries scan full table
+    "ALTER TABLE session_health_tags ADD INDEX IF NOT EXISTS idx_bf_project_id project_id TYPE bloom_filter GRANULARITY 1",
+    "ALTER TABLE session_health_tags MATERIALIZE INDEX idx_bf_project_id",
 ]
 
 
