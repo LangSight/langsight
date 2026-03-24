@@ -211,6 +211,16 @@ class LangSightLangChainCallback(BaseIntegration):
         session_id: str | None = None,
         trace_id: str | None = None,
     ) -> None:
+        """Initialise the callback.
+
+        Args:
+            client: LangSightClient instance for sending spans.
+            server_name: Fixed server name (legacy mode). When ``None``, auto-detect
+                mode is enabled and server/agent names are inferred from callbacks.
+            agent_name: Fixed agent name. Auto-detected when ``None``.
+            session_id: Session grouping key. Auto-generated when ``None``.
+            trace_id: Trace grouping key. Auto-generated when ``None``.
+        """
         # Lazy import — try langchain-core first, fall back to langchain
         try:
             try:

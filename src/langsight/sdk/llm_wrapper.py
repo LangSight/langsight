@@ -63,6 +63,7 @@ class _LLMProxyBase:
         object.__setattr__(self, "_project_id", getattr(langsight, "_project_id", None) or "")
 
     def __getattr__(self, name: str) -> Any:
+        """Delegate attribute access to the wrapped LLM client."""
         return getattr(object.__getattribute__(self, "_client"), name)
 
     def _emit_spans(self, spans: list[ToolCallSpan]) -> None:
@@ -100,15 +101,20 @@ class OpenAIProxy(_LLMProxyBase):
 
 
 class _OpenAIChatProxy:
+    """Proxy for ``client.chat`` that returns a completions proxy."""
+
     def __init__(self, parent: OpenAIProxy) -> None:
         self._parent = parent
 
     @property
     def completions(self) -> _OpenAICompletionsProxy:
+        """Return the completions proxy with instrumented create()."""
         return _OpenAICompletionsProxy(self._parent)
 
 
 class _OpenAICompletionsProxy:
+    """Proxy for ``client.chat.completions`` that intercepts create()."""
+
     def __init__(self, parent: OpenAIProxy) -> None:
         self._parent = parent
 
@@ -222,6 +228,8 @@ class AnthropicProxy(_LLMProxyBase):
 
 
 class _AnthropicMessagesProxy:
+    """Proxy for ``client.messages`` that intercepts create()."""
+
     def __init__(self, parent: AnthropicProxy) -> None:
         self._parent = parent
 

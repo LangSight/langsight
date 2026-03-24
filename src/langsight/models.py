@@ -1,3 +1,5 @@
+"""Pydantic domain models for LangSight — servers, health, security, projects, SLOs."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
