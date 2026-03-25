@@ -367,20 +367,32 @@ class TestHealthHistoryProjectFiltering:
 # ===========================================================================
 
 class TestRateLimiterKeyResolution:
-    """Invariant: _rate_limit_key must extract only the first IP from
-    X-Forwarded-For to prevent two attacks:
+    """Invariant: _rate_limit_key must only trust X-Forwarded-For from known
+    proxy networks (LANGSIGHT_TRUSTED_PROXY_CIDRS), and when trusted must
+    extract only the FIRST IP to prevent two attacks:
 
-    a) Bucket exhaustion: attacker rotates IPs to exhaust everyone's quota.
-       Each new IP gets its own bucket, so the attacker's requests count against
-       their own first-IP bucket — not the server's global pool.
+    a) IP spoofing: an attacker directly sends X-Forwarded-For to escape their
+       own rate-limit bucket.  Without trusted-proxy gating, any caller could
+       forge this header and bypass per-IP limits.
 
-    b) Bucket spoofing: attacker appends a trusted IP after their own
-       (e.g. "attacker-ip, 127.0.0.1") hoping the rate limiter will key on
-       the trusted IP and not their real address.  The FIRST IP is always used.
+    b) Bucket injection: attacker sends "attacker-ip, 127.0.0.1" hoping to key
+       on the loopback.  The FIRST IP in the header is always used.
     """
 
-    def _make_rate_limit_request(self, headers: dict[str, str], client_ip: str = "10.0.0.1") -> object:
-        """Build a minimal mock Request for _rate_limit_key."""
+    _TRUSTED = [__import__("ipaddress").ip_network("10.0.0.0/8")]
+
+    def _make_rate_limit_request(
+        self,
+        headers: dict[str, str],
+        client_ip: str = "10.0.0.1",
+        trusted: bool = True,
+    ) -> object:
+        """Build a minimal mock Request for _rate_limit_key.
+
+        Set trusted=True (default) to simulate a request arriving from a
+        trusted proxy (client_ip in 10.0.0.0/8).  Set trusted=False to test
+        the untrusted/direct-caller path.
+        """
         from unittest.mock import MagicMock
 
         req = MagicMock()
@@ -390,47 +402,71 @@ class TestRateLimiterKeyResolution:
         raw_headers = dict(headers)
         req.headers = MagicMock()
         req.headers.get = lambda key, default=None: raw_headers.get(key, default)
+
+        if trusted:
+            state = MagicMock()
+            state.trusted_proxy_networks = self._TRUSTED
+            req.app = MagicMock()
+            req.app.state = state
+        else:
+            # No app.state — simulates direct caller with no proxy
+            del req.app
+
         return req
 
     def test_first_ip_extracted_from_multi_ip_forwarded_for(self) -> None:
-        """X-Forwarded-For: attacker, proxy1, proxy2 → bucket key is 'attacker'."""
+        """X-Forwarded-For from trusted proxy: first IP is the rate-limit key."""
         from langsight.api.rate_limit import _rate_limit_key
 
         req = self._make_rate_limit_request(
-            {"X-Forwarded-For": "1.2.3.4, 10.0.0.1, 192.168.1.1"}
+            {"X-Forwarded-For": "1.2.3.4, 10.0.0.1, 192.168.1.1"},
+            trusted=True,
         )
         key = _rate_limit_key(req)  # type: ignore[arg-type]
 
         assert key == "1.2.3.4", (
             f"Expected first IP '1.2.3.4', got '{key}'. "
-            "Attacker must not escape their bucket by appending trusted IPs."
+            "Client must not escape their bucket by appending extra IPs."
         )
 
-    def test_trusted_ip_appended_after_attacker_ip_does_not_change_bucket(self) -> None:
-        """Attack: attacker sends '1.2.3.4, 127.0.0.1' hoping to key on loopback.
-        The bucket must still be keyed on the attacker's IP (first value)."""
+    def test_xff_ignored_from_untrusted_direct_caller(self) -> None:
+        """X-Forwarded-For from a direct (untrusted) caller must be ignored.
+
+        An attacker sending this header directly (no proxy in front) must be
+        bucketed by their TCP address, not the spoofed XFF value.
+        """
         from langsight.api.rate_limit import _rate_limit_key
 
         req = self._make_rate_limit_request(
-            {"X-Forwarded-For": "5.5.5.5, 127.0.0.1"}
+            {"X-Forwarded-For": "1.2.3.4, 10.0.0.1"},
+            client_ip="5.5.5.5",   # untrusted TCP address
+            trusted=False,
         )
         key = _rate_limit_key(req)  # type: ignore[arg-type]
 
-        assert key == "5.5.5.5", (
-            "Injected trusted IP must not change the rate-limit bucket"
-        )
-        assert key != "127.0.0.1", (
-            "Bucket must not be the injected trusted loopback address"
-        )
+        assert key != "1.2.3.4", "Spoofed XFF must not be trusted from untrusted caller"
+        assert key == "5.5.5.5", f"Expected TCP address '5.5.5.5', got '{key}'"
 
-    def test_different_attacker_ips_get_separate_buckets(self) -> None:
-        """Each unique first IP gets its own bucket — attacker cannot exhaust
-        a single victim's quota by rotating their own source IP."""
+    def test_trusted_ip_appended_after_attacker_ip_does_not_change_bucket(self) -> None:
+        """Via trusted proxy: 'client-ip, 127.0.0.1' must key on first IP."""
         from langsight.api.rate_limit import _rate_limit_key
 
-        req_a = self._make_rate_limit_request({"X-Forwarded-For": "1.1.1.1"})
-        req_b = self._make_rate_limit_request({"X-Forwarded-For": "2.2.2.2"})
-        req_c = self._make_rate_limit_request({"X-Forwarded-For": "3.3.3.3"})
+        req = self._make_rate_limit_request(
+            {"X-Forwarded-For": "5.5.5.5, 127.0.0.1"},
+            trusted=True,
+        )
+        key = _rate_limit_key(req)  # type: ignore[arg-type]
+
+        assert key == "5.5.5.5", "Injected IP must not change the rate-limit bucket"
+        assert key != "127.0.0.1", "Bucket must not be the injected loopback address"
+
+    def test_different_attacker_ips_get_separate_buckets(self) -> None:
+        """Each unique first XFF IP from a trusted proxy gets its own bucket."""
+        from langsight.api.rate_limit import _rate_limit_key
+
+        req_a = self._make_rate_limit_request({"X-Forwarded-For": "1.1.1.1"}, trusted=True)
+        req_b = self._make_rate_limit_request({"X-Forwarded-For": "2.2.2.2"}, trusted=True)
+        req_c = self._make_rate_limit_request({"X-Forwarded-For": "3.3.3.3"}, trusted=True)
 
         key_a = _rate_limit_key(req_a)  # type: ignore[arg-type]
         key_b = _rate_limit_key(req_b)  # type: ignore[arg-type]
@@ -441,10 +477,13 @@ class TestRateLimiterKeyResolution:
         assert key_a != key_c
 
     def test_single_ip_forwarded_for_used_as_is(self) -> None:
-        """Single clean IP in X-Forwarded-For → no splitting needed."""
+        """Single clean IP in X-Forwarded-For from trusted proxy → used directly."""
         from langsight.api.rate_limit import _rate_limit_key
 
-        req = self._make_rate_limit_request({"X-Forwarded-For": "203.0.113.5"})
+        req = self._make_rate_limit_request(
+            {"X-Forwarded-For": "203.0.113.5"},
+            trusted=True,
+        )
         key = _rate_limit_key(req)  # type: ignore[arg-type]
 
         assert key == "203.0.113.5"
@@ -460,7 +499,7 @@ class TestRateLimiterKeyResolution:
         key = _rate_limit_key(req)  # type: ignore[arg-type]
 
         assert key.startswith("key:"), f"Expected 'key:' prefix, got '{key}'"
-        assert "secret-key-abcde" in key  # only first 16 chars used
+        assert "secret-key-abcde" in key
 
     def test_no_forwarded_for_no_api_key_falls_back_to_remote_addr(self) -> None:
         """Without any identifying headers, remote address is the rate-limit key."""
@@ -476,7 +515,8 @@ class TestRateLimiterKeyResolution:
         from langsight.api.rate_limit import _rate_limit_key
 
         req = self._make_rate_limit_request(
-            {"X-Forwarded-For": "  9.9.9.9  , 10.0.0.1"}
+            {"X-Forwarded-For": "  9.9.9.9  , 10.0.0.1"},
+            trusted=True,
         )
         key = _rate_limit_key(req)  # type: ignore[arg-type]
 
@@ -485,11 +525,7 @@ class TestRateLimiterKeyResolution:
         )
 
     def test_201_unique_ips_each_get_distinct_buckets(self) -> None:
-        """201 different callers must produce 201 distinct buckets.
-
-        This proves the attacker's rotation strategy gives them 201 buckets of
-        their own — they cannot exhaust a single shared bucket.
-        """
+        """201 different callers via trusted proxy must produce 201 distinct buckets."""
         from langsight.api.rate_limit import _rate_limit_key
 
         keys: set[str] = set()
@@ -497,10 +533,10 @@ class TestRateLimiterKeyResolution:
             req = self._make_rate_limit_request(
                 {"X-Forwarded-For": f"192.0.2.{i % 256}, 10.0.0.1"},
                 client_ip="10.0.0.1",
+                trusted=True,
             )
             keys.add(_rate_limit_key(req))  # type: ignore[arg-type]
 
-        # Each unique first IP maps to a distinct bucket
         assert len(keys) == len({f"192.0.2.{i % 256}" for i in range(201)}), (
-            "Every unique attacker IP must produce its own isolated bucket"
+            "Every unique client IP must produce its own isolated bucket"
         )
