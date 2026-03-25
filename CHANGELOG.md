@@ -40,6 +40,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.6.0] — 2026-03-25
+
+### Breaking Changes
+
+- **`wrap()` auto-generates `session_id` when none is supplied** — previously, omitting `session_id` caused all proxies to share the `__default__` session, merging their loop-detection and budget state. From v0.6.0, each `wrap()` call without an explicit `session_id` receives a unique `uuid4().hex` ID, so two proxies are fully independent by default. To link sub-agents to a parent session, pass `session_id=proxy.session_id` explicitly when constructing the child proxy.
+
+### Added
+
+- **`MCPProxy.session_id` property** — exposes the SDK-issued session ID so parent agents can pass it to sub-agents for explicit chaining (`child = wrap(..., session_id=parent.session_id)`).
+- **`sdk/_ids.py`** — internal `_new_session_id()` generator using `uuid4().hex` (32-char hex string, no prefix, no truncation). All session ID generation across the codebase now routes through this single function.
+- **Prevention Config** — dashboard-managed per-agent thresholds for loop detection, budget enforcement, and circuit-breaker behaviour. Stored in the Postgres `prevention_config` table. Six new API endpoints (create, read, update, delete, list per agent, get project default). SDK fetches the active config on every `wrap()` call and applies it at runtime without code changes.
+- **`PreventionConfig` Pydantic model** — domain model for prevention thresholds; used by both the API layer and the SDK config fetch path.
+- **Prevention tab in Settings dashboard** — per-agent and project-default prevention thresholds are now configurable directly from the dashboard. Fields: loop repetition threshold, loop ping-pong threshold, max budget (USD), circuit-breaker failure window, and circuit-breaker cooldown. Changes take effect on the next `wrap()` call.
+
+### Fixed
+
+- **`HealthTag.SUCCESS_WITH_FALLBACK` never fired** — the health-tag engine checked `if not has_error` before evaluating the fallback path, but fallback resolution by definition requires a prior error. Fixed to track resolved vs. unresolved errors per tool across the session, so `SUCCESS_WITH_FALLBACK` is now correctly emitted when an error is recovered from.
+- **Session ID format inconsistency** — demo seed data, example scripts, e2e runner, and integration fixtures all now use `uuid4().hex` (32-char, no prefixes, no truncation) via the shared `_new_session_id()` generator. Eliminates format mismatches that caused cross-component session lookup failures.
+
+### Tests
+
+- 200+ new tests added: adversarial coverage for loop/budget isolation across independent sessions, integration tests for Prevention Config API round-trips, regression tests for `HealthTag.SUCCESS_WITH_FALLBACK` triggering, and session ID format contract tests.
+- Removed stale `compare_sessions` and `replay_isolation` tests (both features removed in v0.5.x).
+
+---
+
 ## [0.5.6] — 2026-03-24
 
 ### Added
