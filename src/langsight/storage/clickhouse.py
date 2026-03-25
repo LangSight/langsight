@@ -1451,11 +1451,16 @@ class ClickHouseBackend:
                 return None
             return round((cur - prev) / prev * 100, 1)
 
-        cur_avg = safe_float(r[0]); prev_avg = safe_float(r[1])
-        cur_p99 = safe_float(r[2]); prev_p99 = safe_float(r[3])
-        cur_err = int(r[4]); prev_err = int(r[5])
-        cur_calls = int(r[6]); prev_calls = int(r[7])
-        cur_sess = int(r[8]); prev_sess = int(r[9])
+        cur_avg = safe_float(r[0])
+        prev_avg = safe_float(r[1])
+        cur_p99 = safe_float(r[2])
+        prev_p99 = safe_float(r[3])
+        cur_err = int(r[4])
+        prev_err = int(r[5])
+        cur_calls = int(r[6])
+        prev_calls = int(r[7])
+        cur_sess = int(r[8])
+        prev_sess = int(r[9])
 
         cur_err_rate  = cur_err / cur_calls if cur_calls else None
         prev_err_rate = prev_err / prev_calls if prev_calls else None
