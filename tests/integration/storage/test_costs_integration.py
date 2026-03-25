@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
+
+_CH_USER = os.environ.get("CLICKHOUSE_USER", "default")
+_CH_PASSWORD = os.environ.get("CLICKHOUSE_PASSWORD", os.environ.get("LANGSIGHT_CLICKHOUSE_PASSWORD", ""))
 
 from langsight.costs.engine import CostRule, aggregate_cost_rows
 from langsight.sdk.models import ToolCallSpan, ToolCallStatus
@@ -18,16 +22,19 @@ pytestmark = pytest.mark.integration
 async def ch():
     import clickhouse_connect
 
-    admin = await clickhouse_connect.get_async_client(host="localhost", port=8123)
+    admin = await clickhouse_connect.get_async_client(host="localhost", port=8123, username=_CH_USER, password=_CH_PASSWORD)
     await admin.command(f"DROP DATABASE IF EXISTS {TEST_DB}")
     await admin.command(f"CREATE DATABASE {TEST_DB}")
     await admin.close()
 
-    backend = await ClickHouseBackend.open(host="localhost", port=8123, database=TEST_DB)
+    backend = await ClickHouseBackend.open(
+        host="localhost", port=8123, database=TEST_DB,
+        username=_CH_USER, password=_CH_PASSWORD
+    )
     yield backend
     await backend.close()
 
-    admin2 = await clickhouse_connect.get_async_client(host="localhost", port=8123)
+    admin2 = await clickhouse_connect.get_async_client(host="localhost", port=8123, username=_CH_USER, password=_CH_PASSWORD)
     await admin2.command(f"DROP DATABASE IF EXISTS {TEST_DB}")
     await admin2.close()
 

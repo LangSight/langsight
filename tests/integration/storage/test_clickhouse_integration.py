@@ -16,6 +16,7 @@ These tests verify the full ClickHouse backend against a real server:
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -30,25 +31,34 @@ TEST_DB = "langsight_test"
 pytestmark = pytest.mark.integration
 
 
+_CH_USER = os.environ.get("CLICKHOUSE_USER", "default")
+_CH_PASSWORD = os.environ.get("CLICKHOUSE_PASSWORD", os.environ.get("LANGSIGHT_CLICKHOUSE_PASSWORD", ""))
+
+
 @pytest.fixture(scope="module")
 async def ch():
     """Open a ClickHouse backend against the test database and clean up after."""
     import clickhouse_connect
 
     # Create fresh test database
-    admin = await clickhouse_connect.get_async_client(host="localhost", port=8123)
+    admin = await clickhouse_connect.get_async_client(
+        host="localhost", port=8123, username=_CH_USER, password=_CH_PASSWORD
+    )
     await admin.command(f"DROP DATABASE IF EXISTS {TEST_DB}")
     await admin.command(f"CREATE DATABASE {TEST_DB}")
     await admin.close()
 
     backend = await ClickHouseBackend.open(
-        host="localhost", port=8123, database=TEST_DB
+        host="localhost", port=8123, database=TEST_DB,
+        username=_CH_USER, password=_CH_PASSWORD
     )
     yield backend
     await backend.close()
 
     # Teardown
-    admin2 = await clickhouse_connect.get_async_client(host="localhost", port=8123)
+    admin2 = await clickhouse_connect.get_async_client(
+        host="localhost", port=8123, username=_CH_USER, password=_CH_PASSWORD
+    )
     await admin2.command(f"DROP DATABASE IF EXISTS {TEST_DB}")
     await admin2.close()
 
@@ -59,7 +69,7 @@ class TestDDL:
         import clickhouse_connect
 
         client = await clickhouse_connect.get_async_client(
-            host="localhost", port=8123, database=TEST_DB
+            host="localhost", port=8123, database=TEST_DB, username=_CH_USER, password=_CH_PASSWORD
         )
         result = await client.query("SHOW TABLES")
         tables = {row[0] for row in result.result_rows}
@@ -75,7 +85,7 @@ class TestDDL:
         import clickhouse_connect
 
         client = await clickhouse_connect.get_async_client(
-            host="localhost", port=8123, database=TEST_DB
+            host="localhost", port=8123, database=TEST_DB, username=_CH_USER, password=_CH_PASSWORD
         )
         result = await client.query("DESCRIBE TABLE mcp_tool_calls")
         columns = {row[0] for row in result.result_rows}

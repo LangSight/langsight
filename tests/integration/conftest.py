@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+import os
 import socket
+from pathlib import Path
 
 import pytest
+
+# Load .env so integration tests pick up CLICKHOUSE_PASSWORD, POSTGRES_PASSWORD etc.
+_ENV_FILE = Path(__file__).parents[2] / ".env"
+if _ENV_FILE.exists():
+    for _line in _ENV_FILE.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _, _v = _line.partition("=")
+            os.environ.setdefault(_k.strip(), _v.strip())
 
 from langsight.models import MCPServer, TransportType
 
