@@ -113,7 +113,7 @@ def _detect_agent_name(
     # Heuristic: framework class names are CamelCase, user names are lowercase
     # But don't be too strict — "MyAgent" is a valid user name
     # The _SKIP sets above catch the common framework names
-    return name
+    return str(name)
 
 
 # ---------------------------------------------------------------------------
@@ -162,8 +162,10 @@ _global_tool_stack_local = threading.local()
 def _get_global_tool_stack() -> list[_ToolExecContext]:
     """Return the thread-local tool execution stack."""
     if not hasattr(_global_tool_stack_local, "stack"):
-        _global_tool_stack_local.stack: list[_ToolExecContext] = []
-    return _global_tool_stack_local.stack
+        _global_tool_stack_local.stack = []
+    from typing import cast as _cast
+
+    return _cast(list[_ToolExecContext], _global_tool_stack_local.stack)
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +229,7 @@ class LangSightLangChainCallback(BaseIntegration):
             try:
                 from langchain_core.callbacks.base import BaseCallbackHandler
             except ImportError:
-                from langchain.callbacks.base import BaseCallbackHandler  # type: ignore[no-redef]
+                from langchain.callbacks.base import BaseCallbackHandler
 
             self.__class__.__bases__ = (BaseIntegration, BaseCallbackHandler)
             BaseCallbackHandler.__init__(self)

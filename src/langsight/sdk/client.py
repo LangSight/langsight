@@ -594,7 +594,7 @@ class MCPClientProxy:
         Pass this to sub-agents via ``client.wrap(..., session_id=proxy.session_id)``
         to link all calls into one session in the dashboard.
         """
-        return object.__getattribute__(self, "_session_id")  # type: ignore[return-value]
+        return cast(str, object.__getattribute__(self, "_session_id"))
 
     def __getattr__(self, name: str) -> object:
         """Forward all attribute access to the wrapped client."""

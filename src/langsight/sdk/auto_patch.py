@@ -164,7 +164,7 @@ def _patch_openai() -> None:
                     proxy, response, kwargs, started_at, status=status, error=error
                 )
 
-        Completions.create = _patched_sync  # type: ignore[method-assign]
+        Completions.create = _patched_sync  # type: ignore[method-assign, assignment]
     except (ImportError, AttributeError):
         pass
 
@@ -203,7 +203,7 @@ def _patch_openai() -> None:
                     proxy, response, kwargs, started_at, status=status, error=error
                 )
 
-        AsyncCompletions.create = _patched_async  # type: ignore[method-assign]
+        AsyncCompletions.create = _patched_async  # type: ignore[method-assign, assignment]
     except (ImportError, AttributeError):
         pass
 
@@ -255,7 +255,7 @@ def _patch_anthropic() -> None:
                     proxy, response, kwargs, started_at, status=status, error=error
                 )
 
-        Messages.create = _patched_sync  # type: ignore[method-assign]
+        Messages.create = _patched_sync  # type: ignore[method-assign, assignment]
     except (ImportError, AttributeError):
         pass
 
@@ -294,7 +294,7 @@ def _patch_anthropic() -> None:
                     proxy, response, kwargs, started_at, status=status, error=error
                 )
 
-        AsyncMessages.create = _patched_async  # type: ignore[method-assign]
+        AsyncMessages.create = _patched_async  # type: ignore[method-assign, assignment]
     except (ImportError, AttributeError):
         pass
 
@@ -352,7 +352,7 @@ def _patch_google_genai() -> None:
                     error=error,
                 )
 
-        _genai_models.Models.generate_content = _patched_sync  # type: ignore[method-assign]
+        _genai_models.Models.generate_content = _patched_sync
     except (ImportError, AttributeError):
         pass
 
@@ -397,7 +397,7 @@ def _patch_google_genai() -> None:
                     error=error,
                 )
 
-        _genai_models.AsyncModels.generate_content = _patched_async  # type: ignore[method-assign]
+        _genai_models.AsyncModels.generate_content = _patched_async
     except (ImportError, AttributeError):
         pass
 
@@ -482,8 +482,8 @@ def _patch_google_generativeai() -> None:
                     proxy, response, kwargs, started_at, status=status, error=error
                 )
 
-        GenerativeModel.generate_content = _patched_sync  # type: ignore[method-assign]
-        GenerativeModel.generate_content_async = _patched_async  # type: ignore[method-assign]
+        GenerativeModel.generate_content = _patched_sync
+        GenerativeModel.generate_content_async = _patched_async
     except (ImportError, AttributeError):
         pass
 
@@ -590,9 +590,9 @@ def unpatch() -> None:
         from google.genai import models as _genai_models
 
         if "genai_sync" in _originals:
-            _genai_models.Models.generate_content = _originals.pop("genai_sync")  # type: ignore[method-assign]
+            _genai_models.Models.generate_content = _originals.pop("genai_sync")
         if "genai_async" in _originals:
-            _genai_models.AsyncModels.generate_content = _originals.pop("genai_async")  # type: ignore[method-assign]
+            _genai_models.AsyncModels.generate_content = _originals.pop("genai_async")
     except (ImportError, AttributeError):
         pass
 
@@ -600,9 +600,9 @@ def unpatch() -> None:
         from google.generativeai.generative_models import GenerativeModel
 
         if "genai_legacy_sync" in _originals:
-            GenerativeModel.generate_content = _originals.pop("genai_legacy_sync")  # type: ignore[method-assign]
+            GenerativeModel.generate_content = _originals.pop("genai_legacy_sync")
         if "genai_legacy_async" in _originals:
-            GenerativeModel.generate_content_async = _originals.pop("genai_legacy_async")  # type: ignore[method-assign]
+            GenerativeModel.generate_content_async = _originals.pop("genai_legacy_async")
     except (ImportError, AttributeError):
         pass
 
@@ -646,7 +646,7 @@ async def session(
     agent_name: str | None = None,
     trace_id: str | None = None,
     session_id: str | None = None,
-):  # type: ignore[return]
+) -> Any:
     """Async context manager that sets a tracing context for an agent run.
 
     Generates a ``session_id`` if not provided.  All LLM calls inside the

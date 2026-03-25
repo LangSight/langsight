@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from fastapi import Depends, FastAPI, Request
@@ -492,7 +492,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         """Return global instance settings."""
         storage = getattr(app.state, "storage", None)
         if storage and hasattr(storage, "get_instance_settings"):
-            return await storage.get_instance_settings()
+            return cast(dict[str, Any], await storage.get_instance_settings())
         return {"redact_payloads": False}
 
     @app.put("/api/settings", tags=["settings"])
@@ -501,7 +501,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         storage = getattr(app.state, "storage", None)
         if storage and hasattr(storage, "save_instance_settings"):
             await storage.save_instance_settings(body)
-            return await storage.get_instance_settings()
+            return cast(dict[str, Any], await storage.get_instance_settings())
         return {"redact_payloads": False}
 
     return app

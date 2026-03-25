@@ -7,7 +7,7 @@ GET /api/agents/sessions/{session_id} — full span tree for one session
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
@@ -199,7 +199,10 @@ async def get_loop_counts(
     """Return how many loop-detection events fired per agent in the time window."""
     if not hasattr(storage, "get_agent_loop_counts"):
         return []
-    return await storage.get_agent_loop_counts(hours=hours, project_id=project_id)
+    return cast(
+        list[dict[str, Any]],
+        await storage.get_agent_loop_counts(hours=hours, project_id=project_id),
+    )
 
 
 @router.get(

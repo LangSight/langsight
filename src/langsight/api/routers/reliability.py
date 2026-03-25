@@ -128,9 +128,12 @@ async def get_incomplete_sessions(
     """
     if not hasattr(storage, "get_incomplete_sessions"):
         return []
-    return await storage.get_incomplete_sessions(
-        stale_minutes=stale_minutes,
-        project_id=project_id,
+    return cast(
+        list[dict[str, Any]],
+        await storage.get_incomplete_sessions(
+            stale_minutes=stale_minutes,
+            project_id=project_id,
+        ),
     )
 
 

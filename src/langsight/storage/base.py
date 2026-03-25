@@ -45,6 +45,7 @@ class StorageBackend(Protocol):
         self,
         server_name: str,
         limit: int = 10,
+        project_id: str | None = None,
     ) -> list[HealthCheckResult]:
         """Return the N most recent health results for a server, newest first."""
         ...

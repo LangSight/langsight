@@ -33,8 +33,10 @@ class PendingToolContext:
 
 def _get_pending() -> dict[str, list[PendingToolContext]]:
     if not hasattr(_local, "pending"):
-        _local.pending: dict[str, list[PendingToolContext]] = defaultdict(list)
-    return _local.pending
+        _local.pending = defaultdict(list)
+    from typing import cast as _cast
+
+    return _cast(dict[str, list[PendingToolContext]], _local.pending)
 
 
 def register_pending_tool(tool_name: str, span_id: str, agent_name: str | None = None) -> None:

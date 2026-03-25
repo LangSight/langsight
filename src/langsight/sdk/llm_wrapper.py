@@ -238,7 +238,7 @@ class _OpenAICompletionsProxy:
 
 
 def _process_openai_response(
-    proxy: OpenAIProxy,
+    proxy: Any,  # OpenAIProxy at runtime; Any to accept _AutoPatchProxy from auto_patch
     response: Any,
     kwargs: dict[str, Any],
     started_at: datetime,
@@ -412,7 +412,7 @@ class _AnthropicMessagesProxy:
 
 
 def _process_anthropic_response(
-    proxy: AnthropicProxy,
+    proxy: Any,  # AnthropicProxy at runtime; Any to accept _AutoPatchProxy from auto_patch
     response: Any,
     kwargs: dict[str, Any],
     started_at: datetime,
@@ -562,7 +562,7 @@ class GeminiProxy(_LLMProxyBase):
 
 
 def _process_gemini_response(
-    proxy: _LLMProxyBase,
+    proxy: Any,  # _LLMProxyBase at runtime; Any to accept _AutoPatchProxy from auto_patch
     response: Any,
     kwargs: dict[str, Any],
     started_at: datetime,
@@ -587,7 +587,7 @@ def _process_gemini_response(
     else:
         # Legacy SDK — model name stored on the GenerativeModel object
         client = object.__getattribute__(proxy, "_client")
-        model = getattr(client, "model_name", None) or getattr(client, "_model_name", "gemini")
+        model = str(getattr(client, "model_name", None) or getattr(client, "_model_name", "gemini"))
 
     # Token usage from usage_metadata — only available on success
     usage = getattr(response, "usage_metadata", None) if response is not None else None

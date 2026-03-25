@@ -100,10 +100,10 @@ class BaseIntegration:
             span = ToolCallSpan(
                 span_id=span_id,
                 ended_at=ended_at,
-                **common,
+                **common,  # type: ignore[arg-type]
             )
         else:
-            span = ToolCallSpan.record(**common)
+            span = ToolCallSpan.record(**common)  # type: ignore[arg-type]
         self._client.buffer_span(span)
         logger.debug(
             "integration.span_recorded",

@@ -137,7 +137,7 @@ class AgentTrace:
         exc_type: type | None,
         exc_value: BaseException | None,
         traceback: Any,
-    ) -> bool:
+    ) -> None:
         if exc_value is not None:
             status = (
                 ToolCallStatus.TIMEOUT
@@ -147,7 +147,6 @@ class AgentTrace:
             self._finish(status=status, error=f"{type(exc_value).__name__}: {exc_value}")
         else:
             self._finish(status=ToolCallStatus.SUCCESS)
-        return False  # NEVER suppress
 
 
 def trace(
@@ -273,5 +272,5 @@ class _NoopTrace:
     def __enter__(self) -> _NoopTrace:
         return self
 
-    def __exit__(self, *_: Any) -> bool:
-        return False
+    def __exit__(self, *_: Any) -> None:
+        pass
