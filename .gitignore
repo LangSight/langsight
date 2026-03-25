@@ -18,6 +18,9 @@ build/
 # Environment files
 .env
 !.env.example
+
+# MCP config (local paths)
+.mcp.json
 *.env
 
 # LangSight local data
