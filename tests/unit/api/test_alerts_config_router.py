@@ -87,6 +87,7 @@ class TestGetAlertsConfig:
 
         assert response.status_code == 200
         assert response.json()["webhook_configured"] is False
+        # URL is masked — always None in GET response (security: S5 fix)
         assert response.json()["slack_webhook"] is None
 
     async def test_returns_webhook_from_db_config(self, client) -> None:
@@ -100,7 +101,8 @@ class TestGetAlertsConfig:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["slack_webhook"] == "https://hooks.slack.com/from-db"
+        # URL is masked — dashboard gets webhook_configured flag, not the raw URL
+        assert data["slack_webhook"] is None
         assert data["webhook_configured"] is True
 
     async def test_returns_webhook_from_env_var_when_no_db_config(self, client, monkeypatch) -> None:
@@ -111,7 +113,7 @@ class TestGetAlertsConfig:
         response = await c.get("/api/alerts/config")
 
         data = response.json()
-        assert data["slack_webhook"] == "https://hooks.slack.com/from-env"
+        assert data["slack_webhook"] is None  # URL masked
         assert data["webhook_configured"] is True
 
     async def test_db_webhook_overrides_env_var(self, client, monkeypatch) -> None:
@@ -124,7 +126,9 @@ class TestGetAlertsConfig:
 
         response = await c.get("/api/alerts/config")
 
-        assert response.json()["slack_webhook"] == "https://hooks.slack.com/from-db"
+        # DB webhook takes priority — both masked, but configured=True
+        assert response.json()["webhook_configured"] is True
+        assert response.json()["slack_webhook"] is None  # URL masked
 
     async def test_db_alert_types_merged_with_defaults(self, client) -> None:
         c, app, storage = client
@@ -176,7 +180,7 @@ class TestSaveAlertsConfig:
 
         data = response.json()
         assert data["webhook_configured"] is True
-        assert data["slack_webhook"] == "https://hooks.slack.com/saved"
+        assert data["slack_webhook"] is None  # URL masked in all responses
 
     async def test_saves_alert_type_toggles(self, client) -> None:
         c, app, storage = client

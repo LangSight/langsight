@@ -417,19 +417,33 @@ class PostgresBackend:
         self,
         server_name: str,
         limit: int = 10,
+        project_id: str | None = None,
     ) -> list[HealthCheckResult]:
         """Return the N most recent health results for a server, newest first."""
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT * FROM health_results
-                WHERE server_name = $1
-                ORDER BY checked_at DESC
-                LIMIT $2
-                """,
-                server_name,
-                limit,
-            )
+            if project_id:
+                rows = await conn.fetch(
+                    """
+                    SELECT * FROM health_results
+                    WHERE server_name = $1 AND (project_id = $3 OR project_id = '')
+                    ORDER BY checked_at DESC
+                    LIMIT $2
+                    """,
+                    server_name,
+                    limit,
+                    project_id,
+                )
+            else:
+                rows = await conn.fetch(
+                    """
+                    SELECT * FROM health_results
+                    WHERE server_name = $1
+                    ORDER BY checked_at DESC
+                    LIMIT $2
+                    """,
+                    server_name,
+                    limit,
+                )
         return [_row_to_result(row) for row in rows]
 
     # ── API key management ────────────────────────────────────────────────────
@@ -566,12 +580,18 @@ class PostgresBackend:
         return result != "UPDATE 0"
 
     async def delete_project(self, project_id: str) -> bool:
-        # Cascade: delete all project-scoped metadata before deleting the project row
-        await self._pool.execute("DELETE FROM agent_metadata WHERE project_id = $1", project_id)
-        await self._pool.execute("DELETE FROM server_metadata WHERE project_id = $1", project_id)
-        await self._pool.execute("DELETE FROM server_tools WHERE project_id = $1", project_id)
-        await self._pool.execute("DELETE FROM project_members WHERE project_id = $1", project_id)
-        result: str = await self._pool.execute("DELETE FROM projects WHERE id = $1", project_id)
+        """Delete a project and all its scoped data atomically.
+
+        All 5 DELETEs run in a single transaction — a crash mid-way will
+        roll back automatically rather than leaving orphaned rows.
+        """
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute("DELETE FROM agent_metadata WHERE project_id = $1", project_id)
+                await conn.execute("DELETE FROM server_metadata WHERE project_id = $1", project_id)
+                await conn.execute("DELETE FROM server_tools WHERE project_id = $1", project_id)
+                await conn.execute("DELETE FROM project_members WHERE project_id = $1", project_id)
+                result: str = await conn.execute("DELETE FROM projects WHERE id = $1", project_id)
         return result != "DELETE 0"
 
     # ── Project membership ────────────────────────────────────────────────────

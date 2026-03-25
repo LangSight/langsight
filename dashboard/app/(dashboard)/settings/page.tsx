@@ -1367,7 +1367,7 @@ function GeneralSection() {
   const apiUrl = "http://localhost:8000";
   const debugInfo = {
     instance_url: apiUrl,
-    dashboard_version: "v0.2.0",
+    dashboard_version: "v0.6.2",
     api_version: status?.version ?? "…",
     storage_mode: status?.storage_mode ?? "…",
     auth_enabled: status?.auth_enabled ?? false,

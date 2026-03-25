@@ -24,8 +24,11 @@ Switch from SQLite → ClickHouse in .langsight.yaml:
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
+
+_SAFE_DB_NAME = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 import clickhouse_connect
 import structlog
@@ -235,6 +238,12 @@ class ClickHouseBackend:
 
         Creates the database automatically if it doesn't exist.
         """
+        if not _SAFE_DB_NAME.match(database):
+            raise ValueError(
+                f"Invalid ClickHouse database name {database!r}. "
+                "Must match ^[a-zA-Z_][a-zA-Z0-9_]*$"
+            )
+
         # Timeout constants — keep low so a runaway aggregation never blocks
         # the API indefinitely. 5 s connect, 30 s per query.
         _CONNECT_TIMEOUT = 5

@@ -126,8 +126,9 @@ class DualStorage:
         self,
         server_name: str,
         limit: int = 10,
+        project_id: str | None = None,
     ) -> list[HealthCheckResult]:
-        return await self._analytics.get_health_history(server_name, limit)
+        return await self._analytics.get_health_history(server_name, limit, project_id=project_id)
 
     # Span ingestion
 

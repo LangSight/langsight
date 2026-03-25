@@ -72,6 +72,8 @@ async def _load_alert_config(request: Request) -> dict[str, Any]:
     if db_cfg and db_cfg.get("alert_types"):
         alert_types.update(db_cfg["alert_types"])
 
+    # Internal helper returns the raw URL so the test-send endpoint can use it.
+    # The GET handler masks it before responding to the client.
     return {"slack_webhook": webhook, "alert_types": alert_types}
 
 
@@ -100,10 +102,13 @@ class AlertConfigUpdate(BaseModel):
 async def get_alerts_config(request: Request) -> AlertConfigResponse:
     """Return the current alert configuration (read from DB)."""
     cfg = await _load_alert_config(request)
+    webhook = cfg["slack_webhook"]
     return AlertConfigResponse(
-        slack_webhook=cfg["slack_webhook"],
+        # Mask the full URL — expose only a configured/not-configured flag.
+        # The actual URL is kept internal for the test-send endpoint.
+        slack_webhook=None,
         alert_types=cfg["alert_types"],
-        webhook_configured=bool(cfg["slack_webhook"]),
+        webhook_configured=bool(webhook),
     )
 
 
@@ -134,7 +139,7 @@ async def save_alerts_config(
     )
 
     return AlertConfigResponse(
-        slack_webhook=new_webhook,
+        slack_webhook=None,  # URL masked — expose configured flag only
         alert_types=new_alert_types,
         webhook_configured=bool(new_webhook),
     )

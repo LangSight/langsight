@@ -401,43 +401,46 @@ class LangSightClient:
         if not config:
             return
 
-        # Override loop config
-        loop_enabled = config.get("loop_enabled")
-        if loop_enabled is not None:
-            if loop_enabled:
-                self._loop_config = LoopDetectorConfig(
-                    threshold=int(config.get("loop_threshold", 3)),
-                    action=LoopAction(config.get("loop_action", "terminate")),
-                )
-            else:
-                self._loop_config = None
+        # Hold the lock while mutating shared config state — concurrent wrap()
+        # calls (e.g. in multi-agent apps) would otherwise race on these fields.
+        with self._lock:
+            # Override loop config
+            loop_enabled = config.get("loop_enabled")
+            if loop_enabled is not None:
+                if loop_enabled:
+                    self._loop_config = LoopDetectorConfig(
+                        threshold=int(config.get("loop_threshold", 3)),
+                        action=LoopAction(config.get("loop_action", "terminate")),
+                    )
+                else:
+                    self._loop_config = None
 
-        # Override budget config
-        has_any_limit = any(
-            config.get(k) is not None for k in ("max_steps", "max_cost_usd", "max_wall_time_s")
-        )
-        if has_any_limit:
-            self._budget_config = BudgetConfig(
-                max_steps=config.get("max_steps"),
-                max_cost_usd=config.get("max_cost_usd"),
-                max_wall_time_s=config.get("max_wall_time_s"),
-                soft_alert_fraction=float(config.get("budget_soft_alert", 0.80)),
+            # Override budget config
+            has_any_limit = any(
+                config.get(k) is not None for k in ("max_steps", "max_cost_usd", "max_wall_time_s")
             )
-        elif "max_steps" in config and config["max_steps"] is None:
-            # Explicitly cleared in dashboard
-            self._budget_config = None
-
-        # Override circuit breaker config
-        cb_enabled = config.get("cb_enabled")
-        if cb_enabled is not None:
-            if cb_enabled:
-                self._cb_default_config = CircuitBreakerConfig(
-                    failure_threshold=int(config.get("cb_failure_threshold", 5)),
-                    cooldown_seconds=float(config.get("cb_cooldown_seconds", 60.0)),
-                    half_open_max_calls=int(config.get("cb_half_open_max_calls", 2)),
+            if has_any_limit:
+                self._budget_config = BudgetConfig(
+                    max_steps=config.get("max_steps"),
+                    max_cost_usd=config.get("max_cost_usd"),
+                    max_wall_time_s=config.get("max_wall_time_s"),
+                    soft_alert_fraction=float(config.get("budget_soft_alert", 0.80)),
                 )
-            else:
-                self._cb_default_config = None
+            elif "max_steps" in config and config["max_steps"] is None:
+                # Explicitly cleared in dashboard
+                self._budget_config = None
+
+            # Override circuit breaker config
+            cb_enabled = config.get("cb_enabled")
+            if cb_enabled is not None:
+                if cb_enabled:
+                    self._cb_default_config = CircuitBreakerConfig(
+                        failure_threshold=int(config.get("cb_failure_threshold", 5)),
+                        cooldown_seconds=float(config.get("cb_cooldown_seconds", 60.0)),
+                        half_open_max_calls=int(config.get("cb_half_open_max_calls", 2)),
+                    )
+                else:
+                    self._cb_default_config = None
 
         logger.debug(
             "sdk.remote_config_applied",

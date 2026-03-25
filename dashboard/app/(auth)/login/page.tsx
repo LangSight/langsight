@@ -59,7 +59,7 @@ export default function LoginPage() {
             className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full ml-1"
             style={{ background: "hsl(var(--primary) / 0.2)", color: "hsl(var(--primary))" }}
           >
-            v0.2
+            v0.6.2
           </span>
         </div>
 

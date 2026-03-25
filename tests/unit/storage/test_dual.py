@@ -119,7 +119,7 @@ class TestAnalyticsRouting:
         analytics.get_health_history = AsyncMock(return_value=expected)
         result = await storage.get_health_history("srv", limit=5)
         assert result is expected
-        analytics.get_health_history.assert_called_once_with("srv", 5)
+        analytics.get_health_history.assert_called_once_with("srv", 5, project_id=None)
 
     async def test_save_tool_call_span_goes_to_analytics(
         self, storage: DualStorage, meta: MagicMock, analytics: MagicMock

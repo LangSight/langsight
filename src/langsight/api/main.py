@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import re
+import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError
@@ -171,6 +174,17 @@ async def _bootstrap_admin(storage: Any) -> str | None:
                 hint="Set LANGSIGHT_ADMIN_EMAIL and LANGSIGHT_ADMIN_PASSWORD to create the first admin",
             )
             return None
+
+        _WEAK_PASSWORDS = {"admin", "password", "langsight", "changeme", "secret", "123456"}
+        if len(admin_password) < 12 or admin_password.lower() in _WEAK_PASSWORDS:
+            logger.error(
+                "api.startup.weak_admin_password",
+                hint="LANGSIGHT_ADMIN_PASSWORD must be at least 12 characters and not a common password",
+            )
+            raise ValueError(
+                "LANGSIGHT_ADMIN_PASSWORD is too weak. "
+                "Use at least 12 characters and avoid common passwords."
+            )
 
         password_hash = bcrypt.hashpw(admin_password.encode(), bcrypt.gensalt(12)).decode()
 
@@ -346,8 +360,10 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         ),
         version=_VERSION,
         lifespan=lifespan,
-        docs_url="/docs",
-        redoc_url="/redoc",
+        # Disable Swagger/ReDoc in production — set LANGSIGHT_ENV=development to enable.
+        # Exposing API schema unauthenticated leaks endpoint names and parameter shapes.
+        docs_url="/docs" if os.environ.get("LANGSIGHT_ENV") == "development" else None,
+        redoc_url="/redoc" if os.environ.get("LANGSIGHT_ENV") == "development" else None,
     )
 
     # Prometheus metrics — request count + duration histograms
@@ -478,8 +494,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             "status": "ready" if storage_ok else "not_ready",
             "version": _VERSION,
             "storage": storage_detail,
-            "auth_enabled": bool(getattr(app.state, "api_keys", [])),
-            "storage_mode": app.state.config.storage.mode,
+            # auth_enabled and storage_mode intentionally omitted — they leak
+            # deployment internals to unauthenticated callers.
         }
         if storage_ok:
             return JSONResponse(content=body, status_code=200)
