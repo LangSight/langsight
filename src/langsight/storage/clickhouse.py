@@ -446,9 +446,7 @@ class ClickHouseBackend:
         )
         logger.debug("storage.clickhouse.spans_saved", count=len(spans))
 
-    async def get_distinct_span_server_names(
-        self, project_id: str | None = None
-    ) -> set[str]:
+    async def get_distinct_span_server_names(self, project_id: str | None = None) -> set[str]:
         """Return distinct server_name values from tool call spans.
 
         Used by the Discover endpoint to find MCP servers that have sent
@@ -474,9 +472,7 @@ class ClickHouseBackend:
         )
         return {row[0] for row in result.result_rows}
 
-    async def get_distinct_span_agent_names(
-        self, project_id: str | None = None
-    ) -> set[str]:
+    async def get_distinct_span_agent_names(self, project_id: str | None = None) -> set[str]:
         """Return distinct agent_name values from spans.
 
         Used by the Discover endpoint to find agents that have sent
@@ -1310,8 +1306,16 @@ class ClickHouseBackend:
             parameters=params,
         )
         cols = [
-            "bucket", "sessions", "tool_calls", "errors", "error_rate",
-            "avg_latency_ms", "p99_latency_ms", "input_tokens", "output_tokens", "agents",
+            "bucket",
+            "sessions",
+            "tool_calls",
+            "errors",
+            "error_rate",
+            "avg_latency_ms",
+            "p99_latency_ms",
+            "input_tokens",
+            "output_tokens",
+            "agents",
         ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
@@ -1343,7 +1347,14 @@ class ClickHouseBackend:
             """,
             parameters=params,
         )
-        cols = ["model_id", "calls", "input_tokens", "output_tokens", "avg_latency_ms", "error_count"]
+        cols = [
+            "model_id",
+            "calls",
+            "input_tokens",
+            "output_tokens",
+            "avg_latency_ms",
+            "error_count",
+        ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
     async def get_monitoring_tools(
@@ -1353,8 +1364,7 @@ class ClickHouseBackend:
     ) -> list[dict[str, Any]]:
         """Per-tool aggregated metrics for the Tools tab."""
         where = (
-            "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR"
-            " AND span_type = 'tool_call'"
+            "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR AND span_type = 'tool_call'"
         )
         params: dict[str, Any] = {"hours": hours}
         if project_id:
@@ -1384,7 +1394,17 @@ class ClickHouseBackend:
             """,
             parameters=params,
         )
-        cols = ["server_name", "tool_name", "calls", "errors", "avg_latency_ms", "p99_latency_ms", "success_rate", "calls_per_session", "content_errors"]
+        cols = [
+            "server_name",
+            "tool_name",
+            "calls",
+            "errors",
+            "avg_latency_ms",
+            "p99_latency_ms",
+            "success_rate",
+            "calls_per_session",
+            "content_errors",
+        ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
     async def get_monitoring_trends(
@@ -1439,6 +1459,7 @@ class ClickHouseBackend:
             return {}
 
         r = result.result_rows[0]
+
         def safe_float(v: Any) -> float | None:
             try:
                 f = float(v)
@@ -1462,20 +1483,20 @@ class ClickHouseBackend:
         cur_sess = int(r[8])
         prev_sess = int(r[9])
 
-        cur_err_rate  = cur_err / cur_calls if cur_calls else None
+        cur_err_rate = cur_err / cur_calls if cur_calls else None
         prev_err_rate = prev_err / prev_calls if prev_calls else None
 
         return {
-            "cur_avg_latency_ms":  cur_avg,
+            "cur_avg_latency_ms": cur_avg,
             "prev_avg_latency_ms": prev_avg,
             "avg_latency_delta_pct": delta_pct(cur_avg, prev_avg),
-            "cur_p99_latency_ms":  cur_p99,
+            "cur_p99_latency_ms": cur_p99,
             "prev_p99_latency_ms": prev_p99,
             "p99_latency_delta_pct": delta_pct(cur_p99, prev_p99),
-            "cur_error_rate":  cur_err_rate,
+            "cur_error_rate": cur_err_rate,
             "prev_error_rate": prev_err_rate,
             "error_rate_delta_pct": delta_pct(cur_err_rate, prev_err_rate),
-            "cur_sessions":  cur_sess,
+            "cur_sessions": cur_sess,
             "prev_sessions": prev_sess,
             "sessions_delta_pct": delta_pct(float(cur_sess), float(prev_sess)),
         }
@@ -1564,10 +1585,7 @@ class ClickHouseBackend:
         project_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Find sessions that stopped receiving spans — likely crashed agents."""
-        where = (
-            "WHERE started_at >= now() - INTERVAL 24 HOUR"
-            " AND session_id != ''"
-        )
+        where = "WHERE started_at >= now() - INTERVAL 24 HOUR AND session_id != ''"
         params: dict[str, Any] = {"stale_minutes": stale_minutes}
         if project_id:
             where += " AND project_id = {project_id:String}"
@@ -1596,7 +1614,14 @@ class ClickHouseBackend:
             """,
             parameters=params,
         )
-        cols = ["session_id", "agent_name", "last_activity", "span_count", "llm_calls", "tool_calls"]
+        cols = [
+            "session_id",
+            "agent_name",
+            "last_activity",
+            "span_count",
+            "llm_calls",
+            "tool_calls",
+        ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
     # ---------------------------------------------------------------------------

@@ -12,7 +12,6 @@ import {
   getCostsBreakdown,
   getSessions,
   getSessionTrace,
-  compareSessions,
   createProject,
   listProjects,
   createApiKey,
@@ -188,16 +187,6 @@ describe("getSessionTrace", () => {
   });
 });
 
-/* ── compareSessions ────────────────────────────────────────── */
-describe("compareSessions", () => {
-  it("includes both session IDs in the query string", async () => {
-    mockFetch({ summary: { matched: 0, diverged: 0, only_a: 0, only_b: 0 }, diff: [] });
-    await compareSessions("sess-a", "sess-b");
-    const url = (fetch as jest.Mock).mock.calls[0][0] as string;
-    expect(url).toContain("a=sess-a");
-    expect(url).toContain("b=sess-b");
-  });
-});
 
 /* ── createProject ──────────────────────────────────────────── */
 describe("createProject", () => {

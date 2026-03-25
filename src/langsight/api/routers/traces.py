@@ -85,15 +85,18 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
     # Auto-tag session health after ingestion (fail-open)
     if storage is not None and hasattr(storage, "save_session_health_tag"):
         from langsight.tagging.engine import tag_from_spans as _tag
+
         # Compute health tags for each unique session in this batch
         session_spans: dict[str, list[dict]] = {}
         for span in spans:
             if span.session_id:
-                session_spans.setdefault(span.session_id, []).append({
-                    "status": span.status,
-                    "error": span.error or "",
-                    "tool_name": span.tool_name,
-                })
+                session_spans.setdefault(span.session_id, []).append(
+                    {
+                        "status": span.status,
+                        "error": span.error or "",
+                        "tool_name": span.tool_name,
+                    }
+                )
         for session_id, batch_spans in session_spans.items():
             try:
                 tag = _tag(batch_spans)

@@ -48,12 +48,17 @@ from langsight.sdk.context import register_pending_tool
 from langsight.sdk.models import ToolCallSpan, ToolCallStatus
 
 # finish_reason values treated as errors across all LLM SDKs
-_FINISH_REASON_ERRORS = frozenset({
-    # OpenAI / Google GenAI
-    "content_filter", "SAFETY", "RECITATION", "PROHIBITED_CONTENT",
-    # Anthropic
-    "content_filtered",
-})
+_FINISH_REASON_ERRORS = frozenset(
+    {
+        # OpenAI / Google GenAI
+        "content_filter",
+        "SAFETY",
+        "RECITATION",
+        "PROHIBITED_CONTENT",
+        # Anthropic
+        "content_filtered",
+    }
+)
 # finish_reason values that indicate truncation (warn but not error)
 _FINISH_REASON_TRUNCATED = frozenset({"length", "MAX_TOKENS", "max_tokens"})
 
@@ -75,7 +80,10 @@ def _check_finish_reason(
     if sdk == "openai":
         choices = getattr(response, "choices", None) or []
         if not choices:
-            return ToolCallStatus.ERROR, "EmptyResponse: no choices returned (possible content filter)"
+            return (
+                ToolCallStatus.ERROR,
+                "EmptyResponse: no choices returned (possible content filter)",
+            )
         finish = getattr(choices[0], "finish_reason", None)
         if finish in _FINISH_REASON_ERRORS:
             return ToolCallStatus.ERROR, f"ContentFilter: finish_reason={finish}"
@@ -90,7 +98,10 @@ def _check_finish_reason(
     elif sdk == "gemini":
         candidates = getattr(response, "candidates", None) or []
         if not candidates:
-            return ToolCallStatus.ERROR, "EmptyResponse: no candidates returned (possible safety filter)"
+            return (
+                ToolCallStatus.ERROR,
+                "EmptyResponse: no candidates returned (possible safety filter)",
+            )
         # Check first candidate finish reason
         first = candidates[0]
         finish = getattr(first, "finish_reason", None)
@@ -194,7 +205,9 @@ class _OpenAICompletionsProxy:
             error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
-            _process_openai_response(self._parent, response, kwargs, started_at, status=status, error=error)
+            _process_openai_response(
+                self._parent, response, kwargs, started_at, status=status, error=error
+            )
 
     async def acreate(self, **kwargs: Any) -> Any:
         """Intercept async chat.completions.create()."""
@@ -219,7 +232,9 @@ class _OpenAICompletionsProxy:
             error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
-            _process_openai_response(self._parent, response, kwargs, started_at, status=status, error=error)
+            _process_openai_response(
+                self._parent, response, kwargs, started_at, status=status, error=error
+            )
 
 
 def _process_openai_response(
@@ -237,7 +252,11 @@ def _process_openai_response(
     project_id = object.__getattribute__(proxy, "_project_id")
     redact = object.__getattribute__(proxy, "_redact")
 
-    model = getattr(response, "model", kwargs.get("model", "unknown")) if response is not None else kwargs.get("model", "unknown")
+    model = (
+        getattr(response, "model", kwargs.get("model", "unknown"))
+        if response is not None
+        else kwargs.get("model", "unknown")
+    )
     usage = getattr(response, "usage", None) if response is not None else None
     input_tokens = getattr(usage, "prompt_tokens", None) if usage else None
     output_tokens = getattr(usage, "completion_tokens", None) if usage else None
@@ -266,7 +285,11 @@ def _process_openai_response(
     spans.append(llm_span)
 
     # Tool use spans from the response — only on success
-    choices = getattr(response, "choices", []) if response is not None and status == ToolCallStatus.SUCCESS else []
+    choices = (
+        getattr(response, "choices", [])
+        if response is not None and status == ToolCallStatus.SUCCESS
+        else []
+    )
     if choices:
         message = getattr(choices[0], "message", None)
         tool_calls = getattr(message, "tool_calls", None) or []
@@ -356,7 +379,9 @@ class _AnthropicMessagesProxy:
             error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
-            _process_anthropic_response(self._parent, response, kwargs, started_at, status=status, error=error)
+            _process_anthropic_response(
+                self._parent, response, kwargs, started_at, status=status, error=error
+            )
 
     async def acreate(self, **kwargs: Any) -> Any:
         """Intercept async messages.create()."""
@@ -381,7 +406,9 @@ class _AnthropicMessagesProxy:
             error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
-            _process_anthropic_response(self._parent, response, kwargs, started_at, status=status, error=error)
+            _process_anthropic_response(
+                self._parent, response, kwargs, started_at, status=status, error=error
+            )
 
 
 def _process_anthropic_response(
@@ -399,7 +426,11 @@ def _process_anthropic_response(
     project_id = object.__getattribute__(proxy, "_project_id")
     redact = object.__getattribute__(proxy, "_redact")
 
-    model = getattr(response, "model", kwargs.get("model", "unknown")) if response is not None else kwargs.get("model", "unknown")
+    model = (
+        getattr(response, "model", kwargs.get("model", "unknown"))
+        if response is not None
+        else kwargs.get("model", "unknown")
+    )
     usage = getattr(response, "usage", None) if response is not None else None
     input_tokens = getattr(usage, "input_tokens", None) if usage else None
     output_tokens = getattr(usage, "output_tokens", None) if usage else None
@@ -428,7 +459,11 @@ def _process_anthropic_response(
     spans.append(llm_span)
 
     # Tool use spans from content blocks — only on success
-    content = (getattr(response, "content", []) or []) if response is not None and status == ToolCallStatus.SUCCESS else []
+    content = (
+        (getattr(response, "content", []) or [])
+        if response is not None and status == ToolCallStatus.SUCCESS
+        else []
+    )
     for block in content:
         if getattr(block, "type", None) != "tool_use":
             continue
@@ -584,7 +619,11 @@ def _process_gemini_response(
 
     # Function call spans from response parts — only on success
     try:
-        candidates = (getattr(response, "candidates", []) or []) if response is not None and status == ToolCallStatus.SUCCESS else []
+        candidates = (
+            (getattr(response, "candidates", []) or [])
+            if response is not None and status == ToolCallStatus.SUCCESS
+            else []
+        )
         for candidate in candidates:
             content = getattr(candidate, "content", None)
             parts = getattr(content, "parts", []) if content else []
@@ -682,7 +721,15 @@ class _GenaiModelsProxy:
             error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
-            _process_gemini_response(self._parent, response, kwargs, started_at, model_override=model, status=status, error=error)
+            _process_gemini_response(
+                self._parent,
+                response,
+                kwargs,
+                started_at,
+                model_override=model,
+                status=status,
+                error=error,
+            )
 
     def generate_content_stream(self, *, model: str, **kwargs: Any) -> Any:
         """Pass through sync streaming — trace the call start only."""
@@ -747,7 +794,15 @@ class _GenaiAioModelsProxy:
             error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
-            _process_gemini_response(self._parent, response, kwargs, started_at, model_override=model, status=status, error=error)
+            _process_gemini_response(
+                self._parent,
+                response,
+                kwargs,
+                started_at,
+                model_override=model,
+                status=status,
+                error=error,
+            )
 
     async def generate_content_stream(self, *, model: str, **kwargs: Any) -> Any:
         """Pass through async streaming — trace the call start only."""

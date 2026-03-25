@@ -12,7 +12,7 @@
  * calls are made.
  */
 
-import { getSessionTrace, compareSessions, replaySession } from "@/lib/api";
+import { getSessionTrace } from "@/lib/api";
 import { HOSTILE_SESSION_IDS } from "./test-utils";
 
 // ─── Mock fetch ───────────────────────────────────────────────────────────────
@@ -120,94 +120,6 @@ describe("getSessionTrace — hostile session IDs are URL-encoded before fetch",
       }
     },
   );
-});
-
-// ─── compareSessions — both IDs encoded ──────────────────────────────────────
-
-describe("compareSessions — both session IDs are URL-encoded", () => {
-  /**
-   * Invariant: compareSessions() places both IDs in query parameters.
-   * Hostile values must be percent-encoded so they do not escape their
-   * parameter boundaries.
-   */
-
-  it("encodes SQL injection in session A", async () => {
-    mockFetchOk({ session_a: "x", session_b: "y", spans_a: [], spans_b: [], diff: [], summary: { matched: 0, diverged: 0, only_a: 0, only_b: 0 } });
-    await compareSessions("1' UNION SELECT null--", "safe-session");
-    const url = capturedUrl();
-    // ' is a valid RFC 3986 URI character and is not encoded by encodeURIComponent;
-    // the real invariant is that dangerous structural chars are encoded.
-    expect(url).not.toContain(" UNION SELECT");
-    // Spaces must be encoded (they break the HTTP request line)
-    const queryString = url.split("?")[1] ?? "";
-    expect(queryString).not.toContain(" ");
-    // The ampersand that separates b= must still be present and unambiguous
-    expect(url).toContain("&b=safe-session");
-  });
-
-  it("encodes SQL injection in session B", async () => {
-    mockFetchOk({ session_a: "x", session_b: "y", spans_a: [], spans_b: [], diff: [], summary: { matched: 0, diverged: 0, only_a: 0, only_b: 0 } });
-    await compareSessions("safe-session", "1; DROP TABLE sessions;--");
-    const url = capturedUrl();
-    expect(url).toContain("a=safe-session");
-    expect(url).not.toMatch(/;\s*DROP TABLE/i);
-  });
-
-  it("encodes path traversal in session A", async () => {
-    mockFetchOk({ session_a: "x", session_b: "y", spans_a: [], spans_b: [], diff: [], summary: { matched: 0, diverged: 0, only_a: 0, only_b: 0 } });
-    await compareSessions("../../../admin", "sess-b");
-    const url = capturedUrl();
-    expect(url).not.toContain("../");
-    expect(url).toContain("%2F");
-  });
-
-  it("encodes ampersand in session ID to prevent parameter injection", async () => {
-    mockFetchOk({ session_a: "x", session_b: "y", spans_a: [], spans_b: [], diff: [], summary: { matched: 0, diverged: 0, only_a: 0, only_b: 0 } });
-    // An unencoded & would inject a fake parameter — the caller could smuggle
-    // project_id=attacker-project into the query string.
-    await compareSessions("sess-a&project_id=attacker", "sess-b");
-    const url = capturedUrl();
-    // The literal & before project_id must be encoded as %26
-    expect(url).not.toContain("&project_id=attacker");
-    expect(url).toContain("%26project_id%3Dattacker");
-  });
-});
-
-// ─── replaySession — session ID encoded ──────────────────────────────────────
-
-describe("replaySession — session ID is URL-encoded before POST", () => {
-  /**
-   * Invariant: replaySession() uses encodeURIComponent on the session ID in
-   * the path.  An attacker who knows a session ID from another project cannot
-   * supply a crafted ID that traverses to a different API path.
-   */
-
-  it("encodes path traversal characters in session ID for replay endpoint", async () => {
-    mockFetchOk({ original_session_id: "x", replay_session_id: "y", total_spans: 0, replayed: 0, skipped: 0, failed: 0, duration_ms: 0 });
-    await replaySession("../admin/sessions/all");
-    const url = capturedUrl();
-    expect(url).not.toContain("../admin");
-    expect(url).toContain("%2F");
-  });
-
-  it("isolates SQL fragment in replay session ID as a single path segment", async () => {
-    // ' is RFC 3986 safe; encodeURIComponent correctly leaves it unencoded.
-    // Invariant: the session ID is confined to one path segment (no unencoded '/' breaks out).
-    mockFetchOk({ original_session_id: "x", replay_session_id: "y", total_spans: 0, replayed: 0, skipped: 0, failed: 0, duration_ms: 0 });
-    await replaySession("sess' OR '1'='1");
-    const url = capturedUrl();
-    const pathSegment = url.split("/agents/sessions/")[1]?.split("/")[0] ?? "";
-    expect(pathSegment).not.toContain("/");
-    expect(pathSegment).not.toContain(" ");
-  });
-
-  it("encodes null byte in session ID for replay endpoint", async () => {
-    mockFetchOk({ original_session_id: "x", replay_session_id: "y", total_spans: 0, replayed: 0, skipped: 0, failed: 0, duration_ms: 0 });
-    await replaySession("real-id\0fake-id");
-    const url = capturedUrl();
-    expect(url).not.toContain("\0");
-    expect(url).toContain("%00");
-  });
 });
 
 // ─── getSessionTrace with project_id — parameter isolation ───────────────────

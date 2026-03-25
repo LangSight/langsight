@@ -47,45 +47,49 @@ logger = structlog.get_logger()
 # Agent detection — skip framework-internal chain names
 # ---------------------------------------------------------------------------
 
-_SKIP_CHAIN_NAMES = frozenset({
-    # LangChain runnables
-    "RunnableSequence",
-    "RunnableLambda",
-    "RunnableParallel",
-    "RunnablePassthrough",
-    "RunnableBranch",
-    "RunnableAssign",
-    "RunnableEach",
-    "RunnableWithFallbacks",
-    # LangGraph internals
-    "ChannelWrite",
-    "ChannelRead",
-    "PregelNode",
-    "PregelLoop",
-    # Prompt / output parsers
-    "ChatPromptTemplate",
-    "PromptTemplate",
-    "MessagesPlaceholder",
-    "StrOutputParser",
-    "JsonOutputParser",
-    "PydanticOutputParser",
-    # LLM wrappers
-    "ChatOpenAI",
-    "ChatAnthropic",
-    "ChatGoogleGenerativeAI",
-    "ChatVertexAI",
-    "ChatOllama",
-})
+_SKIP_CHAIN_NAMES = frozenset(
+    {
+        # LangChain runnables
+        "RunnableSequence",
+        "RunnableLambda",
+        "RunnableParallel",
+        "RunnablePassthrough",
+        "RunnableBranch",
+        "RunnableAssign",
+        "RunnableEach",
+        "RunnableWithFallbacks",
+        # LangGraph internals
+        "ChannelWrite",
+        "ChannelRead",
+        "PregelNode",
+        "PregelLoop",
+        # Prompt / output parsers
+        "ChatPromptTemplate",
+        "PromptTemplate",
+        "MessagesPlaceholder",
+        "StrOutputParser",
+        "JsonOutputParser",
+        "PydanticOutputParser",
+        # LLM wrappers
+        "ChatOpenAI",
+        "ChatAnthropic",
+        "ChatGoogleGenerativeAI",
+        "ChatVertexAI",
+        "ChatOllama",
+    }
+)
 
 # LangGraph internal node names (not user-defined agents)
-_SKIP_NODE_NAMES = frozenset({
-    "tools",
-    "tool_node",
-    "__start__",
-    "__end__",
-    "should_continue",
-    "agent",  # internal react-agent node, not the graph itself
-})
+_SKIP_NODE_NAMES = frozenset(
+    {
+        "tools",
+        "tool_node",
+        "__start__",
+        "__end__",
+        "should_continue",
+        "agent",  # internal react-agent node, not the graph itself
+    }
+)
 
 
 def _detect_agent_name(
@@ -228,9 +232,7 @@ class LangSightLangChainCallback(BaseIntegration):
             self.__class__.__bases__ = (BaseIntegration, BaseCallbackHandler)
             BaseCallbackHandler.__init__(self)
         except ImportError:
-            logger.warning(
-                "langchain-core not installed. Install with: pip install langchain-core"
-            )
+            logger.warning("langchain-core not installed. Install with: pip install langchain-core")
 
         # Auto-detect mode when server_name is not provided
         self._auto_detect = server_name is None
@@ -486,11 +488,13 @@ class LangSightLangChainCallback(BaseIntegration):
         )
 
         # Push to cross-ainvoke stack so sub-agents can link to this tool
-        self._tool_stack.append(_ToolExecContext(
-            run_id=key,
-            span_id=span_id,
-            tool_name=tool_name,
-        ))
+        self._tool_stack.append(
+            _ToolExecContext(
+                run_id=key,
+                span_id=span_id,
+                tool_name=tool_name,
+            )
+        )
 
     def on_tool_end(
         self,
@@ -582,9 +586,7 @@ class LangSightLangChainCallback(BaseIntegration):
         except (IndexError, TypeError, AttributeError):
             pass  # Defensive — don't crash on unexpected message format
 
-    def on_llm_start(
-        self, serialized: dict[str, Any], prompts: list[str], **kwargs: Any
-    ) -> None:
+    def on_llm_start(self, serialized: dict[str, Any], prompts: list[str], **kwargs: Any) -> None:
         """Record LLM call start time for token/cost tracking."""
         run_id = kwargs.get("run_id")
         if run_id:

@@ -193,11 +193,19 @@ def trace(
     """
     # ── Context manager mode: trace(agent_name="x") ──────────────────────
     if func is None:
-        return _make_trace_cm(client=client, agent_name=agent_name, session_id=session_id, trace_id=trace_id)
+        return _make_trace_cm(
+            client=client, agent_name=agent_name, session_id=session_id, trace_id=trace_id
+        )
 
     # ── Decorator mode: @langsight.trace  or  @langsight.trace(...) ────────
     if callable(func):
-        return _decorate(func, client=client, agent_name=agent_name or func.__name__, session_id=session_id, trace_id=trace_id)
+        return _decorate(
+            func,
+            client=client,
+            agent_name=agent_name or func.__name__,
+            session_id=session_id,
+            trace_id=trace_id,
+        )
 
     raise TypeError(f"trace() expected a callable or None, got {type(func)}")
 

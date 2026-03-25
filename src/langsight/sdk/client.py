@@ -772,8 +772,15 @@ class MCPClientProxy:
 # These are common patterns returned by MCP servers that set isError=False
 # but include an error message in the content (e.g. DB errors, not-found, etc.)
 _CONTENT_ERROR_PREFIXES = (
-    "Error:", "ERROR:", "Exception:", "Traceback (most recent",
-    "[ERROR]", "[Error]", "error:", "Failed:", "FAILED:",
+    "Error:",
+    "ERROR:",
+    "Exception:",
+    "Traceback (most recent",
+    "[ERROR]",
+    "[Error]",
+    "error:",
+    "Failed:",
+    "FAILED:",
 )
 
 

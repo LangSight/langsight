@@ -37,9 +37,7 @@ def _get_pending() -> dict[str, list[PendingToolContext]]:
     return _local.pending
 
 
-def register_pending_tool(
-    tool_name: str, span_id: str, agent_name: str | None = None
-) -> None:
+def register_pending_tool(tool_name: str, span_id: str, agent_name: str | None = None) -> None:
     """Called by wrap_llm() after emitting a function_call span."""
     _get_pending()[tool_name].append(PendingToolContext(span_id=span_id, agent_name=agent_name))
 

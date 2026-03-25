@@ -67,9 +67,9 @@ _trace_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 # Module-level state — patched SDK originals + global client
 # ---------------------------------------------------------------------------
 
-_originals: dict[str, Any] = {}          # original SDK methods, keyed by SDK name
-_patched_sdks: set[str] = set()          # set of patched SDK names
-_global_client: Any | None = None        # LangSightClient singleton (avoids circular import)
+_originals: dict[str, Any] = {}  # original SDK methods, keyed by SDK name
+_patched_sdks: set[str] = set()  # set of patched SDK names
+_global_client: Any | None = None  # LangSightClient singleton (avoids circular import)
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +132,7 @@ def _patch_openai() -> None:
     # ── Sync patch ──────────────────────────────────────────────────────────
     try:
         from openai.resources.chat.completions import Completions
+
         orig_sync = Completions.create
         _originals["openai_sync"] = orig_sync
 
@@ -159,7 +160,9 @@ def _patch_openai() -> None:
                 error = f"{type(exc).__name__}: {exc}"
                 raise
             finally:
-                _process_openai_response(proxy, response, kwargs, started_at, status=status, error=error)
+                _process_openai_response(
+                    proxy, response, kwargs, started_at, status=status, error=error
+                )
 
         Completions.create = _patched_sync  # type: ignore[method-assign]
     except (ImportError, AttributeError):
@@ -168,6 +171,7 @@ def _patch_openai() -> None:
     # ── Async patch ─────────────────────────────────────────────────────────
     try:
         from openai.resources.chat.completions import AsyncCompletions
+
         orig_async = AsyncCompletions.create
         _originals["openai_async"] = orig_async
 
@@ -195,7 +199,9 @@ def _patch_openai() -> None:
                 error = f"{type(exc).__name__}: {exc}"
                 raise
             finally:
-                _process_openai_response(proxy, response, kwargs, started_at, status=status, error=error)
+                _process_openai_response(
+                    proxy, response, kwargs, started_at, status=status, error=error
+                )
 
         AsyncCompletions.create = _patched_async  # type: ignore[method-assign]
     except (ImportError, AttributeError):
@@ -217,6 +223,7 @@ def _patch_anthropic() -> None:
     # ── Sync patch ──────────────────────────────────────────────────────────
     try:
         from anthropic.resources.messages import Messages
+
         orig_sync = Messages.create
         _originals["anthropic_sync"] = orig_sync
 
@@ -244,7 +251,9 @@ def _patch_anthropic() -> None:
                 error = f"{type(exc).__name__}: {exc}"
                 raise
             finally:
-                _process_anthropic_response(proxy, response, kwargs, started_at, status=status, error=error)
+                _process_anthropic_response(
+                    proxy, response, kwargs, started_at, status=status, error=error
+                )
 
         Messages.create = _patched_sync  # type: ignore[method-assign]
     except (ImportError, AttributeError):
@@ -253,6 +262,7 @@ def _patch_anthropic() -> None:
     # ── Async patch ─────────────────────────────────────────────────────────
     try:
         from anthropic.resources.messages import AsyncMessages
+
         orig_async = AsyncMessages.create
         _originals["anthropic_async"] = orig_async
 
@@ -280,7 +290,9 @@ def _patch_anthropic() -> None:
                 error = f"{type(exc).__name__}: {exc}"
                 raise
             finally:
-                _process_anthropic_response(proxy, response, kwargs, started_at, status=status, error=error)
+                _process_anthropic_response(
+                    proxy, response, kwargs, started_at, status=status, error=error
+                )
 
         AsyncMessages.create = _patched_async  # type: ignore[method-assign]
     except (ImportError, AttributeError):
@@ -302,6 +314,7 @@ def _patch_google_genai() -> None:
     # ── Sync patch (client.models.generate_content) ────────────────────────
     try:
         from google.genai import models as _genai_models
+
         orig_sync = _genai_models.Models.generate_content
         _originals["genai_sync"] = orig_sync
 
@@ -329,7 +342,15 @@ def _patch_google_genai() -> None:
                 error = f"{type(exc).__name__}: {exc}"
                 raise
             finally:
-                _process_gemini_response(proxy, response, kwargs, started_at, model_override=model, status=status, error=error)
+                _process_gemini_response(
+                    proxy,
+                    response,
+                    kwargs,
+                    started_at,
+                    model_override=model,
+                    status=status,
+                    error=error,
+                )
 
         _genai_models.Models.generate_content = _patched_sync  # type: ignore[method-assign]
     except (ImportError, AttributeError):
@@ -338,6 +359,7 @@ def _patch_google_genai() -> None:
     # ── Async patch (client.aio.models.generate_content) ──────────────────
     try:
         from google.genai import models as _genai_models
+
         orig_async = _genai_models.AsyncModels.generate_content
         _originals["genai_async"] = orig_async
 
@@ -365,7 +387,15 @@ def _patch_google_genai() -> None:
                 error = f"{type(exc).__name__}: {exc}"
                 raise
             finally:
-                _process_gemini_response(proxy, response, kwargs, started_at, model_override=model, status=status, error=error)
+                _process_gemini_response(
+                    proxy,
+                    response,
+                    kwargs,
+                    started_at,
+                    model_override=model,
+                    status=status,
+                    error=error,
+                )
 
         _genai_models.AsyncModels.generate_content = _patched_async  # type: ignore[method-assign]
     except (ImportError, AttributeError):
@@ -386,6 +416,7 @@ def _patch_google_generativeai() -> None:
 
     try:
         from google.generativeai.generative_models import GenerativeModel
+
         orig_sync = GenerativeModel.generate_content
         orig_async = GenerativeModel.generate_content_async
         _originals["genai_legacy_sync"] = orig_sync
@@ -418,7 +449,9 @@ def _patch_google_generativeai() -> None:
                 error = f"{type(exc).__name__}: {exc}"
                 raise
             finally:
-                _process_gemini_response(proxy, response, kwargs, started_at, status=status, error=error)
+                _process_gemini_response(
+                    proxy, response, kwargs, started_at, status=status, error=error
+                )
 
         async def _patched_async(self_sdk: Any, *args: Any, **kwargs: Any) -> Any:
             proxy = _make_proxy()
@@ -445,7 +478,9 @@ def _patch_google_generativeai() -> None:
                 error = f"{type(exc).__name__}: {exc}"
                 raise
             finally:
-                _process_gemini_response(proxy, response, kwargs, started_at, status=status, error=error)
+                _process_gemini_response(
+                    proxy, response, kwargs, started_at, status=status, error=error
+                )
 
         GenerativeModel.generate_content = _patched_sync  # type: ignore[method-assign]
         GenerativeModel.generate_content_async = _patched_async  # type: ignore[method-assign]
@@ -519,7 +554,8 @@ def auto_patch(
         "auto_patch.complete",
         patched=sorted(_patched_sdks),
         skipped_missing=[
-            sdk for sdk in ["openai", "anthropic", "google_genai", "google_generativeai"]
+            sdk
+            for sdk in ["openai", "anthropic", "google_genai", "google_generativeai"]
             if sdk not in _patched_sdks
         ],
     )
@@ -532,6 +568,7 @@ def unpatch() -> None:
 
     try:
         from openai.resources.chat.completions import AsyncCompletions, Completions
+
         if "openai_sync" in _originals:
             Completions.create = _originals.pop("openai_sync")  # type: ignore[method-assign]
         if "openai_async" in _originals:
@@ -541,6 +578,7 @@ def unpatch() -> None:
 
     try:
         from anthropic.resources.messages import AsyncMessages, Messages
+
         if "anthropic_sync" in _originals:
             Messages.create = _originals.pop("anthropic_sync")  # type: ignore[method-assign]
         if "anthropic_async" in _originals:
@@ -550,6 +588,7 @@ def unpatch() -> None:
 
     try:
         from google.genai import models as _genai_models
+
         if "genai_sync" in _originals:
             _genai_models.Models.generate_content = _originals.pop("genai_sync")  # type: ignore[method-assign]
         if "genai_async" in _originals:
@@ -559,6 +598,7 @@ def unpatch() -> None:
 
     try:
         from google.generativeai.generative_models import GenerativeModel
+
         if "genai_legacy_sync" in _originals:
             GenerativeModel.generate_content = _originals.pop("genai_legacy_sync")  # type: ignore[method-assign]
         if "genai_legacy_async" in _originals:

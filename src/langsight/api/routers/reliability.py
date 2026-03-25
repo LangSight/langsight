@@ -147,7 +147,9 @@ async def tag_incomplete_sessions(
 
     Returns the count of newly tagged sessions.
     """
-    if not hasattr(storage, "get_incomplete_sessions") or not hasattr(storage, "save_session_health_tag"):
+    if not hasattr(storage, "get_incomplete_sessions") or not hasattr(
+        storage, "save_session_health_tag"
+    ):
         return {"tagged": 0}
 
     incomplete = await storage.get_incomplete_sessions(

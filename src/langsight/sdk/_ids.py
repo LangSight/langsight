@@ -7,6 +7,7 @@ Callers (wrap(), set_context(), etc.) call _new_session_id() when no
 session_id is supplied. Sub-agents forward the ID they receive from the
 orchestrator — they never construct a new one themselves.
 """
+
 from __future__ import annotations
 
 import uuid

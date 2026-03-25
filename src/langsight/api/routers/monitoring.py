@@ -106,7 +106,9 @@ async def get_models(
         m = ModelMetrics(**r)
         if m.model_id in pricing:
             inp, out = pricing[m.model_id]
-            m.est_cost_usd = round(m.input_tokens / 1_000_000 * inp + m.output_tokens / 1_000_000 * out, 6)
+            m.est_cost_usd = round(
+                m.input_tokens / 1_000_000 * inp + m.output_tokens / 1_000_000 * out, 6
+            )
         result.append(m)
     return result
 

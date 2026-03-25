@@ -102,8 +102,6 @@ class SessionTrace(BaseModel):
     duration_ms: float | None
 
 
-
-
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -175,8 +173,12 @@ async def list_sessions(
             servers_used=list(r.get("servers_used") or []),
             agents_used=list(r.get("agents_used") or []),
             health_tag=r.get("health_tag") or None,
-            total_input_tokens=int(r["total_input_tokens"]) if r.get("total_input_tokens") else None,
-            total_output_tokens=int(r["total_output_tokens"]) if r.get("total_output_tokens") else None,
+            total_input_tokens=int(r["total_input_tokens"])
+            if r.get("total_input_tokens")
+            else None,
+            total_output_tokens=int(r["total_output_tokens"])
+            if r.get("total_output_tokens")
+            else None,
             model_id=r.get("model_id") or None,
             est_cost_usd=_est_cost(r),
         )
@@ -256,8 +258,6 @@ async def get_session(
         failed_calls=len(failed),
         duration_ms=duration_ms,
     )
-
-
 
 
 # ---------------------------------------------------------------------------
