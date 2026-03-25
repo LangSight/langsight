@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-03-25
+
+### Security
+- `GET /api/settings` now requires authentication — was publicly readable without any API key
+- `PUT /api/settings` now requires authentication + admin role — was writable by anyone with network access
+- SSE `span:new` events now include `project_id` in the payload — without it, all project-scoped SSE subscribers received all tenants' live span events
+- Health detail and history endpoints now pass `project_id` to storage — previously the project-membership guard passed but the storage query returned rows from all projects sharing the same server name
+
+### Fixed
+- SDK: `_loop_detectors` and `_session_budgets` now use LRU eviction (`OrderedDict.move_to_end`) instead of FIFO — previously an active session could be evicted mid-run if 501 sessions existed, resetting its loop detector
+- SDK: `trace(agent_name="x")` now works correctly as both a decorator and a context manager — previously the decorator pattern silently returned a context manager object instead of wrapping the function
+- SDK: `_fetch_prevention_config` now logs `sdk.prevention_config.fetch_failed` when the API is unreachable — previously failed silently, making it impossible to debug misconfigured or offline deployments
+- ClickHouse: lineage self-join now qualifies `project_id` as `child.project_id` and `parent.project_id` — unqualified `project_id` in a self-join produces ambiguous SQL
+- Dockerfile: default `LANGSIGHT_WORKERS` changed from 2 to 1 — SSE broadcaster, rate limiter, and auth cache are all in-process; multi-worker deployments produced inconsistent SSE delivery, doubled rate-limit budgets, and stale auth state
+
 ## [0.6.1] - 2026-03-25
 
 ### Fixed
