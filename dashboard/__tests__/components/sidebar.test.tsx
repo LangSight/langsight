@@ -2,7 +2,7 @@
  * Tests for the Sidebar component.
  * Verifies nav structure, active state, project switcher, and user menu.
  */
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Sidebar } from "@/components/sidebar";
 
@@ -45,9 +45,9 @@ describe("Sidebar — branding", () => {
     expect(screen.getByText("LangSight")).toBeInTheDocument();
   });
 
-  it("renders the v0.2 version badge", () => {
+  it("renders the version badge", () => {
     renderSidebar();
-    expect(screen.getByText("v0.2")).toBeInTheDocument();
+    expect(screen.getByText("v0.6")).toBeInTheDocument();
   });
 });
 
@@ -55,7 +55,7 @@ describe("Sidebar — branding", () => {
 describe("Sidebar — navigation", () => {
   it("renders all primary nav items", () => {
     renderSidebar();
-    expect(screen.getByText("Overview")).toBeInTheDocument();
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Sessions")).toBeInTheDocument();
     expect(screen.getByText("Agents")).toBeInTheDocument();
     expect(screen.getByText("Costs")).toBeInTheDocument();

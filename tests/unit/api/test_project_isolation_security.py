@@ -9,17 +9,12 @@ This module proves that four hard boundaries hold under hostile conditions:
   2. SLO cross-project read: GET /api/slos with project_id=B must not return
      SLOs scoped to project A.
 
-  3. Session comparison cross-project: compare_sessions must pass project_id
-     down to the storage layer; spans belonging to a foreign project must be
-     empty in the result, and the endpoint must return 404 rather than leaking
-     foreign span data.
-
-  4. Health history project filtering: get_health_history with project_id="A"
+  3. Health history project filtering: get_health_history with project_id="A"
      must not return rows whose project_id is "B".  Rows with project_id=""
      (global CLI checks) ARE returned for all project callers — this is
      intentional; tests verify both sides of that contract.
 
-  5. Rate-limiter key resolution: _rate_limit_key must extract only the FIRST
+  4. Rate-limiter key resolution: _rate_limit_key must extract only the FIRST
      IP from X-Forwarded-For; an attacker cannot poison a victim's bucket by
      appending a trusted IP after their own.
 
@@ -102,15 +97,6 @@ async def open_client(config_file: Path):
     storage.create_slo = AsyncMock()
     storage.delete_slo = AsyncMock(return_value=True)
     storage.get_session_trace = AsyncMock(return_value=[])
-    storage.compare_sessions = AsyncMock(return_value={
-        "session_a": "sess-a",
-        "session_b": "sess-b",
-        "spans_a": [],
-        "spans_b": [],
-        "diff": [],
-        "summary": {"matched": 0, "diverged": 0, "only_a": 0, "only_b": 0},
-    })
-
     app.state.storage = storage
     app.state.config = load_config(config_file)
     app.state.api_keys = []  # auth disabled

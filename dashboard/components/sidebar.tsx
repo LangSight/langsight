@@ -370,7 +370,7 @@ export function Sidebar() {
             letterSpacing: "0.02em",
           }}
         >
-          v0.2
+          v0.6
         </span>
       </div>
 

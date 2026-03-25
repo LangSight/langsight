@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { fetcher } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
-import { cn, timeAgo, formatDuration, formatExact } from "@/lib/utils";
+import { cn, formatDuration, formatExact } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import type { AgentSession, HealthTag } from "@/lib/types";
@@ -95,8 +95,6 @@ export default function SessionsPage() {
   }, []);
 
   const [hours, setHours] = useState(24);
-  const [customFrom, setCustomFrom] = useState<string | null>(null);
-  const [customTo, setCustomTo] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "clean" | "failed">("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
@@ -213,11 +211,7 @@ export default function SessionsPage() {
           </div>
           <DateRangeFilter
             activeHours={hours}
-            onPreset={(h) => { setHours(h); setCustomFrom(null); setCustomTo(null); }}
-            onCustomRange={(from, to) => { setCustomFrom(from); setCustomTo(to); }}
-            onClearCustom={() => { setCustomFrom(null); setCustomTo(null); }}
-            customFrom={customFrom}
-            customTo={customTo}
+            onPreset={(h) => setHours(h)}
           />
         </div>
 

@@ -95,6 +95,7 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                         "status": span.status,
                         "error": span.error or "",
                         "tool_name": span.tool_name,
+                        "span_type": span.span_type,
                     }
                 )
         for session_id, batch_spans in session_spans.items():
@@ -110,8 +111,13 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
     # calls are cheap and self-healing after volume wipes.
     if storage is not None and hasattr(storage, "upsert_agent_metadata"):
         project_id = _extract_project_id(spans)
-        # Collect all unique agents from this batch first
+        # Collect all unique agents and servers from this batch first,
+        # then register them. Previously the server registration was nested
+        # inside the agent loop and used a stale `span` variable from the
+        # outer ingestion loop — only the last span's server was ever seen.
         batch_agents = {span.agent_name for span in spans if span.agent_name}
+        batch_servers = {span.server_name for span in spans if span.server_name}
+
         for agent in batch_agents:
             cache_key = f"{project_id}:{agent}"
             if cache_key in _seen_agents:
@@ -130,17 +136,22 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                 logger.debug("trace.agent_auto_registered", agent=agent)
             except Exception:  # noqa: BLE001
                 _seen_agents.discard(cache_key)  # retry next time
-            if span.server_name and span.server_name not in _seen_servers:
-                _seen_servers.add(span.server_name)
+
+        if hasattr(storage, "upsert_server_metadata"):
+            for server in batch_servers:
+                cache_key = f"{project_id}:{server}"
+                if cache_key in _seen_servers:
+                    continue
+                _seen_servers.add(cache_key)
                 try:
                     await storage.upsert_server_metadata(
-                        server_name=span.server_name,
+                        server_name=server,
                         description="Auto-discovered from traces",
                         project_id=project_id,
                     )
-                    logger.debug("trace.server_auto_registered", server=span.server_name)
+                    logger.debug("trace.server_auto_registered", server=server)
                 except Exception:  # noqa: BLE001
-                    pass
+                    _seen_servers.discard(cache_key)  # retry next time
 
     # Update metrics + broadcast to SSE clients
     SPANS_INGESTED.inc(len(spans))

@@ -28,8 +28,26 @@ from slowapi.util import get_remote_address
 def _rate_limit_key(request: Request) -> str:
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
-        # Take only the first (client) IP — ignore any downstream proxies
-        return forwarded.split(",")[0].strip()
+        # Only trust X-Forwarded-For when the TCP connection comes from a known
+        # proxy network (LANGSIGHT_TRUSTED_PROXY_CIDRS). Accepting it from any
+        # caller lets attackers spoof IPs and bypass per-IP rate limits.
+        client_host = request.client.host if request.client else ""
+        trusted = False
+        if client_host:
+            try:
+                import ipaddress
+                networks = getattr(
+                    getattr(request, "app", None),
+                    "state",
+                    None,
+                )
+                networks = getattr(networks, "trusted_proxy_networks", []) if networks else []
+                client_ip = ipaddress.ip_address(client_host)
+                trusted = any(client_ip in net for net in networks)
+            except Exception:  # noqa: BLE001
+                trusted = False
+        if trusted:
+            return forwarded.split(",")[0].strip()
     api_key = request.headers.get("X-API-Key")
     if api_key:
         # Use a prefix — enough for bucketing, avoids retaining the full secret
