@@ -179,8 +179,13 @@ class TestDefaultSessionKey:
             with pytest.raises(LoopDetectedError):
                 await proxy_b.call_tool("query", {"x": 1})
 
-    async def test_none_session_and_default_share_state(self) -> None:
-        """Two proxies with session_id=None share the same __default__ key."""
+    async def test_no_session_id_proxies_are_independent(self) -> None:
+        """Two proxies with no session_id get independent auto-generated sessions.
+
+        Old behavior (pre-v0.3.2): both mapped to __default__ and shared state.
+        New behavior: each wrap() auto-generates a unique session_id — independent.
+        To share state, callers must explicitly pass the same session_id.
+        """
         client = LangSightClient(
             url="http://test:8000",
             loop_detection=True,
@@ -190,12 +195,18 @@ class TestDefaultSessionKey:
         proxy1 = client.wrap(mcp, server_name="srv")
         proxy2 = client.wrap(mcp, server_name="srv")
 
+        # Each proxy has a different SDK-generated session_id
+        assert proxy1.session_id != proxy2.session_id
+
         with patch.object(client, "buffer_span"):
+            # Run 3 calls through proxy1 — loop triggers on proxy1
             await proxy1.call_tool("query", {"x": 1})
-            await proxy2.call_tool("query", {"x": 1})
-            # Third call through either proxy should trigger loop
+            await proxy1.call_tool("query", {"x": 1})
             with pytest.raises(LoopDetectedError):
                 await proxy1.call_tool("query", {"x": 1})
+
+            # proxy2 is independent — its counter is still at 0, no loop yet
+            await proxy2.call_tool("query", {"x": 1})  # must not raise
 
 
 # ---------------------------------------------------------------------------
