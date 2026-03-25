@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-03-25
+
+### Fixed
+- `wrap(session_id="")` now auto-generates a session ID instead of forwarding an empty string. Empty string was treated as a valid ID (`session_id if session_id is not None`), bypassing generation and producing an unusable session key. Fixed to `session_id if session_id else _new_session_id()`.
+
+### Security
+- Regression test added: `test_empty_string_session_id_is_auto_replaced` — verifies empty string triggers auto-generation and the result is a valid 32-char hex ID.
+
 ### Added
 - **`docs-site/database-connections.mdx`** — new self-hosting reference page documenting how to connect to PostgreSQL (port 5432) and ClickHouse (HTTP 8123, native 9000) using DBeaver, psql, and clickhouse-client. Covers default Docker Compose credentials, key tables for both databases, important `mcp_tool_calls` column reference, sample queries for sessions, error breakdown, token usage, and slowest tools, and a warning about not exposing ports publicly without authentication and TLS. Added to the Self-Hosting group in `mint.json`.
 
