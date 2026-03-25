@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { RefreshCw, AlertTriangle, Search, ChevronRight, Server as ServerIcon } from "lucide-react";
 import { fetcher, triggerHealthCheck, getServerHistory } from "@/lib/api";
-import { cn, STATUS_BG, timeAgo, formatLatency, formatExact } from "@/lib/utils";
+import { cn, STATUS_BG, formatLatency, formatExact } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { toast } from "sonner";
@@ -191,8 +191,6 @@ type StatusFilter = "all" | "up" | "degraded" | "down";
 
 export default function HealthPage() {
   const [hours, setHours] = useState<number>(24);
-  const [customFrom, setCustomFrom] = useState<string | null>(null);
-  const [customTo, setCustomTo] = useState<string | null>(null);
   const { data: servers, isLoading, mutate } = useSWR<HealthResult[]>("/api/health/servers", fetcher, { refreshInterval: 30_000 });
   const [expanded, setExpanded] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
@@ -255,11 +253,7 @@ export default function HealthPage() {
         <div className="flex items-center gap-2">
           <DateRangeFilter
             activeHours={hours}
-            onPreset={(h) => { setHours(h); setCustomFrom(null); setCustomTo(null); }}
-            onCustomRange={(from, to) => { setCustomFrom(from); setCustomTo(to); }}
-            onClearCustom={() => { setCustomFrom(null); setCustomTo(null); }}
-            customFrom={customFrom}
-            customTo={customTo}
+            onPreset={(h) => setHours(h)}
           />
           {/* Search */}
           <div className="relative">

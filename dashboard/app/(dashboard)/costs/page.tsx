@@ -166,8 +166,6 @@ function EmptyState({ title, description, body }: {
 /* ── Page ───────────────────────────────────────────────────── */
 export default function CostsPage() {
   const [hours, setHours] = useState<number>(24);
-  const [customFrom, setCustomFrom] = useState<string | null>(null);
-  const [customTo, setCustomTo] = useState<string | null>(null);
   const { activeProject } = useProject();
 
   // Filters (multi-select)
@@ -234,11 +232,7 @@ export default function CostsPage() {
         </div>
         <DateRangeFilter
           activeHours={hours}
-          onPreset={(h) => { setHours(h); setCustomFrom(null); setCustomTo(null); }}
-          onCustomRange={(from, to) => { setCustomFrom(from); setCustomTo(to); }}
-          onClearCustom={() => { setCustomFrom(null); setCustomTo(null); }}
-          customFrom={customFrom}
-          customTo={customTo}
+          onPreset={(h) => setHours(h)}
         />
       </div>
 
