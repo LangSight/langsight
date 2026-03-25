@@ -225,15 +225,18 @@ class TestAgentTraceSyncContextManager:
 
 @pytest.mark.unit
 class TestTraceContextManagerNoClient:
-    def test_returns_noop_when_no_client_configured(self) -> None:
-        """With no global client and no explicit client, trace() returns _NoopTrace."""
+    async def test_returns_noop_when_no_client_configured(self) -> None:
+        """With no global client, trace() returns a no-op context manager that
+        does not raise and produces no spans."""
         import sys
         ap = sys.modules["langsight.sdk.auto_patch"]
         original = ap._global_client
         try:
             ap._global_client = None
             result = trace(agent_name="my-agent")
-            assert isinstance(result, _NoopTrace)
+            # Must be usable as a context manager without raising
+            async with result as t:
+                t.set_output("ok")  # must not raise
         finally:
             ap._global_client = original
 

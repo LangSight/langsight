@@ -5,11 +5,12 @@
 Detect loops. Enforce budgets. Break failing tools. Map blast radius.
 For MCP servers: health checks, security scanning, schema drift detection.
 
+[![Website](https://img.shields.io/badge/website-langsight.dev-blue)](https://www.langsight.dev)
 [![PyPI](https://img.shields.io/pypi/v/langsight)](https://pypi.org/project/langsight/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![CI](https://github.com/LangSight/langsight/actions/workflows/ci.yml/badge.svg)](https://github.com/LangSight/langsight/actions/workflows/ci.yml)
-[![Docs](https://img.shields.io/badge/docs-mintlify-green)](https://docs.langsight.dev)
+[![Docs](https://img.shields.io/badge/docs-langsight.dev-green)](https://docs.langsight.dev)
 
 > **Not another prompt, eval, or simulation platform.**
 > LangSight is the runtime reliability layer for AI agent toolchains.
@@ -241,16 +242,45 @@ Alert types: server down/recovered, schema drift, latency spike, SLO breach, ano
 
 ## Integrations
 
-| Framework | Integration |
-|-----------|------------|
-| LangGraph | `LangSightLangGraphCallback` |
-| LangChain / Langflow | `LangSightLangChainCallback` |
-| CrewAI | `LangSightCrewAICallback` |
-| OpenAI Agents SDK | `LangSightOpenAIHooks` |
-| Anthropic / Claude Agent SDK | `AnthropicToolTracer` |
-| Pydantic AI | `@langsight_tool` decorator |
-| Claude Desktop / Cursor / VS Code | Auto-discovered by `langsight init` |
-| Any OTEL framework | OTLP endpoint |
+| Framework | Integration | Docs |
+|-----------|------------|------|
+| **Google Gemini SDK** (direct) | `client.wrap_llm(genai_client)` | [Direct SDK guide](https://docs.langsight.dev/sdk/integrations/direct-sdk) |
+| **OpenAI SDK** (direct) | `client.wrap_llm(openai_client)` | [Direct SDK guide](https://docs.langsight.dev/sdk/integrations/direct-sdk) |
+| **Anthropic SDK** (direct) | `client.wrap_llm(anthropic_client)` | [Direct SDK guide](https://docs.langsight.dev/sdk/integrations/direct-sdk) |
+| LangGraph | `LangSightLangGraphCallback` | [Docs](https://docs.langsight.dev) |
+| LangChain / Langflow | `LangSightLangChainCallback` | [Docs](https://docs.langsight.dev) |
+| CrewAI | `LangSightCrewAICallback` | [Docs](https://docs.langsight.dev) |
+| OpenAI Agents SDK | `LangSightOpenAIHooks` | [Docs](https://docs.langsight.dev) |
+| Anthropic / Claude Agent SDK | `AnthropicToolTracer` | [Docs](https://docs.langsight.dev) |
+| Pydantic AI | `@langsight_tool` decorator | [Docs](https://docs.langsight.dev) |
+| Claude Desktop / Cursor / VS Code | Auto-discovered by `langsight init` | [Docs](https://docs.langsight.dev) |
+| Any OTEL framework | OTLP endpoint | [Docs](https://docs.langsight.dev) |
+
+### Using LangSight with direct LLM SDKs (Google Gemini, OpenAI, Anthropic)
+
+If you are building AI agents **without LangChain or LangGraph** — using the native Google Gemini SDK, OpenAI SDK, or Anthropic SDK directly — LangSight supports you via `wrap_llm()`:
+
+```python
+import langsight
+from google import genai  # or openai / anthropic
+
+ls = langsight.init()  # reads LANGSIGHT_URL, LANGSIGHT_API_KEY, LANGSIGHT_PROJECT_ID from env
+
+raw_client = genai.Client(api_key="...")
+client = ls.wrap_llm(raw_client, agent_name="my-agent", session_id="sess-001")
+
+# All generate_content() calls are now traced automatically
+response = await client.aio.models.generate_content(model="gemini-2.5-flash", ...)
+```
+
+Wrap MCP sessions with `ls.wrap()` to trace tool calls:
+
+```python
+traced_session = ls.wrap(mcp_session, server_name="my-mcp-server", agent_name="my-agent")
+result = await traced_session.call_tool("my_tool", {"arg": "value"})
+```
+
+**Full guide:** [https://docs.langsight.dev/sdk/integrations/direct-sdk](https://docs.langsight.dev/sdk/integrations/direct-sdk)
 
 ---
 
@@ -290,3 +320,9 @@ LangSight monitors MCP security — it must itself be secure. Report vulnerabili
 ## License
 
 Apache 2.0 — free to use, modify, distribute, and build on. See [LICENSE](LICENSE).
+
+---
+
+**Website:** [https://www.langsight.dev](https://www.langsight.dev)
+**Docs:** [https://docs.langsight.dev](https://docs.langsight.dev)
+**Direct SDK (Google Gemini / OpenAI / Anthropic):** [https://docs.langsight.dev/sdk/integrations/direct-sdk](https://docs.langsight.dev/sdk/integrations/direct-sdk)

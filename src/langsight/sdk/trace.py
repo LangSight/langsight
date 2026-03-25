@@ -190,11 +190,43 @@ def trace(
             result = await analyst.analyze(question)
             t.set_output(result)
     """
-    # ── Context manager mode: trace(agent_name="x") ──────────────────────
+    # ── Decorator-factory or context manager: trace(agent_name="x") ────────
+    # Returns an object that works BOTH as @trace(agent_name="x") decorator
+    # AND as `async with trace(agent_name="x") as t:` context manager.
     if func is None:
-        return _make_trace_cm(
+        _cm = _make_trace_cm(
             client=client, agent_name=agent_name, session_id=session_id, trace_id=trace_id
         )
+
+        class _TraceProxy:
+            """Dual-mode: decorator factory + async/sync context manager.
+
+            The same AgentTrace instance (_cm) is used for both enter and exit
+            so the span lifecycle is preserved correctly.
+            """
+
+            def __call__(self, fn: F) -> F:
+                return _decorate(
+                    fn,
+                    client=client,
+                    agent_name=agent_name or fn.__name__,
+                    session_id=session_id,
+                    trace_id=trace_id,
+                )
+
+            async def __aenter__(self) -> Any:
+                return await _cm.__aenter__()
+
+            async def __aexit__(self, *args: Any) -> None:
+                await _cm.__aexit__(*args)
+
+            def __enter__(self) -> Any:
+                return _cm.__enter__()
+
+            def __exit__(self, *args: Any) -> None:
+                _cm.__exit__(*args)
+
+        return _TraceProxy()  # type: ignore[return-value]
 
     # ── Decorator mode: @langsight.trace  or  @langsight.trace(...) ────────
     if callable(func):
