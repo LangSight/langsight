@@ -19,6 +19,7 @@ import asyncio
 import atexit
 import json
 import threading
+from collections import OrderedDict
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -119,7 +120,7 @@ class LangSightClient:
             if loop_detection
             else None
         )
-        self._loop_detectors: dict[str, LoopDetector] = {}
+        self._loop_detectors: OrderedDict[str, LoopDetector] = OrderedDict()
 
         # Budget config (None = no limits)
         has_budget = any(v is not None for v in (max_cost_usd, max_steps, max_wall_time_s))
@@ -133,7 +134,7 @@ class LangSightClient:
             if has_budget
             else None
         )
-        self._session_budgets: dict[str, SessionBudget] = {}
+        self._session_budgets: OrderedDict[str, SessionBudget] = OrderedDict()
         self._pricing_table: dict[str, tuple[float, float]] = pricing_table or {}
 
         # Circuit breaker config (None = disabled)
@@ -169,31 +170,36 @@ class LangSightClient:
     def _get_loop_detector(self, session_id: str | None) -> LoopDetector | None:
         """Return the loop detector for a session (creates on first access).
 
-        Evicts the oldest entry when the cap is reached to prevent a rogue agent
-        generating random session_ids from causing unbounded memory growth (DoS).
+        Uses an LRU eviction policy: active sessions are promoted to the end
+        on each access, so only truly idle sessions are evicted when the cap
+        (_MAX_SESSION_STATE) is reached. This prevents a rogue agent generating
+        random session_ids from causing unbounded memory growth.
         """
         if self._loop_config is None:
             return None
         key = session_id or "__default__"
         if key not in self._loop_detectors:
             if len(self._loop_detectors) >= _MAX_SESSION_STATE:
-                self._loop_detectors.pop(next(iter(self._loop_detectors)))
+                self._loop_detectors.popitem(last=False)  # evict LRU (oldest)
             self._loop_detectors[key] = LoopDetector(self._loop_config)
+        else:
+            self._loop_detectors.move_to_end(key)  # promote to MRU
         return self._loop_detectors[key]
 
     def _get_session_budget(self, session_id: str | None) -> SessionBudget | None:
         """Return the budget tracker for a session (creates on first access).
 
-        Evicts the oldest entry when the cap is reached — same DoS protection as
-        _get_loop_detector.
+        Same LRU eviction policy as _get_loop_detector.
         """
         if self._budget_config is None:
             return None
         key = session_id or "__default__"
         if key not in self._session_budgets:
             if len(self._session_budgets) >= _MAX_SESSION_STATE:
-                self._session_budgets.pop(next(iter(self._session_budgets)))
+                self._session_budgets.popitem(last=False)  # evict LRU (oldest)
             self._session_budgets[key] = SessionBudget(self._budget_config)
+        else:
+            self._session_budgets.move_to_end(key)  # promote to MRU
         return self._session_budgets[key]
 
     # --- Public API ---
@@ -376,15 +382,20 @@ class LangSightClient:
             resp = await http.get(url)
             if resp.status_code == 200:
                 return cast(dict[str, Any], resp.json())
-        except Exception:  # noqa: BLE001
-            pass  # offline or unreachable — constructor defaults remain active
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "sdk.prevention_config.fetch_failed",
+                agent=agent_name,
+                error=str(exc),
+                note="constructor defaults remain active (fail-open)",
+            )
         return None
 
     async def _apply_remote_config(self, agent_name: str, project_id: str | None) -> None:
         """Fetch and apply remote prevention config, overriding constructor defaults.
 
         Called as a fire-and-forget background task from wrap(). If the API is
-        unreachable, constructor defaults remain active (fail-open).
+        unreachable, a warning is logged and constructor defaults remain active (fail-open).
         """
         config = await self._fetch_prevention_config(agent_name, project_id)
         if not config:
