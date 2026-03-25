@@ -76,6 +76,27 @@ uv run ruff check src/
 grep -rn "^print(" src/ --include="*.py"
 ```
 
+## Pre-Push Checklist — CI must be green
+
+**🔴 HARD GATE: Never push to `main` or create a PR if CI is failing.**
+
+Before every `git push` (especially to `main` or a PR branch):
+
+```bash
+# Check the last CI run on this branch / main
+gh run list --branch main --limit 3
+
+# If you just pushed a branch, wait for CI then check:
+gh run watch   # live view of current run
+
+# Only push / merge when ALL checks show ✓
+```
+
+If CI is red:
+1. Identify the failing job: `gh run view <run-id> --log-failed`
+2. Fix the failure locally
+3. Push the fix — never force-push past a red CI
+
 ## PR Description Template
 
 ```markdown
@@ -125,5 +146,6 @@ git rebase -i main
 - `git add .` or `git add -A` — always stage specific files
 - Commit directly to `main` — always use feature branches
 - Skip the pre-commit checklist
+- Push to `main` or merge a PR when CI is red — fix CI first
 - Write vague messages like "fix stuff" or "WIP" or "updates"
 - Commit `.env`, `*.pem`, `*.key`, or any file with credentials

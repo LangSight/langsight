@@ -15,11 +15,20 @@ You are a senior release engineer responsible for shipping LangSight releases re
 
 ## Release Checklist
 
-### Pre-release verification
-- [ ] All tests passing: `uv run pytest`
+### Pre-release verification (ALL must pass — no exceptions)
+
+**🔴 HARD GATE: CI must be green before ANY release step.**
+```bash
+gh run list --branch main --limit 5
+# All recent runs on main must show ✓ (completed/success).
+# If ANY run is failing or pending — STOP. Fix CI first. Never release from a red CI.
+```
+
+- [ ] **CI green on `main`** — verified with `gh run list --branch main --limit 5`
+- [ ] All tests passing locally: `uv run pytest`
 - [ ] No type errors: `uv run mypy src/`
 - [ ] No lint errors: `uv run ruff check src/`
-- [ ] No security issues: `uv run pip-audit` or `uv audit`
+- [ ] No security issues: `uv audit`
 - [ ] Coverage meets target: `uv run pytest --cov=langsight`
 - [ ] Docker builds successfully: `docker compose build`
 - [ ] CLI works end-to-end: `uv run langsight --help`
@@ -68,17 +77,26 @@ docker push langsight/langsight:0.2.0
 docker push langsight/langsight:latest
 ```
 
-### PyPI publish
+### PyPI publish (CI/CD automated)
+PyPI release is handled by the CI/CD pipeline — do NOT publish manually.
+
 ```bash
-# Build distribution
+# 1. Build the distribution locally to verify it packages correctly
 uv build
 
-# Check the package
-uv run twine check dist/*
+# 2. Verify the package is well-formed
+uv run python -m tarfile -l dist/*.tar.gz | head -20
 
-# Upload to PyPI (needs PYPI_TOKEN env var)
-uv run twine upload dist/*
+# 3. The CI/CD pipeline publishes to PyPI automatically when a version tag is pushed.
+#    Pushing the tag is the release trigger:
+git tag -a v0.6.0 -m "Release v0.6.0"
+git push origin v0.6.0
+
+# 4. Confirm CI/CD picked it up
+gh run list --branch main --limit 3
 ```
+
+Never run `uv publish` or `twine upload` manually — always let the pipeline do it.
 
 ### GitHub Release
 Create release notes from CHANGELOG section:
