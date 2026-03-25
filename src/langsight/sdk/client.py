@@ -32,6 +32,7 @@ from langsight.exceptions import (
 )
 from langsight.sdk.budget import BudgetConfig, SessionBudget
 from langsight.sdk.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
+from langsight.sdk._ids import _new_session_id
 from langsight.sdk.loop_detector import LoopAction, LoopDetector, LoopDetectorConfig
 from langsight.sdk.models import ToolCallSpan, ToolCallStatus
 
@@ -215,16 +216,19 @@ class LangSightClient:
             server_name: MCP server or tool source name (e.g. "postgres-mcp").
             agent_name: Name of the agent making the calls.
             session_id: Groups all calls in one agent run/conversation.
+                If not provided, LangSight auto-generates one (uuid4 hex).
+                For multi-agent tracing, pass ``proxy.session_id`` from the
+                orchestrator to each sub-agent — never construct IDs manually.
             trace_id: Groups all spans across a multi-agent task.
             parent_span_id: For multi-agent tracing — the handoff span ID
                 that spawned this sub-agent. Enables tree reconstruction.
 
         Multi-agent example:
-            # Orchestrator wraps its MCP client normally
+            # Orchestrator: session_id auto-generated, exposed via proxy
             orchestrator_mcp = client.wrap(mcp, server_name="jira-mcp",
                                            agent_name="orchestrator",
-                                           session_id=session_id,
                                            trace_id=trace_id)
+            session_id = orchestrator_mcp.session_id  # SDK-issued ID
 
             # When handing off to a sub-agent, pass the handoff span ID
             handoff = ToolCallSpan.handoff_span(
@@ -234,13 +238,14 @@ class LangSightClient:
             )
             client.buffer_span(handoff)
 
-            # Sub-agent wraps its client with parent_span_id=handoff.span_id
+            # Sub-agent forwards the orchestrator's session_id — never constructs its own
             billing_mcp = client.wrap(mcp, server_name="crm-mcp",
                                       agent_name="billing-agent",
                                       session_id=session_id,
                                       trace_id=trace_id,
                                       parent_span_id=handoff.span_id)
         """
+        effective_session = session_id if session_id is not None else _new_session_id()
         effective_redact = redact_payloads if redact_payloads is not None else self._redact_payloads
         effective_project = project_id if project_id is not None else self._project_id
         proxy = MCPClientProxy(
@@ -248,7 +253,7 @@ class LangSightClient:
             langsight=self,
             server_name=server_name,
             agent_name=agent_name,
-            session_id=session_id,
+            session_id=effective_session,
             trace_id=trace_id,
             parent_span_id=parent_span_id,
             redact_payloads=effective_redact,
@@ -581,6 +586,15 @@ class MCPClientProxy:
         object.__setattr__(self, "_parent_span_id", parent_span_id)
         object.__setattr__(self, "_redact_payloads", redact_payloads)
         object.__setattr__(self, "_project_id", project_id)
+
+    @property
+    def session_id(self) -> str:
+        """The SDK-issued session ID for this proxy.
+
+        Pass this to sub-agents via ``client.wrap(..., session_id=proxy.session_id)``
+        to link all calls into one session in the dashboard.
+        """
+        return object.__getattribute__(self, "_session_id")  # type: ignore[return-value]
 
     def __getattr__(self, name: str) -> object:
         """Forward all attribute access to the wrapped client."""

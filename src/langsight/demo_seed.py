@@ -114,8 +114,8 @@ def _generate_session(project_id: str, idx: int) -> list[dict[str, Any]]:
     agents = list(_AGENT_SERVERS.keys())
     agent = agents[idx % len(agents)]
     servers = _AGENT_SERVERS[agent]
-    session_id = f"demo-{uuid.uuid4().hex[:8]}"
-    trace_id = f"trace-{uuid.uuid4().hex[:8]}"
+    session_id = uuid.uuid4().hex
+    trace_id = uuid.uuid4().hex
     # Spread sessions across the last 48 hours
     base_time = datetime.now(UTC) - timedelta(hours=random.uniform(1, 48))
 
@@ -329,8 +329,8 @@ def _generate_prevention_sessions(project_id: str) -> list[tuple[str, list[dict[
     sessions: list[tuple[str, list[dict[str, Any]]]] = []
 
     # ── Session 1: Loop detected (repetition pattern) ────────────────────────
-    sess_id = f"demo-loop-{uuid.uuid4().hex[:8]}"
-    trace_id = f"trace-{uuid.uuid4().hex[:8]}"
+    sess_id = uuid.uuid4().hex
+    trace_id = uuid.uuid4().hex
     base = now - timedelta(hours=2)
     spans: list[dict[str, Any]] = [
         # Two successful calls with identical args
@@ -382,8 +382,8 @@ def _generate_prevention_sessions(project_id: str) -> list[tuple[str, list[dict[
     sessions.append((sess_id, spans))
 
     # ── Session 2: Budget exceeded (step limit) ──────────────────────────────
-    sess_id = f"demo-budget-{uuid.uuid4().hex[:8]}"
-    trace_id = f"trace-{uuid.uuid4().hex[:8]}"
+    sess_id = uuid.uuid4().hex
+    trace_id = uuid.uuid4().hex
     base = now - timedelta(hours=5)
     spans = [
         _make_span(
@@ -444,8 +444,8 @@ def _generate_prevention_sessions(project_id: str) -> list[tuple[str, list[dict[
     sessions.append((sess_id, spans))
 
     # ── Session 3: Circuit breaker open ──────────────────────────────────────
-    sess_id = f"demo-circuit-{uuid.uuid4().hex[:8]}"
-    trace_id = f"trace-{uuid.uuid4().hex[:8]}"
+    sess_id = uuid.uuid4().hex
+    trace_id = uuid.uuid4().hex
     base = now - timedelta(hours=8)
     spans = [
         # Two real failures that open the circuit
@@ -497,8 +497,8 @@ def _generate_prevention_sessions(project_id: str) -> list[tuple[str, list[dict[
     sessions.append((sess_id, spans))
 
     # ── Session 4: Success with fallback ─────────────────────────────────────
-    sess_id = f"demo-fallback-{uuid.uuid4().hex[:8]}"
-    trace_id = f"trace-{uuid.uuid4().hex[:8]}"
+    sess_id = uuid.uuid4().hex
+    trace_id = uuid.uuid4().hex
     base = now - timedelta(hours=12)
     spans = [
         # First attempt fails
@@ -547,8 +547,8 @@ def _generate_prevention_sessions(project_id: str) -> list[tuple[str, list[dict[
     # ── Session 5: Schema drift ───────────────────────────────────────────────
     # This is represented as a health check result (not a session) — see health seeding.
     # But we also add a session where a tool call fails due to schema mismatch.
-    sess_id = f"demo-schema-{uuid.uuid4().hex[:8]}"
-    trace_id = f"trace-{uuid.uuid4().hex[:8]}"
+    sess_id = uuid.uuid4().hex
+    trace_id = uuid.uuid4().hex
     base = now - timedelta(hours=18)
     spans = [
         _make_span(
@@ -580,8 +580,8 @@ def _generate_prevention_sessions(project_id: str) -> list[tuple[str, list[dict[
     sessions.append((sess_id, spans))
 
     # ── Session 6: Clean success ──────────────────────────────────────────────
-    sess_id = f"demo-success-{uuid.uuid4().hex[:8]}"
-    trace_id = f"trace-{uuid.uuid4().hex[:8]}"
+    sess_id = uuid.uuid4().hex
+    trace_id = uuid.uuid4().hex
     base = now - timedelta(hours=1)
     spans = [
         _make_span(

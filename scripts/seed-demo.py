@@ -57,8 +57,8 @@ def generate_session(session_idx: int) -> list[dict]:
     """Generate a realistic agent session with tool call spans."""
     agent = random.choice(AGENTS)
     servers = AGENT_SERVERS[agent]
-    session_id = f"demo-sess-{uuid.uuid4().hex[:8]}"
-    trace_id = f"demo-trace-{uuid.uuid4().hex[:8]}"
+    session_id = uuid.uuid4().hex
+    trace_id = uuid.uuid4().hex
     base_time = datetime.now(UTC) - timedelta(hours=random.randint(1, 48))
 
     spans = []

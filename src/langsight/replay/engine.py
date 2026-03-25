@@ -97,7 +97,7 @@ class ReplayEngine:
         if not spans:
             raise ValueError(f"Session '{session_id}' not found or has no spans.")
 
-        replay_session_id = f"replay-{uuid.uuid4().hex[:16]}"
+        replay_session_id = uuid.uuid4().hex
         started = datetime.now(UTC)
 
         replayable = [s for s in spans if s.get("span_type") == "tool_call" and s.get("input_json")]

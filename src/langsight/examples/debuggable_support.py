@@ -139,8 +139,8 @@ class DebuggableSupportProject:
 
     async def run(self, *, customer_id: str, request: str) -> DemoRunResult:
         self._client.reset()
-        session_id = f"sess-{uuid4().hex[:8]}"
-        trace_id = f"trace-{uuid4().hex[:8]}"
+        session_id = uuid4().hex
+        trace_id = uuid4().hex
 
         triage = self._client.wrap(
             self._servers["profile-mcp"],
