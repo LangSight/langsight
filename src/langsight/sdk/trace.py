@@ -226,7 +226,7 @@ def trace(
             def __exit__(self, *args: Any) -> None:
                 _cm.__exit__(*args)
 
-        return _TraceProxy()  # type: ignore[return-value]
+        return _TraceProxy()
 
     # ── Decorator mode: @langsight.trace  or  @langsight.trace(...) ────────
     if callable(func):
