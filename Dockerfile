@@ -60,6 +60,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/status')"
 
-# Workers configurable via LANGSIGHT_WORKERS env var (default: 2)
-ENV LANGSIGHT_WORKERS=2
+# Default: 1 worker — SSE broadcaster, rate limiter, and auth cache are
+# all in-process. Multi-worker deployments require Redis-backed coordination.
+# Set LANGSIGHT_WORKERS=N only when you have addressed these constraints.
+ENV LANGSIGHT_WORKERS=1
 CMD sh -c "uvicorn langsight.api.server:app --host 0.0.0.0 --port 8000 --workers ${LANGSIGHT_WORKERS}"

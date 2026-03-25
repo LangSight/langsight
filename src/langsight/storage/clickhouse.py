@@ -1153,10 +1153,14 @@ class ClickHouseBackend:
         that means A delegated work to B. This captures the supervisor → analyst
         pattern that the unified callback records via cross-ainvoke parent linking.
         """
-        where = "started_at >= now() - INTERVAL {hours:UInt32} HOUR"
         params: dict[str, Any] = {"hours": hours}
+        # Build per-alias predicates to avoid ambiguous column references in self-join
+        project_filter = ""
         if project_id:
-            where += " AND project_id = {project_id:String}"
+            project_filter = (
+                " AND child.project_id = {project_id:String}"
+                " AND parent.project_id = {project_id:String}"
+            )
             params["project_id"] = project_id
 
         result = await self._client.query(
@@ -1169,8 +1173,9 @@ class ClickHouseBackend:
             FROM mcp_tool_calls AS child
             INNER JOIN mcp_tool_calls AS parent
                 ON child.parent_span_id = parent.span_id
-            WHERE child.{where}
-              AND parent.{where}
+            WHERE child.started_at  >= now() - INTERVAL {{hours:UInt32}} HOUR
+              AND parent.started_at >= now() - INTERVAL {{hours:UInt32}} HOUR
+              {project_filter}
               AND child.agent_name != ''
               AND parent.agent_name != ''
               AND child.agent_name != parent.agent_name

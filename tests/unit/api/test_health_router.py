@@ -135,7 +135,7 @@ class TestGetServerHistory:
     async def test_limit_param_passed_to_storage(self, client) -> None:
         c, mock_storage = client
         await c.get("/api/health/servers/pg/history?limit=25")
-        mock_storage.get_health_history.assert_called_with("pg", limit=25)
+        mock_storage.get_health_history.assert_called_with("pg", limit=25, project_id=None)
 
     async def test_limit_over_100_rejected(self, client) -> None:
         c, _ = client

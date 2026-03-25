@@ -69,7 +69,7 @@ async def get_server_health(
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND, detail="Server not found."
             )
-    history = await storage.get_health_history(server_name, limit=1)
+    history = await storage.get_health_history(server_name, limit=1, project_id=project_id)
     if not history:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,
@@ -96,7 +96,7 @@ async def get_server_history(
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND, detail="Server not found."
             )
-    return await storage.get_health_history(server_name, limit=limit)
+    return await storage.get_health_history(server_name, limit=limit, project_id=project_id)
 
 
 @router.post(

@@ -16,7 +16,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from langsight.api.broadcast import SSEBroadcaster
-from langsight.api.dependencies import verify_api_key
+from langsight.api.dependencies import require_admin, verify_api_key
 from langsight.api.metrics import PrometheusMiddleware, metrics_router
 from langsight.api.rate_limit import limiter  # single global instance
 from langsight.api.routers import (
@@ -487,15 +487,23 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     # ── Instance settings (global admin toggle for redact_payloads etc.) ──────
 
-    @app.get("/api/settings", tags=["settings"])
+    @app.get(
+        "/api/settings",
+        tags=["settings"],
+        dependencies=[Depends(verify_api_key)],
+    )
     async def get_settings() -> dict[str, Any]:
-        """Return global instance settings."""
+        """Return global instance settings. Requires authentication."""
         storage = getattr(app.state, "storage", None)
         if storage and hasattr(storage, "get_instance_settings"):
             return cast(dict[str, Any], await storage.get_instance_settings())
         return {"redact_payloads": False}
 
-    @app.put("/api/settings", tags=["settings"])
+    @app.put(
+        "/api/settings",
+        tags=["settings"],
+        dependencies=[Depends(verify_api_key), Depends(require_admin)],
+    )
     async def save_settings(body: dict[str, Any]) -> dict[str, Any]:
         """Update global instance settings. Admin only."""
         storage = getattr(app.state, "storage", None)

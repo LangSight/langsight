@@ -161,6 +161,7 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
             broadcaster.publish(
                 "span:new",
                 {
+                    "project_id": span.project_id,  # required for SSE tenant isolation
                     "session_id": span.session_id,
                     "agent_name": span.agent_name,
                     "server_name": span.server_name,
