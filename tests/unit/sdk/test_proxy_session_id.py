@@ -137,18 +137,18 @@ class TestExplicitSessionIdForwarding:
             "Sub-agent proxy session_id does not match the orchestrator's session_id"
         )
 
-    def test_empty_string_session_id_is_preserved_if_passed(self) -> None:
-        """Passing an empty string explicitly is the caller's choice — wrap() must not
-        substitute a generated ID in place of it.
+    def test_empty_string_session_id_is_auto_replaced(self) -> None:
+        """Passing an empty string is treated the same as None — auto-generates.
 
-        This documents the behaviour boundary: None → auto-generate,
-        empty string → forward as-is (even if unusual).
+        Regression: empty string bypassed the None check and was forwarded as "",
+        which is not a valid session ID and collides with nothing but also leaks
+        through as a useless key in loop-detector / budget dicts.
+        Fix: wrap() uses `session_id if session_id else _new_session_id()`.
         """
         client = _client()
         proxy = client.wrap(_mcp(), session_id="")
-        # The caller passed "" explicitly — session_id should not be auto-replaced
-        # (wrap() uses `session_id if session_id is not None else _new_session_id()`)
-        assert proxy.session_id == ""
+        assert proxy.session_id != "", "Empty string must be replaced with a generated ID"
+        assert len(proxy.session_id) == 32, "Generated ID must be 32 hex chars"
 
     def test_session_id_property_returns_consistent_value(self) -> None:
         """Reading session_id twice must return the same string — not regenerate."""

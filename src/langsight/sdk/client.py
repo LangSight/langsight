@@ -245,7 +245,7 @@ class LangSightClient:
                                       trace_id=trace_id,
                                       parent_span_id=handoff.span_id)
         """
-        effective_session = session_id if session_id is not None else _new_session_id()
+        effective_session = session_id if session_id else _new_session_id()
         effective_redact = redact_payloads if redact_payloads is not None else self._redact_payloads
         effective_project = project_id if project_id is not None else self._project_id
         proxy = MCPClientProxy(
