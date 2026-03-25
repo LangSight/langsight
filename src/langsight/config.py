@@ -27,8 +27,11 @@ class StorageConfig(BaseModel):
     # "dual" = Postgres (metadata: users/projects/API keys/SLOs) +
     #          ClickHouse (analytics: spans/health/costs/reliability)
     postgres_url: str | None = None  # required for mode="postgres" or "dual"
-    pg_pool_min: int = 2  # asyncpg pool min connections
-    pg_pool_max: int = 20  # asyncpg pool max connections (was hardcoded 10)
+    pg_pool_min: int = 2   # asyncpg pool min connections
+    pg_pool_max: int = 50  # asyncpg pool max connections
+    # 50 handles ~200 concurrent API requests at typical <50ms query latency.
+    # Tune down via LANGSIGHT_PG_POOL_MAX if your Postgres server is small
+    # (e.g. managed free-tier with max_connections=25 — set to 15).
     clickhouse_url: str = "http://localhost:8123"  # mode="clickhouse"
     clickhouse_database: str = "langsight"  # mode="clickhouse"
     clickhouse_username: str = "default"  # mode="clickhouse"

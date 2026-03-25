@@ -235,12 +235,19 @@ class ClickHouseBackend:
 
         Creates the database automatically if it doesn't exist.
         """
+        # Timeout constants — keep low so a runaway aggregation never blocks
+        # the API indefinitely. 5 s connect, 30 s per query.
+        _CONNECT_TIMEOUT = 5
+        _QUERY_TIMEOUT = 30
+
         # Connect without database first to create it if missing
         admin = await clickhouse_connect.get_async_client(
             host=host,
             port=port,
             username=username,
             password=password,
+            connect_timeout=_CONNECT_TIMEOUT,
+            send_receive_timeout=_QUERY_TIMEOUT,
         )
         await admin.command(f"CREATE DATABASE IF NOT EXISTS `{database}`")
         await admin.close()
@@ -251,6 +258,8 @@ class ClickHouseBackend:
             database=database,
             username=username,
             password=password,
+            connect_timeout=_CONNECT_TIMEOUT,
+            send_receive_timeout=_QUERY_TIMEOUT,
         )
 
         # Create schema (idempotent)

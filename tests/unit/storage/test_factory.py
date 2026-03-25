@@ -31,7 +31,7 @@ class TestOpenStorage:
             mock_open.return_value = mock_backend
             storage = await open_storage(config)
 
-        mock_open.assert_called_once_with("postgresql://user:pass@localhost:5432/test", min_size=2, max_size=20)
+        mock_open.assert_called_once_with("postgresql://user:pass@localhost:5432/test", min_size=2, max_size=50)
         assert storage is mock_backend
 
     async def test_sqlite_mode_raises_config_error(self) -> None:
