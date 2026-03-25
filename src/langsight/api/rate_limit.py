@@ -36,6 +36,7 @@ def _rate_limit_key(request: Request) -> str:
         if client_host:
             try:
                 import ipaddress
+
                 networks = getattr(
                     getattr(request, "app", None),
                     "state",
