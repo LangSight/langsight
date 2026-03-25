@@ -51,51 +51,37 @@ docs/architecture-mcp-transport
 chore/upgrade-fastmcp-3.2
 ```
 
-## Pre-Commit Checklist
+## Hooks — automated enforcement
 
-Before every commit, verify:
+Git hooks run automatically. Do NOT bypass them with `--no-verify`.
 
+### Setup (run once after cloning)
 ```bash
-# 1. No secrets committed
-grep -r "AKIA\|sk-\|ghp_\|xoxb-\|password\s*=" src/ --include="*.py" -l
-grep -rn "AWS_SECRET\|API_KEY\s*=" src/ --include="*.py"
-
-# 2. No .env files staged
-git diff --cached --name-only | grep "\.env"
-
-# 3. Tests pass
-uv run pytest tests/unit/ -q
-
-# 4. Type checks pass
-uv run mypy src/ --ignore-missing-imports
-
-# 5. Linting clean
-uv run ruff check src/
-
-# 6. No print() statements (use structlog)
-grep -rn "^print(" src/ --include="*.py"
+bash scripts/install-hooks.sh
 ```
 
-## Pre-Push Checklist — CI must be green
+### What each hook enforces
 
-**🔴 HARD GATE: Never push to `main` or create a PR if CI is failing.**
+**`pre-commit`** (runs on every `git commit`) — via `.pre-commit-config.yaml`:
+- `ruff --fix` — auto-fixes lint issues
+- `ruff-format` — enforces formatting
+- `mypy` — type check
+- `detect-private-key` — blocks credentials
+- `no-commit-to-branch main` — blocks direct commits to main
+- No `print()` in `src/`
 
-Before every `git push` (especially to `main` or a PR branch):
+**`pre-push`** (runs on every `git push`) — via `scripts/hooks/pre-push`:
+- Unit + regression tests (`tests/unit/`, `tests/security/`)
+- Coverage ≥ 70%
+- Integration tests (auto-skipped if Docker not running)
+- Dashboard `tsc --noEmit` — zero TypeScript errors
 
+If a hook blocks your push, fix the issue locally and re-run. Never use `--no-verify`.
+
+After pushing, CI should confirm green — it runs the same checks. If CI is red despite passing locally:
 ```bash
-# Check the last CI run on this branch / main
-gh run list --branch main --limit 3
-
-# If you just pushed a branch, wait for CI then check:
-gh run watch   # live view of current run
-
-# Only push / merge when ALL checks show ✓
+gh run view <run-id> --log-failed   # find what differs in CI
 ```
-
-If CI is red:
-1. Identify the failing job: `gh run view <run-id> --log-failed`
-2. Fix the failure locally
-3. Push the fix — never force-push past a red CI
 
 ## PR Description Template
 

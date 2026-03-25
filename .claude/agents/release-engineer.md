@@ -15,23 +15,51 @@ You are a senior release engineer responsible for shipping LangSight releases re
 
 ## Release Checklist
 
-### Pre-release verification (ALL must pass — no exceptions)
+### Pre-release verification — run LOCALLY, ALL must pass
 
-**🔴 HARD GATE: CI must be green before ANY release step.**
+**Run every check locally before tagging. Do not rely on CI to catch release-blocking issues.**
+
 ```bash
-gh run list --branch main --limit 5
-# All recent runs on main must show ✓ (completed/success).
-# If ANY run is failing or pending — STOP. Fix CI first. Never release from a red CI.
+# 1. Unit + regression tests
+uv run pytest tests/unit/ tests/security/ --override-ini="addopts=" -q
+
+# 2. Coverage ≥ 70% (overall), ≥ 90% on core modules
+uv run pytest tests/unit/ --cov=langsight --cov-report=term-missing --cov-fail-under=70 -q
+
+# 3. Integration tests (requires: docker compose up -d)
+uv run pytest tests/integration/ -m integration --override-ini="addopts=" -q
+
+# 4. Dashboard TypeScript — zero compiler errors
+cd dashboard && npx tsc --noEmit && cd ..
+
+# 5. Ruff format + lint
+uv run ruff format --check src/ && uv run ruff check src/
+
+# 6. Type check
+uv run mypy src/ --ignore-missing-imports
+
+# 7. Security audit
+uv audit
+
+# 8. Docker build
+docker compose build
+
+# 9. CLI smoke test
+uv run langsight --help
 ```
 
-- [ ] **CI green on `main`** — verified with `gh run list --branch main --limit 5`
-- [ ] All tests passing locally: `uv run pytest`
-- [ ] No type errors: `uv run mypy src/`
-- [ ] No lint errors: `uv run ruff check src/`
-- [ ] No security issues: `uv audit`
-- [ ] Coverage meets target: `uv run pytest --cov=langsight`
-- [ ] Docker builds successfully: `docker compose build`
-- [ ] CLI works end-to-end: `uv run langsight --help`
+**Release gate checklist — every item must be ✅:**
+- [ ] Unit + regression tests pass (zero failures)
+- [ ] Coverage ≥ 70% overall, ≥ 90% on health/, security/, alerts/, sdk/
+- [ ] Integration tests pass
+- [ ] Dashboard `npx tsc --noEmit` — zero TypeScript errors
+- [ ] `ruff format --check` + `ruff check` — clean
+- [ ] `mypy` — clean
+- [ ] `uv audit` — no critical/high vulnerabilities
+- [ ] Docker build succeeds
+- [ ] CLI smoke test passes
+
+If ANY item fails — stop, fix it, re-run from the top. Do not tag until all 9 are green.
 
 ### Version bumping
 Update version in ONE place: `pyproject.toml`

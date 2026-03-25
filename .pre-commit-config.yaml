@@ -1,10 +1,13 @@
 repos:
+  # ── Ruff: lint + format ───────────────────────────────────────────────────
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.0
     hooks:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  # ── Mypy: type check ──────────────────────────────────────────────────────
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.15.0
     hooks:
@@ -13,3 +16,25 @@ repos:
         additional_dependencies: [pydantic, pydantic-settings, structlog, fastapi, asyncpg-stubs, httpx, click]
         pass_filenames: false
         entry: mypy src/
+
+  # ── Secret / credential guard ─────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key        # blocks -----BEGIN * PRIVATE KEY-----
+      - id: check-added-large-files   # blocks files > 500KB (catches accidental DB dumps)
+        args: [--maxkb=500]
+      - id: check-merge-conflict      # blocks leftover <<<< markers
+      - id: no-commit-to-branch       # blocks direct commits to main
+        args: [--branch, main]
+
+  # ── No print() in src/ ───────────────────────────────────────────────────
+  - repo: local
+    hooks:
+      - id: no-print-statements
+        name: No print() in src/
+        language: pygrep
+        entry: "^print\\("
+        files: ^src/
+        types: [python]
+        args: [--multiline]
