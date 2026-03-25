@@ -87,17 +87,23 @@ def tag_from_spans(spans: list[dict[str, Any]]) -> HealthTag:
     if has_schema_drift:
         return HealthTag.SCHEMA_DRIFT
 
-    # Priority 7: Fallback detection — only fires when the session ultimately
-    # succeeded despite some MCP tool call failures (retried and recovered).
-    # Requires at least one success AND one failure on the same MCP tool,
-    # AND no unresolved errors remain (has_error must be False).
-    if not has_error and not has_timeout:
-        for statuses in tool_results.values():
-            if len(statuses) > 1:
-                tool_has_failure = any(s in ("error", "timeout") for s in statuses)
-                tool_has_success = any(s == "success" for s in statuses)
-                if tool_has_failure and tool_has_success:
-                    return HealthTag.SUCCESS_WITH_FALLBACK
+    # Priority 7: Fallback detection — the session ultimately succeeded despite
+    # some MCP tool call failures (retried and recovered on the SAME tool).
+    # Requires at least one tool with both a failure and a success, AND no tool
+    # with only failures that were never resolved (unresolved errors → TOOL_FAILURE).
+    any_fallback = False
+    any_unresolved_error = False
+    for statuses in tool_results.values():
+        tool_has_failure = any(s in ("error", "timeout") for s in statuses)
+        tool_has_success = any(s == "success" for s in statuses)
+        if tool_has_failure:
+            if tool_has_success:
+                any_fallback = True
+            else:
+                any_unresolved_error = True
+
+    if any_fallback and not any_unresolved_error:
+        return HealthTag.SUCCESS_WITH_FALLBACK
 
     if has_timeout:
         return HealthTag.TIMEOUT

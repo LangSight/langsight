@@ -13,8 +13,9 @@ def _span(
     tool_name: str = "query",
     status: str = "success",
     error: str | None = None,
+    span_type: str = "tool_call",
 ) -> dict:
-    return {"tool_name": tool_name, "status": status, "error": error}
+    return {"tool_name": tool_name, "status": status, "error": error, "span_type": span_type}
 
 
 # ---------------------------------------------------------------------------
