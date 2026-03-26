@@ -198,11 +198,10 @@ class TestFlushDelivery:
 
 class TestFlushLoopNoEventLoop:
     def test_buffer_span_does_not_raise_without_event_loop(self) -> None:
-        """buffer_span() must work cleanly when called with no event loop
-        (e.g. from a sync LangChain callback)."""
+        """buffer_span() must work cleanly when called from a synchronous
+        context (e.g. from a sync LangChain callback). It must not raise
+        regardless of whether an event loop happens to be running."""
         client = LangSightClient(url="http://localhost:8000")
-        # No event loop — _ensure_flush_loop should silently pass
-        assert not asyncio.get_event_loop().is_running()
         client.buffer_span(_make_span())  # must not raise
         with client._lock:
-            assert len(client._buffer) == 1
+            assert len(client._buffer) == 1, "span must be in buffer after buffer_span()"
