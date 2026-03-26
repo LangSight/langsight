@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import structlog
 
-from langsight.exceptions import MCPConnectionError, MCPTimeoutError
+from langsight.exceptions import MCPConnectionError, MCPHealthToolError, MCPTimeoutError
 from langsight.health.schema_tracker import SchemaTracker
 from langsight.health.transports import hash_tools, ping
 from langsight.models import HealthCheckResult, MCPServer, ServerStatus
@@ -92,6 +92,24 @@ class HealthChecker:
                         project_id=self._project_id or None,
                     )
 
+            return result
+
+        except MCPHealthToolError as exc:
+            logger.warning(
+                "health_check.backend_degraded",
+                server=server.name,
+                health_tool=server.health_tool,
+                error=str(exc),
+            )
+            result = HealthCheckResult(
+                server_name=server.name,
+                status=ServerStatus.DEGRADED,  # MCP layer UP, backend DOWN
+                checked_at=datetime.now(UTC),
+                error=str(exc),
+                project_id=self._project_id,
+            )
+            if self._storage:
+                await self._storage.save_health_result(result)
             return result
 
         except MCPTimeoutError as exc:

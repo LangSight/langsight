@@ -14,7 +14,7 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool
 
-from langsight.exceptions import MCPConnectionError, MCPTimeoutError
+from langsight.exceptions import MCPConnectionError, MCPHealthToolError, MCPTimeoutError
 from langsight.models import MCPServer, ToolInfo, TransportType
 
 # ---------------------------------------------------------------------------
@@ -72,13 +72,18 @@ async def _open_session(server: MCPServer) -> AsyncGenerator[ClientSession, None
 async def ping(server: MCPServer) -> tuple[float, list[ToolInfo]]:
     """Connect to an MCP server, initialise the session, and fetch the tools list.
 
+    If server.health_tool is set, also calls that tool to verify the underlying
+    backend is working. A failed tool call raises MCPHealthToolError (caught by
+    HealthChecker as DEGRADED, not DOWN — the MCP layer is alive).
+
     Returns:
         Tuple of (latency_ms, list[ToolInfo]) measured from connection start
         to initialize() completion.
 
     Raises:
-        MCPTimeoutError: connection or initialisation timed out.
-        MCPConnectionError: transport misconfiguration or connection refused.
+        MCPTimeoutError:     connection or initialisation timed out.
+        MCPConnectionError:  transport misconfiguration or connection refused.
+        MCPHealthToolError:  health_tool not found or returned an error.
     """
     try:
         with anyio.fail_after(server.timeout_seconds):
@@ -90,8 +95,35 @@ async def ping(server: MCPServer) -> tuple[float, list[ToolInfo]]:
                 tools_result = await session.list_tools()
                 tools = _parse_tools(tools_result.tools)
 
+                # ── Optional deep health probe ────────────────────────────
+                if server.health_tool:
+                    tool_names = {t.name for t in tools}
+                    if server.health_tool not in tool_names:
+                        raise MCPHealthToolError(
+                            f"health_tool '{server.health_tool}' not found in tools/list. "
+                            f"Available: {sorted(tool_names)}"
+                        )
+                    try:
+                        probe = await session.call_tool(
+                            server.health_tool,
+                            server.health_tool_args or {},
+                        )
+                        if getattr(probe, "isError", False):
+                            raise MCPHealthToolError(
+                                f"health_tool '{server.health_tool}' returned error: "
+                                f"{probe.content}"
+                            )
+                    except MCPHealthToolError:
+                        raise
+                    except Exception as exc:  # noqa: BLE001
+                        raise MCPHealthToolError(
+                            f"health_tool '{server.health_tool}' call failed: {exc}"
+                        ) from exc
+
             return latency_ms, tools
 
+    except MCPHealthToolError:
+        raise  # propagate — checker handles as DEGRADED
     except TimeoutError as exc:
         raise MCPTimeoutError(
             f"Server '{server.name}' timed out after {server.timeout_seconds}s."

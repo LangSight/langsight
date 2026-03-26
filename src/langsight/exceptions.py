@@ -17,6 +17,15 @@ class MCPProtocolError(LangSightError):
     """Unexpected MCP protocol response — likely a server-side bug."""
 
 
+class MCPHealthToolError(MCPConnectionError):
+    """Health probe tool call failed — MCP server up but backend is degraded.
+
+    The MCP server responded to initialize + tools/list, but the configured
+    health_tool either wasn't found or returned an error. This means the MCP
+    layer is alive but the underlying service (e.g. DataHub, Postgres) is down.
+    """
+
+
 class ConfigError(LangSightError):
     """Invalid or missing LangSight configuration."""
 

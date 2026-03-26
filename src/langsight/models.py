@@ -37,6 +37,13 @@ class MCPServer(BaseModel):
     tags: list[str] = Field(default_factory=list)
     timeout_seconds: int = 5
     circuit_breaker: CircuitBreakerConfig | None = None  # v0.3 per-server override
+    # Optional deep health probe — call this tool after tools/list to verify
+    # the underlying backend is actually working (not just the MCP layer).
+    # If the call fails → status=DEGRADED instead of UP.
+    # Example: health_tool: search_entities
+    #          health_tool_args: {query: "test", limit: 1}
+    health_tool: str | None = None
+    health_tool_args: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"frozen": True}
 
