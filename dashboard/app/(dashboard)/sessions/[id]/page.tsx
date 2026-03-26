@@ -7,8 +7,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import {
-  ChevronRight, ChevronDown, GitBranch, Clock, AlertCircle,
-  ArrowLeft, Bot, Server,
+  Bot, Server,
   Maximize2, Minimize2, ExternalLink,
 } from "lucide-react";
 import { LineageGraph, type GraphSelection } from "@/components/lineage-graph";
@@ -17,12 +16,14 @@ import { SessionTimeline } from "@/components/session-timeline";
 import { fetcher, getSessionTrace } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { buildSessionGraph, type SessionGraphResult } from "@/lib/session-graph";
-import { cn, formatDuration, formatExact, SPAN_TYPE_ICON } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
 import type { AgentSession, SessionTrace, SpanNode, PathMetrics, ServerCallerInfo } from "@/lib/types";
-import { HealthTagBadge } from "@/components/health-tag-badge";
+import { SessionHeader } from "@/components/sessions/session-header";
+import { SessionMetrics, MetricTile, SectionLabel } from "@/components/sessions/session-metrics";
+import { SpanTree, TokenSummaryBar, PayloadPanel } from "@/components/sessions/span-tree";
 
-/* ── Build session graph from trace spans (with per-path attribution) ── */
+/* ── Build session graph from trace spans ──────────────────── */
 
 function useSessionGraph(
   trace: SessionTrace | null,
@@ -36,21 +37,6 @@ function useSessionGraph(
 }
 
 /* ── Right panel: node detail for session ──────────────────── */
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mb-2.5">{children}</p>
-  );
-}
-
-function MetricTile({ label, value, danger }: { label: string; value: string; danger?: boolean; mono?: boolean }) {
-  return (
-    <div className="flex items-center justify-between py-1.5">
-      <span className="text-[11px] text-muted-foreground">{label}</span>
-      <span className={cn("text-[12px] font-semibold", danger ? "text-red-500" : "text-foreground")} style={{ fontFamily: "var(--font-geist-mono)" }}>{value}</span>
-    </div>
-  );
-}
 
 function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { nodeId: string; trace: SessionTrace; serverCallers: Map<string, ServerCallerInfo[]>; onViewPayload?: (title: string, tabs: { label: string; json: string | null }[]) => void }) {
   const isAgent = nodeId.startsWith("agent:");
@@ -551,162 +537,6 @@ function SessionEdgeDetail({
   );
 }
 
-/* ── Payload panel ──────────────────────────────────────────── */
-function PayloadPanel({ label, json, onViewFull }: { label: string; json: string | null; onViewFull?: () => void }) {
-  if (!json) return null;
-  let formatted = json;
-  try { formatted = JSON.stringify(JSON.parse(json), null, 2); } catch { /* keep raw */ }
-  return (
-    <div className="mt-2">
-      <div className="flex items-center justify-between mb-1.5">
-        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">{label}</p>
-        {onViewFull && (
-          <button onClick={(e) => { e.stopPropagation(); onViewFull(); }} className="text-[10px] text-primary hover:underline flex items-center gap-1 font-medium">
-            <ExternalLink size={10} />View full
-          </button>
-        )}
-      </div>
-      <pre
-        className="text-[11px] rounded-xl p-3 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed max-h-48 overflow-y-auto"
-        style={{
-          fontFamily: "var(--font-geist-mono)",
-          background: "hsl(var(--muted))",
-          color: "hsl(var(--foreground))",
-          border: "1px solid hsl(var(--border))",
-        }}
-      >
-        {formatted}
-      </pre>
-    </div>
-  );
-}
-
-/* ── Span row ───────────────────────────────────────────────── */
-function SpanRow({ span, depth = 0, onViewPayload }: { span: SpanNode; depth?: number; onViewPayload?: (title: string, tabs: { label: string; json: string | null }[]) => void }) {
-  const [open, setOpen] = useState(true);
-  const [detailOpen, setDetailOpen] = useState(false);
-  const icon = SPAN_TYPE_ICON[span.span_type] ?? "●";
-  const hasChildren = span.children && span.children.length > 0;
-  const isLlmSpan = span.span_type === "agent" && (span.llm_input || span.llm_output);
-  const hasPayload = span.input_json || span.output_json || span.llm_input || span.llm_output || span.error;
-  const isError = span.status === "error";
-  const isPrevented = span.status === "prevented";
-
-  const spanColor =
-    span.span_type === "handoff" ? "text-yellow-500"
-    : span.span_type === "agent" ? "text-primary"
-    : "text-foreground";
-
-  const statusBadge = isError
-    ? { text: "error", bg: "rgba(239,68,68,0.08)", color: "#ef4444" }
-    : isPrevented
-      ? { text: "prevented", bg: "rgba(234,179,8,0.08)", color: "#eab308" }
-      : span.status === "success"
-        ? { text: "success", bg: "rgba(16,185,129,0.08)", color: "#10b981" }
-        : { text: span.status, bg: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" };
-
-  return (
-    <>
-      <tr
-        className={cn(
-          "group transition-colors",
-          hasPayload ? "cursor-pointer hover:bg-accent/40" : "hover:bg-accent/20",
-          detailOpen && "bg-accent/20"
-        )}
-        style={{ borderBottom: "1px solid hsl(var(--border) / 0.4)", borderLeft: isError ? "3px solid #ef4444" : isPrevented ? "3px solid #eab308" : "3px solid transparent" }}
-        onClick={() => hasPayload && setDetailOpen((o) => !o)}
-      >
-        <td className="py-2.5 pr-3">
-          <div className="flex items-center" style={{ paddingLeft: `${depth * 28 + 8}px` }}>
-            {/* Tree connector lines for nested spans */}
-            {depth > 0 && (
-              <span className="text-[12px] mr-1.5 flex-shrink-0" style={{ color: "hsl(var(--border))", fontFamily: "var(--font-geist-mono)" }}>└─</span>
-            )}
-            <button
-              onClick={(e) => { e.stopPropagation(); hasChildren && setOpen((o) => !o); }}
-              className={cn("flex items-center gap-1.5 min-w-0", hasChildren ? "cursor-pointer" : "cursor-default")}
-            >
-              {hasChildren
-                ? open
-                  ? <ChevronDown size={12} className="text-muted-foreground flex-shrink-0" />
-                  : <ChevronRight size={12} className="text-muted-foreground flex-shrink-0" />
-                : depth === 0 ? <span className="w-3.5 flex-shrink-0" /> : null}
-              <span className="text-[12px] mr-1">{icon}</span>
-              <span className={cn("text-[12px] font-semibold truncate", spanColor)} style={{ fontFamily: "var(--font-geist-mono)" }}>
-                {span.server_name}/{span.tool_name}
-              </span>
-            </button>
-            {hasPayload && (
-              <span className="ml-2 text-[10px] text-muted-foreground opacity-0 group-hover:opacity-60 transition-opacity">
-                {detailOpen ? "▲" : "▼"}
-              </span>
-            )}
-          </div>
-        </td>
-        <td className="py-2.5 pr-3 text-[12px] text-muted-foreground">{span.agent_name || "—"}</td>
-        <td className="py-2.5 pr-3">
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{ background: statusBadge.bg, color: statusBadge.color }}>
-            {statusBadge.text}
-          </span>
-        </td>
-        <td className="py-2.5 pr-3 text-[12px] text-right text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>
-          {span.latency_ms ? `${span.latency_ms.toFixed(0)}ms` : "—"}
-        </td>
-        <td className="py-2.5 pr-3 text-[11px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>
-          {span.input_tokens != null || span.output_tokens != null ? (
-            <span className="flex items-center gap-1.5">
-              {span.input_tokens != null && <span title="Input tokens">↑{span.input_tokens.toLocaleString()}</span>}
-              {span.output_tokens != null && <span title="Output tokens">↓{span.output_tokens.toLocaleString()}</span>}
-            </span>
-          ) : "—"}
-        </td>
-        <td className="py-2.5 pr-3 text-[11px] text-muted-foreground">
-          {span.started_at ? <Timestamp iso={span.started_at} compact /> : "—"}
-        </td>
-        <td className="py-2.5 text-[11px] text-red-500 truncate max-w-xs">{span.error?.slice(0, 80) ?? ""}</td>
-      </tr>
-
-      {detailOpen && hasPayload && (
-        <tr style={{ background: "hsl(var(--muted) / 0.4)" }}>
-          <td colSpan={7} className="px-4 pb-4 pt-2" style={{ paddingLeft: `${depth * 20 + 32}px` }}>
-            {isLlmSpan ? (
-              <>
-                <PayloadPanel label="Prompt" json={span.llm_input ?? null} onViewFull={span.llm_input ? () => onViewPayload?.(`Prompt — ${span.tool_name}`, [{ label: "JSON", json: span.llm_input ?? null }]) : undefined} />
-                <PayloadPanel label="Completion" json={span.llm_output ?? null} onViewFull={span.llm_output ? () => onViewPayload?.(`Completion — ${span.tool_name}`, [{ label: "JSON", json: span.llm_output ?? null }]) : undefined} />
-              </>
-            ) : (
-              <>
-                <PayloadPanel label="Input" json={span.input_json ?? null} onViewFull={span.input_json ? () => onViewPayload?.(`Input — ${span.tool_name}`, [{ label: "JSON", json: span.input_json ?? null }]) : undefined} />
-                <PayloadPanel label="Output" json={span.output_json ?? null} onViewFull={span.output_json ? () => onViewPayload?.(`Output — ${span.tool_name}`, [{ label: "JSON", json: span.output_json ?? null }]) : undefined} />
-              </>
-            )}
-            {span.error && !span.output_json && !span.llm_output && (
-              <div className="mt-2">
-                <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "hsl(var(--danger))" }}>Error</p>
-                <pre
-                  className="text-[11px] rounded-xl p-3 whitespace-pre-wrap break-all"
-                  style={{
-                    fontFamily: "var(--font-geist-mono)",
-                    background: "hsl(var(--danger-bg))",
-                    color: "hsl(var(--danger))",
-                    border: "1px solid hsl(var(--danger) / 0.2)",
-                  }}
-                >
-                  {span.error}
-                </pre>
-              </div>
-            )}
-          </td>
-        </tr>
-      )}
-      {open && span.children?.map((child) => (
-        <SpanRow key={child.span_id} span={child} depth={depth + 1} onViewPayload={onViewPayload} />
-      ))}
-    </>
-  );
-}
-
-
 /* ══════════════════════════════════════════════════════════════ */
 /* ── Session Detail Page ──────────────────────────────────────── */
 /* ══════════════════════════════════════════════════════════════ */
@@ -819,70 +649,16 @@ export default function SessionDetailPage() {
   return (
     <div className="page-in flex flex-col" style={{ height: "calc(100vh - 4rem)", paddingBottom: "1rem" }}>
       {/* ── Back + Header ──────────────────────────────────────── */}
-      <div className="flex-shrink-0 pb-3">
-        <button
-          onClick={() => router.push("/sessions")}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
-        >
-          <ArrowLeft size={14} />
-          Back to Sessions
-        </button>
-
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <GitBranch size={15} className="text-primary flex-shrink-0" />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <code
-                  className="text-[13px] text-foreground truncate"
-                  style={{ fontFamily: "var(--font-geist-mono)" }}
-                >
-                  {sessionId}
-                </code>
-                {trace && (() => {
-                  const agents = Array.from(new Set(trace.spans_flat.map((s: SpanNode) => s.agent_name).filter(Boolean)));
-                  return agents.length > 0 ? (
-                    <span className="text-[11px] text-primary font-medium flex-shrink-0">{agents.join(" → ")}</span>
-                  ) : session?.agent_name ? (
-                    <span className="text-[11px] text-primary font-medium flex-shrink-0">{session.agent_name}</span>
-                  ) : null;
-                })()}
-              </div>
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5" style={{ fontFamily: "var(--font-geist-mono)" }}>
-                {trace && (
-                  <>
-                    <span>{trace.total_spans} spans</span>
-                    <span className="opacity-40">·</span>
-                    <span>{trace.tool_calls} {trace.tool_calls === 1 ? "call" : "calls"}</span>
-                    {trace.failed_calls > 0 && (
-                      <><span className="opacity-40">·</span>
-                      <span style={{ color: "hsl(var(--danger))" }} className="font-semibold">
-                        {trace.failed_calls} failed
-                      </span></>
-                    )}
-                    {trace.duration_ms && (
-                      <><span className="opacity-40">·</span><span>{formatDuration(trace.duration_ms)}</span></>
-                    )}
-                  </>
-                )}
-                {session && (
-                  <>
-                    <span className="opacity-40">·</span>
-                    <span className="flex items-center gap-1"><Clock size={9} /><Timestamp iso={session.first_call_at} compact /></span>
-                    <span className="opacity-40">·</span>
-                    <span>{formatExact(session.first_call_at)}</span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </div>
+      <SessionHeader
+        sessionId={sessionId}
+        trace={trace}
+        session={session}
+        onBack={() => router.push("/sessions")}
+      />
 
 
       {/* ── Tab bar ────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center gap-1 mb-3 border-b" style={{ borderColor: "hsl(var(--border))" }}>
+      <div className="flex-shrink-0 flex items-center gap-1 mb-3 border-b" role="tablist" aria-label="Session views" style={{ borderColor: "hsl(var(--border))" }}>
         {([
           { key: "details", label: "Details", count: trace ? (() => {
             const spanMap = new Map(trace.spans_flat.map((s: SpanNode) => [s.span_id, s]));
@@ -903,6 +679,8 @@ export default function SessionDetailPage() {
         ] as const).map((tab) => (
           <button
             key={tab.key}
+            role="tab"
+            aria-selected={activeTab === tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
               "px-4 py-2.5 text-[12px] font-medium border-b-2 -mb-px transition-colors",
@@ -1021,70 +799,7 @@ export default function SessionDetailPage() {
                 onViewPayload={(title, tabs) => setPayloadSlideout({ title, tabs })}
               />
             ) : (
-              <div className="p-5 space-y-5">
-                {/* Session summary header */}
-                <div className="flex items-center justify-between">
-                  <p className="text-[12px] font-semibold text-foreground">Session Summary</p>
-                  {(session?.health_tag || (trace && trace.failed_calls === 0)) && (
-                    <HealthTagBadge tag={session?.health_tag ?? (trace && trace.failed_calls > 0 ? "tool_failure" : "success")} />
-                  )}
-                </div>
-
-                {/* Stats — clean rows */}
-                {trace && (
-                  <div>
-                    <SectionLabel>Overview</SectionLabel>
-                    <div className="divide-y" style={{ borderColor: "hsl(var(--border) / 0.5)" }}>
-                      <MetricTile label="Duration" value={trace.duration_ms ? formatDuration(trace.duration_ms) : "—"} />
-                      <MetricTile label="Total Spans" value={String(trace.spans_flat.length)} />
-                      <MetricTile label="Tool Calls" value={String(trace.spans_flat.filter((s: SpanNode) => s.span_type === "tool_call").length)} />
-                      <MetricTile label="Errors" value={String(trace.spans_flat.filter((s: SpanNode) => s.status === "error").length)} danger={(trace.spans_flat.filter((s: SpanNode) => s.status === "error").length) > 0} />
-                    </div>
-                  </div>
-                )}
-
-                {/* Agents & Servers */}
-                {trace && (
-                  <div className="space-y-3">
-                    <div>
-                      <SectionLabel>Agents</SectionLabel>
-                      <div className="flex flex-wrap gap-1">
-                        {Array.from(new Set(trace.spans_flat.map((s: SpanNode) => s.agent_name).filter(Boolean))).map((a) => (
-                          <span key={a as string} className="px-2 py-0.5 rounded text-[10px] font-medium" style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.15)" }}>{a as string}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <SectionLabel>Servers</SectionLabel>
-                      <div className="flex flex-wrap gap-1">
-                        {Array.from(new Set(trace.spans_flat.filter((s: SpanNode) => s.span_type === "tool_call").map((s: SpanNode) => s.server_name))).map((srv) => (
-                          <span key={srv as string} className="px-2 py-0.5 rounded text-[10px]" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", border: "1px solid hsl(var(--border))", fontFamily: "var(--font-geist-mono)" }}>{srv as string}</span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Tokens & Cost */}
-                {session && (session.total_input_tokens || session.est_cost_usd) && (
-                  <div>
-                    <SectionLabel>Tokens & Cost</SectionLabel>
-                    <div className="divide-y" style={{ borderColor: "hsl(var(--border) / 0.5)" }}>
-                      <MetricTile label="Input Tokens" value={(session.total_input_tokens ?? 0).toLocaleString()} />
-                      <MetricTile label="Output Tokens" value={(session.total_output_tokens ?? 0).toLocaleString()} />
-                      {session.model_id && (
-                        <div className="flex items-center justify-between py-1.5">
-                          <span className="text-[11px] text-muted-foreground">Model</span>
-                          <code className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}>{session.model_id}</code>
-                        </div>
-                      )}
-                      {session.est_cost_usd != null && <MetricTile label="Cost" value={`$${session.est_cost_usd < 0.01 ? session.est_cost_usd.toFixed(4) : session.est_cost_usd.toFixed(2)}`} />}
-                    </div>
-                  </div>
-                )}
-
-                <p className="text-[10px] text-muted-foreground text-center pt-2">Click any node or edge for details</p>
-              </div>
+              <SessionMetrics trace={trace} session={session} />
             )}
           </div>
         </div>
@@ -1093,87 +808,20 @@ export default function SessionDetailPage() {
       {/* ── Trace tab — span tree ──────────────────────────────── */}
       {activeTab === "trace" && (
         <>
-          {/* Token + cost summary bar */}
-          {trace && (() => {
-            const allSpans = trace.spans_flat;
-            const totalIn = allSpans.reduce((s, sp) => s + (sp.input_tokens ?? 0), 0);
-            const totalOut = allSpans.reduce((s, sp) => s + (sp.output_tokens ?? 0), 0);
-            const models = [...new Set(allSpans.map((sp) => sp.model_id).filter(Boolean))];
-            const hasTokens = totalIn > 0 || totalOut > 0;
-            if (!hasTokens) return null;
-            return (
-              <div className="flex items-center gap-4 px-4 py-2 rounded-xl border mb-2" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-                <div className="flex items-center gap-1.5 text-[11px]" style={{ fontFamily: "var(--font-geist-mono)" }}>
-                  <span className="text-muted-foreground">Tokens:</span>
-                  <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>↑{totalIn.toLocaleString()}</span>
-                  <span className="text-muted-foreground">/</span>
-                  <span className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>↓{totalOut.toLocaleString()}</span>
-                </div>
-                <div className="w-px h-3" style={{ background: "hsl(var(--border))" }} />
-                <div className="flex items-center gap-1.5 text-[11px]">
-                  <span className="text-muted-foreground">Total:</span>
-                  <span className="font-semibold" style={{ color: "hsl(var(--foreground))", fontFamily: "var(--font-geist-mono)" }}>{(totalIn + totalOut).toLocaleString()}</span>
-                </div>
-                {models.length > 0 && (
-                  <>
-                    <div className="w-px h-3" style={{ background: "hsl(var(--border))" }} />
-                    <div className="flex items-center gap-1.5 text-[11px]">
-                      <span className="text-muted-foreground">Model:</span>
-                      <span className="font-medium" style={{ color: "hsl(var(--foreground))" }}>{models.join(", ")}</span>
-                    </div>
-                  </>
-                )}
-                <div className="w-px h-3" style={{ background: "hsl(var(--border))" }} />
-                <div className="flex items-center gap-1.5 text-[11px]">
-                  <span className="text-muted-foreground">LLM calls:</span>
-                  <span className="font-semibold" style={{ color: "hsl(var(--foreground))", fontFamily: "var(--font-geist-mono)" }}>{allSpans.filter((sp) => sp.input_tokens != null).length}</span>
-                </div>
-              </div>
-            );
-          })()}
+          {trace && <TokenSummaryBar trace={trace} />}
           <div
             className="flex-1 rounded-xl border overflow-hidden flex flex-col min-h-0"
             style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
           >
             <div className="flex-1 overflow-y-auto overflow-x-auto">
-              {loading ? (
-                <div className="p-10 flex items-center justify-center">
-                  <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent spin" />
-                </div>
-              ) : error ? (
-                <div className="p-8 text-center text-sm" style={{ color: "hsl(var(--danger))" }}>
-                  <AlertCircle size={20} className="mx-auto mb-2" />
-                  {error}
-                </div>
-              ) : !trace || trace.root_spans.length === 0 ? (
-                <p className="p-8 text-center text-sm text-muted-foreground">No spans found</p>
-              ) : (
-                <table className="w-full">
-                  <thead>
-                    <tr
-                      className="sticky top-0 z-10"
-                      style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card-raised))" }}
-                    >
-                      {["Span", "Agent", "Status", "Latency", "Tokens", "Time", "Error"].map((h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide"
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {trace.root_spans.map((span) => (
-                      <SpanRow key={span.span_id} span={span} depth={0} onViewPayload={(title, tabs) => setPayloadSlideout({ title, tabs })} />
-                    ))}
-                  </tbody>
-                </table>
-              )}
+              <SpanTree
+                trace={trace}
+                loading={loading}
+                error={error}
+                onViewPayload={(title, tabs) => setPayloadSlideout({ title, tabs })}
+              />
             </div>
           </div>
-
         </>
       )}
 
