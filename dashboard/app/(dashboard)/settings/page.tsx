@@ -15,6 +15,7 @@ import { useTheme } from "next-themes";
 import { fetcher, getApiKeys, createApiKey, revokeApiKey, listUsers, inviteUser, deactivateUser, updateUserRole, listModelPricing, createModelPricing, updateModelPricing, deactivateModelPricing, listProjects, createProject, deleteProject, listProjectMembers, addProjectMember, removeProjectMember, getAlertsConfig, saveAlertsConfig, testSlackWebhook, getAuditLogs, listPreventionConfigs, savePreventionConfig, deletePreventionConfig, saveProjectPreventionConfig, listAgentMetadata } from "@/lib/api";
 import type { ApiKeyResponse, ApiKeyCreatedResponse, ApiStatus, DashboardUser, InviteResponse, ModelPricingEntry, ProjectResponse, ProjectMember, PreventionConfig, PreventionConfigUpdate, AgentMetadata } from "@/lib/types";
 import { cn, timeAgo } from "@/lib/utils";
+import { useProject } from "@/lib/project-context";
 import { Timestamp } from "@/components/timestamp";
 import { toast } from "sonner";
 
@@ -1726,14 +1727,16 @@ const DEFAULT_PC: PreventionConfigUpdate = {
 };
 
 function PreventionSection() {
+  const { activeProject } = useProject();
+  const pid = activeProject?.id ?? null;
   const { data: configs, isLoading, mutate } = useSWR<PreventionConfig[]>(
-    "/api/agents/prevention-configs",
-    () => listPreventionConfigs(),
+    pid ? `/api/agents/prevention-configs?project_id=${pid}` : "/api/agents/prevention-configs",
+    () => listPreventionConfigs(pid),
     { refreshInterval: 0 },
   );
   const { data: agentMeta } = useSWR<AgentMetadata[]>(
-    "/api/agents/metadata",
-    () => listAgentMetadata(),
+    pid ? `/api/agents/metadata?project_id=${pid}` : "/api/agents/metadata",
+    () => listAgentMetadata(pid),
     { refreshInterval: 0 },
   );
   const availableAgents = useMemo(
