@@ -449,8 +449,9 @@ async def get_active_project_id(
     # ── Priority 2: .langsight.yaml project_id field ─────────────────────────
     config = getattr(getattr(request, "app", None), "state", None)
     config_obj = getattr(config, "config", None) if config else None
-    if config_obj and getattr(config_obj, "project_id", ""):
-        return config_obj.project_id
+    cfg_project_id = getattr(config_obj, "project_id", None) if config_obj else None
+    if isinstance(cfg_project_id, str) and cfg_project_id:
+        return cfg_project_id
 
     # ── Handle missing project_id ─────────────────────────────────────────────
     if not project_id:
