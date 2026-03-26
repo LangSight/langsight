@@ -90,7 +90,7 @@ class InviteResponse(BaseModel):
 class AcceptInviteRequest(BaseModel):
     # token_hex(32) always produces exactly 64 hex characters
     token: str = Field(..., min_length=64, max_length=64)
-    password: str = Field(..., min_length=8, max_length=128, description="8–128 characters")
+    password: str = Field(..., min_length=12, max_length=128, description="12–128 characters")
 
 
 class UserResponse(BaseModel):

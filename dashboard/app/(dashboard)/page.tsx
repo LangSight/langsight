@@ -50,7 +50,8 @@ export default function DashboardPage() {
 
   const [hours, setHours] = useState<number>(() => {
     const v = searchParams.get("hours");
-    return v ? Number(v) : 24;
+    const n = v ? Number(v) : 24;
+    return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 8760) : 24;
   });
   const [tab, setTab] = useState<Tab>(() => {
     const v = searchParams.get("tab");

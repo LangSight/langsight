@@ -326,7 +326,8 @@ describe("Sessions page — malformed URL parameters fall back to defaults witho
   it("Number('abc') produces NaN — callers must guard against this", () => {
     // Document the raw JS behaviour so the guard logic is explicit
     expect(Number("abc")).toBeNaN();
-    expect(Number("")).toBeNaN();
+    // Number("") === 0 in JS (not NaN) — the guard must also reject 0 for hours
+    expect(Number("")).toBe(0);
     expect(Number("null")).toBeNaN();
     expect(Number(undefined as unknown as string)).toBeNaN();
   });

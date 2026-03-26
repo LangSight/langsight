@@ -98,7 +98,8 @@ export default function SessionsPage() {
   // Initialise filter state from URL search params so filters survive refresh
   const [hours, setHours] = useState<number>(() => {
     const v = searchParams.get("hours");
-    return v ? Number(v) : 24;
+    const n = v ? Number(v) : 24;
+    return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 8760) : 24;
   });
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [statusFilter, setStatusFilter] = useState<"all" | "clean" | "failed">(() => {
@@ -109,7 +110,8 @@ export default function SessionsPage() {
   const [healthTagFilter, setHealthTagFilter] = useState<string>(() => searchParams.get("tag") ?? "all");
   const [page, setPage] = useState<number>(() => {
     const v = searchParams.get("page");
-    return v ? Number(v) : 0;
+    const n = v ? Number(v) : 0;
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
   });
   const [sortKey, setSortKey] = useState<SortKey | null>(() => {
     const v = searchParams.get("sort");

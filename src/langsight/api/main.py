@@ -337,10 +337,14 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         if api_keys:
             logger.info("api.startup.auth_enabled", key_count=len(api_keys))
         else:
+            logger.warning("=" * 72)
+            logger.warning("SECURITY WARNING: LangSight API is running WITHOUT authentication.")
+            logger.warning("Any client that can reach this API has full read/write access.")
             logger.warning(
-                "api.startup.auth_disabled",
-                hint="Set LANGSIGHT_API_KEYS=<key1,key2> to enable authentication",
+                "Set LANGSIGHT_API_KEYS=<key> or create API keys in the dashboard"
+                " before exposing this service to a network."
             )
+            logger.warning("=" * 72)
 
         # First-run bootstrap — create initial admin user and sample project
         await _seed_model_pricing(app.state.storage)

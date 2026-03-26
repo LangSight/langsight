@@ -45,14 +45,12 @@ async def send_alert(webhook_url: str, alert: Alert) -> bool:
             "webhook.alert_sent",
             server=alert.server_name,
             alert_type=alert.alert_type,
-            url=webhook_url,
         )
         return True
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "webhook.delivery_failed",
             server=alert.server_name,
-            url=webhook_url,
             error=str(exc),
         )
         return False
