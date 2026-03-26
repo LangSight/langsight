@@ -9,7 +9,6 @@ These tests verify the full ClickHouse backend against a real server:
 - DDL executes (tables + materialized views created)
 - Health results persist and are queryable
 - Tool call spans persist with parent_span_id + span_type
-- Agent session materialized view aggregates correctly
 - Schema snapshots persist
 - get_session_trace() reconstructs multi-agent trees
 """
@@ -79,7 +78,8 @@ class TestDDL:
         assert "mcp_tool_calls" in tables, f"Missing mcp_tool_calls, got: {tables}"
         assert "mcp_schema_snapshots" in tables, f"Missing mcp_schema_snapshots, got: {tables}"
         assert "mv_tool_reliability" in tables, f"Missing mv_tool_reliability, got: {tables}"
-        assert "mv_agent_sessions" in tables, f"Missing mv_agent_sessions, got: {tables}"
+        assert "session_health_tags" in tables, f"Missing session_health_tags, got: {tables}"
+        assert "mv_agent_sessions" not in tables, "mv_agent_sessions was removed in v0.7.1 — should not exist"
 
     async def test_mcp_tool_calls_has_parent_span_id_column(self, ch: ClickHouseBackend) -> None:
         import clickhouse_connect
