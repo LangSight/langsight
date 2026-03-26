@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import os
-import re
-import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError
@@ -12,9 +10,9 @@ from typing import Any, cast
 
 import structlog
 from fastapi import Depends, FastAPI, Request
-from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -49,7 +47,10 @@ logger = structlog.get_logger()
 
 class InstanceSettings(BaseModel):
     """Typed request body for PUT /api/settings."""
+
     redact_payloads: bool
+
+
 try:
     _VERSION = _pkg_version("langsight")
 except PackageNotFoundError:

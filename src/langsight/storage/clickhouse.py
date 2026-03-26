@@ -28,8 +28,6 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-_SAFE_DB_NAME = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
-
 import clickhouse_connect
 import structlog
 
@@ -37,6 +35,8 @@ from langsight.models import HealthCheckResult, PreventionConfig, ServerStatus
 from langsight.sdk.models import ToolCallSpan
 
 logger = structlog.get_logger()
+
+_SAFE_DB_NAME = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 # ---------------------------------------------------------------------------
 # DDL
