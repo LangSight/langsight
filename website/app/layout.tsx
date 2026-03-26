@@ -37,14 +37,14 @@ export const metadata: Metadata = {
     url: "https://langsight.dev",
     siteName: "LangSight",
     type: "website",
-    images: [{ url: "/og-image.svg", width: 1200, height: 630 }],
+    images: [{ url: "/og-image.png", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
     title: "LangSight — Agent Runtime Reliability for AI Toolchains",
     description:
       "Your agent failed. How do we stop it next time? Detect loops, enforce budgets, break failing tools. Self-host free.",
-    images: ["/og-image.svg"],
+    images: ["/og-image.png"],
   },
 };
 
@@ -57,7 +57,7 @@ const jsonLd = {
   description:
     "Agent runtime reliability platform. Detect loops, enforce budgets, break failing tools, map blast radius. MCP health checks, CVE scanning, schema drift detection. Self-host free.",
   url: "https://langsight.dev",
-  softwareVersion: "0.2.0",
+  softwareVersion: "0.6.2",
   license: "https://github.com/LangSight/langsight/blob/main/LICENSE",
   offers: {
     "@type": "Offer",

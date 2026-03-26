@@ -65,7 +65,7 @@ const jsonLd = {
       height: 256,
     },
   },
-  image: "https://langsight.dev/og-image.svg",
+  image: "https://langsight.dev/og-image.png",
   keywords: "MCP server security, MCP OWASP, model context protocol security, MCP tool poisoning, MCP CVE, AI agent security",
 };
 

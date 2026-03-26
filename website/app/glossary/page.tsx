@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+// Shared shell — canonical source; local defs below kept until full migration
+import { Nav as _Nav, Footer as _Footer, Logo as _Logo, useTheme as _useTheme, useScrollReveal as _useScrollReveal } from "@/components/site-shell"; void _Nav; void _Footer; void _Logo; void _useTheme; void _useScrollReveal;
 
 /* ── Theme ──────────────────────────────────────────────────── */
 function useTheme() {

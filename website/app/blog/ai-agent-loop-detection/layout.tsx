@@ -65,7 +65,7 @@ const jsonLd = {
       height: 256,
     },
   },
-  image: "https://langsight.dev/og-image.svg",
+  image: "https://langsight.dev/og-image.png",
   keywords: "AI agent loop detection, agent infinite loop, LangGraph loop detection, stop agent loops, MCP agent loop",
 };
 
