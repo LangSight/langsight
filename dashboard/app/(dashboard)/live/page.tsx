@@ -7,35 +7,12 @@ import { useRouter } from "next/navigation";
 import { Radio, AlertTriangle, CheckCircle, ChevronRight, WifiOff } from "lucide-react";
 import { useProject } from "@/lib/project-context";
 import { cn } from "@/lib/utils";
-import type { AgentSession } from "@/lib/types";
+import { mergeSpan, RUNNING_MS, type LiveRow, type SpanEvent } from "@/lib/live-utils";
 
 /* ── Constants ───────────────────────────────────────────────── */
-const RUNNING_MS   = 30_000;      // < 30s since last span  → running
-const STUCK_MS     = 2 * 60_000;  // > 2min since last span → stuck
-const EXPIRE_MS    = 10 * 60_000; // > 10min                → remove
-const RECONNECT_BASE_MS = 2_000;  // initial reconnect delay
-const RECONNECT_MAX_MS  = 30_000; // max reconnect delay (exponential backoff cap)
-
-/* ── Parse ClickHouse naive timestamps as UTC ─────────────────── */
-function toUTCMs(iso: string): number {
-  let s = iso.trim();
-  if (s.length >= 19 && s[10] === " ") s = s.slice(0, 10) + "T" + s.slice(11);
-  if (!s.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(s)) s += "Z";
-  return new Date(s).getTime();
-}
-
-/* ── Types ───────────────────────────────────────────────────── */
-interface LiveRow {
-  session_id: string;
-  agent_name: string | null;
-  span_count: number;
-  error_count: number;
-  first_seen_ms: number;
-  last_seen_ms: number;
-  running_until: number;   // Date.now() + RUNNING_MS when span_count grows
-  stable_since: number;    // timestamp when span_count first stopped growing
-  ever_grew: boolean;      // true if span_count grew in at least one poll
-}
+const STUCK_MS          = 2 * 60_000;  // > 2min since last span → stuck
+const RECONNECT_BASE_MS = 2_000;       // initial reconnect delay
+const RECONNECT_MAX_MS  = 30_000;      // max reconnect delay
 
 type SessionStatus = "running" | "idle" | "stuck" | "done";
 type ConnectionState = "connecting" | "connected" | "reconnecting" | "error";
@@ -98,54 +75,6 @@ function StatusDot({ status }: { status: SessionStatus }) {
   );
 }
 
-/* ── Merge an incoming session batch into the rows map ───────── */
-function mergeSessions(
-  prev: Map<string, LiveRow>,
-  sessions: AgentSession[],
-  prevCounts: Map<string, number>,
-): Map<string, LiveRow> {
-  const now = Date.now();
-  const cutoff = now - EXPIRE_MS;
-  const next = new Map(prev);
-
-  for (const s of sessions) {
-    const firstMs = toUTCMs(s.first_call_at);
-    const lastMs  = firstMs + (s.duration_ms ?? 0);
-
-    if (lastMs < cutoff) {
-      next.delete(s.session_id);
-      prevCounts.delete(s.session_id);
-      continue;
-    }
-
-    const prevCount  = prevCounts.get(s.session_id) ?? -1;
-    const currCount  = s.tool_calls ?? 0;
-    const isNew      = prevCount === -1;
-    const isGrowing  = !isNew && currCount > prevCount;
-    prevCounts.set(s.session_id, currCount);
-
-    const existing   = next.get(s.session_id);
-    const everGrew   = existing?.ever_grew || isGrowing;
-    const stableSince = isGrowing
-      ? now
-      : (existing?.stable_since ?? now);
-
-    next.set(s.session_id, {
-      session_id:    s.session_id,
-      agent_name:    s.agent_name ?? existing?.agent_name ?? null,
-      span_count:    currCount,
-      error_count:   s.failed_calls ?? 0,
-      first_seen_ms: firstMs,
-      last_seen_ms:  lastMs,
-      running_until: isGrowing ? now + RUNNING_MS : (existing?.running_until ?? 0),
-      ever_grew:     everGrew,
-      stable_since:  stableSince,
-    });
-  }
-
-  return next;
-}
-
 /* ── Page ────────────────────────────────────────────────────── */
 export default function LivePage() {
   const router = useRouter();
@@ -155,7 +84,6 @@ export default function LivePage() {
   const [rows, setRows]           = useState<Map<string, LiveRow>>(new Map());
   const [now, setNow]             = useState(Date.now());
   const [connState, setConnState] = useState<ConnectionState>("connecting");
-  const prevCounts                = useRef<Map<string, number>>(new Map());
   const esRef                     = useRef<EventSource | null>(null);
   const reconnectTimer            = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelay            = useRef(RECONNECT_BASE_MS);
@@ -185,23 +113,12 @@ export default function LivePage() {
         reconnectDelay.current = RECONNECT_BASE_MS; // reset on successful connection
       };
 
-      es.onmessage = (event) => {
+      es.addEventListener("span:new", (event) => {
         if (unmounted.current) { es.close(); return; }
         try {
-          const data = JSON.parse(event.data) as AgentSession[];
-          if (!Array.isArray(data)) return;
-          setRows(prev => mergeSessions(prev, data, prevCounts.current));
-        } catch {
-          // Malformed event — ignore
-        }
-      };
-
-      es.addEventListener("sessions", (event) => {
-        if (unmounted.current) { es.close(); return; }
-        try {
-          const data = JSON.parse((event as MessageEvent).data) as AgentSession[];
-          if (!Array.isArray(data)) return;
-          setRows(prev => mergeSessions(prev, data, prevCounts.current));
+          const span = JSON.parse((event as MessageEvent).data) as SpanEvent;
+          if (!span.session_id) return;
+          setRows(prev => mergeSpan(prev, span));
         } catch {
           // Malformed event — ignore
         }

@@ -204,6 +204,7 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                     "tool_name": span.tool_name,
                     "status": span.status,
                     "latency_ms": span.latency_ms,
+                    "started_at": span.started_at.isoformat() if span.started_at else None,
                 },
             )
 

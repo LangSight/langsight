@@ -140,13 +140,11 @@ _DDL = [
     GROUP BY project_id, server_name, tool_name, hour
     """,
     # Materialized view: agent sessions — one row per session
-    # Migrate existing installs: drop the old view so the CREATE below
-    # rebuilds it with project_id in the ORDER BY / GROUP BY.
-    # Safe to run on every startup — if already recreated, DROP + CREATE
-    # are both fast no-ops relative to query latency.
+    # Migrate existing installs: drop any old view (wrong engine / missing columns).
     "DROP TABLE IF EXISTS mv_agent_sessions",
-    # Drives langsight sessions + GET /api/agents/sessions.
-    # project_id included so admin/all-project queries remain tenant-safe.
+    # Drives GET /api/agents/sessions admin (no-project_id) path.
+    # Uses AggregatingMergeTree with *State combinators so ClickHouse stores
+    # true aggregate states.  Queries MUST use the matching *Merge combinators.
     """
     CREATE MATERIALIZED VIEW IF NOT EXISTS mv_agent_sessions
     ENGINE = AggregatingMergeTree()
@@ -156,13 +154,13 @@ _DDL = [
         project_id,
         session_id,
         agent_name,
-        min(started_at)                                      AS first_call_at,
-        max(ended_at)                                        AS last_call_at,
-        count()                                              AS total_spans,
-        countIf(span_type = 'tool_call')                     AS tool_calls,
-        countIf(status != 'success' AND span_type='tool_call') AS failed_calls,
-        sum(latency_ms)                                      AS total_latency_ms,
-        groupUniqArray(server_name)                          AS servers_used
+        minState(started_at)                                      AS first_call_at,
+        maxState(ended_at)                                        AS last_call_at,
+        countState()                                              AS total_spans,
+        countIfState(span_type = 'tool_call')                     AS tool_calls,
+        countIfState(status != 'success' AND span_type='tool_call') AS failed_calls,
+        sumState(latency_ms)                                      AS total_latency_ms,
+        groupUniqArrayState(server_name)                          AS servers_used
     FROM mcp_tool_calls
     WHERE session_id != ''
     GROUP BY project_id, session_id, agent_name
@@ -678,19 +676,20 @@ class ClickHouseBackend:
             f"""
             SELECT
                 mv.session_id,
-                any(mv.agent_name)                                          AS agent_name,
-                min(mv.first_call_at)                                       AS first_call_at,
-                max(mv.last_call_at)                                        AS last_call_at,
-                sum(mv.tool_calls)                                          AS tool_calls,
-                sum(mv.failed_calls)                                        AS failed_calls,
-                sum(mv.total_latency_ms)                                    AS total_latency_ms,
-                groupUniqArrayArray(mv.servers_used)                        AS servers_used,
-                dateDiff('millisecond', min(mv.first_call_at), max(mv.last_call_at)) AS duration_ms,
-                any(sht.health_tag)                                         AS health_tag,
-                sum(tok.total_input_tokens)                                 AS total_input_tokens,
-                sum(tok.total_output_tokens)                                AS total_output_tokens,
-                anyIf(tok.model_id, tok.model_id != '')                     AS model_id,
-                arrayFilter(x -> x != '', groupUniqArray(mv.agent_name))    AS agents_used
+                any(mv.agent_name)                                              AS agent_name,
+                minMerge(mv.first_call_at)                                      AS first_call_at,
+                maxMerge(mv.last_call_at)                                       AS last_call_at,
+                countMerge(mv.tool_calls)                                       AS tool_calls,
+                countMerge(mv.failed_calls)                                     AS failed_calls,
+                sumMerge(mv.total_latency_ms)                                   AS total_latency_ms,
+                groupUniqArrayMerge(mv.servers_used)                            AS servers_used,
+                dateDiff('millisecond', minMerge(mv.first_call_at),
+                         maxMerge(mv.last_call_at))                             AS duration_ms,
+                any(sht.health_tag)                                             AS health_tag,
+                sum(tok.total_input_tokens)                                     AS total_input_tokens,
+                sum(tok.total_output_tokens)                                    AS total_output_tokens,
+                anyIf(tok.model_id, tok.model_id != '')                         AS model_id,
+                arrayFilter(x -> x != '', groupUniqArray(mv.agent_name))        AS agents_used
             FROM mv_agent_sessions mv
             LEFT JOIN (
                 SELECT session_id, agent_name,
