@@ -49,6 +49,88 @@ Triggers an immediate health check against all configured servers. Results are p
 curl -X POST http://localhost:8000/api/health/check
 ```
 
+## GET /api/health/servers/{server_name}/drift-history
+
+Returns recent schema drift events for a server, newest first. `limit` parameter: 1–100 (default 10).
+
+```bash
+curl "http://localhost:8000/api/health/servers/search-mcp/drift-history?limit=10"
+```
+
+```json
+[
+  {
+    "id": "drift-a1b2c3",
+    "server_name": "search-mcp",
+    "detected_at": "2026-03-26T08:15:42Z",
+    "previous_hash": "a9e31f77",
+    "current_hash": "c4b7d91e",
+    "changes": [
+      {
+        "change_type": "required_param_added",
+        "classification": "BREAKING",
+        "tool_name": "search_web",
+        "param_name": "filters",
+        "param_type": "object"
+      }
+    ]
+  }
+]
+```
+
+## GET /api/health/servers/{server_name}/drift-impact
+
+Returns which agents/sessions called a specific tool within a time window. Used to assess blast radius after a `BREAKING` drift event.
+
+Query parameters: `tool_name` (required), `hours` (default 24, max 168).
+
+```bash
+curl "http://localhost:8000/api/health/servers/search-mcp/drift-impact?tool_name=search_web&hours=24"
+```
+
+```json
+{
+  "server_name": "search-mcp",
+  "tool_name": "search_web",
+  "window_hours": 24,
+  "consumers": [
+    {
+      "agent_name": "research-agent",
+      "session_count": 42,
+      "last_called_at": "2026-03-26T08:14:00Z"
+    }
+  ],
+  "total_sessions": 42
+}
+```
+
+## GET /api/health/servers/{server_name}/scorecard
+
+Returns the A-F composite grade and dimension breakdown for a server.
+
+```bash
+curl http://localhost:8000/api/health/servers/postgres-mcp/scorecard
+```
+
+```json
+{
+  "server_name": "postgres-mcp",
+  "grade": "A+",
+  "score": 97.2,
+  "dimensions": [
+    { "name": "availability",      "weight": 0.30, "raw_score": 100.0, "weighted_score": 30.0 },
+    { "name": "security",          "weight": 0.25, "raw_score": 100.0, "weighted_score": 25.0 },
+    { "name": "reliability",       "weight": 0.20, "raw_score": 100.0, "weighted_score": 20.0 },
+    { "name": "schema_stability",  "weight": 0.15, "raw_score": 100.0, "weighted_score": 15.0 },
+    { "name": "performance",       "weight": 0.10, "raw_score":  95.0, "weighted_score":  9.5 }
+  ],
+  "cap_applied": null,
+  "computed_at": "2026-03-26T08:00:00Z"
+}
+```
+
+See [Server Scorecard](/mcp/scorecard) for grade thresholds and hard veto caps.
+
 ## Status values
 
 | Status | Meaning |

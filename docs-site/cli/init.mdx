@@ -1,6 +1,6 @@
 ---
 title: "langsight init"
-description: "Auto-discover MCP servers and generate .langsight.yaml"
+description: "Auto-discover MCP servers from 10+ IDE clients and generate .langsight.yaml"
 ---
 
 ## Usage
@@ -16,18 +16,35 @@ langsight init [OPTIONS]
 | `--output`, `-o` | `.langsight.yaml` | Output path for config file |
 | `--slack-webhook` | — | Slack webhook URL for alerts |
 | `--yes`, `-y` | false | Skip confirmation prompts |
+| `--skip-check` | false | Write config without running the first health check |
 
 ## What it does
 
-`langsight init` scans well-known MCP config file locations and generates a `.langsight.yaml` in your current directory.
+`langsight init` scans every well-known MCP config file location on your machine, merges all discovered servers into a single `.langsight.yaml`, and immediately runs a first health check so you see results before you exit.
 
-**Auto-discovery sources:**
+**Auto-discovery sources — global user configs:**
 
-| Source | Path |
-|--------|------|
-| Claude Desktop | `~/.config/claude/claude_desktop_config.json` |
-| Cursor | `~/.cursor/mcp.json` |
-| VS Code | `~/.vscode/mcp.json` |
+| Client | Config path (macOS) | Config path (Linux) | Key used |
+|--------|---------------------|---------------------|----------|
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | `~/.config/claude/claude_desktop_config.json` | `mcpServers` |
+| Cursor | `~/.cursor/mcp.json` | `~/.cursor/mcp.json` | `mcpServers` |
+| VS Code | `~/.vscode/mcp.json` | `~/.vscode/mcp.json` | `servers` |
+| Windsurf | `~/.windsurf/mcp.json` | `~/.windsurf/mcp.json` | `mcpServers` |
+| Claude Code | `~/.claude/mcp.json` | `~/.claude/mcp.json` | `mcpServers` |
+| Gemini CLI | `~/.gemini/mcp.json` | `~/.gemini/mcp.json` | `mcpServers` |
+| Kiro | `~/.kiro/mcp.json` | `~/.kiro/mcp.json` | `mcpServers` |
+| Zed | `~/.config/zed/settings.json` | `~/.config/zed/settings.json` | `context_servers` |
+| Cline | `~/.cline/mcp.json` | `~/.cline/mcp.json` | `mcpServers` |
+
+**Project-local configs (current directory):**
+
+| File | Used by |
+|------|---------|
+| `.cursor/mcp.json` | Cursor workspace |
+| `.mcp.json` | Generic / team-shared config |
+| `.vscode/mcp.json` | VS Code workspace |
+
+Project-local configs take precedence over global ones when the same server name appears in both.
 
 ## Example
 
@@ -36,28 +53,43 @@ $ langsight init
 
 LangSight Init — scanning for MCP servers...
 
-  ✓ Claude Desktop (~/.config/claude/claude_desktop_config.json) — 4 servers
-  ✓ Cursor (~/.cursor/mcp.json) — 2 servers
+  Claude Desktop  (~/Library/Application Support/Claude/claude_desktop_config.json)  4 servers
+  Cursor          (~/.cursor/mcp.json)                                                2 servers
+  VS Code         (~/.vscode/mcp.json)                                                1 server
 
-Discovered 6 MCP servers:
+Discovered 7 MCP servers:
   1. snowflake-mcp    (stdio)
   2. github-mcp       (stdio)
   3. slack-mcp        (sse)
   4. jira-mcp         (stdio)
   5. postgres-mcp     (stdio)
   6. filesystem-mcp   (stdio)
+  7. search-mcp       (stdio)
 
-Include all 6 servers? [Y/n]: Y
+Include all 7 servers? [Y/n]: Y
 
-Slack webhook URL for alerts (leave blank to skip): https://hooks.slack.com/...
+Slack webhook URL for alerts (leave blank to skip):
 
-✓ Config written to .langsight.yaml
-  6 MCP servers configured
-  Slack alerts enabled
+Running first health check...
+
+  snowflake-mcp    ✓ UP       89ms
+  github-mcp       ✓ UP       54ms
+  slack-mcp        ✓ UP      142ms
+  jira-mcp         ✗ DOWN    —       timeout after 5s
+  postgres-mcp     ✓ UP       31ms
+  filesystem-mcp   ✓ UP       12ms
+  search-mcp       ✓ UP       67ms
+
+6/7 servers healthy
+  jira-mcp is DOWN — check the process is running
+
+Config written to .langsight.yaml
+  7 MCP servers configured
 
 Next steps:
-  langsight mcp-health      Check server health
-  langsight security-scan   Run security audit
+  langsight mcp-health      Full health table with latency and schema status
+  langsight scorecard       A-F grade per server
+  langsight security-scan   OWASP + CVE audit
   langsight monitor         Start continuous monitoring
 ```
 
@@ -83,3 +115,16 @@ alerts:
 ```bash
 langsight init --yes --slack-webhook https://hooks.slack.com/... --output /etc/langsight.yaml
 ```
+
+## Skip the first health check
+
+Useful in CI pipelines or during infrastructure setup where the servers are not yet running:
+
+```bash
+langsight init --skip-check
+```
+
+## See also
+
+- [Server Discovery](/mcp/server-discovery) — full reference for all supported clients and config paths
+- [langsight add](/mcp/server-discovery#manual-registration-langsight-add) — register a single server manually

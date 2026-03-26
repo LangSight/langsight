@@ -1,0 +1,253 @@
+---
+title: "Schema Drift Detection"
+description: "Detect exactly what changed in an MCP server's tool schema — breaking vs compatible — and find which agents are calling the affected tools."
+---
+
+## What is schema drift?
+
+Every MCP server declares its tools via `tools/list`. LangSight stores a hash of this tool list after the first health check. On every subsequent check, it compares the current list against the stored baseline.
+
+**Before (hash-only detection):** LangSight detected that _something_ changed and marked the server `DEGRADED`. You had to manually inspect the server to find out what.
+
+**Now (structural diff):** LangSight shows you exactly what changed — which tool, which parameter, what the old value was and what the new value is — and classifies the change as `BREAKING`, `COMPATIBLE`, or `WARNING`.
+
+---
+
+## Change classifications
+
+### BREAKING — agent calls will fail
+
+| Change type | Example |
+|-------------|---------|
+| `tool_removed` | Tool `query_table` was present; now absent |
+| `required_param_removed` | Parameter `table_name` was required; now missing from schema |
+| `required_param_added` | New required parameter `schema` added — existing callers will get validation errors |
+| `param_type_changed` | Parameter `limit` was `integer`; now `string` |
+
+A `BREAKING` change means any agent calling this tool with the old calling convention will get an error. You should either roll back the server or update all callers.
+
+### COMPATIBLE — agents keep working
+
+| Change type | Example |
+|-------------|---------|
+| `tool_added` | New tool `bulk_insert` added — existing callers unaffected |
+| `optional_param_added` | New optional parameter `timeout_ms` added with a default — existing callers unaffected |
+
+A `COMPATIBLE` change is safe. You may want to acknowledge it (to reset the drift baseline) but it does not need immediate action.
+
+### WARNING — inspect manually
+
+| Change type | Example |
+|-------------|---------|
+| `description_changed` | Tool description changed from "Query the database" to something else |
+
+Description changes are a known [tool poisoning vector](https://owasp.org/www-project-top-10-for-large-language-model-applications/) — an attacker who can modify an MCP server can change a tool's description to hijack LLM behavior without changing the functional API. LangSight surfaces these as `WARNING` so you can review them explicitly.
+
+---
+
+## Seeing drift in the CLI
+
+When a server has drifted, `langsight mcp-health` shows a `DEGRADED` status:
+
+```
+search-mcp    ⚠ DEGRADED   67ms   5   c4b7d91e…   schema drift detected
+```
+
+To see the structural diff:
+
+```bash
+langsight mcp-health --drift search-mcp
+```
+
+```
+Schema Drift — search-mcp
+──────────────────────────────────────────────────────────────────
+Detected: 2026-03-26T08:15:42Z
+Previous: a9e31f77  →  Current: c4b7d91e
+
+BREAKING  required_param_added   search_web
+          + filters    object    (required)
+          Agents calling search_web without filters will now receive a
+          validation error.
+
+WARNING   description_changed    fetch_page
+          Before: "Fetch the HTML content of a URL"
+          After:  "Fetch the HTML content of a URL and return structured data
+                   including metadata, links, and full page text"
+          Inspect manually — description changes can be poisoning vectors.
+
+COMPATIBLE  tool_added           summarize
+            New tool: summarize(content: string, max_tokens: int = 500)
+            Existing callers unaffected.
+
+Impact:
+  search_web was called by 3 agents in the last 24 hours.
+  Run: langsight drift-impact search-mcp --tool search_web
+```
+
+---
+
+## Consumer impact
+
+The most important question after a `BREAKING` drift is: **which agents are calling the changed tool right now?**
+
+```bash
+langsight drift-impact <server> --tool <tool_name>
+```
+
+```bash
+langsight drift-impact search-mcp --tool search_web
+```
+
+```
+Consumer Impact — search-mcp / search_web
+──────────────────────────────────────────────────────────────────
+Tool: search_web  |  Change: required_param_added (filters)
+Window: last 24 hours
+
+Agent              Sessions   Last called     Risk
+research-agent     42         08:14 UTC       HIGH
+support-agent      17         07:55 UTC       HIGH
+summary-agent       3         06:30 UTC       MEDIUM
+
+Total: 62 sessions affected in the last 24h.
+
+Recommendation: Update callers or roll back search-mcp to a9e31f77.
+```
+
+You can adjust the time window:
+
+```bash
+langsight drift-impact search-mcp --tool search_web --hours 72
+```
+
+---
+
+## REST API
+
+### Drift history for a server
+
+```bash
+GET /api/health/servers/{name}/drift-history
+```
+
+Returns the last N drift events for a server, newest first.
+
+```bash
+curl http://localhost:8000/api/health/servers/search-mcp/drift-history?limit=10
+```
+
+```json
+[
+  {
+    "id": "drift-a1b2c3",
+    "server_name": "search-mcp",
+    "detected_at": "2026-03-26T08:15:42Z",
+    "previous_hash": "a9e31f77",
+    "current_hash": "c4b7d91e",
+    "changes": [
+      {
+        "change_type": "required_param_added",
+        "classification": "BREAKING",
+        "tool_name": "search_web",
+        "param_name": "filters",
+        "param_type": "object"
+      },
+      {
+        "change_type": "description_changed",
+        "classification": "WARNING",
+        "tool_name": "fetch_page",
+        "old_description": "Fetch the HTML content of a URL",
+        "new_description": "Fetch the HTML content of a URL and return structured data including metadata, links, and full page text"
+      },
+      {
+        "change_type": "tool_added",
+        "classification": "COMPATIBLE",
+        "tool_name": "summarize"
+      }
+    ]
+  }
+]
+```
+
+### Consumer impact for a changed tool
+
+```bash
+GET /api/health/servers/{name}/drift-impact?tool_name=<tool>&hours=<n>
+```
+
+Returns which agents and sessions have called the specified tool within the time window.
+
+```bash
+curl "http://localhost:8000/api/health/servers/search-mcp/drift-impact?tool_name=search_web&hours=24"
+```
+
+```json
+{
+  "server_name": "search-mcp",
+  "tool_name": "search_web",
+  "window_hours": 24,
+  "consumers": [
+    {
+      "agent_name": "research-agent",
+      "session_count": 42,
+      "last_called_at": "2026-03-26T08:14:00Z"
+    },
+    {
+      "agent_name": "support-agent",
+      "session_count": 17,
+      "last_called_at": "2026-03-26T07:55:00Z"
+    }
+  ],
+  "total_sessions": 59
+}
+```
+
+---
+
+## Data storage
+
+Drift events are stored in a dedicated ClickHouse table:
+
+```sql
+CREATE TABLE schema_drift_events (
+    server_name    LowCardinality(String),
+    detected_at    DateTime64(3, 'UTC'),
+    previous_hash  String,
+    current_hash   String,
+    changes        String,    -- JSON-serialized list of change objects
+    INDEX idx_server_name server_name TYPE bloom_filter GRANULARITY 4
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMM(detected_at)
+ORDER BY (server_name, detected_at)
+TTL detected_at + INTERVAL 90 DAY;
+```
+
+---
+
+## Dashboard
+
+In the **MCP Servers** detail panel, the **Health** tab shows a **Schema Drift** sub-section listing all historical drift events with their classifications. Click any event to expand the full structural diff.
+
+The **Consumers** tab (visible when a server has an active `BREAKING` drift) shows the consumer impact table — the same data as `langsight drift-impact`, updated in real time.
+
+---
+
+## Accepting a drift baseline
+
+Once you have reviewed a drift event and confirmed the change is intentional (for example, after a planned server upgrade), you can reset the baseline so the server returns to `UP`:
+
+```bash
+langsight drift-accept search-mcp
+```
+
+This sets the current schema hash as the new baseline and closes the drift event. The historical event is preserved in ClickHouse for audit purposes — it is not deleted.
+
+---
+
+## Related
+
+- [Health Monitoring](/mcp/health-monitoring) — how `DEGRADED` status is set
+- [Server Scorecard](/mcp/scorecard) — schema stability contributes 15% to the grade
+- [Security Scan](/cli/security-scan) — `description_changed` WARNING also triggers poisoning checks
+- [Consumer Impact API](#rest-api) — REST reference

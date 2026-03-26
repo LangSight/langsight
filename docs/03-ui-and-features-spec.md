@@ -1,8 +1,8 @@
 # LangSight: UI & Features Specification
 
-> **Version**: 1.5.0
-> **Date**: 2026-03-23
-> **Status**: Active — updated with DateRangeFilter component, Timestamp component, session detail page redesign (wide-screen layout, graph builder extraction), lineage graph node/toolbar/minimap redesign (2026-03-23)
+> **Version**: 1.6.0
+> **Date**: 2026-03-26
+> **Status**: Active — updated with `langsight add` command, `langsight scorecard` command, `langsight init` expanded to 10+ IDE clients with correct macOS paths, schema drift structural diff display (v0.8.0, 2026-03-26)
 
 ---
 
@@ -23,47 +23,139 @@ CLI is the priority. Dashboard is built on the same FastAPI backend, so CLI user
 
 ### 2.1 `langsight init`
 
-Interactive setup wizard that generates `.langsight.yaml`.
+Interactive setup wizard that discovers all configured MCP servers and generates `.langsight.yaml`.
+Updated v0.8.0 (2026-03-26): now covers 10+ IDE clients, runs a first health check automatically.
 
 ```
 $ langsight init
 
-🔍 Scanning for MCP server configurations...
+LangSight Init — scanning for MCP servers...
 
-Found MCP servers in:
-  ✅ ~/.config/claude/claude_desktop_config.json (4 servers)
-  ✅ ~/.cursor/mcp.json (2 servers)
+  ✓  Claude Desktop  (~/Library/Application Support/Claude/claude_desktop_config.json)  4 servers
+  ✓  Cursor          (~/.cursor/mcp.json)                                                2 servers
+  ✓  VS Code         (~/Library/Application Support/Code/User/mcp.json)                 1 server
+  ─  Windsurf        not found
+  ─  Kiro            not found
 
-Discovered 6 MCP servers:
-  1. snowflake-mcp      (stdio)     ~/.config/claude/claude_desktop_config.json
-  2. github-mcp         (stdio)     ~/.config/claude/claude_desktop_config.json
-  3. slack-mcp          (sse)       ~/.config/claude/claude_desktop_config.json
-  4. jira-mcp           (stdio)     ~/.config/claude/claude_desktop_config.json
-  5. postgres-mcp       (stdio)     ~/.cursor/mcp.json
-  6. filesystem-mcp     (stdio)     ~/.cursor/mcp.json
+Discovered 7 MCP servers
+┌───┬──────────────────┬──────────────────┬────────────────────────────────────┬───────────────┐
+│ # │ Name             │ Transport        │ Command / URL                      │ Source        │
+├───┼──────────────────┼──────────────────┼────────────────────────────────────┼───────────────┤
+│ 1 │ snowflake-mcp    │ stdio            │ npx -y @anthropic/mcp-server-sf    │ Claude Desktop│
+│ 2 │ github-mcp       │ stdio            │ npx -y @modelcontextprotocol/gh    │ Claude Desktop│
+│ 3 │ slack-mcp        │ sse              │ http://localhost:3001/sse          │ Claude Desktop│
+│ 4 │ jira-mcp         │ stdio            │ npx -y @scope/jira-mcp             │ Claude Desktop│
+│ 5 │ postgres-mcp     │ stdio            │ uv run python server.py            │ Cursor        │
+│ 6 │ filesystem-mcp   │ stdio            │ npx -y @modelcontextprotocol/fs    │ Cursor        │
+│ 7 │ internal-api     │ streamable_http  │ https://mcp.internal.company.com   │ VS Code       │
+└───┴──────────────────┴──────────────────┴────────────────────────────────────┴───────────────┘
 
-Include all servers? [Y/n]: Y
+Include all 7 server(s)? [Y/n]: Y
 
-Alert notifications:
-  Slack webhook URL (optional): https://hooks.slack.com/services/T.../B.../xxx
-  Alert threshold - error rate: [5%]:
-  Alert threshold - latency spike: [3x baseline]:
+Slack webhook URL for alerts (leave blank to skip): https://hooks.slack.com/services/T.../B.../xxx
 
-✅ Configuration written to .langsight.yaml
-   6 MCP servers configured
-   Slack alerts enabled
+✓ Config written to .langsight.yaml
+  7 MCP servers configured
+  Slack alerts enabled
+
+Running first health check...
+
+  UP                    snowflake-mcp          142ms      8 tools
+  UP                    github-mcp             310ms      12 tools
+  UP                    slack-mcp              89ms       5 tools
+  DOWN                  jira-mcp               —          timeout after 5s
+  UP                    postgres-mcp           52ms       6 tools
+  UP                    filesystem-mcp         18ms       4 tools
+  UP                    internal-api           201ms      9 tools
+
+  1 server(s) DOWN. Run langsight mcp-health for details.
 
 Next steps:
-  langsight mcp-health      Check server health
-  langsight security-scan   Run security audit
-  langsight monitor         Start continuous monitoring
+  langsight mcp-health      # Full health status + scorecard
+  langsight security-scan   # Security audit
+  langsight monitor         # Start continuous monitoring
 ```
 
-**Auto-discovery sources**:
-- `~/.config/claude/claude_desktop_config.json` (Claude Desktop)
-- `~/.cursor/mcp.json` (Cursor)
-- `~/.vscode/mcp.json` (VS Code)
-- Manual entry via `langsight config add-server`
+**Options**:
+| Flag | Description |
+|---|---|
+| `--skip-check` | Write config without running the first health check |
+| `--yes` / `-y` | Skip confirmation prompts (non-interactive/CI use) |
+| `--slack-webhook <url>` | Set Slack webhook URL directly |
+| `--output` / `-o` | Write config to a custom path (default: `.langsight.yaml`) |
+
+**Auto-discovery sources** (updated v0.8.0 — all 10+ clients):
+
+| Client | Config path (macOS) | Key |
+|---|---|---|
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | `mcpServers` |
+| Cursor | `~/.cursor/mcp.json` | `mcpServers` |
+| VS Code | `~/Library/Application Support/Code/User/mcp.json` | `servers` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` |
+| Claude Code | `~/.claude.json` | `mcpServers` |
+| Gemini CLI | `~/.gemini/settings.json` | `mcpServers` |
+| Kiro | `~/.kiro/settings/mcp.json` | `mcpServers` |
+| Zed | `~/.config/zed/settings.json` | `context_servers` |
+| Cline | `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/...` | `mcpServers` |
+| Cursor (project) | `.cursor/mcp.json` in CWD | `mcpServers` |
+| Claude Code (project) | `.mcp.json` in CWD | `mcpServers` |
+| VS Code (project) | `.vscode/mcp.json` in CWD | `servers` |
+
+Servers with the same command+args or URL across multiple clients are deduplicated automatically.
+
+---
+
+### 2.2 `langsight add`
+
+Manually register a single MCP server. Useful for production HTTP servers that don't exist in IDE configs.
+Added v0.8.0 (2026-03-26).
+
+```
+$ langsight add postgres-mcp \
+    --url https://postgres-mcp.internal.company.com/mcp
+
+Adding postgres-mcp (streamable_http)...
+  Testing connection...  ✓ Connected in 38ms
+  ✓ 4 tool(s): query, insert, update, list_tables
+
+✓ 'postgres-mcp' added to .langsight.yaml
+
+Next steps:
+  langsight mcp-health postgres-mcp   # Check health
+  langsight security-scan             # Security audit
+  langsight monitor                   # Start continuous monitoring
+```
+
+**Options**:
+| Flag | Description |
+|---|---|
+| `--url <url>` | HTTP/SSE/StreamableHTTP URL (remote/production servers) |
+| `--command <cmd>` | Shell command to launch a stdio server (local/dev) |
+| `--args <arg>` | Arguments for the stdio command (repeatable) |
+| `--env KEY=VALUE` | Environment variables for stdio server (repeatable) |
+| `--header KEY=VALUE` | HTTP headers for auth (repeatable, e.g. `Authorization=Bearer $TOKEN`) |
+| `--skip-check` | Add without running a connection test |
+| `--config` / `-c` | Config file to update (default: `.langsight.yaml`) |
+
+**Examples**:
+
+```bash
+# Remote HTTP server with auth
+langsight add github-mcp \
+  --url https://github-mcp.prod.company.com/mcp \
+  --header "Authorization=Bearer $GITHUB_MCP_TOKEN"
+
+# Local stdio server
+langsight add local-db \
+  --command "uv run python server.py" \
+  --args "--db-url postgresql://localhost/mydb"
+
+# With environment variables
+langsight add my-server \
+  --command "npx -y @scope/server" \
+  --env "API_KEY=secret" \
+  --env "DEBUG=true"
+```
 
 ---
 
@@ -99,6 +191,8 @@ Summary: 3 healthy, 1 degraded, 1 down, 1 schema change
 | `--server <name>` | Show detail for one server |
 | `--json` | JSON output for scripting |
 | `--verbose` | Show individual tool health within each server |
+| `--scorecard` | Show A-F composite health grade alongside each server (added v0.8.0) |
+| `--drift` | Show latest schema drift events and classification (added v0.8.0) |
 
 **Status definitions**:
 | Status | Meaning | Condition |
@@ -305,16 +399,51 @@ By Agent:
 
 ---
 
-### 2.7 `langsight config`
+### 2.7 `langsight scorecard`
+
+Show the A-F composite health grade for all or one MCP server. Added v0.8.0 (2026-03-26).
+
+```
+$ langsight scorecard
+
+MCP Server Scorecard
+┌──────────────────┬───────┬───────────────────────────────────────────────────────────────┐
+│ Server           │ Grade │ Dimensions                                                    │
+├──────────────────┼───────┼───────────────────────────────────────────────────────────────┤
+│ postgres-mcp     │  A+   │ avail:100 sec:100 rel:98  schema:100 perf:95                  │
+│ github-mcp       │  B    │ avail:95  sec:85  rel:90  schema:80  perf:88  [cap: high CVE] │
+│ slack-mcp        │  A    │ avail:99  sec:100 rel:95  schema:100 perf:92                  │
+│ jira-mcp         │  F    │ avail:0   [cap: 10+ consecutive failures]                     │
+└──────────────────┴───────┴───────────────────────────────────────────────────────────────┘
+
+$ langsight scorecard --server postgres-mcp
+
+postgres-mcp — Grade A+  (score 98.1)
+
+  Availability    30%   100.0   Uptime 100.000% (7d)
+  Security        25%   100.0   No findings
+  Reliability     20%    97.5   Error rate 0.2%
+  Schema Stability 15%  100.0   No schema changes in 7 days
+  Performance     10%    95.0   p99 = 145ms (baseline 142ms)
+```
+
+Grade thresholds: A+(exceptional), A(≥90), B(≥80), C(≥65), D(≥50), F(<50).
+Hard veto caps override the score for fatal flaws — see architecture doc § 2.1 for full cap rules.
+
+---
+
+### 2.8 `langsight config`
 
 Configuration management.
 
 ```
 $ langsight config show          # Show current configuration
-$ langsight config add-server    # Add an MCP server interactively
 $ langsight config set-alert     # Configure alert threshold
 $ langsight config test          # Test connections to all servers
 ```
+
+> **Note**: `langsight config add-server` was replaced by `langsight add` in v0.8.0.
+> Use `langsight add <name> --url <url>` or `langsight add <name> --command <cmd>` instead.
 
 ---
 

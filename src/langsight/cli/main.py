@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import click
 
+from langsight.cli.add import add
 from langsight.cli.api_key import api_key
 from langsight.cli.costs import costs
 from langsight.cli.init import init
@@ -24,6 +25,7 @@ def cli() -> None:
     """
 
 
+cli.add_command(add)
 cli.add_command(api_key)
 cli.add_command(costs)
 cli.add_command(init)

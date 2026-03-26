@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-03-26
+
+### Added
+- **MCP Server Discovery** — `langsight init` now auto-discovers 10+ IDE clients: Claude Desktop (correct macOS path `~/Library/Application Support/Claude/`), Cursor, VS Code, Windsurf, Claude Code, Gemini CLI, Kiro, Zed, and Cline. Handles all config key variants: `mcpServers`, `servers` (VS Code), and `context_servers` (Zed). Also scans project-local configs. Runs a first health check immediately after discovery. New `--skip-check` flag to bypass the post-discovery check.
+- **`langsight add` command** — new CLI command for manual MCP server registration. Supports `--url` for HTTP/production servers and `--command` for stdio/local servers. Runs a connection test on add and displays discovered tools. Additional options: `--header KEY=VALUE`, `--env KEY=VALUE`, `--args`, `--skip-check`, `--config`.
+- **Schema drift structural diff** — drift detection now produces a structured per-change diff instead of a bare hash comparison. Every change is classified as BREAKING (`tool_removed`, `required_param_removed`, `required_param_added`, `param_type_changed`), COMPATIBLE (`tool_added`, `optional_param_added`), or WARNING (`description_changed`). New ClickHouse table: `schema_drift_events`. New API endpoints: `GET /api/health/servers/{name}/drift-history` and `GET /api/health/servers/{name}/drift-impact`.
+- **MCP Server Scorecard** — new `GET /api/health/servers/{name}/scorecard` endpoint returns an A-F composite health grade across 5 weighted dimensions: Availability (30%), Security (25%), Reliability (20%), Schema Stability (15%), Performance (10%). Hard veto caps override the score to F on any of: 10+ consecutive failures, active critical CVE, or confirmed poisoning detection.
+- New domain models: `DriftType` enum (BREAKING, COMPATIBLE, WARNING), `SchemaChange`, and `SchemaDriftEvent`.
+
+### Fixed
+- `langsight init` macOS path for Claude Desktop corrected from `~/.config/claude/` (Linux path) to `~/Library/Application Support/Claude/`.
+- `langsight init` transport detection replaced fragile substring match on full URL with URL path segment parsing — eliminates false-positive transport classifications on non-standard server URLs.
+
 ## [0.7.3] - 2026-03-26
 
 ### Fixed

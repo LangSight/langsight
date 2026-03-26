@@ -209,6 +209,41 @@ class SLOEvaluation(BaseModel):
         return self.status == "breached"
 
 
+# ---------------------------------------------------------------------------
+# Schema drift models
+# ---------------------------------------------------------------------------
+
+
+class DriftType(StrEnum):
+    BREAKING = "breaking"      # agents using this tool will break
+    COMPATIBLE = "compatible"  # agents still work, new optional capability
+    WARNING = "warning"        # description changed — potential poisoning vector
+
+
+class SchemaChange(BaseModel):
+    """One atomic change detected between two tool schema snapshots."""
+
+    drift_type: DriftType
+    kind: str  # tool_removed | tool_added | required_param_removed |
+               # required_param_added | param_type_changed |
+               # optional_param_added | description_changed
+    tool_name: str
+    param_name: str | None = None
+    old_value: str | None = None
+    new_value: str | None = None
+
+
+class SchemaDriftEvent(BaseModel):
+    """Full drift event emitted when tool schemas change between snapshots."""
+
+    server_name: str
+    changes: list[SchemaChange]
+    has_breaking: bool
+    previous_hash: str | None = None
+    current_hash: str
+    detected_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class ApiKeyRole(StrEnum):
     ADMIN = "admin"  # full access — can trigger scans, ingest spans, manage keys
     VIEWER = "viewer"  # read-only — GET endpoints only

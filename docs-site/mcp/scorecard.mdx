@@ -1,0 +1,282 @@
+---
+title: "Server Scorecard"
+description: "A-F composite reliability grade for every MCP server — weighted across availability, security, reliability, schema stability, and performance."
+---
+
+## What is the scorecard?
+
+The scorecard gives each MCP server a single letter grade (A+ through F) that summarizes its overall reliability. The grade is computed from a weighted score across five dimensions, with hard veto caps that can override the numeric result when a server has a critical problem.
+
+Use it to answer: **"Which of my MCP servers should I be worried about right now?"**
+
+---
+
+## Quick look
+
+```bash
+langsight scorecard
+```
+
+```
+MCP Server Scorecards                       computed 2026-03-26 08:00 UTC
+──────────────────────────────────────────────────────────────────────────────
+Server            Grade   Score   Avail   Security   Reliability   Stability   Perf
+postgres-mcp        A+     97      30/30    25/25       20/20        15/15      10/10
+snowflake-mcp        A     92      30/30    23/25       19/20        14/15       9/10
+github-mcp           A     90      30/30    22/25       18/20        14/15       9/10
+search-mcp           B     84      28/30    21/25       17/20        12/15       9/10
+filesystem-mcp       B     81      28/30    20/25       17/20        12/15       8/10
+slack-mcp            C     68      27/30    18/25       14/20         9/15       6/10   [cap: no auth]
+jira-mcp             F      —       —        —            —            —          —     [cap: consecutive failures]
+```
+
+### Single server
+
+```bash
+langsight scorecard --server postgres-mcp
+```
+
+```
+Scorecard — postgres-mcp                    computed 2026-03-26 08:00 UTC
+──────────────────────────────────────────────────────────────────────────────
+Grade:  A+   Score: 97/100
+
+Dimension          Weight   Raw     Weighted   Notes
+Availability        30%     100%     30/30     99.8% uptime over 7 days
+Security            25%     100%     25/25     No findings; auth present
+Reliability         20%     100%     20/20     0% error rate; low latency variance
+Schema Stability    15%     100%     15/15     No drift events in 7 days
+Performance         10%      95%      9.5/10   p99 42ms vs 38ms 30-day baseline
+
+No cap applied.
+```
+
+---
+
+## The five dimensions
+
+### Availability (30%)
+
+7-day rolling window uptime percentage.
+
+| Score | Condition |
+|-------|-----------|
+| 100% | Zero downtime in 7 days |
+| Prorated | Each health check failure reduces the score proportionally |
+| 0% | All checks failed (server never came up) |
+
+### Security (25%)
+
+Derived from the most recent `langsight security-scan` result for this server.
+
+| Finding | Point deduction |
+|---------|----------------|
+| Critical CVE | −25 (maximum deduction; see hard veto) |
+| High CVE / OWASP HIGH finding | −15 |
+| Medium OWASP finding | −8 |
+| Low OWASP finding | −3 |
+| No authentication configured | −10 (see hard veto) |
+| Confirmed tool poisoning | −25 (maximum deduction; see hard veto) |
+
+If no security scan has ever run, this dimension scores 0 until a scan completes.
+
+### Reliability (20%)
+
+Error rate and latency variance over the 7-day window.
+
+| Score | Condition |
+|-------|-----------|
+| 100% | 0% error rate and low p99 variance |
+| Reduced | Each percentage point of error rate reduces the score; high variance reduces it further |
+| 0% | >50% error rate |
+
+### Schema Stability (15%)
+
+Frequency and severity of drift events over the 7-day window.
+
+| Score | Condition |
+|-------|-----------|
+| 100% | No drift events |
+| −10 per event | `COMPATIBLE` drift |
+| −20 per event | `WARNING` drift (description change) |
+| −30 per event | `BREAKING` drift |
+
+### Performance (10%)
+
+p99 latency compared to the 30-day baseline.
+
+| Score | Condition |
+|-------|-----------|
+| 100% | p99 within 20% of 30-day baseline |
+| Prorated | Each 10% above baseline reduces score proportionally |
+| 0% | p99 >3x the 30-day baseline |
+
+---
+
+## Grade thresholds
+
+| Grade | Score |
+|-------|-------|
+| A+ | 96–100 (exceptional) |
+| A | 90–95 |
+| B | 80–89 |
+| C | 65–79 |
+| D | 50–64 |
+| F | < 50 |
+
+---
+
+## Hard veto caps
+
+Certain conditions override the numeric score and lock the grade to a lower value regardless of points:
+
+| Condition | Grade cap | Reason |
+|-----------|-----------|--------|
+| 10+ consecutive failures | **F** | Server is effectively unreachable |
+| Active critical CVE | **F** | Unacceptable security risk |
+| Confirmed tool poisoning | **F** | Active exploit; do not use |
+| Uptime < 90% over 7 days | **D** | Unreliable for production use |
+| No authentication configured | **C** | Auth is a baseline security requirement |
+| Critical or high security finding | **B** | Must fix before A-range |
+| p99 > 5,000ms | **B** | Latency is too high for interactive agents |
+
+Caps are applied after the numeric score is computed. A server scoring 95 points but with no authentication configured receives a **C**, not an A.
+
+The CLI and dashboard always show which cap is active:
+
+```
+slack-mcp    C    68/100    [cap: no auth]
+jira-mcp     F    —         [cap: consecutive failures (12)]
+```
+
+---
+
+## REST API
+
+```bash
+GET /api/health/servers/{name}/scorecard
+```
+
+```bash
+curl http://localhost:8000/api/health/servers/postgres-mcp/scorecard
+```
+
+```json
+{
+  "server_name": "postgres-mcp",
+  "grade": "A+",
+  "score": 97.2,
+  "dimensions": [
+    {
+      "name": "availability",
+      "weight": 0.30,
+      "raw_score": 100.0,
+      "weighted_score": 30.0,
+      "notes": "99.8% uptime over 7 days"
+    },
+    {
+      "name": "security",
+      "weight": 0.25,
+      "raw_score": 100.0,
+      "weighted_score": 25.0,
+      "notes": "No findings; auth present"
+    },
+    {
+      "name": "reliability",
+      "weight": 0.20,
+      "raw_score": 100.0,
+      "weighted_score": 20.0,
+      "notes": "0% error rate"
+    },
+    {
+      "name": "schema_stability",
+      "weight": 0.15,
+      "raw_score": 100.0,
+      "weighted_score": 15.0,
+      "notes": "No drift events in 7 days"
+    },
+    {
+      "name": "performance",
+      "weight": 0.10,
+      "raw_score": 95.0,
+      "weighted_score": 9.5,
+      "notes": "p99 42ms vs 38ms baseline"
+    }
+  ],
+  "cap_applied": null,
+  "computed_at": "2026-03-26T08:00:00Z"
+}
+```
+
+When a cap is applied:
+
+```json
+{
+  "server_name": "slack-mcp",
+  "grade": "C",
+  "score": 68.0,
+  "cap_applied": {
+    "reason": "no_authentication",
+    "max_grade": "C",
+    "description": "No authentication configured. Auth is a baseline security requirement."
+  },
+  "computed_at": "2026-03-26T08:00:00Z"
+}
+```
+
+---
+
+## Dashboard
+
+The **MCP Servers** page shows a Grade column alongside the health status. The detail panel has a **Scorecard** tab showing:
+
+- The current grade (large, color-coded letter)
+- A dimension breakdown bar chart
+- Any active cap with a description and remediation hint
+- Grade history over the past 30 days (trend chart)
+
+---
+
+## Sharing a scorecard
+
+Use the `--json` flag to export for reporting or CI gating:
+
+```bash
+# Export all scorecards as JSON
+langsight scorecard --json > mcp-scorecards.json
+
+# Gate a deployment on all servers being B or better
+langsight scorecard --json | python -c "
+import sys, json
+cards = json.load(sys.stdin)
+failing = [c for c in cards if c['grade'] in ('C', 'D', 'F')]
+if failing:
+    for c in failing:
+        print(f\"{c['server_name']}: {c['grade']} — {c.get('cap_applied', {}).get('reason', 'low score')}\")
+    sys.exit(1)
+"
+```
+
+This gives you a CI step that fails the build if any MCP server is below B.
+
+---
+
+## Improving a scorecard
+
+| Grade | Most likely cause | Fix |
+|-------|------------------|-----|
+| F (consecutive failures) | Server is down | Restart the server process |
+| F (critical CVE) | Known vulnerability | Upgrade the server package |
+| F (poisoning) | Tool description hijacked | Roll back to last known-good version |
+| C (no auth) | Authentication not configured | Add API key or mTLS |
+| D (uptime < 90%) | Recurring crashes | Check process manager / k8s restarts |
+| B (p99 > 5s) | Slow upstream or DB | Profile and optimize server queries |
+
+---
+
+## Related
+
+- [Health Monitoring](/mcp/health-monitoring) — availability and performance data
+- [Schema Drift](/mcp/schema-drift) — schema stability data
+- [Security Scan](/cli/security-scan) — security dimension data
+- [Scorecard API](#rest-api) — REST reference

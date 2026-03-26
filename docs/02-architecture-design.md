@@ -74,7 +74,8 @@
 - Polling-based (not event-driven) — MCP servers don't push health status
 - Configurable intervals per server (default: 30s for health, 5min for schema check)
 - Rate limiting built in — never send more than N checks/min to a single server
-- Schema tracking via hash comparison — store full schema snapshot on change
+- **Schema tracking: structural diff, not just hash** (added v0.8.0, 2026-03-26): when a hash mismatch is detected, `classify_drift(old_tools, new_tools)` computes an atomic diff across tool definitions. Each change is classified as `BREAKING` (tool_removed, required_param_removed, required_param_added, param_type_changed), `COMPATIBLE` (tool_added, optional_param_added), or `WARNING` (description_changed — potential poisoning vector). The full `SchemaDriftEvent` (server, changes, has_breaking, hashes, timestamp) is stored in the `schema_drift_events` ClickHouse table. Source: `src/langsight/health/schema_tracker.py`.
+- **MCP Server Scorecard** (added v0.8.0, 2026-03-26): `ScorecardEngine.compute()` produces an A-F composite grade from five weighted dimensions (Availability 30%, Security 25%, Reliability 20%, Schema Stability 15%, Performance 10%). Hard veto caps override the numeric result for fatal flaws (10+ consecutive failures → F, active critical CVE → F, confirmed poisoning → F). Exposed via `GET /api/health/servers/{name}/scorecard`. Source: `src/langsight/health/scorecard.py`.
 
 ### 2.2 MCP Security Scanner
 
@@ -699,6 +700,7 @@ langsight investigate "customer got wrong refund amount"
 | `tool_reliability_hourly` | Aggregated: per-tool success rate, latency percentiles, error counts per hour | 1 year |
 | `cost_daily` | Aggregated: per-tool, per-agent cost per day | 1 year |
 | `mcp_schema_snapshots` | Full tool schema JSON, stored on change (not on every check) | Forever |
+| `schema_drift_events` | One row per atomic schema change (tool_removed, param_type_changed, etc.) with drift_type (BREAKING/COMPATIBLE/WARNING), old/new values, hashes. Drives `GET /api/health/servers/{name}/drift-history` and `GET /api/health/servers/{name}/drift-impact`. MergeTree, TTL 90 days. (added v0.8.0, 2026-03-26) | 90 days |
 
 **Known scaling limit — project-scoped analytics**
 
@@ -737,6 +739,20 @@ At current scale (demo data, single-digit projects) this is invisible — ClickH
 | `model_pricing` | LLM model → price per 1K input/output tokens (16 seed rows: Anthropic, OpenAI, Google, Meta, AWS) |
 | `agent_slos` | User-defined SLO definitions (`agent_name`, `metric`, `target`, `window_hours`, `created_at`). (P5.5, added 2026-03-19) |
 
+**v0.8.0 new API endpoints** (added 2026-03-26):
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/health/servers/{name}/scorecard` | A-F composite health grade — score, grade, 5 dimension scores, cap_applied |
+| `GET /api/health/servers/{name}/drift-history` | Recent schema drift events, newest first. `?limit=20` |
+| `GET /api/health/servers/{name}/drift-impact?tool_name=<tool>&hours=24` | Agents/sessions that called a changed tool (consumer impact) |
+
+**v0.8.0 schema migrations** (auto-applied on API startup, idempotent):
+
+| Table | Change | Notes |
+|-------|--------|-------|
+| `schema_drift_events` (ClickHouse) | New table created via `CREATE TABLE IF NOT EXISTS` | One row per atomic schema change; 90-day TTL |
+
 **v0.7.0 schema migrations** (auto-applied on API startup, idempotent):
 
 | Table | Change | Notes |
@@ -771,11 +787,20 @@ At current scale (demo data, single-digit projects) this is invisible — ClickH
 ## 6. Integration Points
 
 ### MCP Server Discovery
-LangSight discovers MCP servers from:
+LangSight discovers MCP servers from (updated v0.8.0, 2026-03-26):
 1. `.langsight.yaml` config file (primary)
-2. Auto-detect from `~/.config/claude/claude_desktop_config.json` (Claude Desktop)
-3. Auto-detect from Cursor MCP settings
-4. Manual `langsight config add-server` command
+2. Auto-detect from 10+ IDE clients via `langsight init`:
+   - Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `~/.config/Claude/...` on Linux)
+   - Cursor (`~/.cursor/mcp.json`) — key: `mcpServers`
+   - VS Code (`~/Library/Application Support/Code/User/mcp.json` on macOS) — key: `servers`
+   - Windsurf (`~/.codeium/windsurf/mcp_config.json`) — key: `mcpServers`
+   - Claude Code (`~/.claude.json`) — key: `mcpServers`
+   - Gemini CLI (`~/.gemini/settings.json`) — key: `mcpServers`
+   - Kiro (`~/.kiro/settings/mcp.json`) — key: `mcpServers`
+   - Zed (`~/.config/zed/settings.json`) — key: `context_servers`
+   - Cline (VS Code extension `globalStorage`) — key: `mcpServers`
+   - Project-local: `.cursor/mcp.json`, `.mcp.json`, `.vscode/mcp.json`
+3. Manual registration via `langsight add <name> --url <url>` (HTTP) or `langsight add <name> --command <cmd>` (stdio) — added v0.8.0
 
 ### MCP Transport Support
 | Transport | How we connect | Health check method |

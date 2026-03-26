@@ -11,6 +11,7 @@ from langsight.models import (
     PreventionConfig,
     Project,
     ProjectMember,
+    SchemaDriftEvent,
     User,
 )
 
@@ -364,6 +365,27 @@ class StorageBackend(Protocol):
         project_id: str | None = None,
     ) -> list[str]:
         """Return session_ids with no health tag that have been inactive for N seconds."""
+        ...
+
+    async def save_schema_drift_event(self, event: SchemaDriftEvent) -> None:
+        """Persist a schema drift event (one row per SchemaChange)."""
+        ...
+
+    async def get_schema_drift_history(
+        self,
+        server_name: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Return recent drift events for a server, newest first."""
+        ...
+
+    async def get_drift_impact(
+        self,
+        server_name: str,
+        tool_name: str,
+        hours: int = 24,
+    ) -> list[dict[str, Any]]:
+        """Return agents/sessions that called a tool recently (consumer impact)."""
         ...
 
     async def close(self) -> None:

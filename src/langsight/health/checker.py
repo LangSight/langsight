@@ -45,11 +45,16 @@ class HealthChecker:
             # Schema drift detection (only when storage is available)
             if self._schema_tracker:
                 drift = await self._schema_tracker.check_and_update(
-                    server.name, schema_hash, len(tools)
+                    server.name, schema_hash, len(tools), current_tools=tools
                 )
                 if drift.drifted:
                     status = ServerStatus.DEGRADED
-                    drift_warning = f"schema drift: {drift.previous_hash} → {drift.current_hash}"
+                    severity = "BREAKING" if drift.has_breaking else "compatible"
+                    drift_warning = (
+                        f"schema drift ({severity}): "
+                        f"{drift.previous_hash} → {drift.current_hash}"
+                        + (f" — {len(drift.changes)} change(s)" if drift.changes else "")
+                    )
 
             result = HealthCheckResult(
                 server_name=server.name,

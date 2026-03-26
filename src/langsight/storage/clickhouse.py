@@ -31,7 +31,7 @@ from typing import Any
 import clickhouse_connect
 import structlog
 
-from langsight.models import HealthCheckResult, PreventionConfig, ServerStatus
+from langsight.models import HealthCheckResult, PreventionConfig, SchemaDriftEvent, ServerStatus
 from langsight.sdk.models import ToolCallSpan
 
 logger = structlog.get_logger()
@@ -112,6 +112,27 @@ _DDL = [
     )
     ENGINE = MergeTree()
     ORDER BY (server_name, recorded_at)
+    SETTINGS index_granularity = 8192
+    """,
+    # Schema drift events — one row per atomic change, append-only
+    """
+    CREATE TABLE IF NOT EXISTS schema_drift_events (
+        server_name    String,
+        tool_name      String,
+        drift_type     LowCardinality(String),
+        change_kind    LowCardinality(String),
+        param_name     Nullable(String),
+        old_value      Nullable(String),
+        new_value      Nullable(String),
+        previous_hash  Nullable(String),
+        current_hash   String,
+        has_breaking   UInt8 DEFAULT 0,
+        detected_at    DateTime64(3, 'UTC')
+    )
+    ENGINE = MergeTree()
+    PARTITION BY toYYYYMM(detected_at)
+    ORDER BY (server_name, detected_at)
+    TTL toDateTime(detected_at) + INTERVAL 90 DAY
     SETTINGS index_granularity = 8192
     """,
     # Migration: drop old mv_tool_reliability if it lacks project_id so the
@@ -361,6 +382,151 @@ class ClickHouseBackend:
             parameters=params,
         )
         return [_row_to_result(row) for row in result.result_rows]
+
+    # ---------------------------------------------------------------------------
+    # Schema drift events
+    # ---------------------------------------------------------------------------
+
+    async def save_schema_drift_event(self, event: SchemaDriftEvent) -> None:
+        """Persist one row per SchemaChange in the schema_drift_events table."""
+        from langsight.models import SchemaDriftEvent as _SDE  # local import avoids circular
+
+        if not event.changes:
+            # No individual changes to store — store a single summary row
+            await self._client.insert(
+                "schema_drift_events",
+                [[
+                    event.server_name,
+                    "",
+                    "unknown",
+                    "hash_changed",
+                    None,
+                    None,
+                    None,
+                    event.previous_hash,
+                    event.current_hash,
+                    int(event.has_breaking),
+                    event.detected_at,
+                ]],
+                column_names=[
+                    "server_name", "tool_name", "drift_type", "change_kind",
+                    "param_name", "old_value", "new_value",
+                    "previous_hash", "current_hash", "has_breaking", "detected_at",
+                ],
+            )
+            return
+
+        rows = [
+            [
+                event.server_name,
+                change.tool_name,
+                change.drift_type.value,
+                change.kind,
+                change.param_name,
+                change.old_value,
+                change.new_value,
+                event.previous_hash,
+                event.current_hash,
+                int(event.has_breaking),
+                event.detected_at,
+            ]
+            for change in event.changes
+        ]
+        await self._client.insert(
+            "schema_drift_events",
+            rows,
+            column_names=[
+                "server_name", "tool_name", "drift_type", "change_kind",
+                "param_name", "old_value", "new_value",
+                "previous_hash", "current_hash", "has_breaking", "detected_at",
+            ],
+        )
+        logger.info(
+            "storage.schema_drift.saved",
+            server=event.server_name,
+            changes=len(event.changes),
+            has_breaking=event.has_breaking,
+        )
+
+    async def get_schema_drift_history(
+        self,
+        server_name: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Return recent drift events for a server, grouped by detected_at."""
+        result = await self._client.query(
+            """
+            SELECT
+                server_name,
+                tool_name,
+                drift_type,
+                change_kind,
+                param_name,
+                old_value,
+                new_value,
+                previous_hash,
+                current_hash,
+                has_breaking,
+                detected_at
+            FROM schema_drift_events
+            WHERE server_name = {server_name:String}
+            ORDER BY detected_at DESC
+            LIMIT {limit:UInt32}
+            """,
+            parameters={"server_name": server_name, "limit": limit},
+        )
+        cols = [
+            "server_name", "tool_name", "drift_type", "change_kind",
+            "param_name", "old_value", "new_value",
+            "previous_hash", "current_hash", "has_breaking", "detected_at",
+        ]
+        return [dict(zip(cols, row)) for row in result.result_rows]
+
+    async def get_drift_impact(
+        self,
+        server_name: str,
+        tool_name: str,
+        hours: int = 24,
+    ) -> list[dict[str, Any]]:
+        """Return agents/sessions that called a tool recently.
+
+        Used for consumer impact analysis: "tool X changed — who uses it?"
+        """
+        result = await self._client.query(
+            """
+            SELECT
+                agent_name,
+                session_id,
+                count()                   AS call_count,
+                countIf(status = 'error') AS error_count,
+                avg(latency_ms)           AS avg_latency_ms,
+                max(started_at)           AS last_called_at
+            FROM mcp_tool_calls
+            WHERE
+                server_name = {server_name:String}
+                AND tool_name  = {tool_name:String}
+                AND started_at >= now() - INTERVAL {hours:UInt32} HOUR
+            GROUP BY agent_name, session_id
+            ORDER BY call_count DESC
+            LIMIT 100
+            """,
+            parameters={
+                "server_name": server_name,
+                "tool_name": tool_name,
+                "hours": hours,
+            },
+        )
+        return [
+            {
+                "agent_name": row[0],
+                "session_id": row[1],
+                "call_count": row[2],
+                "error_count": row[3],
+                "avg_latency_ms": safe_float(row[4]),
+                "last_called_at": row[5],
+            }
+            for row in result.result_rows
+        ]
 
     async def close(self) -> None:
         """Close the ClickHouse connection."""

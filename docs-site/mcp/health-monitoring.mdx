@@ -1,0 +1,269 @@
+---
+title: "Health Monitoring"
+description: "Continuous uptime checks, latency tracking, and status classification for every MCP server in your stack."
+---
+
+## Overview
+
+LangSight connects to each configured MCP server on a schedule, runs the MCP `initialize` handshake followed by `tools/list`, measures round-trip latency, and classifies the result into one of four status states. Results are stored in ClickHouse for trend analysis and used to drive the [Scorecard](/mcp/scorecard) grades.
+
+---
+
+## Status states
+
+| Status | Icon | Meaning |
+|--------|------|---------|
+| `up` | ✓ | Server responded normally — latency within bounds |
+| `degraded` | ⚠ | Server responded but schema drift was detected |
+| `down` | ✗ | Server unreachable, timed out, or returned an error |
+| `stale` | — | No health check has run in the configured interval |
+
+### How `degraded` is set
+
+A server transitions to `degraded` when its tool schema hash changes from the stored baseline. This covers:
+
+- A tool was added or removed
+- A tool's input schema changed (required parameters, types)
+- A tool description was modified (potential [poisoning vector](/cli/security-scan))
+
+The `degraded` state prompts you to inspect the drift before deciding whether to accept or reject the change. See [Schema Drift](/mcp/schema-drift) for the full diff.
+
+### How `down` is set
+
+A server is marked `down` when:
+
+- The TCP connection is refused or times out (default: 5 seconds)
+- The MCP `initialize` call fails
+- `tools/list` returns an error
+
+### The `stale` state
+
+If the monitor daemon is not running and no manual check has been triggered in the last configured interval, LangSight marks servers as `stale`. This prevents the dashboard from showing optimistically green servers when checks have silently stopped.
+
+---
+
+## One-shot health check
+
+```bash
+langsight mcp-health
+```
+
+Connects to every configured server, runs one check each, and prints a table:
+
+```
+MCP Server Health  (7 servers)
+──────────────────────────────────────────────────────────────────────
+Server            Status       Latency   Tools   Schema
+snowflake-mcp     ✓ UP         89ms      8       bcf0ec26…
+github-mcp        ✓ UP         54ms      12      d2125e3a…
+slack-mcp         ✓ UP        142ms      4       a9e31f77…
+jira-mcp          ✗ DOWN       —         —       —         timeout after 5s
+postgres-mcp      ✓ UP         31ms      5       f4a2b1c9…
+filesystem-mcp    ✓ UP         12ms      6       8e3d7f2a…
+search-mcp        ⚠ DEGRADED   67ms      5       c4b7d91e…  schema drift detected
+
+6/7 servers healthy
+1 server degraded — run: langsight mcp-health --drift search-mcp
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--server <name>` | Check a single server only |
+| `--json` | Output results as JSON |
+| `--drift <name>` | Show the structural diff for a server with drift |
+| `--config <path>` | Use a specific `.langsight.yaml` |
+
+### JSON output
+
+```bash
+langsight mcp-health --json | jq '.[] | {name: .server_name, status, latency_ms}'
+```
+
+```json
+[
+  {
+    "server_name": "postgres-mcp",
+    "status": "up",
+    "latency_ms": 31.4,
+    "tools_count": 5,
+    "schema_hash": "f4a2b1c9...",
+    "schema_drift": false,
+    "checked_at": "2026-03-26T08:00:00Z",
+    "error": null
+  }
+]
+```
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | All servers `UP` |
+| `1` | One or more servers `DOWN` or `DEGRADED` |
+
+This makes `langsight mcp-health` useful as a pre-flight check in CI/CD:
+
+```yaml
+# .github/workflows/deploy.yml
+- name: MCP health pre-check
+  run: langsight mcp-health
+  # exits 1 if any server is down → blocks deploy
+```
+
+---
+
+## Continuous monitoring daemon
+
+```bash
+langsight monitor
+```
+
+Runs health checks on a configurable interval and fires alerts on state changes (UP → DOWN, DOWN → UP, schema drift). Keeps running until stopped.
+
+```
+LangSight Monitor — watching 7 servers
+  Check interval:  30s
+  Alert channel:   Slack (#mcp-alerts)
+
+14:00:01  snowflake-mcp     ✓ UP       89ms
+14:00:01  github-mcp        ✓ UP       54ms
+14:00:01  jira-mcp          ✗ DOWN     —
+          Alert fired → Slack (#mcp-alerts)
+
+14:00:31  jira-mcp          ✗ DOWN     —     (3 consecutive failures)
+...
+14:02:31  jira-mcp          ✓ UP       112ms
+          Recovery alert → Slack (#mcp-alerts)
+```
+
+### Configure the interval
+
+```yaml
+# .langsight.yaml
+monitor:
+  health_check_interval_seconds: 30   # per-server or global
+
+# Per-server override:
+servers:
+  - name: postgres-mcp
+    transport: streamable_http
+    url: https://postgres-mcp.internal.company.com/mcp
+    health_check_interval_seconds: 60   # check this one less frequently
+```
+
+### Alert on state changes only
+
+By default, `langsight monitor` fires one alert when a server goes DOWN, not an alert on every failed check. A recovery alert fires when the server comes back UP. This prevents alert storms.
+
+To alert on every failure instead:
+
+```yaml
+# .langsight.yaml
+monitor:
+  alert_on_every_failure: true
+```
+
+---
+
+## Health check protocol
+
+This section describes what LangSight does under the hood when it checks a server. You don't need to know this to use LangSight — it's here for debugging and for operators writing custom health check integrations.
+
+### Stdio transport
+
+1. Spawn the process with the configured `command` and `args`
+2. Send `initialize` via stdin
+3. Wait for the `initialized` response (timeout: 5s by default)
+4. Send `tools/list`
+5. Compare returned schema hash to stored baseline
+6. Kill the process
+
+### StreamableHTTP transport
+
+1. `POST {url}` with `Content-Type: application/json` and the `initialize` MCP message
+2. Parse the SSE/JSON response stream
+3. Send `tools/list` in the same session
+4. Compare schema hash
+5. Close the connection
+
+### SSE transport (legacy)
+
+1. `GET {url}` to open the SSE stream
+2. Send `initialize` via a POST to the session endpoint
+3. Wait for `initialized` event
+4. Send `tools/list`
+5. Compare schema hash
+6. Close the connection
+
+### Timeout behavior
+
+The default timeout is 5 seconds per server. If the server does not respond within the timeout, the result is `down` with `error: "timeout after 5s"`.
+
+Configure per-server:
+
+```yaml
+servers:
+  - name: slow-mcp
+    transport: streamable_http
+    url: https://slow-mcp.company.com/mcp
+    health_check_timeout_seconds: 15
+```
+
+---
+
+## Data persistence
+
+Health check results are stored in ClickHouse with a 90-day TTL. The schema:
+
+```sql
+CREATE TABLE health_checks (
+    server_name   LowCardinality(String),
+    status        LowCardinality(String),    -- up / degraded / down / stale
+    latency_ms    Nullable(Float32),
+    tools_count   Nullable(UInt16),
+    schema_hash   Nullable(String),
+    error         Nullable(String),
+    checked_at    DateTime64(3, 'UTC')
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMM(checked_at)
+ORDER BY (server_name, checked_at)
+TTL checked_at + INTERVAL 90 DAY;
+```
+
+Query via the API:
+
+```bash
+# Latest status for all servers
+curl http://localhost:8000/api/health/servers
+
+# History for one server (last 20 checks)
+curl "http://localhost:8000/api/health/servers/postgres-mcp/history?limit=20"
+
+# Trigger an immediate check
+curl -X POST http://localhost:8000/api/health/check
+```
+
+See [Health API](/api-reference/health) for the full endpoint reference.
+
+---
+
+## Dashboard
+
+The **MCP Servers** page (`/servers`) shows:
+
+- A sortable catalog with current status, p99 latency sparkline, and uptime % per server
+- A **Needs Attention** banner listing any server that is `DOWN` or `DEGRADED`
+- A detail panel with a health history chart and table for each server
+
+The dashboard pulls from the same ClickHouse data as the CLI.
+
+---
+
+## Related
+
+- [Schema Drift](/mcp/schema-drift) — what `DEGRADED` means in detail
+- [Server Scorecard](/mcp/scorecard) — composite grade across 5 dimensions
+- [langsight monitor](/cli/monitor) — full CLI reference for the daemon
+- [Health API](/api-reference/health) — REST endpoints

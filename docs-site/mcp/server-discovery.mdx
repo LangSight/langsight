@@ -1,0 +1,286 @@
+---
+title: "Server Discovery"
+description: "How LangSight finds your MCP servers automatically, and how to register servers manually with `langsight add`."
+---
+
+## Two ways to register servers
+
+| Method | Command | Best for |
+|--------|---------|----------|
+| Auto-discovery | `langsight init` | Dev machines — reads existing IDE configs |
+| Manual registration | `langsight add` | Production — adds remote or stdio servers explicitly |
+
+---
+
+## Auto-discovery — `langsight init`
+
+`langsight init` scans every well-known MCP config file location on your machine and merges all discovered servers into `.langsight.yaml`.
+
+### Usage
+
+```bash
+langsight init [OPTIONS]
+```
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--output`, `-o` | `.langsight.yaml` | Output path for config file |
+| `--slack-webhook` | — | Slack webhook URL for alerts |
+| `--yes`, `-y` | false | Skip confirmation prompts |
+| `--skip-check` | false | Write config without running the first health check |
+
+### All supported IDE clients
+
+LangSight searches the following locations. On macOS and Linux the paths use `~`. On Windows they expand to `%APPDATA%` equivalents.
+
+#### Global user configs
+
+| Client | Config path | Notes |
+|--------|------------|-------|
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) | — |
+| Claude Desktop | `~/.config/claude/claude_desktop_config.json` (Linux) | — |
+| Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` (Windows) | — |
+| Cursor | `~/.cursor/mcp.json` | — |
+| VS Code | `~/.vscode/mcp.json` | Uses `"servers"` key, not `"mcpServers"` |
+| Windsurf | `~/.windsurf/mcp.json` | — |
+| Claude Code | `~/.claude/mcp.json` | — |
+| Gemini CLI | `~/.gemini/mcp.json` | — |
+| Kiro | `~/.kiro/mcp.json` | — |
+| Zed | `~/.config/zed/settings.json` | Uses `"context_servers"` key |
+| Cline | `~/.cline/mcp.json` | — |
+
+#### Project-local configs
+
+LangSight also checks for project-local config files in the current directory:
+
+| File | Used by |
+|------|---------|
+| `.cursor/mcp.json` | Cursor workspace |
+| `.mcp.json` | Generic / shared team config |
+| `.vscode/mcp.json` | VS Code workspace |
+
+Project-local configs take precedence over global ones when a server name appears in both.
+
+### Config key variants
+
+Different IDE clients use different keys for their MCP server lists. LangSight handles all variants automatically:
+
+| Key | Used by |
+|-----|---------|
+| `mcpServers` | Claude Desktop, Claude Code, Cursor, Windsurf, Gemini CLI, Kiro, Cline |
+| `servers` | VS Code |
+| `context_servers` | Zed |
+
+### Example output
+
+```bash
+$ langsight init
+```
+
+```
+LangSight Init — scanning for MCP servers...
+
+  Claude Desktop  (~/Library/Application Support/Claude/claude_desktop_config.json)  4 servers
+  Cursor          (~/.cursor/mcp.json)                                                2 servers
+  VS Code         (~/.vscode/mcp.json)                                                1 server
+  .cursor/mcp.json  (project-local)                                                   1 server
+
+Discovered 8 MCP servers (1 duplicate removed):
+  1. snowflake-mcp    (stdio)
+  2. github-mcp       (stdio)
+  3. slack-mcp        (sse)
+  4. jira-mcp         (stdio)
+  5. postgres-mcp     (stdio)
+  6. filesystem-mcp   (stdio)
+  7. search-mcp       (stdio)
+  8. custom-api       (streamable_http)
+
+Include all 8 servers? [Y/n]: Y
+
+Slack webhook URL for alerts (leave blank to skip):
+
+Running first health check...
+
+  snowflake-mcp    ✓ UP       89ms
+  github-mcp       ✓ UP       54ms
+  slack-mcp        ✓ UP      142ms
+  jira-mcp         ✗ DOWN    —       timeout after 5s
+  postgres-mcp     ✓ UP       31ms
+  filesystem-mcp   ✓ UP       12ms
+  search-mcp       ✓ UP       67ms
+  custom-api       ✓ UP       23ms
+
+7/8 servers healthy
+
+Config written to .langsight.yaml
+  8 MCP servers configured
+```
+
+### Skip the first health check
+
+If you want to write the config without waiting for a health check (useful in CI pipelines or during infrastructure setup):
+
+```bash
+langsight init --skip-check
+```
+
+### Non-interactive mode
+
+```bash
+langsight init --yes \
+  --slack-webhook https://hooks.slack.com/services/... \
+  --output /etc/langsight/langsight.yaml \
+  --skip-check
+```
+
+---
+
+## Manual registration — `langsight add`
+
+`langsight add` registers a single server — either an HTTP/remote server or a local stdio server. It runs a connection test and shows you the discovered tools before writing to config.
+
+### Usage
+
+```bash
+langsight add <name> [OPTIONS]
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--url` | Base URL for HTTP-based servers (StreamableHTTP or SSE) |
+| `--command` | Command to start a stdio server |
+| `--args` | Argument to pass to the command (repeatable) |
+| `--env KEY=VALUE` | Environment variable for the server process (repeatable) |
+| `--header KEY=VALUE` | HTTP header to send with every request (repeatable) |
+| `--config` | Path to `.langsight.yaml` to update (default: auto-discovered) |
+| `--skip-check` | Add to config without running a connection test |
+
+### Register a remote HTTP server
+
+```bash
+# Production server, no auth
+langsight add postgres-mcp --url https://postgres-mcp.internal.company.com/mcp
+
+# With authorization header
+langsight add github-mcp \
+  --url https://github-mcp.prod.company.com/mcp \
+  --header "Authorization=Bearer $GITHUB_TOKEN"
+
+# Multiple headers
+langsight add analytics-mcp \
+  --url https://analytics-mcp.company.com/mcp \
+  --header "Authorization=Bearer $TOKEN" \
+  --header "X-Tenant-ID=acme"
+```
+
+Expected output:
+
+```
+Testing connection to github-mcp...
+
+  Connected in 67ms
+  Discovered 12 tools:
+    create_issue, update_issue, close_issue, list_issues,
+    create_pr, merge_pr, list_prs, get_commit, list_commits,
+    search_code, create_branch, delete_branch
+
+Add github-mcp to .langsight.yaml? [Y/n]: Y
+
+  Added github-mcp to .langsight.yaml
+  Run: langsight mcp-health --server github-mcp
+```
+
+### Register a local stdio server
+
+```bash
+# Python server
+langsight add local-db \
+  --command "uv run python server.py" \
+  --args "--db-url postgresql://localhost/mydb"
+
+# npx-based server with environment variables
+langsight add my-server \
+  --command "npx -y @scope/server" \
+  --env "API_KEY=$MY_API_KEY" \
+  --env "ENV=production"
+
+# Multiple --args flags (each is one argument token)
+langsight add custom-mcp \
+  --command "python" \
+  --args "-m" \
+  --args "mcp_server" \
+  --args "--port 5000"
+```
+
+### When the connection test fails
+
+If the server is unreachable, `langsight add` shows the error and asks whether to add it anyway:
+
+```
+Testing connection to jira-mcp...
+
+  Connection failed: timeout after 5s
+
+Add anyway? This server will appear as DOWN until it becomes reachable.
+Add jira-mcp? [y/N]: y
+
+  Added jira-mcp to .langsight.yaml (status: unverified)
+```
+
+This is useful when you want to pre-configure a server that isn't running yet.
+
+### Skip the connection test
+
+```bash
+langsight add jira-mcp \
+  --command "uv run python jira_mcp/server.py" \
+  --skip-check
+```
+
+---
+
+## Generated config
+
+Both `langsight init` and `langsight add` write to `.langsight.yaml`. The schema is identical regardless of how the entry was added:
+
+```yaml
+servers:
+  # HTTP server with auth header
+  - name: github-mcp
+    transport: streamable_http
+    url: https://github-mcp.prod.company.com/mcp
+    headers:
+      Authorization: "Bearer ${GITHUB_TOKEN}"
+
+  # stdio server
+  - name: postgres-mcp
+    transport: stdio
+    command: uv run python server.py
+    args:
+      - --db-url
+      - postgresql://localhost/mydb
+    env:
+      PG_PASSWORD: "${PG_PASSWORD}"
+
+  # SSE server (legacy transport)
+  - name: legacy-mcp
+    transport: sse
+    url: http://localhost:8080/sse
+
+alerts:
+  slack_webhook: "${SLACK_WEBHOOK_URL}"
+```
+
+Environment variables in `${VAR}` syntax are expanded from the process environment at runtime. Never commit actual secrets to this file.
+
+---
+
+## Related
+
+- [MCP Quickstart](/mcp/quickstart) — end-to-end walkthrough
+- [Health Monitoring](/mcp/health-monitoring) — what happens after discovery
+- [Self-Hosting Configuration](/self-hosting/configuration) — full list of env vars

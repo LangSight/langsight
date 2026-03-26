@@ -1,0 +1,167 @@
+---
+title: "MCP Quickstart"
+description: "Get MCP server health monitoring running in under 5 minutes — from install to live health checks and A-F scorecards."
+---
+
+## Two paths
+
+Pick the path that fits your situation:
+
+| Path | Time | Best for |
+|------|------|----------|
+| [Local / dev](#local-dev) | 60 seconds | Checking your own Claude/Cursor/VS Code setup |
+| [Production](#production) | 5 minutes | Monitoring remote MCP servers in a deployed stack |
+
+---
+
+## Local / dev
+
+You already use Claude Desktop, Cursor, or another MCP-enabled IDE. LangSight reads your existing config files and starts monitoring immediately.
+
+### Step 1 — Install
+
+```bash
+pip install langsight
+# or with uv:
+uv tool install langsight
+```
+
+### Step 2 — Discover your servers
+
+```bash
+langsight init
+```
+
+LangSight scans every MCP config file on your machine — Claude Desktop, Cursor, VS Code, Windsurf, Claude Code, Gemini CLI, Kiro, Zed, Cline, and any project-local configs. It writes a `.langsight.yaml` and immediately runs a first health check so you see results right away.
+
+```
+LangSight Init — scanning for MCP servers...
+
+  Claude Desktop  (~/.config/claude/claude_desktop_config.json)  4 servers
+  Cursor          (~/.cursor/mcp.json)                           2 servers
+  VS Code         (~/.vscode/mcp.json)                           1 server
+
+Discovered 7 MCP servers:
+  1. snowflake-mcp    (stdio)
+  2. github-mcp       (stdio)
+  3. slack-mcp        (sse)
+  4. jira-mcp         (stdio)
+  5. postgres-mcp     (stdio)
+  6. filesystem-mcp   (stdio)
+  7. search-mcp       (stdio)
+
+Include all 7 servers? [Y/n]: Y
+
+Running first health check...
+
+  snowflake-mcp    ✓ UP       89ms
+  github-mcp       ✓ UP       54ms
+  slack-mcp        ✓ UP      142ms
+  jira-mcp         ✗ DOWN    —       timeout after 5s
+  postgres-mcp     ✓ UP       31ms
+  filesystem-mcp   ✓ UP       12ms
+  search-mcp       ✓ UP       67ms
+
+6/7 servers healthy
+  jira-mcp is DOWN — check the process is running
+
+Config written to .langsight.yaml
+```
+
+### Step 3 — Health table
+
+```bash
+langsight mcp-health
+```
+
+Connects to every server, checks latency, detects schema drift, and shows a live table.
+
+### Step 4 — Scorecard
+
+```bash
+langsight scorecard
+```
+
+```
+MCP Server Scorecards
+──────────────────────────────────────────────────────────────────
+Server           Grade   Score   Avail   Security   Reliability
+snowflake-mcp      A      92      30/30    23/25       19/20
+github-mcp         A      90      30/30    22/25       18/20
+slack-mcp          B      84      29/30    20/25       17/20
+jira-mcp           F      —       —        —            —       consecutive failures (10+)
+postgres-mcp       A+     97      30/30    25/25       20/20
+filesystem-mcp     A      91      30/30    22/25       19/20
+search-mcp         B      81      28/30    21/25       16/20
+```
+
+---
+
+## Production
+
+You have MCP servers running as HTTP services (behind a load balancer, in Kubernetes, etc.). Define them in a YAML config and run LangSight via Docker.
+
+### Step 1 — Write a config
+
+```yaml
+# .langsight.yaml
+servers:
+  - name: postgres-mcp
+    transport: streamable_http
+    url: https://postgres-mcp.internal.company.com/mcp
+
+  - name: search-mcp
+    transport: streamable_http
+    url: https://search-mcp.k8s.company.com/mcp
+    headers:
+      Authorization: "Bearer ${SEARCH_MCP_TOKEN}"
+
+  - name: github-mcp
+    transport: streamable_http
+    url: https://github-mcp.prod.company.com/mcp
+    headers:
+      X-API-Key: "${GITHUB_MCP_KEY}"
+
+alerts:
+  slack_webhook: "${SLACK_WEBHOOK_URL}"
+```
+
+Environment variables in `${VAR}` syntax are expanded at runtime — never put secrets in the YAML itself.
+
+### Step 2 — Start the stack
+
+```bash
+docker compose up langsight
+```
+
+LangSight starts health-checking immediately. Open **http://localhost:3003** to see the dashboard.
+
+### Step 3 — Add servers later
+
+You don't have to restart Docker to add a server. Use `langsight add`:
+
+```bash
+langsight add billing-mcp --url https://billing-mcp.internal.company.com/mcp \
+  --header "Authorization=Bearer $BILLING_TOKEN"
+```
+
+See [Server Discovery](/mcp/server-discovery) for the full `langsight add` reference.
+
+---
+
+## What's next
+
+<CardGroup cols={2}>
+  <Card title="Server Discovery" icon="magnifying-glass" href="/mcp/server-discovery">
+    All 10+ IDE clients LangSight discovers. How to add servers manually with `langsight add`.
+  </Card>
+  <Card title="Health Monitoring" icon="heart-pulse" href="/mcp/health-monitoring">
+    Health check protocol, status states, continuous monitoring daemon.
+  </Card>
+  <Card title="Schema Drift" icon="code-compare" href="/mcp/schema-drift">
+    Detect breaking and compatible tool schema changes before they cause failures.
+  </Card>
+  <Card title="Server Scorecard" icon="ranking-star" href="/mcp/scorecard">
+    A-F composite grade across availability, security, reliability, and performance.
+  </Card>
+</CardGroup>

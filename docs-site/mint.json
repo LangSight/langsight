@@ -99,6 +99,16 @@
       ]
     },
     {
+      "group": "MCP Monitoring",
+      "pages": [
+        "mcp/quickstart",
+        "mcp/server-discovery",
+        "mcp/health-monitoring",
+        "mcp/schema-drift",
+        "mcp/scorecard"
+      ]
+    },
+    {
       "group": "Reliability Features",
       "pages": [
         "dashboard",
