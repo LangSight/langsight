@@ -6,6 +6,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-26
+
+### Breaking Changes
+- `InvestigateConfig.api_key` removed from `.langsight.yaml` schema — LLM API keys must now be supplied via environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). Any `.langsight.yaml` files containing `investigate.api_key` must be updated before upgrading.
+- `mv_agent_sessions` ClickHouse materialized view rebuilt with new schema (`project_id` column added) — operators running self-hosted installs must drop and recreate this view on upgrade (migration script provided in `scripts/migrate_0_7_0.sh`).
+
+### Security
+- S2: Playwright auth bypass (`/api/auth/debug`) now gated by `NODE_ENV !== production` — endpoint was reachable in production builds
+- H1/SSRF: SSRF validation added to all outbound webhook URLs in `slack.py` and `webhook.py` — private/loopback/link-local destinations are now rejected
+- H2/PII: email address removed from login-success audit log entries — was written in plaintext to `audit_logs`
+- H4: Invite password minimum raised from 8 to 12 characters — now matches the admin bootstrap policy
+- H5/H6: API (port 8000) and dashboard (port 3003) now bind to `127.0.0.1` only in `docker-compose.yml` — previously bound to `0.0.0.0`, exposing unauthenticated ports on all interfaces
+- H7/B1: `health_results` table gains `project_id` column via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` — existing installs are unaffected; new column enables per-tenant scoping of health data
+- C2: `mv_agent_sessions` materialized view rebuilt with `project_id` — previously all tenants' sessions were mixed in the view, breaking tenant isolation for session-level aggregates
+- C3: `api_key` removed from `InvestigateConfig` — LLM keys via environment variables only, never stored in config files on disk
+- H1: `get_session_health_tag()` now scoped by `project_id` — previously returned health tags across all projects sharing the same session ID
+- M2/B3: `hmac.compare_digest` replaces plain `in` operator for environment key comparison — prevents timing-oracle attacks on API key validation
+- H2: Startup warning emitted when `LANGSIGHT_METRICS_TOKEN` is not set — operators are no longer silently running with an unprotected metrics endpoint
+- M7: `audit_logs` table gains `project_id` column via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` — enables per-tenant audit log isolation
+- H4: `SELECT *` on `users` table replaced with an explicit safe column list — `password_hash` is now excluded from general-purpose user queries and remains only in the authentication code path
+- Settings `PUT /api/settings` now routes through the authenticated proxy — was previously writable without authentication
+- Quickstart script now generates a random admin password instead of the hardcoded default `"admin"`
+- Dashboard admin credentials removed from the `dashboard` container definition in `docker-compose.yml`
+
+### Fixed
+- Integration tests: postgres-mcp reachability skip guard now checks port 5433 (not 5432) — test suite was skipping integration tests incorrectly when postgres-mcp was running
+- Dashboard: sidebar test labels corrected to `Dashboard` (was `Overview`) — caused test failures after nav label rename
+- Lineage graph: test assertions updated to match new edge schema — tests were asserting stale field names
+
 ## [0.6.2] - 2026-03-25
 
 ### Security
