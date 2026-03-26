@@ -52,7 +52,7 @@ def mcp_health(config_path: Path | None, output_json: bool) -> None:
     async def _run() -> list[HealthCheckResult]:
         storage = await try_open_storage(config)
         try:
-            checker = HealthChecker(storage=storage)
+            checker = HealthChecker(storage=storage, project_id=config.project_id)
             return await checker.check_many(config.servers)
         finally:
             if storage:

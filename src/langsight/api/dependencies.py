@@ -404,11 +404,15 @@ async def get_active_project_id(
 ) -> str | None:
     """Resolve the project_id to filter by for this request.
 
-    - If project_id is provided, verify the caller is a member (or admin) and return it.
-    - If not provided:
-        - Global admins (session role=admin or env-var key) return None → see all data.
-        - Auth disabled (no keys configured) returns None → open install.
-        - Authenticated non-admins receive HTTP 400 — they must specify a project.
+    Priority order (highest wins):
+    1. API key's project_id — when a project-scoped key is used, always use
+       its bound project. This is the "API key = project" pattern: set
+       LANGSIGHT_API_KEY to a project-scoped key and all CLI health checks,
+       monitor runs, and API calls are automatically scoped to that project.
+    2. .langsight.yaml project_id field — explicit config-file override.
+    3. project_id query parameter — for dashboard and direct API calls.
+    4. Global admin with no project_id → None (sees all data).
+    5. Non-admin without project_id → HTTP 400.
     """
     storage: StorageBackend = request.app.state.storage
     if not hasattr(storage, "list_members"):
@@ -429,6 +433,24 @@ async def get_active_project_id(
     has_env_keys = bool(env_keys)
     has_db_keys = await _has_db_keys(storage)
     auth_enabled = has_env_keys or has_db_keys
+
+    # ── Priority 1: project-scoped API key ───────────────────────────────────
+    # When the caller presents a DB key that has project_id set, use it
+    # unconditionally. This implements "API key = project" — changing your
+    # LANGSIGHT_API_KEY changes which project you write to, with no flags.
+    if api_key and not is_env_key_admin:
+        get_fn = getattr(storage, "get_api_key_by_hash", None)
+        if get_fn and inspect.iscoroutinefunction(get_fn):
+            key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+            record = await get_fn(key_hash)
+            if record and record.project_id:
+                return record.project_id
+
+    # ── Priority 2: .langsight.yaml project_id field ─────────────────────────
+    config = getattr(getattr(request, "app", None), "state", None)
+    config_obj = getattr(config, "config", None) if config else None
+    if config_obj and getattr(config_obj, "project_id", ""):
+        return config_obj.project_id
 
     # ── Handle missing project_id ─────────────────────────────────────────────
     if not project_id:

@@ -72,6 +72,16 @@ class LangSightConfig(BaseModel):
     # Set to True to prevent tool call arguments and return values from being
     # stored. Use this when tools may handle PII (names, emails, financial data).
     redact_payloads: bool = False
+    # Project scoping — optional.
+    # When set, all CLI health checks are stored under this project_id so they
+    # appear in the correct project dashboard instead of the global (unscoped) view.
+    # The API key's project_id takes precedence when a project-scoped key is used.
+    #
+    # Example .langsight.yaml:
+    #   project: production          # human-readable slug
+    #   project_id: "abc123"         # UUID from the dashboard (preferred)
+    project: str = ""      # project slug (display only — resolved to id at query time)
+    project_id: str = ""   # project UUID — used directly for storage scoping
 
 
 # ---------------------------------------------------------------------------

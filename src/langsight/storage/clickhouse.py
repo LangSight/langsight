@@ -389,8 +389,6 @@ class ClickHouseBackend:
 
     async def save_schema_drift_event(self, event: SchemaDriftEvent) -> None:
         """Persist one row per SchemaChange in the schema_drift_events table."""
-        from langsight.models import SchemaDriftEvent as _SDE  # local import avoids circular
-
         if not event.changes:
             # No individual changes to store — store a single summary row
             await self._client.insert(
@@ -480,7 +478,7 @@ class ClickHouseBackend:
             "param_name", "old_value", "new_value",
             "previous_hash", "current_hash", "has_breaking", "detected_at",
         ]
-        return [dict(zip(cols, row)) for row in result.result_rows]
+        return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
     async def get_drift_impact(
         self,
@@ -522,7 +520,7 @@ class ClickHouseBackend:
                 "session_id": row[1],
                 "call_count": row[2],
                 "error_count": row[3],
-                "avg_latency_ms": safe_float(row[4]),
+                "avg_latency_ms": float(row[4]) if row[4] is not None else None,
                 "last_called_at": row[5],
             }
             for row in result.result_rows

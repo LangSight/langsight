@@ -31,6 +31,8 @@ _KEY_BYTES = 32  # 256-bit key → 64 hex chars
 class CreateApiKeyRequest(BaseModel):
     name: str  # user-given label, e.g. "LibreChat production"
     role: ApiKeyRole = ApiKeyRole.ADMIN  # "admin" or "viewer"
+    project_id: str | None = None  # when set, this key scopes ALL CLI/API calls
+                                   # to this project automatically (API key = project)
 
 
 class ApiKeyCreatedResponse(BaseModel):
@@ -102,6 +104,7 @@ async def create_api_key(
         key_hash=key_hash,
         role=body.role,
         user_id=creator_user_id,
+        project_id=body.project_id or None,
         created_at=now,
     )
 

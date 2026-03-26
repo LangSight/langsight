@@ -249,6 +249,8 @@ class ApiKeyRole(StrEnum):
     VIEWER = "viewer"  # read-only — GET endpoints only
 
 
+
+
 class ApiKeyRecord(BaseModel):
     """A stored API key (the raw key is never persisted — only the hash)."""
 
@@ -257,7 +259,9 @@ class ApiKeyRecord(BaseModel):
     key_prefix: str  # first 8 chars of raw key — shown in UI for identification
     key_hash: str  # sha256(raw_key) — used for lookup
     role: ApiKeyRole = ApiKeyRole.ADMIN  # default admin for backwards compatibility
-    user_id: str | None = None  # owning user — used for project membership checks
+    user_id: str | None = None   # owning user — used for project membership checks
+    project_id: str | None = None  # when set, all CLI health checks using this key
+                                   # are scoped to this project automatically
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_used_at: datetime | None = None
     revoked_at: datetime | None = None

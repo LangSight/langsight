@@ -19,8 +19,8 @@ from langsight.models import (
     Project,
     ProjectMember,
     ProjectRole,
-    ServerStatus,
     SchemaDriftEvent,
+    ServerStatus,
     SLOMetric,
     User,
     UserRole,
@@ -40,6 +40,7 @@ _DDL_STATEMENTS = [
         key_hash     TEXT        UNIQUE NOT NULL,
         role         TEXT        NOT NULL DEFAULT 'admin',
         user_id      TEXT,
+        project_id   TEXT,
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         last_used_at TIMESTAMPTZ,
         revoked_at   TIMESTAMPTZ
@@ -160,6 +161,7 @@ _DDL_STATEMENTS = [
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
     """,
+    "ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS project_id TEXT NULL",
     "ALTER TABLE health_results ADD COLUMN IF NOT EXISTS project_id TEXT NOT NULL DEFAULT ''",
     "CREATE INDEX IF NOT EXISTS idx_health_results_project ON health_results(project_id, server_name)",
     "ALTER TABLE agent_slos ADD COLUMN IF NOT EXISTS project_id TEXT NOT NULL DEFAULT ''",
@@ -459,8 +461,8 @@ class PostgresBackend:
     async def create_api_key(self, record: ApiKeyRecord) -> None:
         await self._pool.execute(
             """
-            INSERT INTO api_keys (id, name, key_prefix, key_hash, role, user_id, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO api_keys (id, name, key_prefix, key_hash, role, user_id, project_id, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             """,
             record.id,
             record.name,
@@ -468,6 +470,7 @@ class PostgresBackend:
             record.key_hash,
             record.role.value,
             record.user_id,
+            record.project_id,
             record.created_at,
         )
         logger.info("storage.postgres.api_key_created", id=record.id, name=record.name)
@@ -1512,6 +1515,7 @@ def _row_to_api_key(row: asyncpg.Record) -> ApiKeyRecord:
         key_hash=row_dict["key_hash"],
         role=ApiKeyRole(row_dict["role"]) if row_dict["role"] else ApiKeyRole.ADMIN,
         user_id=row_dict.get("user_id"),
+        project_id=row_dict.get("project_id"),
         created_at=row_dict["created_at"],
         last_used_at=row_dict["last_used_at"],
         revoked_at=row_dict["revoked_at"],

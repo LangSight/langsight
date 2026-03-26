@@ -100,7 +100,7 @@ async def _monitor_loop(
 
     storage = await try_open_storage(config)
     try:
-        checker = HealthChecker(storage=storage)
+        checker = HealthChecker(storage=storage, project_id=config.project_id)
 
         # Seed alert baselines from recent health history (avoids false alarms after restart)
         if storage:

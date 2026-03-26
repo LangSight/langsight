@@ -23,8 +23,13 @@ class HealthChecker:
                  When None, checks are stateless (no history, no drift detection).
     """
 
-    def __init__(self, storage: StorageBackend | None = None) -> None:
+    def __init__(
+        self,
+        storage: StorageBackend | None = None,
+        project_id: str = "",
+    ) -> None:
         self._storage = storage
+        self._project_id = project_id
         self._schema_tracker = SchemaTracker(storage) if storage else None
 
     async def check(self, server: MCPServer) -> HealthCheckResult:
@@ -65,6 +70,7 @@ class HealthChecker:
                 schema_hash=schema_hash,
                 checked_at=datetime.now(UTC),
                 error=drift_warning,
+                project_id=self._project_id,
             )
 
             logger.info(
@@ -88,6 +94,7 @@ class HealthChecker:
                 status=ServerStatus.DOWN,
                 checked_at=datetime.now(UTC),
                 error=f"timeout after {server.timeout_seconds}s",
+                project_id=self._project_id,
             )
             if self._storage:
                 await self._storage.save_health_result(result)
@@ -100,6 +107,7 @@ class HealthChecker:
                 status=ServerStatus.DOWN,
                 checked_at=datetime.now(UTC),
                 error=str(exc),
+                project_id=self._project_id,
             )
             if self._storage:
                 await self._storage.save_health_result(result)
@@ -112,6 +120,7 @@ class HealthChecker:
                 status=ServerStatus.DOWN,
                 checked_at=datetime.now(UTC),
                 error=f"unexpected error: {exc}",
+                project_id=self._project_id,
             )
             if self._storage:
                 await self._storage.save_health_result(result)
