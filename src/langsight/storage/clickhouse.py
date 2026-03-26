@@ -599,10 +599,7 @@ class ClickHouseBackend:
         # against mcp_tool_calls.  project_id filter is applied when supplied.
         # ClickHouse bloom filter indexes on project_id and session_id make this
         # efficient even on large datasets.
-        where = (
-            "WHERE t.started_at >= now() - INTERVAL {hours:UInt32} HOUR"
-            " AND t.session_id != ''"
-        )
+        where = "WHERE t.started_at >= now() - INTERVAL {hours:UInt32} HOUR AND t.session_id != ''"
         params: dict[str, Any] = {"hours": hours, "limit": limit}
         having = ""
 
@@ -1254,7 +1251,29 @@ class ClickHouseBackend:
         hours: int = 24,
         project_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Hourly-bucketed metrics for the monitoring dashboard."""
+        """Time-bucketed metrics for the monitoring dashboard.
+
+        Bucket granularity adapts to the requested window so charts always
+        have enough data points for a meaningful trend line:
+          <=1h  → 5-minute buckets  (up to 12 points)
+          <=6h  → 15-minute buckets (up to 24 points)
+          <=24h → 1-hour buckets    (up to 24 points)
+          >24h  → 6-hour buckets    (up to 28 points for 7d)
+        """
+        # Choose bucket function and format based on window size
+        if hours <= 1:
+            bucket_fn = "toStartOfFiveMinutes(started_at)"
+            bucket_fmt = "%Y-%m-%dT%H:%i:00Z"
+        elif hours <= 6:
+            bucket_fn = "toStartOfFifteenMinutes(started_at)"
+            bucket_fmt = "%Y-%m-%dT%H:%i:00Z"
+        elif hours <= 24:
+            bucket_fn = "toStartOfHour(started_at)"
+            bucket_fmt = "%Y-%m-%dT%H:00:00Z"
+        else:
+            bucket_fn = "toStartOfInterval(started_at, INTERVAL 6 HOUR)"
+            bucket_fmt = "%Y-%m-%dT%H:00:00Z"
+
         where = "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR AND session_id != ''"
         params: dict[str, Any] = {"hours": hours}
         if project_id:
@@ -1264,7 +1283,7 @@ class ClickHouseBackend:
         result = await self._client.query(
             f"""
             SELECT
-                formatDateTime(toStartOfHour(started_at), '%Y-%m-%dT%H:00:00Z') AS bucket,
+                formatDateTime({bucket_fn}, '{bucket_fmt}') AS bucket,
                 uniqExact(session_id)                                            AS sessions,
                 countIf(span_type = 'tool_call')                                AS tool_calls,
                 countIf(status != 'success' AND span_type = 'tool_call')        AS errors,
