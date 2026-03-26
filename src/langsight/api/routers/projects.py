@@ -14,6 +14,7 @@ DELETE /api/projects/{project_id}/members/{uid}   — remove member (owner only)
 
 from __future__ import annotations
 
+import hmac
 import inspect
 import re
 import uuid
@@ -200,7 +201,7 @@ async def list_projects(
     auth_disabled = not has_env_keys and not has_db_keys
 
     # Global admin check
-    is_admin = auth_disabled or api_key in env_keys
+    is_admin = auth_disabled or any(hmac.compare_digest(api_key or "", k) for k in env_keys)
     if not is_admin and hasattr(storage, "get_api_key_by_hash") and api_key:
         import hashlib
 

@@ -159,6 +159,8 @@ _DDL_STATEMENTS = [
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
     """,
+    "ALTER TABLE health_results ADD COLUMN IF NOT EXISTS project_id TEXT NOT NULL DEFAULT ''",
+    "CREATE INDEX IF NOT EXISTS idx_health_results_project ON health_results(project_id, server_name)",
     "ALTER TABLE agent_slos ADD COLUMN IF NOT EXISTS project_id TEXT NOT NULL DEFAULT ''",
     "CREATE INDEX IF NOT EXISTS idx_agent_slos_project ON agent_slos(project_id)",
     # Composite index for SLO evaluator — queries per-agent per-project
@@ -172,17 +174,20 @@ _DDL_STATEMENTS = [
     """,
     """
     CREATE TABLE IF NOT EXISTS audit_logs (
-        id        BIGSERIAL   PRIMARY KEY,
-        timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        event     TEXT        NOT NULL,
-        user_id   TEXT        NOT NULL DEFAULT 'system',
-        ip        TEXT        NOT NULL DEFAULT 'unknown',
-        details   JSONB       NOT NULL DEFAULT '{}'
+        id         BIGSERIAL   PRIMARY KEY,
+        timestamp  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        event      TEXT        NOT NULL,
+        user_id    TEXT        NOT NULL DEFAULT 'system',
+        ip         TEXT        NOT NULL DEFAULT 'unknown',
+        details    JSONB       NOT NULL DEFAULT '{}',
+        project_id TEXT        NOT NULL DEFAULT ''
     )
     """,
     """
     CREATE INDEX IF NOT EXISTS idx_audit_logs_time ON audit_logs (timestamp DESC)
     """,
+    "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS project_id TEXT NOT NULL DEFAULT ''",
+    "CREATE INDEX IF NOT EXISTS idx_audit_logs_project ON audit_logs (project_id, timestamp DESC)",
     """
     CREATE TABLE IF NOT EXISTS agent_metadata (
         id          TEXT        PRIMARY KEY,
@@ -361,8 +366,8 @@ class PostgresBackend:
                 """
                 INSERT INTO health_results
                     (server_name, status, latency_ms, tools_count,
-                     schema_hash, error, checked_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                     schema_hash, error, checked_at, project_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 """,
                 result.server_name,
                 result.status.value,
@@ -371,6 +376,7 @@ class PostgresBackend:
                 result.schema_hash,
                 result.error,
                 result.checked_at,
+                result.project_id,
             )
         logger.debug("storage.postgres.health_saved", server=result.server_name)
 
@@ -675,12 +681,16 @@ class PostgresBackend:
         return _row_to_user(row) if row else None
 
     async def get_user_by_id(self, user_id: str) -> User | None:
-        row = await self._pool.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
-        return _row_to_user(row) if row else None
+        row = await self._pool.fetchrow(
+            f"SELECT {_USER_SAFE_COLS} FROM users WHERE id = $1", user_id
+        )
+        return _row_to_user_safe(row) if row else None
 
     async def list_users(self) -> list[User]:
-        rows = await self._pool.fetch("SELECT * FROM users ORDER BY created_at DESC")
-        return [_row_to_user(r) for r in rows]
+        rows = await self._pool.fetch(
+            f"SELECT {_USER_SAFE_COLS} FROM users ORDER BY created_at DESC"
+        )
+        return [_row_to_user_safe(r) for r in rows]
 
     async def update_user_role(self, user_id: str, role: str) -> bool:
         result: str = await self._pool.execute(
@@ -868,14 +878,17 @@ class PostgresBackend:
         user_id: str,
         ip: str,
         details: dict[str, Any],
+        project_id: str = "",
     ) -> None:
         """Append a new audit log entry."""
         await self._pool.execute(
-            "INSERT INTO audit_logs (event, user_id, ip, details) VALUES ($1, $2, $3, $4::jsonb)",
+            "INSERT INTO audit_logs (event, user_id, ip, details, project_id)"
+            " VALUES ($1, $2, $3, $4::jsonb, $5)",
             event,
             user_id,
             ip,
             json.dumps(details),
+            project_id,
         )
 
     async def list_audit_logs(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
@@ -1340,7 +1353,9 @@ class PostgresBackend:
     ) -> None:
         """No-op: health tags live in ClickHouse, not Postgres."""
 
-    async def get_session_health_tag(self, session_id: str) -> str | None:
+    async def get_session_health_tag(
+        self, session_id: str, project_id: str | None = None
+    ) -> str | None:
         """No-op: health tags live in ClickHouse, not Postgres."""
         return None
 
@@ -1410,11 +1425,31 @@ def _row_to_member(row: asyncpg.Record) -> ProjectMember:
     )
 
 
+# Columns for non-authentication queries — excludes password_hash so the
+# bcrypt hash never travels into layers that don't need it.
+_USER_SAFE_COLS = "id, email, role, active, invited_by, created_at, last_login_at"
+
+
 def _row_to_user(row: asyncpg.Record) -> User:
+    """Map a full DB row (with password_hash) to a User — for auth only."""
     return User(
         id=row["id"],
         email=row["email"],
         password_hash=row["password_hash"],
+        role=UserRole(row["role"]),
+        active=bool(row["active"]),
+        invited_by=row["invited_by"],
+        created_at=row["created_at"],
+        last_login_at=row["last_login_at"],
+    )
+
+
+def _row_to_user_safe(row: asyncpg.Record) -> User:
+    """Map a safe DB row (without password_hash) to a User — for non-auth reads."""
+    return User(
+        id=row["id"],
+        email=row["email"],
+        password_hash="",  # not fetched — never needed outside auth
         role=UserRole(row["role"]),
         active=bool(row["active"]),
         invited_by=row["invited_by"],

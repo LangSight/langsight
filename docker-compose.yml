@@ -110,7 +110,7 @@ services:
       LANGSIGHT_ADMIN_EMAIL: ${LANGSIGHT_ADMIN_EMAIL:-}
       LANGSIGHT_ADMIN_PASSWORD: ${LANGSIGHT_ADMIN_PASSWORD:-}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./.langsight.yaml:/app/.langsight.yaml:ro
       - ./test-mcps:/app/test-mcps:ro
@@ -161,7 +161,7 @@ services:
       PORT: 3002
       HOSTNAME: "0.0.0.0"
     ports:
-      - "3003:3002"
+      - "127.0.0.1:3003:3002"
     depends_on:
       api:
         condition: service_healthy

@@ -351,7 +351,9 @@ class StorageBackend(Protocol):
         """Persist (or replace) a health tag for a session."""
         ...
 
-    async def get_session_health_tag(self, session_id: str) -> str | None:
+    async def get_session_health_tag(
+        self, session_id: str, project_id: str | None = None
+    ) -> str | None:
         """Return the health tag for a session, or None."""
         ...
 

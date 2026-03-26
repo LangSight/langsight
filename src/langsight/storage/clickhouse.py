@@ -140,13 +140,20 @@ _DDL = [
     GROUP BY project_id, server_name, tool_name, hour
     """,
     # Materialized view: agent sessions — one row per session
-    # Drives langsight sessions + GET /api/agents/sessions
+    # Migrate existing installs: drop the old view so the CREATE below
+    # rebuilds it with project_id in the ORDER BY / GROUP BY.
+    # Safe to run on every startup — if already recreated, DROP + CREATE
+    # are both fast no-ops relative to query latency.
+    "DROP TABLE IF EXISTS mv_agent_sessions",
+    # Drives langsight sessions + GET /api/agents/sessions.
+    # project_id included so admin/all-project queries remain tenant-safe.
     """
     CREATE MATERIALIZED VIEW IF NOT EXISTS mv_agent_sessions
     ENGINE = AggregatingMergeTree()
-    ORDER BY (session_id, agent_name)
+    ORDER BY (project_id, session_id, agent_name)
     POPULATE
     AS SELECT
+        project_id,
         session_id,
         agent_name,
         min(started_at)                                      AS first_call_at,
@@ -158,7 +165,7 @@ _DDL = [
         groupUniqArray(server_name)                          AS servers_used
     FROM mcp_tool_calls
     WHERE session_id != ''
-    GROUP BY session_id, agent_name
+    GROUP BY project_id, session_id, agent_name
     """,
     # v0.3 Session health tags — one row per (project, session), auto-classified
     # Uses ReplacingMergeTree so re-tagging a session replaces the old row.
@@ -610,7 +617,8 @@ class ClickHouseBackend:
             "agents_used",
         ]
 
-        # mv_agent_sessions does not include project_id — query base table when filtering by project
+        # When project_id is supplied: query base table for full project isolation.
+        # When absent (admin/all-project view): use mv_agent_sessions (includes project_id).
         if project_id:
             where = (
                 "WHERE t.started_at >= now() - INTERVAL {hours:UInt32} HOUR"
@@ -693,10 +701,10 @@ class ClickHouseBackend:
                 WHERE session_id != '' AND agent_name != ''
                 GROUP BY session_id, agent_name
             ) tok ON mv.session_id = tok.session_id AND mv.agent_name = tok.agent_name
-            LEFT JOIN (SELECT session_id, health_tag FROM session_health_tags FINAL) sht
-                ON mv.session_id = sht.session_id
+            LEFT JOIN (SELECT session_id, project_id, health_tag FROM session_health_tags FINAL) sht
+                ON mv.session_id = sht.session_id AND mv.project_id = sht.project_id
             {where}
-            GROUP BY mv.session_id
+            GROUP BY mv.project_id, mv.session_id
             ORDER BY first_call_at DESC
             LIMIT {{limit:UInt32}}
             """,
@@ -1256,12 +1264,22 @@ class ClickHouseBackend:
             column_names=["session_id", "health_tag", "details", "project_id", "tagged_at"],
         )
 
-    async def get_session_health_tag(self, session_id: str) -> str | None:
-        """Return the health tag for a session, or None if not tagged."""
-        result = await self._client.query(
-            "SELECT health_tag FROM session_health_tags FINAL WHERE session_id = {sid:String} LIMIT 1",
-            parameters={"sid": session_id},
-        )
+    async def get_session_health_tag(
+        self, session_id: str, project_id: str | None = None
+    ) -> str | None:
+        """Return the health tag for a session, scoped to project when provided."""
+        if project_id:
+            result = await self._client.query(
+                "SELECT health_tag FROM session_health_tags FINAL"
+                " WHERE session_id = {sid:String} AND project_id = {pid:String} LIMIT 1",
+                parameters={"sid": session_id, "pid": project_id},
+            )
+        else:
+            result = await self._client.query(
+                "SELECT health_tag FROM session_health_tags FINAL"
+                " WHERE session_id = {sid:String} LIMIT 1",
+                parameters={"sid": session_id},
+            )
         rows = result.result_rows
         if rows:
             return str(rows[0][0])

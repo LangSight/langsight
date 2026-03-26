@@ -83,6 +83,14 @@ metrics_router = APIRouter(tags=["metrics"])
 
 _METRICS_TOKEN = os.environ.get("LANGSIGHT_METRICS_TOKEN", "")
 
+if not _METRICS_TOKEN:
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "LANGSIGHT_METRICS_TOKEN is not set — /metrics endpoint is open. "
+        "Set LANGSIGHT_METRICS_TOKEN=<secret> to require authentication."
+    )
+
 
 @metrics_router.get("/metrics", include_in_schema=False)
 async def prometheus_metrics(request: Request) -> Response:

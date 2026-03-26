@@ -172,8 +172,10 @@ class DualStorage:
             session_id, health_tag, details, project_id
         )
 
-    async def get_session_health_tag(self, session_id: str) -> str | None:
-        return await self._analytics.get_session_health_tag(session_id)
+    async def get_session_health_tag(
+        self, session_id: str, project_id: str | None = None
+    ) -> str | None:
+        return await self._analytics.get_session_health_tag(session_id, project_id)
 
     async def get_untagged_sessions(
         self,

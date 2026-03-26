@@ -43,15 +43,16 @@ class InvestigateConfig(BaseModel):
 
     provider: anthropic | openai | gemini | ollama
     model:    override the default model (optional)
-    api_key:  override the env-var API key (optional — prefer env vars)
     base_url: override the default base URL (mainly for Ollama remotes)
+
+    LLM API keys must be set via environment variables (ANTHROPIC_API_KEY,
+    OPENAI_API_KEY, etc.) — never store them in .langsight.yaml.
 
     See docs/06-provider-setup.md for setup instructions.
     """
 
     provider: str = "anthropic"
     model: str | None = None
-    api_key: str | None = None
     base_url: str | None = None
 
 

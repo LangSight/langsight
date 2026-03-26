@@ -1184,9 +1184,9 @@ function InstanceSection() {
     const next = !settings?.redact_payloads;
     setSaving(true);
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_LANGSIGHT_API_URL ?? "http://localhost:8000"}/api/settings`, {
+      await fetch("/api/proxy/settings", {
         method: "PUT",
-        headers: { "Content-Type": "application/json", ...(typeof window !== "undefined" && localStorage.getItem("ls_api_key") ? { "X-API-Key": localStorage.getItem("ls_api_key")! } : {}) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ redact_payloads: next }),
       });
       mutateSettings({ redact_payloads: next }, false);

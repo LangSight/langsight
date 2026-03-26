@@ -155,7 +155,7 @@ async def _run(
         provider = create_provider(
             provider=inv_cfg.provider,
             model=inv_cfg.model,
-            api_key=inv_cfg.api_key,
+            api_key=None,  # resolved from env vars (ANTHROPIC_API_KEY etc.)
             base_url=inv_cfg.base_url,
         )
         await _analyse_with_llm(evidence_by_server, provider)
