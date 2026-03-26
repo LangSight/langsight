@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 import structlog
 
+from langsight.alerts._url_validation import validate_webhook_url
 from langsight.alerts.engine import Alert, AlertSeverity, AlertType
 
 logger = structlog.get_logger()
@@ -47,6 +48,12 @@ async def send_alert(webhook_url: str, alert: Alert) -> bool:
 
     Returns True if delivery succeeded, False otherwise (fail-open).
     """
+    try:
+        validate_webhook_url(webhook_url)
+    except ValueError as exc:
+        logger.error("slack.invalid_webhook_url", error=str(exc))
+        return False
+
     payload = _build_payload(alert)
     try:
         async with httpx.AsyncClient(timeout=SLACK_TIMEOUT) as client:

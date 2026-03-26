@@ -10,6 +10,7 @@ from __future__ import annotations
 import httpx
 import structlog
 
+from langsight.alerts._url_validation import validate_webhook_url
 from langsight.alerts.engine import Alert
 
 logger = structlog.get_logger()
@@ -22,6 +23,12 @@ async def send_alert(webhook_url: str, alert: Alert) -> bool:
 
     Returns True on success, False on failure (fail-open).
     """
+    try:
+        validate_webhook_url(webhook_url)
+    except ValueError as exc:
+        logger.error("webhook.invalid_url", error=str(exc))
+        return False
+
     payload = {
         "server_name": alert.server_name,
         "alert_type": alert.alert_type.value,

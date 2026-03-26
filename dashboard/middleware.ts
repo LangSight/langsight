@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 
 export default auth((req) => {
   if (
-    process.env.PLAYWRIGHT_TEST === "1"
+    process.env.NODE_ENV !== "production"
+    && process.env.PLAYWRIGHT_TEST === "1"
     && req.cookies.get("langsight_e2e_auth")?.value === "1"
   ) {
     return NextResponse.next();

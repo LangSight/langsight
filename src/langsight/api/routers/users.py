@@ -437,7 +437,6 @@ async def verify_credentials(
     logger.info(
         "audit.auth.dashboard_login_success",
         user_id=user.id,
-        email=user.email,
         role=user.role.value,
     )
 
