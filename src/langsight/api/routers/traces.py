@@ -23,7 +23,7 @@ from fastapi import status as http_status
 
 from langsight.api.metrics import SPANS_INGESTED
 from langsight.api.rate_limit import limiter
-from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+from langsight.sdk.models import SESSION_ID_RE, ToolCallSpan, ToolCallStatus
 
 logger = structlog.get_logger()
 
@@ -83,6 +83,21 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
     Phase 2: logs each span with structlog.
     Phase 3: persists to ClickHouse when storage.mode=clickhouse.
     """
+    # Validate session_id format at the API boundary — reject non-UUID values
+    # so arbitrary test strings cannot pollute the dashboard.
+    from fastapi import HTTPException
+
+    for span in spans:
+        if span.session_id and not SESSION_ID_RE.match(span.session_id):
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"session_id must be a UUID4 (hex or standard form), "
+                    f"got {span.session_id!r}. "
+                    "Use LangSightClient.wrap() / wrap_llm() to auto-generate a valid session_id."
+                ),
+            )
+
     for span in spans:
         logger.info(
             "trace.span_received",

@@ -85,7 +85,7 @@ class TestTracesEndpoint:
         payload.update({
             "trace_id": "trace-123",
             "agent_name": "support-agent",
-            "session_id": "sess-abc",
+            "session_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",  # valid UUID4 hex
         })
         response = await client.post("/api/traces/spans", json=[payload])
         assert response.status_code == 202

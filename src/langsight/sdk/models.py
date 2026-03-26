@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+# UUID4 patterns: used by the API ingest endpoint (traces.py) to validate
+# client-supplied session_id values.  The model itself is permissive so
+# unit tests can use short IDs without boilerplate.
+#   hex-only (uuid4().hex): 32 lowercase hex chars, no dashes
+#   standard form:          8-4-4-4-12 hex with dashes
+SESSION_ID_RE = re.compile(
+    r"^[0-9a-f]{32}$"
+    r"|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 
 
 class ToolCallStatus(StrEnum):
