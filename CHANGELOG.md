@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-03-26
+
+### Fixed
+- SDK: `buffer_span()` now calls `_ensure_flush_loop()` on every invocation — previously the flush loop was defined but never started, causing all spans to accumulate in memory and only deliver at process exit via `atexit`. Spans now flush every 1 s in real time. `asyncio.get_running_loop()` is used so the call is a safe no-op in sync contexts. 6 new tests added.
+- API: `POST /ingest/spans` now validates `session_id` as a UUID4 at the ingestion boundary, returning HTTP 422 for non-UUID values (e.g. `"live-test-2"`) — previously arbitrary strings passed through and polluted session-keyed dashboard views. SDK always generates UUID4 via `_new_session_id()`.
+
 ## [0.7.2] - 2026-03-26
 
 ### Fixed
