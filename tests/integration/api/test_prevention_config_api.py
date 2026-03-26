@@ -101,7 +101,7 @@ class TestListPreventionConfigs:
         configs = r.json()
         names = {c["agent_name"] for c in configs}
         assert "orchestrator" in names
-        assert "billing-agent" in names
+        assert "procurement" in names
         assert "*" in names  # project default
 
     def test_list_returns_correct_shape(
@@ -141,14 +141,14 @@ class TestGetEffectiveConfig:
         body = r.json()
         assert body["agent_name"] == "orchestrator"
         assert body["max_steps"] == 25
-        assert body["max_cost_usd"] == pytest.approx(1.00)
+        assert body["max_cost_usd"] == pytest.approx(2.00)
         assert body["is_default"] is False
 
-    def test_get_billing_agent_config(
+    def test_get_procurement_agent_config(
         self, headers: dict[str, str], project_id: str
     ) -> None:
         r = httpx.get(
-            f"{_BASE_URL}/api/agents/billing-agent/prevention-config",
+            f"{_BASE_URL}/api/agents/procurement/prevention-config",
             headers=headers,
             params={"project_id": project_id},
             timeout=5,
