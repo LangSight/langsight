@@ -29,7 +29,7 @@ async def open_storage(config: StorageConfig) -> StorageBackend:
             )
         from langsight.storage.postgres import PostgresBackend
 
-        return await PostgresBackend.open(  # type: ignore[return-value]
+        return await PostgresBackend.open(
             config.postgres_url, min_size=config.pg_pool_min, max_size=config.pg_pool_max
         )
 
@@ -74,7 +74,7 @@ async def open_storage(config: StorageConfig) -> StorageBackend:
             username=config.clickhouse_username,
             password=config.clickhouse_password,
         )
-        return DualStorage(metadata, analytics)  # type: ignore[return-value]
+        return DualStorage(metadata, analytics)
 
     raise ConfigError(
         f"Unknown storage mode '{config.mode}'. "
