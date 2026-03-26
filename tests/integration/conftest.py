@@ -19,7 +19,7 @@ from langsight.models import MCPServer, TransportType
 
 POSTGRES_MCP_PATH = "test-mcps/postgres-mcp/server.py"
 _POSTGRES_MCP_HOST = "127.0.0.1"
-_POSTGRES_MCP_PORT = 5432
+_POSTGRES_MCP_PORT = 5433  # test-mcps/docker-compose.yml maps 127.0.0.1:5433→5432
 
 
 def _postgres_mcp_reachable() -> bool:
