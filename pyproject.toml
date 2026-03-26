@@ -57,6 +57,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/langsight"]
 
+[tool.hatch.build]
+include = ["src/langsight/**/*.py", "src/langsight/seed_data/*.json"]
+
 [dependency-groups]
 dev = [
     "pytest>=8",
