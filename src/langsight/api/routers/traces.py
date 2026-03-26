@@ -14,6 +14,7 @@ Rate limits (S.4):
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import Any
 
 import structlog
@@ -28,10 +29,40 @@ logger = structlog.get_logger()
 
 router = APIRouter(prefix="/traces", tags=["traces"])
 
-# In-memory caches to avoid DB lookups on every span batch.
+# LRU caches to avoid DB lookups on every span batch.
+# Bounded at 2000 entries each — prevents unbounded memory growth in
+# long-running deployments with high agent/server cardinality.
 # Reset on process restart — safe because upsert is idempotent.
-_seen_agents: set[str] = set()
-_seen_servers: set[str] = set()
+_LRU_MAX = 2000
+
+
+class _LRUSet:
+    """A set with LRU eviction — evicts the oldest entry when full."""
+
+    def __init__(self, maxsize: int) -> None:
+        self._d: OrderedDict[str, None] = OrderedDict()
+        self._max = maxsize
+
+    def __contains__(self, key: str) -> bool:
+        if key in self._d:
+            self._d.move_to_end(key)
+            return True
+        return False
+
+    def add(self, key: str) -> None:
+        if key in self._d:
+            self._d.move_to_end(key)
+        else:
+            if len(self._d) >= self._max:
+                self._d.popitem(last=False)
+            self._d[key] = None
+
+    def discard(self, key: str) -> None:
+        self._d.pop(key, None)
+
+
+_seen_agents: _LRUSet = _LRUSet(_LRU_MAX)
+_seen_servers: _LRUSet = _LRUSet(_LRU_MAX)
 
 
 # ---------------------------------------------------------------------------
