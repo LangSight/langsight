@@ -44,11 +44,16 @@ def require_postgres_mcp() -> None:
 
 @pytest.fixture
 def postgres_mcp_server(require_postgres_mcp: None) -> MCPServer:
-    """Real postgres-mcp server — requires docker compose up in test-mcps/."""
+    """Real postgres-mcp server — requires docker compose up in test-mcps/.
+
+    test-mcps/docker-compose.yml maps host 5433 → container 5432, so the
+    subprocess must connect on port 5433 (not the server.py default of 5432).
+    """
     return MCPServer(
         name="langsight-postgres",
         transport=TransportType.STDIO,
         command="uv",
         args=["run", "--project", "test-mcps/postgres-mcp", "python", POSTGRES_MCP_PATH],
+        env={"POSTGRES_PORT": "5433"},
         timeout_seconds=20,
     )
