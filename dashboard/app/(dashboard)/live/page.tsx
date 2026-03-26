@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import { Radio, AlertTriangle, CheckCircle, ChevronRight, WifiOff } from "lucide-react";
 import { useProject } from "@/lib/project-context";
 import { cn } from "@/lib/utils";
-import { mergeSpan, RUNNING_MS, type LiveRow, type SpanEvent } from "@/lib/live-utils";
+import { mergeSpan, toUTCMs, RUNNING_MS, EXPIRE_MS, type LiveRow, type SpanEvent } from "@/lib/live-utils";
+import type { AgentSession } from "@/lib/types";
 
 /* ── Constants ───────────────────────────────────────────────── */
 const STUCK_MS          = 2 * 60_000;  // > 2min since last span → stuck
@@ -94,6 +95,40 @@ export default function LivePage() {
     const id = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(id);
   }, []);
+
+  // Seed rows from DB on mount so existing sessions appear immediately,
+  // even before any new SSE span arrives.
+  useEffect(() => {
+    const url = `/api/agents/sessions?hours=1${pid ? `&project_id=${encodeURIComponent(pid)}` : ""}`;
+    fetch(url)
+      .then(r => r.ok ? r.json() : [])
+      .then((sessions: AgentSession[]) => {
+        const now = Date.now();
+        const cutoff = now - EXPIRE_MS;
+        setRows(prev => {
+          const next = new Map(prev);
+          for (const s of sessions) {
+            const firstMs = toUTCMs(s.first_call_at);
+            const lastMs  = firstMs + (s.duration_ms ?? 0);
+            if (lastMs < cutoff) continue;
+            if (next.has(s.session_id)) continue;  // SSE already has a fresher version
+            next.set(s.session_id, {
+              session_id:    s.session_id,
+              agent_name:    s.agent_name ?? null,
+              span_count:    s.tool_calls ?? 0,
+              error_count:   s.failed_calls ?? 0,
+              first_seen_ms: firstMs,
+              last_seen_ms:  lastMs,
+              running_until: 0,         // not currently running — set by new SSE spans
+              ever_grew:     false,
+              stable_since:  lastMs,
+            });
+          }
+          return next;
+        });
+      })
+      .catch(() => {/* fail silently — SSE will still populate in real time */});
+  }, [pid]);
 
   // SSE connection with exponential-backoff reconnect
   useEffect(() => {
