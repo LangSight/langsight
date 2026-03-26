@@ -81,9 +81,16 @@ class HealthChecker:
                 tools=result.tools_count,
             )
 
-            # Persist result
+            # Persist result + register server in metadata (for dashboard MCP Servers page)
             if self._storage:
                 await self._storage.save_health_result(result)
+                upsert_fn = getattr(self._storage, "upsert_server_metadata", None)
+                if upsert_fn:
+                    await upsert_fn(
+                        server_name=server.name,
+                        transport=server.transport.value,
+                        project_id=self._project_id or None,
+                    )
 
             return result
 

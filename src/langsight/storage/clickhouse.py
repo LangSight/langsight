@@ -383,6 +383,35 @@ class ClickHouseBackend:
         )
         return [_row_to_result(row) for row in result.result_rows]
 
+    async def get_distinct_health_server_names(
+        self,
+        project_id: str | None = None,
+    ) -> set[str]:
+        """Return all distinct server names that have health check data.
+
+        Used by list_servers_health to discover CLI-monitored servers that
+        are not in the API container's config.servers.
+        """
+        if project_id:
+            result = await self._client.query(
+                """
+                SELECT DISTINCT server_name
+                FROM mcp_health_results
+                WHERE project_id = {project_id:String}
+                  AND server_name != ''
+                """,
+                parameters={"project_id": project_id},
+            )
+        else:
+            result = await self._client.query(
+                """
+                SELECT DISTINCT server_name
+                FROM mcp_health_results
+                WHERE server_name != ''
+                """
+            )
+        return {row[0] for row in result.result_rows if row[0]}
+
     # ---------------------------------------------------------------------------
     # Schema drift events
     # ---------------------------------------------------------------------------

@@ -24,6 +24,21 @@ async def _project_server_names(storage: StorageBackend, project_id: str) -> set
     return names
 
 
+async def _health_server_names(
+    storage: StorageBackend,
+    project_id: str | None,
+) -> set[str]:
+    """Return all server names that have health check data in ClickHouse.
+
+    This is the source of truth for the health page — any server the CLI has
+    ever checked will appear here, even if it's not in the API's config.servers.
+    """
+    fn = getattr(storage, "get_distinct_health_server_names", None)
+    if fn:
+        return await fn(project_id=project_id)
+    return set()
+
+
 @router.get(
     "/servers",
     response_model=list[HealthCheckResult],
@@ -39,14 +54,31 @@ async def list_servers_health(
     When a project is active, only returns health for servers visible to
     that project (based on server_metadata). Admins see all servers.
     """
-    # Determine which servers to show
-    allowed: set[str] | None = None
-    if project_id:
-        allowed = await _project_server_names(storage, project_id)
+    # Collect server names from three sources (union):
+    #   1. ClickHouse health data  — servers the CLI has ever checked
+    #   2. config.servers          — servers in this container's config
+    #   3. server_metadata         — servers explicitly registered via API
+    # This ensures CLI-monitored servers always appear in the dashboard,
+    # even when the API container has a different (or empty) config.
+    ch_names = await _health_server_names(storage, project_id)
+    config_names = {s.name for s in config.servers}
+    meta_names = await _project_server_names(storage, project_id) if project_id else set()
 
-    visible = [s for s in config.servers if allowed is None or s.name in allowed]
+    all_names = ch_names | config_names | meta_names
+
+    # When project scoping is active, only show servers that have health data
+    # scoped to this project (already filtered by ClickHouse project_id above).
+    # Servers from config/metadata without any health data in this project are
+    # excluded to avoid ghost entries.
+    if project_id and ch_names:
+        all_names = ch_names | (config_names & meta_names)
+
+    if not all_names:
+        return []
+
     histories = await asyncio.gather(
-        *(storage.get_health_history(s.name, limit=1, project_id=project_id) for s in visible)
+        *(storage.get_health_history(name, limit=1, project_id=project_id)
+          for name in sorted(all_names))
     )
     return [h[0] for h in histories if h]
 
