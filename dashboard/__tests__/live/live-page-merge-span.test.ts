@@ -25,7 +25,7 @@ function makeSpan(overrides: Partial<SpanEvent> = {}): SpanEvent {
     tool_name:   "query",
     status:      "success",
     latency_ms:  42,
-    started_at:  "2026-03-26T10:00:00Z",
+    started_at:  new Date().toISOString(),  // must be recent — mergeSpan evicts sessions > EXPIRE_MS
     ...overrides,
   };
 }
@@ -57,17 +57,17 @@ describe("mergeSpan — creates a new row on first span for a session", () => {
   });
 
   it("first_seen_ms is set from started_at on first span", () => {
-    const next = mergeSpan(new Map(), makeSpan({ started_at: "2026-03-26T10:00:00Z" }));
+    const ts = new Date().toISOString();
+    const next = mergeSpan(new Map(), makeSpan({ started_at: ts }));
     const row = next.get("sess-abc");
     expect(row?.first_seen_ms).toBeGreaterThan(0);
-    expect(row?.first_seen_ms).toBe(new Date("2026-03-26T10:00:00Z").getTime());
+    expect(row?.first_seen_ms).toBe(new Date(ts).getTime());
   });
 
   it("last_seen_ms is set from started_at", () => {
-    const next = mergeSpan(new Map(), makeSpan({ started_at: "2026-03-26T10:00:05Z" }));
-    expect(next.get("sess-abc")?.last_seen_ms).toBe(
-      new Date("2026-03-26T10:00:05Z").getTime()
-    );
+    const ts = new Date(Date.now() + 5000).toISOString();
+    const next = mergeSpan(new Map(), makeSpan({ started_at: ts }));
+    expect(next.get("sess-abc")?.last_seen_ms).toBe(new Date(ts).getTime());
   });
 
   it("agent_name is stored from span payload", () => {
@@ -117,19 +117,18 @@ describe("mergeSpan — increments counters on each new span", () => {
 
   it("first_seen_ms does not change on subsequent spans", () => {
     let rows = new Map();
-    rows = mergeSpan(rows, makeSpan({ started_at: "2026-03-26T10:00:00Z" }));
+    rows = mergeSpan(rows, makeSpan({ started_at: new Date().toISOString() }));
     const firstSeen = rows.get("sess-abc")!.first_seen_ms;
-    rows = mergeSpan(rows, makeSpan({ started_at: "2026-03-26T10:00:05Z" }));
+    rows = mergeSpan(rows, makeSpan({ started_at: new Date(Date.now() + 5000).toISOString() }));
     expect(rows.get("sess-abc")?.first_seen_ms).toBe(firstSeen);
   });
 
   it("last_seen_ms updates to the latest span timestamp", () => {
+    const laterTs = new Date(Date.now() + 5000).toISOString();
     let rows = new Map();
-    rows = mergeSpan(rows, makeSpan({ started_at: "2026-03-26T10:00:00Z" }));
-    rows = mergeSpan(rows, makeSpan({ started_at: "2026-03-26T10:00:05Z" }));
-    expect(rows.get("sess-abc")?.last_seen_ms).toBe(
-      new Date("2026-03-26T10:00:05Z").getTime()
-    );
+    rows = mergeSpan(rows, makeSpan({ started_at: new Date().toISOString() }));
+    rows = mergeSpan(rows, makeSpan({ started_at: laterTs }));
+    expect(rows.get("sess-abc")?.last_seen_ms).toBe(new Date(laterTs).getTime());
   });
 
   it("agent_name from later span fills in if earlier was null", () => {
