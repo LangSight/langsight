@@ -23,6 +23,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from langsight.config import LangSightConfig, load_config
+from langsight.exceptions import ConfigError
 from langsight.storage.factory import open_storage
 
 console = Console()
@@ -61,7 +62,15 @@ def sessions(
     """
     config = load_config(config_path)
     hours = _parse_hours(window)
-    asyncio.run(_run(config, hours, agent_name, session_id, output_json))
+    try:
+        asyncio.run(_run(config, hours, agent_name, session_id, output_json))
+    except ConfigError as exc:
+        err_console.print(f"[red]Storage not configured:[/red] {exc}")
+        err_console.print(
+            "[dim]sessions requires ClickHouse + Postgres. "
+            "Run [bold]docker compose up[/bold] to start the full stack.[/dim]"
+        )
+        sys.exit(1)
 
 
 async def _run(

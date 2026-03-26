@@ -96,7 +96,15 @@ def investigate(
         sys.exit(1)
 
     window_hours = _parse_window(window)
-    asyncio.run(_run(servers, config, window_hours, output_json))
+    try:
+        asyncio.run(_run(servers, config, window_hours, output_json))
+    except ConfigError as exc:
+        err_console.print(f"[red]Storage not configured:[/red] {exc}")
+        err_console.print(
+            "[dim]investigate requires ClickHouse + Postgres. "
+            "Run [bold]docker compose up[/bold] to start the full stack.[/dim]"
+        )
+        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------

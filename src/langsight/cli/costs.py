@@ -24,6 +24,7 @@ from rich.table import Table
 
 from langsight.config import LangSightConfig, load_config
 from langsight.costs.engine import CostEngine, load_cost_rules
+from langsight.exceptions import ConfigError
 from langsight.reliability.engine import ReliabilityEngine
 from langsight.storage.factory import open_storage
 
@@ -60,7 +61,15 @@ def costs(config_path: Path | None, window: str, output_json: bool) -> None:
     """
     config = load_config(config_path)
     hours = _parse_window_hours(window)
-    asyncio.run(_run(config, config_path, hours, output_json))
+    try:
+        asyncio.run(_run(config, config_path, hours, output_json))
+    except ConfigError as exc:
+        err_console.print(f"[red]Storage not configured:[/red] {exc}")
+        err_console.print(
+            "[dim]costs requires ClickHouse + Postgres. "
+            "Run [bold]docker compose up[/bold] to start the full stack.[/dim]"
+        )
+        sys.exit(1)
 
 
 async def _run(
