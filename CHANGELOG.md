@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-03-26
+
+### Fixed
+- Live page: SSE contract corrected — backend `span:new` payload now includes `started_at`; frontend listener switched from broken `onmessage`/sessions handler to `addEventListener("span:new")`
+- Live page: `mv_agent_sessions` ClickHouse materialized view rebuilt with correct `*State`/`*Merge` AggregatingMergeTree combinators — previously produced incorrect session aggregates
+- Live page: `mergeSpan`, `SpanEvent`, and `LiveRow` extracted to `lib/live-utils.ts` for testability; 22 TypeScript unit tests added
+- Tests: 11 Python SSE contract tests added covering `span:new` payload shape
+- Integration tests: `POSTGRES_PORT=5433` now passed to `postgres-mcp` subprocess — previously the subprocess inherited the wrong default port, causing integration tests to fail when postgres-mcp was running
+
 ## [0.7.0] - 2026-03-26
 
 ### Breaking Changes
