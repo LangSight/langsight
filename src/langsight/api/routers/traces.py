@@ -113,6 +113,9 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
     if storage is not None and hasattr(storage, "save_tool_call_spans"):
         await storage.save_tool_call_spans(spans)
 
+    # Extract project_id once — used for both health tagging and agent registration
+    _batch_project_id = _extract_project_id(spans)
+
     # Auto-tag session health after ingestion (fail-open)
     if storage is not None and hasattr(storage, "save_session_health_tag"):
         from langsight.tagging.engine import tag_from_spans as _tag
@@ -132,7 +135,9 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
         for session_id, batch_spans in session_spans.items():
             try:
                 tag = _tag(batch_spans)
-                await storage.save_session_health_tag(session_id, str(tag))
+                await storage.save_session_health_tag(
+                    session_id, str(tag), project_id=_batch_project_id
+                )
             except Exception:  # noqa: BLE001
                 pass  # fail-open — tagging must never block ingestion
 
@@ -141,7 +146,7 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
     # process lifetime. The storage layer uses ON CONFLICT DO UPDATE so repeated
     # calls are cheap and self-healing after volume wipes.
     if storage is not None and hasattr(storage, "upsert_agent_metadata"):
-        project_id = _extract_project_id(spans)
+        project_id = _batch_project_id
         # Collect all unique agents and servers from this batch first,
         # then register them. Previously the server registration was nested
         # inside the agent loop and used a stale `span` variable from the

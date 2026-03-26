@@ -72,9 +72,9 @@ describe("Sidebar — navigation", () => {
     expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
-  it("Overview link points to /", () => {
+  it("Dashboard link points to /", () => {
     renderSidebar();
-    const overviewLink = screen.getByRole("link", { name: /overview/i });
+    const overviewLink = screen.getByRole("link", { name: /dashboard/i });
     expect(overviewLink).toHaveAttribute("href", "/");
   });
 
@@ -108,10 +108,10 @@ describe("Sidebar — navigation", () => {
 
 /* ── Active state ───────────────────────────────────────────── */
 describe("Sidebar — active state", () => {
-  it("marks Overview as active on /", () => {
+  it("marks Dashboard as active on /", () => {
     mockUsePathname.mockReturnValue("/");
     renderSidebar();
-    const overviewLink = screen.getByRole("link", { name: /overview/i });
+    const overviewLink = screen.getByRole("link", { name: /dashboard/i });
     expect(overviewLink.className).toContain("active");
   });
 

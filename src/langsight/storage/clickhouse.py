@@ -160,8 +160,9 @@ _DDL = [
     WHERE session_id != ''
     GROUP BY session_id, agent_name
     """,
-    # v0.3 Session health tags — one row per session, auto-classified
-    # Uses ReplacingMergeTree so re-tagging a session replaces the old row
+    # v0.3 Session health tags — one row per (project, session), auto-classified
+    # Uses ReplacingMergeTree so re-tagging a session replaces the old row.
+    # ORDER BY includes project_id to prevent cross-project tag collisions.
     """
     CREATE TABLE IF NOT EXISTS session_health_tags (
         session_id   String,
@@ -171,9 +172,12 @@ _DDL = [
         tagged_at    DateTime64(3, 'UTC')
     )
     ENGINE = ReplacingMergeTree(tagged_at)
-    ORDER BY (session_id)
+    ORDER BY (project_id, session_id)
     SETTINGS index_granularity = 8192
     """,
+    # Migrate existing installs: add project_id to ORDER BY.
+    # No-op if already correct; safe to run on every startup.
+    "ALTER TABLE session_health_tags MODIFY ORDER BY (project_id, session_id)",
     # ---------------------------------------------------------------------------
     # Data skipping indexes (bloom filters) on mcp_tool_calls.
     #
@@ -194,7 +198,6 @@ _DDL = [
     "ALTER TABLE mcp_tool_calls MATERIALIZE INDEX idx_bf_project_id",
     "ALTER TABLE mcp_tool_calls MATERIALIZE INDEX idx_bf_session_id",
     "ALTER TABLE mcp_tool_calls MATERIALIZE INDEX idx_bf_agent_name",
-    # session_health_tags: sort key is session_id only; project_id queries scan full table
     "ALTER TABLE session_health_tags ADD INDEX IF NOT EXISTS idx_bf_project_id project_id TYPE bloom_filter GRANULARITY 1",
     "ALTER TABLE session_health_tags MATERIALIZE INDEX idx_bf_project_id",
 ]
@@ -640,8 +643,8 @@ class ClickHouseBackend:
                     anyIf(t.model_id, t.model_id != '')                  AS model_id,
                     arrayFilter(x -> x != '', groupUniqArray(t.agent_name)) AS agents_used
                 FROM mcp_tool_calls t
-                LEFT JOIN (SELECT session_id, health_tag FROM session_health_tags FINAL) sht
-                    ON t.session_id = sht.session_id
+                LEFT JOIN (SELECT session_id, project_id, health_tag FROM session_health_tags FINAL) sht
+                    ON t.session_id = sht.session_id AND t.project_id = sht.project_id
                 {where}
                 GROUP BY t.session_id
                 {having}

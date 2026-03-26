@@ -266,7 +266,7 @@ describe("LineageGraph — expand calls button on node", () => {
     expect(onToggleEdge).toHaveBeenCalledWith("agent:my-agent→server:pg-mcp");
   });
 
-  it("shows 'collapse calls' text when the edge is expanded", () => {
+  it("shows 'collapse' button when the edge is expanded", () => {
     const node = makeServerNode({
       expandableEdgeId: "agent:my-agent→server:pg-mcp",
       expandItemCount: 5,
@@ -279,7 +279,7 @@ describe("LineageGraph — expand calls button on node", () => {
         onToggleEdge={jest.fn()}
       />
     );
-    expect(screen.getByText("collapse calls")).toBeInTheDocument();
+    expect(screen.getByText("collapse")).toBeInTheDocument();
   });
 });
 
@@ -305,8 +305,8 @@ describe("LineageGraph — split label on server nodes", () => {
   it("renders splitLabel in the node subtitle after a middle dot", () => {
     const node = makeServerNode({ splitLabel: "via agent-a" });
     render(<LineageGraph nodes={[node]} edges={[]} />);
-    // The rendered text is "MCP Server · via agent-a"
-    expect(screen.getByText(/MCP Server/)).toBeInTheDocument();
+    // splitLabel set → isToolCall=true, so subtitle is "Tool Call · via agent-a"
+    expect(screen.getByText(/Tool Call/)).toBeInTheDocument();
     expect(screen.getByText(/via agent-a/)).toBeInTheDocument();
   });
 });

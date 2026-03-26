@@ -156,8 +156,6 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3003}
       AUTH_SECRET: "${AUTH_SECRET:?AUTH_SECRET env var is required (generate with: openssl rand -base64 32)}"
       NEXTAUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET env var is required}
-      LANGSIGHT_ADMIN_EMAIL: ${LANGSIGHT_ADMIN_EMAIL:?LANGSIGHT_ADMIN_EMAIL env var is required}
-      LANGSIGHT_ADMIN_PASSWORD: ${LANGSIGHT_ADMIN_PASSWORD:?LANGSIGHT_ADMIN_PASSWORD env var is required}
       AUTH_TRUST_HOST: "true"
       NODE_ENV: production
       PORT: 3002
