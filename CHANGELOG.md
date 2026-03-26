@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-03-26
+
+### Fixed
+- SDK: `buffer_span()` now calls `_ensure_flush_loop()` on every invocation — previously the flush loop was defined but never started, causing all spans to accumulate in memory and only deliver at process exit via `atexit`. Spans now flush every 1 s in real time. `asyncio.get_running_loop()` is used so the call is a safe no-op in sync contexts.
+
 ## [0.7.1] - 2026-03-26
 
 ### Fixed
