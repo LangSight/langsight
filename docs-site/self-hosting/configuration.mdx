@@ -51,7 +51,6 @@ storage:
 investigate:
   provider: anthropic              # anthropic | openai | gemini | ollama
   model: claude-sonnet-4-6        # optional — defaults per provider
-  api_key: null                   # optional — prefer env vars
   base_url: null                  # optional — for Ollama remotes
 
 # Tool call pricing rules for langsight costs (non-LLM tool calls)
@@ -69,6 +68,10 @@ costs:
 # When enabled, payload panels in the Trace tab are empty
 redact_payloads: false
 ```
+
+<Warning>
+  LLM provider API keys must be set as environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`). Never put them in `.langsight.yaml` — the file may be committed to version control.
+</Warning>
 
 ## Environment variable overrides
 
@@ -91,6 +94,7 @@ All settings can be overridden with environment variables using the `LANGSIGHT_`
 | *(ClickHouse auth)* | `CLICKHOUSE_PASSWORD` | ClickHouse password |
 | *(API workers)* | `LANGSIGHT_WORKERS` | Number of Uvicorn worker processes (default: `1` — do not increase without a Redis-backed SSE broadcaster) |
 | *(Postgres pool)* | `LANGSIGHT_PG_POOL_MAX` | Maximum Postgres connection pool size (default: `50`). Lower this on small instances where Postgres `max_connections` is constrained. |
+| *(Prometheus)* | `LANGSIGHT_METRICS_TOKEN` | Optional bearer token to protect the `GET /metrics` endpoint. When not set, the endpoint is unauthenticated and a warning is logged at startup. Set this in any internet-facing deployment. |
 
 <Note>
   `LANGSIGHT_ADMIN_EMAIL` and `LANGSIGHT_ADMIN_PASSWORD` are consumed once on first run to create the initial admin user. After that, manage users via Settings → Users in the dashboard.
@@ -188,7 +192,27 @@ When this env var is set it acts as the default webhook URL. Values saved throug
 
 ## Prometheus scrape configuration
 
-LangSight exposes a `GET /metrics` endpoint in Prometheus text exposition format. No authentication is required -- Prometheus scrapers can reach it directly.
+LangSight exposes a `GET /metrics` endpoint in Prometheus text exposition format.
+
+By default the endpoint is unauthenticated. LangSight logs a warning at startup if `LANGSIGHT_METRICS_TOKEN` is not set. For any internet-facing deployment, protect the endpoint:
+
+```bash
+LANGSIGHT_METRICS_TOKEN=your-secret-scrape-token
+```
+
+When set, the endpoint requires `Authorization: Bearer your-secret-scrape-token`. Add the token to your Prometheus `bearer_token` config:
+
+```yaml
+scrape_configs:
+  - job_name: langsight
+    scrape_interval: 15s
+    bearer_token: your-secret-scrape-token
+    static_configs:
+      - targets: ["localhost:8000"]
+    metrics_path: /metrics
+```
+
+For internal-only deployments (Prometheus runs on the same host or Docker network), omitting the token is acceptable since port 8000 is bound to `127.0.0.1` by default.
 
 Add the following job to your `prometheus.yml`:
 

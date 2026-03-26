@@ -35,7 +35,7 @@ investigate:
 | Ollama | *(none required)* | — |
 
 <Warning>
-Never put API keys directly in `.langsight.yaml`. Use environment variables. The `api_key` field is only for CI/CD secrets injection.
+  LLM provider API keys must be set as environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`). Never put them in `.langsight.yaml` — the config file may be committed to version control. The `api_key` field has been removed from the `investigate:` config block as of v0.7.0.
 </Warning>
 
 ## Rule-based fallback

@@ -68,7 +68,7 @@ LangSight uses Alembic for schema migrations. When using PostgreSQL, run migrati
 uv run alembic upgrade head
 ```
 
-The migration chain (as of v0.2.0):
+The migration chain (as of v0.7.0):
 
 | Revision | Description |
 |---|---|
@@ -78,3 +78,26 @@ The migration chain (as of v0.2.0):
 | `0eaccc40f932` | `model_pricing` with seed data |
 
 ClickHouse schema is managed automatically on startup.
+
+## v0.7.0 schema changes (auto-applied on restart)
+
+The following changes apply when upgrading to v0.7.0. **No manual migration step is required** — they are applied automatically when the API container starts.
+
+### PostgreSQL
+
+| Table | Change |
+|-------|--------|
+| `health_results` | `project_id` column added via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` — no data loss, new rows tagged with project context |
+| `audit_logs` | `project_id` column added via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` — existing rows retain `NULL` for this column |
+
+Both changes use `IF NOT EXISTS` — safe to apply on a running instance and idempotent on repeated restarts.
+
+### ClickHouse
+
+| Object | Change |
+|--------|--------|
+| `mv_agent_sessions` | Materialized view rebuilt with `project_id` — the view is `DROP`ped and re-created on startup, then backfilled from `mcp_tool_calls`. No span data is lost; the source table is unchanged. |
+
+<Note>
+  The `mv_agent_sessions` rebuild may take a few seconds on large datasets while the backfill from `mcp_tool_calls` runs. The API is available immediately; sessions data returns to normal once the backfill completes.
+</Note>

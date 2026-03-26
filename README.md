@@ -181,7 +181,7 @@ Takes ~2 minutes. Generates secrets, starts 5 containers, seeds demo data.
 
 ### 2. Open the dashboard
 
-**http://localhost:3003** — log in with `admin@admin.com` / `admin`.
+**http://localhost:3003** — log in with the admin email and password written to `.env` by `quickstart.sh` (randomly generated — check the file).
 
 ### 3. Instrument your agent
 

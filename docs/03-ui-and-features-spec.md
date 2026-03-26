@@ -406,6 +406,10 @@ redact_payloads: false
 | `LANGSIGHT_TRUSTED_PROXY_CIDRS` | Trusted proxy network CIDRs (default: `127.0.0.1/32,::1/128`) |
 | `LANGSIGHT_DASHBOARD_URL` | Base URL used in invite email links |
 | `LANGSIGHT_CORS_ORIGINS` | Comma-separated allowed CORS origins |
+| `LANGSIGHT_METRICS_TOKEN` | Optional bearer token for `GET /metrics`. When unset, endpoint is open and a warning is logged at startup. (added v0.7.0) |
+| `ANTHROPIC_API_KEY` | LLM key for `langsight investigate` with `provider: anthropic`. Never set this in `.langsight.yaml`. (v0.7.0: `investigate.api_key` config field removed) |
+| `OPENAI_API_KEY` | LLM key for `langsight investigate` with `provider: openai`. Never set this in `.langsight.yaml`. |
+| `GEMINI_API_KEY` | LLM key for `langsight investigate` with `provider: gemini`. Never set this in `.langsight.yaml`. |
 
 ---
 

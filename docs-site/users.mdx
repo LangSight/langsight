@@ -9,10 +9,14 @@ The first admin account is created automatically on first run from two environme
 
 ```bash
 LANGSIGHT_ADMIN_EMAIL=you@example.com
-LANGSIGHT_ADMIN_PASSWORD=your-secure-password
+LANGSIGHT_ADMIN_PASSWORD=your-secure-password   # min 12 characters required
 ```
 
 These are read once. After the admin account exists, you can change the password in **Settings → Profile** and the env vars are no longer used.
+
+<Note>
+  `LANGSIGHT_ADMIN_PASSWORD` must be at least 12 characters. The API rejects bootstrap attempts with shorter passwords. If you used `./scripts/quickstart.sh`, the password was randomly generated and is recorded in your `.env` file.
+</Note>
 
 <Note>
   If these env vars are not set before the first run, no admin account is created. Set them, then restart the container to trigger bootstrap.
@@ -24,7 +28,7 @@ These are read once. After the admin account exists, you can change the password
 2. Click **Invite User**
 3. Enter the teammate's email address and select a role
 4. Copy the invite link and send it to them
-5. They open the link, set a password, and are added to the team
+5. They open the link, set a password (min 12 characters), and are added to the team
 
 Invite links expire after 48 hours.
 

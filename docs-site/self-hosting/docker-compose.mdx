@@ -12,12 +12,39 @@ The root `docker-compose.yml` starts the full LangSight production stack.
 | `clickhouse` | 127.0.0.1:8123 (localhost only) | Time-series span storage + reliability analytics |
 | `postgres` | 127.0.0.1:5432 (localhost only) | App state: configs, users, alert rules, model pricing |
 | `otel-collector` | 4317, 4318 | Receives OTLP traces from agent frameworks |
-| `api` | 8000 | LangSight REST API |
-| `dashboard` | 3003 (maps to 3002 internal) | Next.js dashboard |
+| `api` | 127.0.0.1:8000 (localhost only) | LangSight REST API |
+| `dashboard` | 127.0.0.1:3003 (localhost only) | Next.js dashboard |
 
 <Warning>
-  Database ports (5432, 8123) are not exposed to the host by default. Access databases through the `api` service only. Do not override this in production.
+  All service ports bind to `127.0.0.1` only — they are not accessible from other machines on the network by default. If you need public access, configure a reverse proxy (nginx, Caddy) in front of ports 8000 and 3003. Do not change the bind address directly — this bypasses the authentication layer.
 </Warning>
+
+## Reverse proxy (public access)
+
+To expose the dashboard over HTTPS, put a reverse proxy in front of the dashboard port. Example with Caddy:
+
+```
+your-host.example.com {
+    reverse_proxy localhost:3003
+}
+```
+
+Example with nginx:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name your-host.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3003;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+Never expose the FastAPI port (8000) directly to the internet. Only the dashboard (3003) should be behind the reverse proxy; the dashboard's Next.js proxy layer enforces authentication before forwarding to FastAPI.
 
 ## Start the stack
 
@@ -32,12 +59,16 @@ cp .env.example .env
 
 Edit `.env` — all of these are required. The stack will fail fast if any are unset:
 
+<Note>
+  All passwords — including `LANGSIGHT_ADMIN_PASSWORD` and database passwords — must be at least 12 characters. LangSight enforces this policy for both the admin bootstrap account and all invited users. If you use `./scripts/quickstart.sh`, the admin password is randomly generated and written to `.env` automatically — check the file after running the script.
+</Note>
+
 ```bash
 # .env
 
 # Admin bootstrap (consumed once on first run)
 LANGSIGHT_ADMIN_EMAIL=you@example.com
-LANGSIGHT_ADMIN_PASSWORD=your-secure-admin-password
+LANGSIGHT_ADMIN_PASSWORD=your-secure-admin-password   # min 12 characters
 
 # JWT signing secret (min 32 characters, generate with: openssl rand -hex 32)
 AUTH_SECRET=replace-with-32-char-random-string

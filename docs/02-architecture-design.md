@@ -693,6 +693,7 @@ langsight investigate "customer got wrong refund amount"
 |---|---|---|
 | `mcp_health_checks` | Every health check result (timestamp, server, status, latency, schema_hash) | 90 days |
 | `otel_traces` | Standard OTEL trace/span data from agent frameworks | 30 days |
+| `health_results` | MCP server health check results. `project_id` column added v0.7.0 (see migration note below). | 90 days |
 | `mcp_tool_calls` | Every SDK/OTLP tool call span. Columns include `input_json Nullable(String)` and `output_json Nullable(String)` for payload capture (P5.1, added 2026-03-18); `llm_input Nullable(String)` and `llm_output Nullable(String)` for LLM reasoning capture (P5.3, added 2026-03-19); `replay_of String DEFAULT ''` to link replay spans back to their originals (P5.7, added 2026-03-19). MergeTree, TTL 90 days. | 90 days |
 | `tool_calls_mv` | Materialized view: extracted tool call spans with metrics | 30 days |
 | `tool_reliability_hourly` | Aggregated: per-tool success rate, latency percentiles, error counts per hour | 1 year |
@@ -735,6 +736,14 @@ At current scale (demo data, single-digit projects) this is invisible — ClickH
 | `project_members` | Project membership: user_id, project_id, role (owner/member/viewer) |
 | `model_pricing` | LLM model → price per 1K input/output tokens (16 seed rows: Anthropic, OpenAI, Google, Meta, AWS) |
 | `agent_slos` | User-defined SLO definitions (`agent_name`, `metric`, `target`, `window_hours`, `created_at`). (P5.5, added 2026-03-19) |
+
+**v0.7.0 schema migrations** (auto-applied on API startup, idempotent):
+
+| Table | Change | Notes |
+|-------|--------|-------|
+| `health_results` | `project_id UUID NULL` added via `ALTER TABLE … ADD COLUMN IF NOT EXISTS` | Existing rows retain `NULL`; new checks tagged with project context |
+| `audit_logs` | `project_id UUID NULL` added via `ALTER TABLE … ADD COLUMN IF NOT EXISTS` | Existing audit entries retain `NULL` |
+| `mv_agent_sessions` (ClickHouse) | Materialized view dropped and rebuilt with `project_id` in SELECT and GROUP BY | Backfilled from `mcp_tool_calls` on startup; no span data lost |
 
 ---
 
@@ -836,8 +845,8 @@ result = await graph.ainvoke({"input": "..."}, config={"callbacks": [LangSightLa
 | `clickhouse` | clickhouse/clickhouse-server:24 | 127.0.0.1:8123, 127.0.0.1:9000 | OLAP analytics storage (localhost-only, changed from 0.0.0.0 on 2026-03-21) |
 | `postgres` | postgres:16-alpine | 127.0.0.1:5432 | Metadata storage (localhost-only, changed from 0.0.0.0 on 2026-03-21) |
 | `otel-collector` | otel/opentelemetry-collector-contrib:0.120.0 | 4317, 4318 | Trace ingestion |
-| `api` | langsight/api:latest | 8000 | REST API (`LANGSIGHT_STORAGE_MODE: dual`) |
-| `dashboard` | langsight/dashboard:latest | 3003 (→ 3002) | Next.js dashboard (`HOSTNAME=0.0.0.0`, health check via `127.0.0.1:3002`) |
+| `api` | langsight/api:latest | 127.0.0.1:8000 | REST API — localhost-only (changed from 0.0.0.0 in v0.7.0). Use a reverse proxy for public access. |
+| `dashboard` | langsight/dashboard:latest | 127.0.0.1:3003 (→ 3002) | Next.js dashboard — localhost-only (changed from 0.0.0.0 in v0.7.0). Use a reverse proxy for public access. |
 
 All required credentials are injected via env vars. The `${VAR:?error}` pattern in `docker-compose.yml` ensures compose refuses to start with missing secrets. Copy `.env.example` → `.env` and fill in all required values before `docker compose up -d`.
 
@@ -982,3 +991,8 @@ All ClickHouse queries in `storage/clickhouse.py` that read from `mcp_tool_calls
 - **Health endpoint cross-tenant leak fixed** (fixed v0.6.2, 2026-03-25): `GET /api/health/servers/{name}` and `GET /api/health/servers/{name}/history` now pass `project_id` to storage queries. Previously the project-membership check passed but the underlying ClickHouse query fetched rows from all projects sharing the same `server_name`.
 - **ClickHouse timeouts** (added v0.6.2, 2026-03-25): ClickHouse client now sets `connect_timeout=5s` and `send_receive_timeout=30s`. Previously no timeouts were configured — a hung ClickHouse connection would block the span ingestion path indefinitely.
 - **Postgres pool sizing** (updated v0.6.2, 2026-03-25): `pg_pool_max` default raised from 20 to 50. Override via `LANGSIGHT_PG_POOL_MAX` env var. Small-instance operators should lower this to match `max_connections` in their Postgres configuration.
+- **API and dashboard port binding hardened** (v0.7.0, 2026-03-26): `api` and `dashboard` Docker services now bind to `127.0.0.1` only (changed from `0.0.0.0`). Previously both services were reachable on all network interfaces. Users who need public access must place a reverse proxy (nginx, Caddy) in front of port 3003. Port 8000 must not be exposed publicly — authentication relies on the dashboard's Next.js proxy layer.
+- **Password minimum length enforced** (v0.7.0, 2026-03-26): All user passwords (admin bootstrap via `LANGSIGHT_ADMIN_PASSWORD` and invited users at invite acceptance) are validated to be at least 12 characters. Shorter passwords are rejected at the API layer.
+- **Webhook SSRF protection** (v0.7.0, 2026-03-26): Webhook URLs submitted to `PUT /api/settings` (Slack webhook) and alert rule creation are validated against an SSRF blocklist. Requests targeting private IP ranges (RFC 1918: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), loopback (127.0.0.0/8), and cloud metadata endpoints (169.254.169.254) are rejected with HTTP 422.
+- **`/metrics` endpoint token** (v0.7.0, 2026-03-26): `GET /metrics` logs a warning at startup when `LANGSIGHT_METRICS_TOKEN` is not set. When the token is set, the endpoint requires `Authorization: Bearer <token>`. Unprotected metrics are acceptable in localhost-only deployments but should be secured in any publicly reachable configuration.
+- **`InvestigateConfig.api_key` removed** (v0.7.0, 2026-03-26): The `api_key` field under `investigate:` in `.langsight.yaml` has been removed. LLM provider API keys must be supplied exclusively via environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`). The field was never persisted to the database — removal prevents accidental secret storage in config files.
