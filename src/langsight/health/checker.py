@@ -85,7 +85,7 @@ class HealthChecker:
             if self._storage:
                 await self._storage.save_health_result(result)
                 upsert_fn = getattr(self._storage, "upsert_server_metadata", None)
-                if upsert_fn:
+                if upsert_fn and asyncio.iscoroutinefunction(upsert_fn):
                     await upsert_fn(
                         server_name=server.name,
                         transport=server.transport.value,

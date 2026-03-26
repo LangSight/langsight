@@ -18,7 +18,7 @@ async def _project_server_names(storage: StorageBackend, project_id: str) -> set
     """Return server names visible to a project (from server_metadata + spans)."""
     names: set[str] = set()
     get_meta = getattr(storage, "get_all_server_metadata", None)
-    if get_meta:
+    if get_meta and asyncio.iscoroutinefunction(get_meta):
         meta = await get_meta(project_id=project_id)
         names.update(m["server_name"] for m in meta)
     return names
@@ -34,7 +34,7 @@ async def _health_server_names(
     ever checked will appear here, even if it's not in the API's config.servers.
     """
     fn = getattr(storage, "get_distinct_health_server_names", None)
-    if fn:
+    if fn and asyncio.iscoroutinefunction(fn):
         return await fn(project_id=project_id)
     return set()
 
