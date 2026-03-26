@@ -99,7 +99,7 @@ export default function LivePage() {
   // Seed rows from DB on mount so existing sessions appear immediately,
   // even before any new SSE span arrives.
   useEffect(() => {
-    const url = `/api/agents/sessions?hours=1${pid ? `&project_id=${encodeURIComponent(pid)}` : ""}`;
+    const url = `/api/proxy/agents/sessions?hours=1${pid ? `&project_id=${encodeURIComponent(pid)}` : ""}`;
     fetch(url)
       .then(r => r.ok ? r.json() : [])
       .then((sessions: AgentSession[]) => {
