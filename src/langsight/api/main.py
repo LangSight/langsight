@@ -12,6 +12,7 @@ from typing import Any, cast
 
 import structlog
 from fastapi import Depends, FastAPI, Request
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
@@ -44,6 +45,11 @@ from langsight.config import Settings, load_config
 from langsight.storage.factory import open_storage
 
 logger = structlog.get_logger()
+
+
+class InstanceSettings(BaseModel):
+    """Typed request body for PUT /api/settings."""
+    redact_payloads: bool
 try:
     _VERSION = _pkg_version("langsight")
 except PackageNotFoundError:
@@ -520,11 +526,11 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         tags=["settings"],
         dependencies=[Depends(verify_api_key), Depends(require_admin)],
     )
-    async def save_settings(body: dict[str, Any]) -> dict[str, Any]:
+    async def save_settings(body: InstanceSettings) -> dict[str, Any]:
         """Update global instance settings. Admin only."""
         storage = getattr(app.state, "storage", None)
         if storage and hasattr(storage, "save_instance_settings"):
-            await storage.save_instance_settings(body)
+            await storage.save_instance_settings(body.model_dump())
             return cast(dict[str, Any], await storage.get_instance_settings())
         return {"redact_payloads": False}
 

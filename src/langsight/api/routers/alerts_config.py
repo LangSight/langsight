@@ -201,10 +201,12 @@ async def test_slack_webhook(
         logger.info("audit.alerts.test_sent")
         return {"ok": True, "message": "Test notification sent successfully"}
     except Exception as exc:  # noqa: BLE001
+        # Log full error internally but return generic message — exc may contain
+        # the webhook URL (e.g. in httpx connection errors) which must not leak.
         logger.warning("audit.alerts.test_failed", error=str(exc))
         raise HTTPException(
             status_code=http_status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to send test notification: {exc}",
+            detail="Failed to send test notification. Check the webhook URL in Settings and verify Slack is reachable.",
         ) from exc
 
 

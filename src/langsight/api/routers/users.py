@@ -420,9 +420,11 @@ async def verify_credentials(
 
     user = await storage.get_user_by_email(body.email)
     if not user or not await _verify_password(body.password, user.password_hash):
+        # Mask email — log domain only to avoid PII in log aggregators
+        _domain = body.email.split("@")[-1] if "@" in body.email else "?"
         logger.warning(
             "audit.auth.dashboard_login_failed",
-            email=body.email,
+            email_domain=_domain,
             client_ip=request.client.host if request.client else "unknown",
         )
         raise HTTPException(

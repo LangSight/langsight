@@ -20,6 +20,8 @@ Usage in main.py:
 
 from __future__ import annotations
 
+import hmac
+import os
 import time
 from collections.abc import Awaitable, Callable
 
@@ -79,9 +81,27 @@ HEALTH_CHECKS = Counter(
 metrics_router = APIRouter(tags=["metrics"])
 
 
+_METRICS_TOKEN = os.environ.get("LANGSIGHT_METRICS_TOKEN", "")
+
+
 @metrics_router.get("/metrics", include_in_schema=False)
-async def prometheus_metrics() -> Response:
-    """Prometheus scrape endpoint — no auth required."""
+async def prometheus_metrics(request: Request) -> Response:
+    """Prometheus scrape endpoint.
+
+    Protected by LANGSIGHT_METRICS_TOKEN when set. Pass it as:
+      Authorization: Bearer <token>
+    or as a query param: ?token=<token>
+
+    If LANGSIGHT_METRICS_TOKEN is not set, the endpoint is open
+    (preserves backwards compatibility for single-host deployments).
+    """
+    if _METRICS_TOKEN:
+        auth_header = request.headers.get("Authorization", "")
+        bearer = auth_header.removeprefix("Bearer ").strip()
+        query_token = request.query_params.get("token", "")
+        provided = bearer or query_token
+        if not provided or not hmac.compare_digest(provided, _METRICS_TOKEN):
+            return Response(status_code=401, content="Unauthorized")
     return Response(
         content=generate_latest(),
         media_type=CONTENT_TYPE_LATEST,

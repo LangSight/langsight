@@ -139,7 +139,7 @@ class Settings(BaseSettings):
             overrides["clickhouse_database"] = self.clickhouse_database
         if self.clickhouse_username:
             overrides["clickhouse_username"] = self.clickhouse_username
-        if self.clickhouse_password is not None:
+        if self.clickhouse_password:  # empty string must not override YAML-set password
             overrides["clickhouse_password"] = self.clickhouse_password
         if self.postgres_url:
             overrides["postgres_url"] = self.postgres_url
