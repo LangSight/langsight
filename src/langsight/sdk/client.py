@@ -336,6 +336,10 @@ class LangSightClient:
                 dropped = len(self._buffer) - self._max_buffer_size
                 self._buffer = self._buffer[dropped:]
                 logger.warning("sdk.buffer_overflow", dropped=dropped, max=self._max_buffer_size)
+        # Start the periodic flush loop as soon as we have buffered data.
+        # _ensure_flush_loop is a no-op when no event loop is running (sync callers)
+        # and idempotent when the loop is already active.
+        self._ensure_flush_loop()
 
     async def send_span(self, span: ToolCallSpan) -> None:
         """Async wrapper around buffer_span for backward compatibility.
@@ -528,12 +532,18 @@ class LangSightClient:
     # --- Internal ---
 
     def _ensure_flush_loop(self) -> None:
-        """Start the periodic flush background task if not already running."""
-        if self._flush_task is None or self._flush_task.done():
-            try:
-                self._flush_task = asyncio.create_task(self._flush_loop())
-            except RuntimeError:
-                pass  # no running event loop (e.g. during shutdown)
+        """Start the periodic flush background task if not already running.
+
+        No-op when called from a synchronous context (no running event loop).
+        Idempotent: safe to call on every buffer_span() invocation.
+        """
+        if self._flush_task is not None and not self._flush_task.done():
+            return  # already running
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return  # no event loop — atexit handler will flush
+        self._flush_task = loop.create_task(self._flush_loop())
 
     async def _flush_loop(self) -> None:
         """Background loop that flushes the buffer periodically."""
