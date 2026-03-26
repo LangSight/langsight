@@ -21,7 +21,7 @@ import { Timestamp } from "@/components/timestamp";
 import type { AgentSession, SessionTrace, SpanNode, PathMetrics, ServerCallerInfo } from "@/lib/types";
 import { SessionHeader } from "@/components/sessions/session-header";
 import { SessionMetrics, MetricTile, SectionLabel } from "@/components/sessions/session-metrics";
-import { SpanTree, TokenSummaryBar, PayloadPanel } from "@/components/sessions/span-tree";
+import { SpanTree, TokenSummaryBar } from "@/components/sessions/span-tree";
 
 /* ── Build session graph from trace spans ──────────────────── */
 

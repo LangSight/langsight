@@ -4,18 +4,17 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import useSWR from "swr";
-import { Radio, AlertTriangle, CheckCircle, ChevronRight } from "lucide-react";
+import { Radio, AlertTriangle, CheckCircle, ChevronRight, WifiOff } from "lucide-react";
 import { useProject } from "@/lib/project-context";
 import { cn } from "@/lib/utils";
-import { fetcher } from "@/lib/api";
 import type { AgentSession } from "@/lib/types";
 
 /* ── Constants ───────────────────────────────────────────────── */
-const POLL_MS      = 3_000;       // poll every 3s
 const RUNNING_MS   = 30_000;      // < 30s since last span  → running
 const STUCK_MS     = 2 * 60_000;  // > 2min since last span → stuck
 const EXPIRE_MS    = 10 * 60_000; // > 10min                → remove
+const RECONNECT_BASE_MS = 2_000;  // initial reconnect delay
+const RECONNECT_MAX_MS  = 30_000; // max reconnect delay (exponential backoff cap)
 
 /* ── Parse ClickHouse naive timestamps as UTC ─────────────────── */
 function toUTCMs(iso: string): number {
@@ -39,15 +38,14 @@ interface LiveRow {
 }
 
 type SessionStatus = "running" | "idle" | "stuck" | "done";
+type ConnectionState = "connecting" | "connected" | "reconnecting" | "error";
 
 /* ── Helpers ─────────────────────────────────────────────────── */
 function getStatus(row: LiveRow, now: number): SessionStatus {
   if (now < row.running_until) return "running";
   const age = now - row.last_seen_ms;
   if (age < RUNNING_MS) return "running";
-  // Never grew in any poll → loaded from DB as already-completed
   if (!row.ever_grew) return "done";
-  // Was running but went quiet — check how long it's been stable
   const stableFor = now - row.stable_since;
   if (stableFor < STUCK_MS) return "idle";
   return "stuck";
@@ -100,15 +98,68 @@ function StatusDot({ status }: { status: SessionStatus }) {
   );
 }
 
+/* ── Merge an incoming session batch into the rows map ───────── */
+function mergeSessions(
+  prev: Map<string, LiveRow>,
+  sessions: AgentSession[],
+  prevCounts: Map<string, number>,
+): Map<string, LiveRow> {
+  const now = Date.now();
+  const cutoff = now - EXPIRE_MS;
+  const next = new Map(prev);
+
+  for (const s of sessions) {
+    const firstMs = toUTCMs(s.first_call_at);
+    const lastMs  = firstMs + (s.duration_ms ?? 0);
+
+    if (lastMs < cutoff) {
+      next.delete(s.session_id);
+      prevCounts.delete(s.session_id);
+      continue;
+    }
+
+    const prevCount  = prevCounts.get(s.session_id) ?? -1;
+    const currCount  = s.tool_calls ?? 0;
+    const isNew      = prevCount === -1;
+    const isGrowing  = !isNew && currCount > prevCount;
+    prevCounts.set(s.session_id, currCount);
+
+    const existing   = next.get(s.session_id);
+    const everGrew   = existing?.ever_grew || isGrowing;
+    const stableSince = isGrowing
+      ? now
+      : (existing?.stable_since ?? now);
+
+    next.set(s.session_id, {
+      session_id:    s.session_id,
+      agent_name:    s.agent_name ?? existing?.agent_name ?? null,
+      span_count:    currCount,
+      error_count:   s.failed_calls ?? 0,
+      first_seen_ms: firstMs,
+      last_seen_ms:  lastMs,
+      running_until: isGrowing ? now + RUNNING_MS : (existing?.running_until ?? 0),
+      ever_grew:     everGrew,
+      stable_since:  stableSince,
+    });
+  }
+
+  return next;
+}
+
 /* ── Page ────────────────────────────────────────────────────── */
 export default function LivePage() {
   const router = useRouter();
   const { activeProject } = useProject();
   const pid = activeProject?.id ?? null;
 
-  const [rows, setRows]   = useState<Map<string, LiveRow>>(new Map());
-  const [now, setNow]     = useState(Date.now());
-  const prevCounts        = useRef<Map<string, number>>(new Map());
+  const [rows, setRows]           = useState<Map<string, LiveRow>>(new Map());
+  const [now, setNow]             = useState(Date.now());
+  const [connState, setConnState] = useState<ConnectionState>("connecting");
+  const prevCounts                = useRef<Map<string, number>>(new Map());
+  const esRef                     = useRef<EventSource | null>(null);
+  const reconnectTimer            = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectDelay            = useRef(RECONNECT_BASE_MS);
+  const unmounted                 = useRef(false);
 
   // Clock — tick every second
   useEffect(() => {
@@ -116,62 +167,68 @@ export default function LivePage() {
     return () => clearInterval(id);
   }, []);
 
-  // Poll sessions API every 3s
-  const swrKey = `/api/proxy/agents/sessions?hours=1&limit=200${pid ? `&project_id=${encodeURIComponent(pid)}` : ""}`;
-  const { data: sessions, isLoading } = useSWR<AgentSession[]>(swrKey, fetcher, {
-    refreshInterval: POLL_MS,
-    revalidateOnFocus: true,
-  });
-
-  // Merge incoming sessions into rows map
+  // SSE connection with exponential-backoff reconnect
   useEffect(() => {
-    if (!sessions) return;
-    const now = Date.now();
-    const cutoff = now - EXPIRE_MS;
+    unmounted.current = false;
 
-    setRows(prev => {
-      const next = new Map(prev);
+    function connect() {
+      if (unmounted.current) return;
 
-      for (const s of sessions) {
-        const firstMs = toUTCMs(s.first_call_at);
-        const lastMs  = firstMs + (s.duration_ms ?? 0);
+      const url = `/api/live/stream${pid ? `?project_id=${encodeURIComponent(pid)}` : ""}`;
+      const es = new EventSource(url);
+      esRef.current = es;
+      setConnState("connecting");
 
-        // Expire old sessions
-        if (lastMs < cutoff) {
-          next.delete(s.session_id);
-          prevCounts.current.delete(s.session_id);
-          continue;
+      es.onopen = () => {
+        if (unmounted.current) { es.close(); return; }
+        setConnState("connected");
+        reconnectDelay.current = RECONNECT_BASE_MS; // reset on successful connection
+      };
+
+      es.onmessage = (event) => {
+        if (unmounted.current) { es.close(); return; }
+        try {
+          const data = JSON.parse(event.data) as AgentSession[];
+          if (!Array.isArray(data)) return;
+          setRows(prev => mergeSessions(prev, data, prevCounts.current));
+        } catch {
+          // Malformed event — ignore
         }
+      };
 
-        const prevCount  = prevCounts.current.get(s.session_id) ?? -1;
-        const currCount  = s.tool_calls ?? 0;
-        const isNew      = prevCount === -1;
-        const isGrowing  = !isNew && currCount > prevCount;
-        prevCounts.current.set(s.session_id, currCount);
+      es.addEventListener("sessions", (event) => {
+        if (unmounted.current) { es.close(); return; }
+        try {
+          const data = JSON.parse((event as MessageEvent).data) as AgentSession[];
+          if (!Array.isArray(data)) return;
+          setRows(prev => mergeSessions(prev, data, prevCounts.current));
+        } catch {
+          // Malformed event — ignore
+        }
+      });
 
-        const existing   = next.get(s.session_id);
-        const everGrew   = existing?.ever_grew || isGrowing;
-        // stable_since: first moment we noticed it stopped growing
-        const stableSince = isGrowing
-          ? now  // reset — it's still growing
-          : (existing?.stable_since ?? now);
+      es.onerror = () => {
+        if (unmounted.current) { es.close(); return; }
+        es.close();
+        esRef.current = null;
+        setConnState("reconnecting");
 
-        next.set(s.session_id, {
-          session_id:    s.session_id,
-          agent_name:    s.agent_name ?? existing?.agent_name ?? null,
-          span_count:    currCount,
-          error_count:   s.failed_calls ?? 0,
-          first_seen_ms: firstMs,
-          last_seen_ms:  lastMs,
-          running_until: isGrowing ? now + RUNNING_MS : (existing?.running_until ?? 0),
-          ever_grew:     everGrew,
-          stable_since:  stableSince,
-        });
-      }
+        // Exponential backoff
+        const delay = reconnectDelay.current;
+        reconnectDelay.current = Math.min(delay * 2, RECONNECT_MAX_MS);
+        reconnectTimer.current = setTimeout(connect, delay);
+      };
+    }
 
-      return next;
-    });
-  }, [sessions]);
+    connect();
+
+    return () => {
+      unmounted.current = true;
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      esRef.current?.close();
+      esRef.current = null;
+    };
+  }, [pid]);
 
   // Sort: running → idle → stuck → done, then by last_seen desc
   const sorted = [...rows.values()].sort((a, b) => {
@@ -183,6 +240,7 @@ export default function LivePage() {
 
   const runningCount = sorted.filter(r => getStatus(r, now) === "running").length;
   const stuckCount   = sorted.filter(r => getStatus(r, now) === "stuck").length;
+  const isConnecting = connState === "connecting" || connState === "reconnecting";
 
   return (
     <div className="space-y-4 page-in">
@@ -196,11 +254,13 @@ export default function LivePage() {
           <div>
             <h1 className="text-xl font-bold text-foreground">Live</h1>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              {runningCount > 0
+              {isConnecting
+                ? connState === "reconnecting" ? "Reconnecting…" : "Connecting…"
+                : runningCount > 0
                 ? `${runningCount} agent${runningCount !== 1 ? "s" : ""} running now`
                 : sorted.length > 0
                 ? "No agents running right now"
-                : isLoading ? "Loading…" : "Waiting for agent activity…"}
+                : "Waiting for agent activity…"}
             </p>
           </div>
         </div>
@@ -212,15 +272,29 @@ export default function LivePage() {
               {stuckCount} verifying
             </span>
           )}
-          {/* Polling indicator */}
-          <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-full"
-            style={{ background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.25)" }}>
-            <span className="relative flex w-1.5 h-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: "#22c55e" }} />
-              <span className="relative inline-flex rounded-full w-1.5 h-1.5" style={{ background: "#22c55e" }} />
+          {/* Connection status indicator */}
+          {connState === "connected" ? (
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-full"
+              style={{ background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.25)" }}>
+              <span className="relative flex w-1.5 h-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: "#22c55e" }} />
+                <span className="relative inline-flex rounded-full w-1.5 h-1.5" style={{ background: "#22c55e" }} />
+              </span>
+              LIVE
             </span>
-            LIVE
-          </span>
+          ) : connState === "reconnecting" ? (
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-full"
+              style={{ background: "rgba(245,158,11,0.1)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.2)" }}>
+              <WifiOff size={11} />
+              RECONNECTING
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-full"
+              style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", border: "1px solid hsl(var(--border))" }}>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "hsl(var(--muted-foreground))" }} />
+              CONNECTING
+            </span>
+          )}
         </div>
       </div>
 
@@ -231,14 +305,16 @@ export default function LivePage() {
           <div className="py-20 flex flex-col items-center justify-center gap-3">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
               style={{ background: "hsl(var(--muted))" }}>
-              <Radio size={20} className="text-muted-foreground" />
+              {isConnecting
+                ? <span className="w-5 h-5 rounded-full border-2 border-current border-t-transparent animate-spin" style={{ color: "hsl(var(--muted-foreground))" }} />
+                : <Radio size={20} className="text-muted-foreground" />}
             </div>
             <p className="text-sm font-semibold text-foreground">
-              {isLoading ? "Loading sessions…" : "No active sessions"}
+              {isConnecting ? "Connecting to live stream…" : "No active sessions"}
             </p>
             <p className="text-xs text-muted-foreground text-center max-w-xs">
-              {isLoading
-                ? "Fetching recent activity…"
+              {isConnecting
+                ? "Establishing SSE connection to the LangSight backend…"
                 : "Run an agent instrumented with the LangSight SDK to see it here."}
             </p>
           </div>
@@ -316,7 +392,7 @@ export default function LivePage() {
 
       {sorted.length > 0 && (
         <p className="text-[10px] text-muted-foreground text-center">
-          Refreshes every 3s · Sessions expire after 10min of inactivity · Click to view full trace
+          Streaming via SSE · Sessions expire after 10min of inactivity · Click to view full trace
         </p>
       )}
     </div>

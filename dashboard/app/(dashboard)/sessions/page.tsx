@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import {
   ChevronRight, GitBranch, Clock, Zap, AlertCircle,
@@ -84,6 +84,7 @@ function effectiveHealthTag(s: AgentSession): HealthTag | null {
 /* ── Page ───────────────────────────────────────────────────── */
 export default function SessionsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   // Prevent parent <main> from scrolling — this page manages its own scroll
   const pageRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -94,14 +95,45 @@ export default function SessionsPage() {
     }
   }, []);
 
-  const [hours, setHours] = useState(24);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "clean" | "failed">("all");
-  const [agentFilter, setAgentFilter] = useState<string>("all");
-  const [healthTagFilter, setHealthTagFilter] = useState<string>("all");
-  const [page, setPage] = useState(0);
-  const [sortKey, setSortKey] = useState<SortKey | null>("first_call_at");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  // Initialise filter state from URL search params so filters survive refresh
+  const [hours, setHours] = useState<number>(() => {
+    const v = searchParams.get("hours");
+    return v ? Number(v) : 24;
+  });
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [statusFilter, setStatusFilter] = useState<"all" | "clean" | "failed">(() => {
+    const v = searchParams.get("status");
+    return (v === "clean" || v === "failed") ? v : "all";
+  });
+  const [agentFilter, setAgentFilter] = useState<string>(() => searchParams.get("agent") ?? "all");
+  const [healthTagFilter, setHealthTagFilter] = useState<string>(() => searchParams.get("tag") ?? "all");
+  const [page, setPage] = useState<number>(() => {
+    const v = searchParams.get("page");
+    return v ? Number(v) : 0;
+  });
+  const [sortKey, setSortKey] = useState<SortKey | null>(() => {
+    const v = searchParams.get("sort");
+    return (v as SortKey | null) ?? "first_call_at";
+  });
+  const [sortDir, setSortDir] = useState<SortDir>(() => {
+    const v = searchParams.get("dir");
+    return (v === "asc" || v === "desc") ? v : "desc";
+  });
+
+  // Sync filter state → URL (replaces history entry so back-button works correctly)
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (hours !== 24) params.set("hours", String(hours));
+    if (search) params.set("q", search);
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (agentFilter !== "all") params.set("agent", agentFilter);
+    if (healthTagFilter !== "all") params.set("tag", healthTagFilter);
+    if (page !== 0) params.set("page", String(page));
+    if (sortKey && sortKey !== "first_call_at") params.set("sort", sortKey);
+    if (sortDir && sortDir !== "desc") params.set("dir", sortDir);
+    const qs = params.toString();
+    router.replace(qs ? `/sessions?${qs}` : "/sessions", { scroll: false });
+  }, [hours, search, statusFilter, agentFilter, healthTagFilter, page, sortKey, sortDir, router]);
 
   const { activeProject } = useProject();
   const p = activeProject ? `&project_id=${activeProject.id}` : "";
@@ -112,7 +144,12 @@ export default function SessionsPage() {
     { refreshInterval: 30_000 }
   );
 
-  useEffect(() => { setPage(0); }, [search, statusFilter, agentFilter, healthTagFilter, hours]);
+  // Reset to page 0 when filters change (but not on initial mount)
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    setPage(0);
+  }, [search, statusFilter, agentFilter, healthTagFilter, hours]);
 
   const agentNames = useMemo(() => {
     if (!sessions) return [];
@@ -220,7 +257,8 @@ export default function SessionsPage() {
           <div className="relative flex-1 min-w-[180px] max-w-sm">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
-              type="text"
+              type="search"
+              aria-label="Search sessions"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search session ID, agent, server..."
@@ -228,7 +266,7 @@ export default function SessionsPage() {
             />
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5" role="group" aria-label="Session status filter">
             {(
               [
                 ["all", "All", countAll],
@@ -238,6 +276,7 @@ export default function SessionsPage() {
             ).map(([key, label, count]) => (
               <button
                 key={key}
+                aria-pressed={statusFilter === key}
                 onClick={() => setStatusFilter(key)}
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
@@ -252,6 +291,7 @@ export default function SessionsPage() {
                     "text-[10px] px-1.5 py-0.5 rounded-full min-w-[18px] text-center tabular-nums",
                     statusFilter === key ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
                   )}
+                  aria-label={`${count} sessions`}
                 >
                   {count}
                 </span>
@@ -261,8 +301,10 @@ export default function SessionsPage() {
 
           {agentNames.length > 1 && (
             <div className="flex items-center gap-1.5">
-              <Filter size={13} className="text-muted-foreground" />
+              <Filter size={13} className="text-muted-foreground" aria-hidden="true" />
+              <label htmlFor="agent-filter" className="sr-only">Filter by agent</label>
               <select
+                id="agent-filter"
                 value={agentFilter}
                 onChange={(e) => setAgentFilter(e.target.value)}
                 className="text-xs rounded-lg px-2 py-1.5 border border-border bg-card text-foreground outline-none h-[34px]"
@@ -276,7 +318,9 @@ export default function SessionsPage() {
           )}
 
           <div className="flex items-center gap-1.5">
+            <label htmlFor="health-tag-filter" className="sr-only">Filter by health tag</label>
             <select
+              id="health-tag-filter"
               value={healthTagFilter}
               onChange={(e) => setHealthTagFilter(e.target.value)}
               className="text-xs rounded-lg px-2 py-1.5 border border-border bg-card text-foreground outline-none h-[34px]"
