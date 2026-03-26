@@ -37,6 +37,9 @@
  *  tests trigger events programmatically. */
 class MockEventSource {
   static instances: MockEventSource[] = [];
+  static readonly CONNECTING = 0 as const;
+  static readonly OPEN = 1 as const;
+  static readonly CLOSED = 2 as const;
 
   url: string;
   onopen: (() => void) | null = null;
@@ -72,7 +75,8 @@ class MockEventSource {
 
 beforeEach(() => {
   MockEventSource.instances = [];
-  (global as typeof global & { EventSource: unknown }).EventSource = MockEventSource;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (global as any).EventSource = MockEventSource;
 });
 
 afterEach(() => {
