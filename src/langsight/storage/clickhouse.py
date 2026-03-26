@@ -139,32 +139,12 @@ _DDL = [
     FROM mcp_tool_calls
     GROUP BY project_id, server_name, tool_name, hour
     """,
-    # Materialized view: agent sessions — one row per session
-    # Migrate existing installs: drop any old view (wrong engine / missing columns).
+    # Drop mv_agent_sessions from any existing install — the view consumed CPU on
+    # every insert but was never queryable correctly (AggregatingMergeTree columns
+    # cannot be used in WHERE clauses, and *Merge combinators in SELECT produce
+    # incorrect results against unmerged parts).  get_agent_sessions() now queries
+    # mcp_tool_calls directly for both the project-scoped and admin paths.
     "DROP TABLE IF EXISTS mv_agent_sessions",
-    # Drives GET /api/agents/sessions admin (no-project_id) path.
-    # Uses AggregatingMergeTree with *State combinators so ClickHouse stores
-    # true aggregate states.  Queries MUST use the matching *Merge combinators.
-    """
-    CREATE MATERIALIZED VIEW IF NOT EXISTS mv_agent_sessions
-    ENGINE = AggregatingMergeTree()
-    ORDER BY (project_id, session_id, agent_name)
-    POPULATE
-    AS SELECT
-        project_id,
-        session_id,
-        agent_name,
-        minState(started_at)                                      AS first_call_at,
-        maxState(ended_at)                                        AS last_call_at,
-        countState()                                              AS total_spans,
-        countIfState(span_type = 'tool_call')                     AS tool_calls,
-        countIfState(status != 'success' AND span_type='tool_call') AS failed_calls,
-        sumState(latency_ms)                                      AS total_latency_ms,
-        groupUniqArrayState(server_name)                          AS servers_used
-    FROM mcp_tool_calls
-    WHERE session_id != ''
-    GROUP BY project_id, session_id, agent_name
-    """,
     # v0.3 Session health tags — one row per (project, session), auto-classified
     # Uses ReplacingMergeTree so re-tagging a session replaces the old row.
     # ORDER BY includes project_id to prevent cross-project tag collisions.
@@ -615,62 +595,20 @@ class ClickHouseBackend:
             "agents_used",
         ]
 
-        # When project_id is supplied: query base table for full project isolation.
-        # When absent (admin/all-project view): use mv_agent_sessions (includes project_id).
-        if project_id:
-            where = (
-                "WHERE t.started_at >= now() - INTERVAL {hours:UInt32} HOUR"
-                " AND t.session_id != ''"
-                " AND t.project_id = {project_id:String}"
-            )
-            params: dict[str, Any] = {"hours": hours, "limit": limit, "project_id": project_id}
-            having = ""
-            if agent_name:
-                having = "HAVING has(groupUniqArray(t.agent_name), {agent_name:String})"
-                params["agent_name"] = agent_name
-            if health_tag:
-                where += " AND sht.health_tag = {health_tag:String}"
-                params["health_tag"] = health_tag
-            result = await self._client.query(
-                f"""
-                SELECT
-                    t.session_id,
-                    anyIf(t.agent_name, t.agent_name != '')              AS agent_name,
-                    min(t.started_at)                                    AS first_call_at,
-                    max(t.ended_at)                                      AS last_call_at,
-                    countIf(t.span_type = 'tool_call')                  AS tool_calls,
-                    countIf(t.status != 'success' AND t.span_type = 'tool_call') AS failed_calls,
-                    sum(t.latency_ms)                                    AS total_latency_ms,
-                    groupUniqArray(t.server_name)                       AS servers_used,
-                    dateDiff('millisecond', min(t.started_at), max(t.ended_at)) AS duration_ms,
-                    any(sht.health_tag)                                  AS health_tag,
-                    sum(t.input_tokens)                                  AS total_input_tokens,
-                    sum(t.output_tokens)                                 AS total_output_tokens,
-                    anyIf(t.model_id, t.model_id != '')                  AS model_id,
-                    arrayFilter(x -> x != '', groupUniqArray(t.agent_name)) AS agents_used
-                FROM mcp_tool_calls t
-                LEFT JOIN (SELECT session_id, project_id, health_tag FROM session_health_tags FINAL) sht
-                    ON t.session_id = sht.session_id AND t.project_id = sht.project_id
-                {where}
-                GROUP BY t.session_id
-                {having}
-                ORDER BY first_call_at DESC
-                LIMIT {{limit:UInt32}}
-                """,
-                parameters=params,
-            )
-            return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
-
-        # No project_id filter (admin / all-projects view) — query base table directly.
-        # AggregatingMergeTree MV columns cannot be used in WHERE comparisons, so we
-        # bypass the MV entirely and aggregate mcp_tool_calls for correctness.
+        # Both the project-scoped and admin (all-projects) paths use the same query
+        # against mcp_tool_calls.  project_id filter is applied when supplied.
+        # ClickHouse bloom filter indexes on project_id and session_id make this
+        # efficient even on large datasets.
         where = (
             "WHERE t.started_at >= now() - INTERVAL {hours:UInt32} HOUR"
             " AND t.session_id != ''"
         )
-        params = {"hours": hours, "limit": limit}
+        params: dict[str, Any] = {"hours": hours, "limit": limit}
         having = ""
 
+        if project_id:
+            where += " AND t.project_id = {project_id:String}"
+            params["project_id"] = project_id
         if agent_name:
             having = "HAVING has(groupUniqArray(t.agent_name), {agent_name:String})"
             params["agent_name"] = agent_name
@@ -685,7 +623,7 @@ class ClickHouseBackend:
                 anyIf(t.agent_name, t.agent_name != '')              AS agent_name,
                 min(t.started_at)                                    AS first_call_at,
                 max(t.ended_at)                                      AS last_call_at,
-                countIf(t.span_type = 'tool_call')                  AS tool_calls,
+                countIf(t.span_type = 'tool_call')                   AS tool_calls,
                 countIf(t.status != 'success' AND t.span_type = 'tool_call') AS failed_calls,
                 sum(t.latency_ms)                                    AS total_latency_ms,
                 groupUniqArray(t.server_name)                        AS servers_used,
