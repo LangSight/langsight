@@ -661,12 +661,18 @@ class ClickHouseBackend:
             )
             return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
-        # No project_id filter — use the fast MV, join health tags separately
-        where = "WHERE mv.first_call_at >= now() - INTERVAL {hours:UInt32} HOUR"
+        # No project_id filter (admin / all-projects view) — query base table directly.
+        # AggregatingMergeTree MV columns cannot be used in WHERE comparisons, so we
+        # bypass the MV entirely and aggregate mcp_tool_calls for correctness.
+        where = (
+            "WHERE t.started_at >= now() - INTERVAL {hours:UInt32} HOUR"
+            " AND t.session_id != ''"
+        )
         params = {"hours": hours, "limit": limit}
+        having = ""
 
         if agent_name:
-            where += " AND mv.agent_name = {agent_name:String}"
+            having = "HAVING has(groupUniqArray(t.agent_name), {agent_name:String})"
             params["agent_name"] = agent_name
         if health_tag:
             where += " AND sht.health_tag = {health_tag:String}"
@@ -675,35 +681,26 @@ class ClickHouseBackend:
         result = await self._client.query(
             f"""
             SELECT
-                mv.session_id,
-                any(mv.agent_name)                                              AS agent_name,
-                minMerge(mv.first_call_at)                                      AS first_call_at,
-                maxMerge(mv.last_call_at)                                       AS last_call_at,
-                countMerge(mv.tool_calls)                                       AS tool_calls,
-                countMerge(mv.failed_calls)                                     AS failed_calls,
-                sumMerge(mv.total_latency_ms)                                   AS total_latency_ms,
-                groupUniqArrayMerge(mv.servers_used)                            AS servers_used,
-                dateDiff('millisecond', minMerge(mv.first_call_at),
-                         maxMerge(mv.last_call_at))                             AS duration_ms,
-                any(sht.health_tag)                                             AS health_tag,
-                sum(tok.total_input_tokens)                                     AS total_input_tokens,
-                sum(tok.total_output_tokens)                                    AS total_output_tokens,
-                anyIf(tok.model_id, tok.model_id != '')                         AS model_id,
-                arrayFilter(x -> x != '', groupUniqArray(mv.agent_name))        AS agents_used
-            FROM mv_agent_sessions mv
-            LEFT JOIN (
-                SELECT session_id, agent_name,
-                       sum(input_tokens) AS total_input_tokens,
-                       sum(output_tokens) AS total_output_tokens,
-                       anyIf(model_id, model_id != '') AS model_id
-                FROM mcp_tool_calls
-                WHERE session_id != '' AND agent_name != ''
-                GROUP BY session_id, agent_name
-            ) tok ON mv.session_id = tok.session_id AND mv.agent_name = tok.agent_name
+                t.session_id,
+                anyIf(t.agent_name, t.agent_name != '')              AS agent_name,
+                min(t.started_at)                                    AS first_call_at,
+                max(t.ended_at)                                      AS last_call_at,
+                countIf(t.span_type = 'tool_call')                  AS tool_calls,
+                countIf(t.status != 'success' AND t.span_type = 'tool_call') AS failed_calls,
+                sum(t.latency_ms)                                    AS total_latency_ms,
+                groupUniqArray(t.server_name)                        AS servers_used,
+                dateDiff('millisecond', min(t.started_at), max(t.ended_at)) AS duration_ms,
+                any(sht.health_tag)                                  AS health_tag,
+                sum(t.input_tokens)                                  AS total_input_tokens,
+                sum(t.output_tokens)                                 AS total_output_tokens,
+                anyIf(t.model_id, t.model_id != '')                  AS model_id,
+                arrayFilter(x -> x != '', groupUniqArray(t.agent_name)) AS agents_used
+            FROM mcp_tool_calls t
             LEFT JOIN (SELECT session_id, project_id, health_tag FROM session_health_tags FINAL) sht
-                ON mv.session_id = sht.session_id AND mv.project_id = sht.project_id
+                ON t.session_id = sht.session_id AND t.project_id = sht.project_id
             {where}
-            GROUP BY mv.project_id, mv.session_id
+            GROUP BY t.project_id, t.session_id
+            {having}
             ORDER BY first_call_at DESC
             LIMIT {{limit:UInt32}}
             """,
