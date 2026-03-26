@@ -35,6 +35,7 @@ from langsight.models import (
     PreventionConfig,
     Project,
     ProjectMember,
+    SchemaDriftEvent,
     User,
 )
 from langsight.sdk.models import ToolCallSpan
@@ -184,6 +185,26 @@ class DualStorage:
         project_id: str | None = None,
     ) -> list[str]:
         return await self._analytics.get_untagged_sessions(inactive_seconds, limit, project_id)
+
+    # v0.8 Schema drift events → ClickHouse
+
+    async def save_schema_drift_event(self, event: SchemaDriftEvent) -> None:
+        return await self._analytics.save_schema_drift_event(event)
+
+    async def get_schema_drift_history(
+        self,
+        server_name: str,
+        limit: int = 20,
+    ) -> list[dict]:
+        return await self._analytics.get_schema_drift_history(server_name, limit)
+
+    async def get_drift_impact(
+        self,
+        server_name: str,
+        tool_name: str,
+        hours: int = 24,
+    ) -> list[dict]:
+        return await self._analytics.get_drift_impact(server_name, tool_name, hours)
 
     # ── Metadata → Postgres ───────────────────────────────────────────────────
     # API keys

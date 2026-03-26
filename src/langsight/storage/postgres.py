@@ -20,6 +20,7 @@ from langsight.models import (
     ProjectMember,
     ProjectRole,
     ServerStatus,
+    SchemaDriftEvent,
     SLOMetric,
     User,
     UserRole,
@@ -1366,6 +1367,26 @@ class PostgresBackend:
         project_id: str | None = None,
     ) -> list[str]:
         """No-op: health tags live in ClickHouse, not Postgres."""
+        return []
+
+    async def save_schema_drift_event(self, event: SchemaDriftEvent) -> None:
+        """No-op: schema drift events live in ClickHouse, not Postgres."""
+
+    async def get_schema_drift_history(
+        self,
+        server_name: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """No-op: schema drift history lives in ClickHouse, not Postgres."""
+        return []
+
+    async def get_drift_impact(
+        self,
+        server_name: str,
+        tool_name: str,
+        hours: int = 24,
+    ) -> list[dict[str, Any]]:
+        """No-op: drift impact data lives in ClickHouse, not Postgres."""
         return []
 
     async def close(self) -> None:
