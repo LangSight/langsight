@@ -28,7 +28,7 @@ Phase 2 (SDK + Framework Integ) ████████████████
 Phase 3 (OTEL + Costs)          ████████████████ 100% — COMPLETE ✅
 Release 0.1.0                   ████████████████ 100% — SHIPPED ✅ (PyPI + GitHub)
 Phase 4 (Dashboard + Website)   ████████████████ 100% — COMPLETE ✅ full redesign shipped 2026-03-19
-Security Hardening (S.1-S.10)   ████████░░░░░░░░  50% — S.4, S.7, S.9, S.10 COMPLETE ✅; S.1-S.3, S.5-S.6, S.8 in progress
+Security Hardening (S.1-S.10)   ████████████░░░░  75% — S.4, S.7, S.9, S.10 COMPLETE ✅; S.1 (partial ✅ v0.6.2: /api/settings auth hardened; SSE isolation + health cross-tenant fixed); S.2-S.3, S.5-S.6, S.8 in progress
 Phase 5 (Deep Reliability)      ████████████████ 100% — COMPLETE ✅
 Phase 6 (Project-Level RBAC)    ████████████████ 100% — COMPLETE ✅
 Phase 7 (Model-Based Costs)     ████████████████ 100% — COMPLETE ✅
@@ -55,6 +55,11 @@ v0.3 Tier 3 (Blast Radius)      ░░░░░░░░░░░░░░░░
 - **New models**: `PreventionEvent` in `sdk/models.py`. `CircuitBreakerConfig` added as optional field on `MCPServer`. `LoopDetectedError`, `BudgetExceededError`, `CircuitBreakerOpenError` exceptions.
 - **Health tag engine** (`src/langsight/tagging/engine.py`): `HealthTag` enum with 8 priority-ordered tags. `tag_from_spans()` computes tags from session spans.
 - **Dashboard**: `HealthTagBadge` component, sessions page health tag column + filter dropdown, `HealthTag` type + `health_tag` field on `AgentSession`.
+
+**v0.3 Tier 1.5 — Stability & Scale (Principal Audit Fixes)**:
+- **SDK Memory Safety**: Implement LRU eviction for `LoopDetector` and `SessionBudget` maps in `LangSightClient` to prevent DoS via random session IDs.
+- **SSE Scalability**: Refactor `SSEBroadcaster` to support a Redis backend, enabling horizontal scaling and removing the 200-client limit.
+- **Distributed Circuit Breaker**: Add optional Redis support for circuit breaker state to support multi-replica agents.
 
 **Dashboard UX polish (shipped 2026-03-23)**:
 - **`DateRangeFilter` component** (`dashboard/components/date-range-filter.tsx`): reusable date range control with 5 presets (1h/6h/24h/7d/30d) and a custom date picker dropdown. Integrated into Sessions, Costs, Health, Agents, and Servers pages. Active preset highlighted with primary teal; custom range shows indigo-tinted "Custom" label. Clicking outside the dropdown closes it via `mousedown` event listener.
@@ -489,13 +494,13 @@ The MVP is "done" when all of the following are true:
 
 ### Pre-Production Security Hardening (Security Assessment 2026-03-18)
 
-**Status**: IN PROGRESS — S.4, S.7, S.9, S.10 complete; S.1-S.3, S.5-S.6, S.8 remaining.
+**Status**: IN PROGRESS — S.4, S.7, S.9, S.10 complete; S.1 partially complete (v0.6.2); S.2-S.3, S.5-S.6, S.8 remaining.
 
-**Context**: A security review on 2026-03-18 identified two P0 blockers and two P1 gaps that prevent honest production claims. This phase must be completed before 0.2.0 can be called production-grade. See `PROGRESS.md` for the full assessment summary. A principal engineer audit on 2026-03-21 addressed S.4 (global rate limiting), S.7 (DB port binding), and added dashboard security headers + CORS tightening. A subsequent audit on 2026-03-21 added a CI type-check job for the dashboard and DualStorage protocol conformance tests.
+**Context**: A security review on 2026-03-18 identified two P0 blockers and two P1 gaps that prevent honest production claims. This phase must be completed before 0.2.0 can be called production-grade. See `PROGRESS.md` for the full assessment summary. A principal engineer audit on 2026-03-21 addressed S.4 (global rate limiting), S.7 (DB port binding), and added dashboard security headers + CORS tightening. A subsequent audit on 2026-03-21 added a CI type-check job for the dashboard and DualStorage protocol conformance tests. v0.6.2 (2026-03-25) resolved additional auth gaps: `/api/settings` GET + PUT now require auth, SSE `span:new` events now include `project_id` (cross-tenant isolation fix), and health detail/history endpoints now pass `project_id` to storage queries.
 
 | Task | ID | Description | Priority |
 |------|----|-------------|----------|
-| API key middleware on all API routes | S.1 | Add FastAPI dependency that validates `X-API-Key` header against a configurable key list. Wildcard CORS in `api/main.py` must be restricted to known origins. | P0 |
+| ✅ (partial) API key middleware on all API routes | S.1 | Add FastAPI dependency that validates `X-API-Key` header against a configurable key list. Wildcard CORS in `api/main.py` must be restricted to known origins. **Partial COMPLETE v0.6.2 2026-03-25**: `/api/settings` GET (requires `verify_api_key`) and PUT (requires `verify_api_key` + `require_admin`) now protected. SSE tenant isolation and health cross-tenant leakage also fixed. CORS and API key middleware on remaining unauthenticated endpoints (S.1 remaining scope) still in progress. | P0 |
 | RBAC — admin and viewer roles | S.2 | Admin: full access including triggering scans and ingesting spans. Viewer: read-only. Enforce at the router dependency level. | P0 |
 | Dashboard real credential store or OIDC | S.3 | Replace hardcoded users in `dashboard/lib/auth.ts` with either a proper credential store or OIDC provider integration. Any-password-accepted logic must be removed. | P0 |
 | ✅ Rate limiting on all endpoints | S.4 | Global `default_limits=["200/minute"]` via `SlowAPIMiddleware` on all API endpoints. All routers share a single `Limiter` instance from `src/langsight/api/rate_limit.py` (refactored 2026-03-21 — previously each router created separate instances, preventing per-route overrides). Per-route overrides: spans=2000/min, otlp=60/min, accept-invite=5/min, verify=10/min. **COMPLETE 2026-03-21** — goes beyond original scope (ingestion-only) to cover all endpoints. | P1 |

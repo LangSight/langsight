@@ -510,6 +510,10 @@ Session detail page starts compare flow against the replay session
 - **In-memory, not Redis**: Single-instance deployments do not need Redis overhead. For multi-instance horizontal scaling, Redis pub/sub can be added behind the same `SSEBroadcaster` interface.
 - **Bounded buffers**: Slow clients do not cause memory growth. The 50-event buffer with oldest-drop policy ensures the broadcaster never blocks producers.
 
+**SSE tenant isolation fix** (fixed v0.6.2, 2026-03-25): `span:new` events now include `project_id` in the payload. Without it, all project-scoped SSE subscribers received live span events from every tenant on the instance. The dashboard SSE consumer now filters events by `project_id` before updating state. This was a data leakage vector: a user connected to Project A could see real-time span metadata (agent name, tool name, status) from Project B.
+
+**Multi-worker constraint** (decided v0.6.2, 2026-03-25): The Dockerfile default for `LANGSIGHT_WORKERS` was changed from 2 to 1. The SSE broadcaster, rate limiter token buckets, and auth cache are all in-process Python state. Under multi-worker (multi-process) Uvicorn, each worker holds an independent copy: SSE events published by worker A are not delivered to clients connected to worker B; rate limit budgets are doubled; auth cache state diverges. Set `LANGSIGHT_WORKERS=1` (the new default) for all deployments. Horizontal scaling requires a Redis-backed broadcaster (Tier 1.5, not yet shipped).
+
 **Source**: `src/langsight/api/broadcast.py`, `src/langsight/api/routers/live.py`
 
 ### 2.15 Prometheus Metrics (added 2026-03-21)
@@ -973,3 +977,8 @@ All ClickHouse queries in `storage/clickhouse.py` that read from `mcp_tool_calls
 - **Alert config and audit logs persisted** (2026-03-19): previously stored in `app.state` (lost on restart); now in Postgres via `alert_config` (singleton upsert) and `audit_logs` (append-only) tables. `append_audit()` schedules async DB write via `asyncio.create_task` — never blocks the request path.
 - **PII masking in audit logs** (added 2026-03-21): `_mask_email()` transforms emails to `"a***@example.com"` before writing to audit logs. Raw email addresses no longer appear in audit log entries.
 - **No default secrets**: `docker-compose.yml` uses `${VAR:?error}` syntax — compose refuses to start if required vars are missing. No hardcoded passwords anywhere.
+- **`/api/settings` auth hardened** (fixed v0.6.2, 2026-03-25): `GET /api/settings` now requires `verify_api_key`; `PUT /api/settings` now requires `verify_api_key` + `require_admin`. Previously both endpoints were completely unprotected — any client with network access could read or overwrite global instance settings (including `redact_payloads`).
+- **SSE tenant isolation** (fixed v0.6.2, 2026-03-25): `span:new` SSE events now include `project_id` in the payload. Dashboard consumers filter by `project_id` before updating state. Previously, all subscribers on any project received all tenants' live events. See section 2.14 for implementation details.
+- **Health endpoint cross-tenant leak fixed** (fixed v0.6.2, 2026-03-25): `GET /api/health/servers/{name}` and `GET /api/health/servers/{name}/history` now pass `project_id` to storage queries. Previously the project-membership check passed but the underlying ClickHouse query fetched rows from all projects sharing the same `server_name`.
+- **ClickHouse timeouts** (added v0.6.2, 2026-03-25): ClickHouse client now sets `connect_timeout=5s` and `send_receive_timeout=30s`. Previously no timeouts were configured — a hung ClickHouse connection would block the span ingestion path indefinitely.
+- **Postgres pool sizing** (updated v0.6.2, 2026-03-25): `pg_pool_max` default raised from 20 to 50. Override via `LANGSIGHT_PG_POOL_MAX` env var. Small-instance operators should lower this to match `max_connections` in their Postgres configuration.

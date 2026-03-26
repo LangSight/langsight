@@ -178,6 +178,39 @@
 
 ---
 
+### TR-12: `/api/settings` Unauthenticated Access (resolved v0.6.2, 2026-03-25)
+
+| Attribute | Value |
+|-----------|-------|
+| **Description** | `GET /api/settings` and `PUT /api/settings` were completely unprotected — no API key required. Any client with network access to port 8000 could read or modify global instance settings, including `redact_payloads`. Setting `redact_payloads=false` via an unauthenticated request would disable PII protection on a locked-down instance. |
+| **Likelihood** | **Certain** — Both endpoints had no auth dependency attached. |
+| **Impact** | **High** — Read: configuration disclosure. Write: disables PII protection, enabling payload capture across all projects. |
+| **Resolution** | `GET /api/settings` now requires `verify_api_key`. `PUT /api/settings` now requires `verify_api_key` + `require_admin`. |
+
+---
+
+### TR-13: SSE Cross-Tenant Live Event Leakage (resolved v0.6.2, 2026-03-25)
+
+| Attribute | Value |
+|-----------|-------|
+| **Description** | `span:new` SSE events published to `/api/live/events` did not include `project_id` in the payload. Every authenticated subscriber — regardless of which project they belonged to — received live span events from all tenants. Although span payloads are not included in SSE events, the metadata (agent name, tool name, server name, status, latency) constitutes meaningful business intelligence and was visible across project boundaries. |
+| **Likelihood** | **Certain** — The payload structure was fixed, containing no `project_id` field. |
+| **Impact** | **Medium** — Cross-tenant metadata leakage: a user in Project A could observe real-time activity patterns from Project B (which agents are active, which tools are called, whether calls are failing). |
+| **Resolution** | `span:new` events now include `project_id` in the payload. The dashboard SSE consumer filters events by `project_id` before applying state updates. |
+
+---
+
+### TR-14: Health Endpoint Cross-Tenant Data Leakage via Shared Server Name (resolved v0.6.2, 2026-03-25)
+
+| Attribute | Value |
+|-----------|-------|
+| **Description** | `GET /api/health/servers/{name}` (detail) and `GET /api/health/servers/{name}/history` (history) performed project membership checks correctly but then passed only `server_name` — not `project_id` — to the underlying ClickHouse query. Because server names are user-defined strings (e.g., `"postgres-mcp"`, `"slack-mcp"`), two different tenants could independently configure a server with the same name. The authorized user in Project A would receive health records from Project B if both projects had a server with the same name. |
+| **Likelihood** | **Medium** — Requires two tenants to use the same server name, which is common for generic names. |
+| **Impact** | **Medium** — Cross-tenant health data disclosure: exposes server availability history, latency, and error patterns from another project. |
+| **Resolution** | Both endpoints now pass `project_id` to the ClickHouse storage query. All health queries are now filtered by `(server_name, project_id)` rather than `server_name` alone. |
+
+---
+
 ### PR-03: Scope Creep -- Feature Requests Pull Toward "Another Langfuse"
 
 | Attribute | Value |

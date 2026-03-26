@@ -301,10 +301,14 @@ Query params for `/api/costs/breakdown`: `project_id`, `window` (24h, 7d, 30d).
 
 ### Instance Settings
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/settings` | Read global instance settings (e.g., `redact_payloads`) |
-| `PUT` | `/api/settings` | Update global instance settings (admin only) |
+| Method | Path | Auth required | Description |
+|--------|------|---------------|-------------|
+| `GET` | `/api/settings` | API key | Read global instance settings (e.g., `redact_payloads`) |
+| `PUT` | `/api/settings` | API key + admin role | Update global instance settings |
+
+<Warning>
+  Both `/api/settings` endpoints require authentication (added v0.6.2). `GET` requires a valid API key. `PUT` requires a valid API key **and** admin role. Unauthenticated requests return `401`.
+</Warning>
 
 **Settings object**:
 
@@ -351,7 +355,7 @@ Captured actions: `user.login`, `user.login_failed`, `api_key.created`, `api_key
 
 The `/api/live/events` endpoint requires authentication (same as all other API routes). It streams events as they occur:
 
-- **`span:new`** — fired when a new tool call span is ingested
+- **`span:new`** — fired when a new tool call span is ingested. Payload includes `project_id` — clients should filter events by `project_id` to avoid processing spans from other projects on the same instance.
 - **`health:check`** — fired when a health check completes
 
 The stream sends keepalive comments (`: keepalive`) every 15 seconds to prevent proxy timeouts. Connect with the browser `EventSource` API or any SSE-compatible client.
