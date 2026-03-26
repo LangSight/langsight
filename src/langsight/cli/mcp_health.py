@@ -35,12 +35,18 @@ _STATUS_DISPLAY = {
     help="Path to .langsight.yaml (auto-discovered if not set).",
 )
 @click.option(
+    "--server",
+    "server_name",
+    default=None,
+    help="Check a single server by name.",
+)
+@click.option(
     "--json",
     "output_json",
     is_flag=True,
     help="Output results as JSON (stdout).",
 )
-def mcp_health(config_path: Path | None, output_json: bool) -> None:
+def mcp_health(config_path: Path | None, server_name: str | None, output_json: bool) -> None:
     """Check the health of all configured MCP servers."""
     config = load_config(config_path)
 
@@ -49,11 +55,19 @@ def mcp_health(config_path: Path | None, output_json: bool) -> None:
         err_console.print("Run [bold]langsight init[/bold] to get started.")
         sys.exit(1)
 
+    servers = config.servers
+    if server_name:
+        servers = [s for s in config.servers if s.name == server_name]
+        if not servers:
+            err_console.print(f"[red]Server '{server_name}' not found in config.[/red]")
+            err_console.print(f"Available: {', '.join(s.name for s in config.servers)}")
+            sys.exit(1)
+
     async def _run() -> list[HealthCheckResult]:
         storage = await try_open_storage(config)
         try:
             checker = HealthChecker(storage=storage, project_id=config.project_id)
-            return await checker.check_many(config.servers)
+            return await checker.check_many(servers)
         finally:
             if storage:
                 await storage.close()
