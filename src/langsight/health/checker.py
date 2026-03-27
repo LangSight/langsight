@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from datetime import UTC, datetime
 
 import structlog
@@ -100,7 +99,7 @@ class HealthChecker:
                         {
                             "name": t.name,
                             "description": t.description or "",
-                            "input_schema": json.dumps(t.input_schema or {}),
+                            "input_schema": t.input_schema or {},  # dict — upsert_server_tools encodes
                         }
                         for t in tools
                     ]

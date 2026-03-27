@@ -318,7 +318,7 @@ def _tool_to_dict(tool: ToolInfo) -> dict:
     return {
         "name": tool.name,
         "description": tool.description,
-        "input_schema": json.dumps(tool.input_schema or {}),
+        "input_schema": tool.input_schema or {},  # dict — upsert_server_tools encodes once
     }
 
 

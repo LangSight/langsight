@@ -8,7 +8,7 @@ import Link from "next/link";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   Bot, ChevronRight, Search, Network, X, Server, GitBranch,
-  ChevronUp, ChevronDown, ChevronLast, AlertTriangle,
+  ChevronUp, ChevronDown, ChevronLast, AlertTriangle, Wrench,
 } from "lucide-react";
 import { fetcher, getCostsBreakdown, listAgentMetadata, upsertAgentMetadata, getAgentLoopCounts, getSLOStatus, createSLO, deleteSLO } from "@/lib/api";
 import type { SLOStatus } from "@/lib/types";
@@ -603,18 +603,20 @@ function SLOTab({ agentName, slos, projectId, onRefresh }: {
   );
 }
 
-/* ── Per-server tool card (fetches declared tools independently) ── */
+/* ── Per-server tool card (fetches declared tools, collapsible) ── */
 const STATUS_COLOR_MAP: Record<string, string> = { up: "#22c55e", degraded: "#eab308", down: "#ef4444", stale: "#6b7280" };
 
-function ServerToolsCard({ serverName, reliability, healthStatus, projectId }: {
+function ServerToolsCard({ serverName, reliability, healthStatus, isMcpServer, projectId }: {
   serverName: string;
   reliability: ToolReliability[];
   healthStatus: string | undefined;
+  isMcpServer: boolean;
   projectId: string | null;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const pq = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
   const { data: declared } = useSWR<{ tool_name: string; description: string; input_schema: Record<string, unknown> }[]>(
-    `/api/servers/${encodeURIComponent(serverName)}/tools${pq}`,
+    expanded ? `/api/servers/${encodeURIComponent(serverName)}/tools${pq}` : null,
     fetcher,
     { refreshInterval: 60_000 },
   );
@@ -629,58 +631,76 @@ function ServerToolsCard({ serverName, reliability, healthStatus, projectId }: {
   }));
 
   const statusColor = STATUS_COLOR_MAP[healthStatus ?? ""] ?? "#6b7280";
+  const totalCalls = reliability.reduce((s, r) => s + r.total_calls, 0);
 
   return (
-    <div className="rounded-xl border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
-      {/* Server header */}
-      <div className="flex items-center gap-2.5 px-4 py-2.5" style={{ background: "hsl(var(--card-raised))", borderBottom: "1px solid hsl(var(--border))" }}>
+    <div className="rounded-xl border overflow-hidden transition-all" style={{ borderColor: expanded ? "hsl(var(--primary) / 0.3)" : "hsl(var(--border))" }}>
+      {/* Server header — click to expand/collapse */}
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-accent/20 transition-colors text-left"
+        style={{ background: "hsl(var(--card-raised))" }}
+      >
+        <ChevronRight size={12} className={cn("text-muted-foreground transition-transform flex-shrink-0", expanded && "rotate-90")} />
         <Server size={13} style={{ color: "hsl(var(--primary))" }} />
         <span className="text-[12px] font-bold text-foreground flex-1" style={{ fontFamily: "var(--font-geist-mono)" }}>{serverName}</span>
-        {healthStatus && (
-          <span className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: statusColor }}>
+        {/* MCP Server vs Sub-agent badge */}
+        <span className="text-[8px] px-1.5 py-0.5 rounded font-semibold flex-shrink-0" style={{
+          background: isMcpServer ? "rgba(99,102,241,0.1)" : "hsl(var(--muted))",
+          color: isMcpServer ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
+          border: `1px solid ${isMcpServer ? "rgba(99,102,241,0.2)" : "hsl(var(--border))"}`,
+        }}>
+          {isMcpServer ? "MCP Server" : "Sub-agent"}
+        </span>
+        {healthStatus && isMcpServer && (
+          <span className="flex items-center gap-1 text-[10px] font-semibold flex-shrink-0" style={{ color: statusColor }}>
             <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusColor }} />
             {healthStatus}
           </span>
         )}
-        <span className="text-[10px] text-muted-foreground">{tools.length} tool{tools.length !== 1 ? "s" : ""}</span>
-      </div>
+        <span className="text-[10px] text-muted-foreground flex-shrink-0">
+          {totalCalls > 0 ? `${totalCalls.toLocaleString()} calls` : `${reliability.length || "?"} tools`}
+        </span>
+      </button>
 
-      {/* Tool list */}
-      {tools.length === 0 ? (
-        <p className="px-4 py-3 text-[11px] text-muted-foreground">No tools observed yet</p>
-      ) : (
-        <div className="divide-y" style={{ borderColor: "hsl(var(--border) / 0.5)" }}>
-          {tools.map((tool) => {
-            const rel = tool.rel;
-            const errColor = rel && rel.error_rate_pct > 10 ? "#ef4444" : rel && rel.error_rate_pct > 0 ? "#eab308" : "#22c55e";
-            return (
-              <div key={tool.name} className="px-4 py-2.5 hover:bg-accent/10 transition-colors">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {rel ? <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1" style={{ background: errColor }} /> : <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1" style={{ background: "#6b7280" }} />}
-                    <div className="min-w-0">
-                      <span className="text-[11px] font-semibold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{tool.name}</span>
-                      {!tool.isDeclared && <span className="ml-1.5 text-[8px] px-1 py-0.5 rounded text-muted-foreground" style={{ background: "hsl(var(--border))" }}>observed</span>}
-                      {tool.description && <p className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-xs">{tool.description}</p>}
-                    </div>
-                  </div>
-                  {rel ? (
-                    <div className="flex items-center gap-3 flex-shrink-0 text-[10px]">
-                      <span className="text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{rel.total_calls} calls</span>
-                      {rel.error_calls > 0 && <span style={{ color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{rel.error_calls} err</span>}
-                      <span className="text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(rel.avg_latency_ms)}ms</span>
-                      <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ background: "hsl(var(--border))" }}>
-                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, rel.success_rate_pct)}%`, background: errColor }} />
+      {/* Tool list — only when expanded */}
+      {expanded && (
+        tools.length === 0 ? (
+          <p className="px-4 py-3 text-[11px] text-muted-foreground italic">No tools observed yet</p>
+        ) : (
+          <div className="divide-y" style={{ borderColor: "hsl(var(--border) / 0.5)" }}>
+            {tools.map((tool) => {
+              const rel = tool.rel;
+              const errColor = rel && rel.error_rate_pct > 10 ? "#ef4444" : rel && rel.error_rate_pct > 0 ? "#eab308" : "#22c55e";
+              return (
+                <div key={tool.name} className="px-4 py-2 hover:bg-accent/10 transition-colors">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1" style={{ background: rel ? errColor : "#6b7280" }} />
+                      <div className="min-w-0">
+                        <span className="text-[11px] font-semibold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{tool.name}</span>
+                        {!tool.isDeclared && <span className="ml-1.5 text-[8px] px-1 py-0.5 rounded text-muted-foreground" style={{ background: "hsl(var(--border))" }}>observed</span>}
+                        {tool.description && <p className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-xs">{tool.description}</p>}
                       </div>
                     </div>
-                  ) : (
-                    <span className="text-[10px] text-muted-foreground flex-shrink-0">schema only</span>
-                  )}
+                    {rel ? (
+                      <div className="flex items-center gap-3 flex-shrink-0 text-[10px]">
+                        <span className="text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{rel.total_calls} calls</span>
+                        {rel.error_calls > 0 && <span style={{ color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{rel.error_calls} err</span>}
+                        <span className="text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(rel.avg_latency_ms)}ms</span>
+                        <div className="w-10 h-1.5 rounded-full overflow-hidden" style={{ background: "hsl(var(--border))" }}>
+                          <div className="h-full rounded-full" style={{ width: `${Math.min(100, rel.success_rate_pct)}%`, background: errColor }} />
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground flex-shrink-0">schema only</span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )
       )}
     </div>
   );
@@ -936,6 +956,7 @@ export default function AgentsPage() {
                               serverName={srv}
                               reliability={(toolReliability ?? []).filter(r => r.server_name === srv)}
                               healthStatus={serverHealthMap.get(srv)}
+                              isMcpServer={serverHealthMap.has(srv)}
                               projectId={pid}
                             />
                           ))}

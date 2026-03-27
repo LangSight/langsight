@@ -189,10 +189,7 @@ function ServerTable({ servers, metaByName, historyCache, invByName, onSelect, o
               <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Trend</th>
               <ThCell col="uptime" label="Uptime" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="tools" label="Tools" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <ThCell col="checked" label="Last Checked" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <ThCell col="lastUsed" label="Last Used" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Last OK?</th>
-              <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Timestamp</th>
+              <ThCell col="checked" label="Last Ping" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
             </tr>
           </thead>
           <tbody>
@@ -224,22 +221,7 @@ function ServerTable({ servers, metaByName, historyCache, invByName, onSelect, o
                     {upPct !== null ? <span className="text-[11px] font-semibold" style={{ fontFamily: "var(--font-geist-mono)", color: upPct > 95 ? "#22c55e" : upPct > 80 ? "#eab308" : "#ef4444" }}>{upPct.toFixed(0)}%</span> : <span className="text-[11px] text-muted-foreground">—</span>}
                   </td>
                   <td className="px-3 py-2.5 text-[11px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{server.tools_count ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground">
-                    {invByName.get(server.server_name)?.last_called_at
-                      ? <Timestamp iso={invByName.get(server.server_name)!.last_called_at!} compact />
-                      : <span className="opacity-30">never</span>}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    {(() => {
-                      const inv = invByName.get(server.server_name);
-                      if (!inv?.last_called_at) return <span className="text-[10px] text-muted-foreground opacity-30">—</span>;
-                      return inv.last_call_ok
-                        ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold" style={{ color: "#22c55e" }}>✓ success</span>
-                        : <span className="inline-flex items-center gap-1 text-[10px] font-semibold" style={{ color: "#ef4444" }}>✗ {inv.last_call_status}</span>;
-                    })()}
-                  </td>
                   <td className="px-3 py-2.5 text-[11px] text-muted-foreground"><Timestamp iso={server.checked_at} compact /></td>
-                  <td className="px-3 py-2.5 text-[10px] text-muted-foreground tabular-nums" style={{ fontFamily: "var(--font-geist-mono)", opacity: 0.7 }}>{formatExact(server.checked_at)}</td>
                 </tr>
               );
             })}
@@ -511,6 +493,39 @@ export default function ServersPage() {
                         <div><p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Tags</p><EditableTags tags={meta?.tags ?? []} onSave={(v) => save("tags", v)} /></div>
                         <div><p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Transport</p><EditableText value={meta?.transport ?? ""} onSave={(v) => save("transport", v)} placeholder="stdio / sse / streamable_http" /></div>
                         <div><p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Runbook / Docs</p><EditableUrl value={meta?.runbook_url ?? ""} onSave={(v) => save("runbook_url", v)} placeholder="https://..." /></div>
+                        {/* Activity from traces */}
+                        {(() => {
+                          const inv = invByName.get(selected.server_name);
+                          if (!inv) return null;
+                          return (
+                            <div className="border-t pt-4" style={{ borderColor: "hsl(var(--border))" }}>
+                              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">Tool Call Activity (7d)</p>
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <span className="text-muted-foreground">Last tool call</span>
+                                  <span className="font-medium text-foreground">{inv.last_called_at ? <Timestamp iso={inv.last_called_at} /> : "—"}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <span className="text-muted-foreground">Last result</span>
+                                  <span className="font-semibold" style={{ fontFamily: "var(--font-geist-mono)", color: inv.last_call_ok ? "#22c55e" : "#ef4444" }}>
+                                    {inv.last_call_ok ? "✓ success" : `✗ ${inv.last_call_status}`}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <span className="text-muted-foreground">Total calls</span>
+                                  <span className="font-semibold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{inv.total_calls.toLocaleString()}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <span className="text-muted-foreground">Success rate</span>
+                                  <span className="font-semibold" style={{ fontFamily: "var(--font-geist-mono)", color: inv.success_rate_pct > 95 ? "#22c55e" : inv.success_rate_pct > 80 ? "#eab308" : "#ef4444" }}>
+                                    {inv.success_rate_pct.toFixed(1)}%
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         {/* Error */}
                         {selected.error && (
                           <div className="rounded-lg px-3 py-2.5" style={{ background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.15)" }}>
