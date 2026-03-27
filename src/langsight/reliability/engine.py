@@ -58,6 +58,9 @@ class ToolMetrics:
 
     avg_latency_ms: float = 0.0
     max_latency_ms: float = 0.0
+    p50_latency_ms: float = 0.0
+    p95_latency_ms: float = 0.0
+    p99_latency_ms: float = 0.0
 
     error_breakdown: dict[str, int] = field(default_factory=dict)
 
@@ -73,8 +76,8 @@ class ToolMetrics:
 
     @property
     def is_degraded(self) -> bool:
-        """True if success rate is below 95% or avg latency is high."""
-        return self.success_rate_pct < 95.0 or self.avg_latency_ms > 2000.0
+        """True if success rate is below 95% or p95 latency is high (>2s)."""
+        return self.success_rate_pct < 95.0 or self.p95_latency_ms > 2000.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -89,6 +92,9 @@ class ToolMetrics:
             "error_rate_pct": self.error_rate_pct,
             "avg_latency_ms": self.avg_latency_ms,
             "max_latency_ms": self.max_latency_ms,
+            "p50_latency_ms": self.p50_latency_ms,
+            "p95_latency_ms": self.p95_latency_ms,
+            "p99_latency_ms": self.p99_latency_ms,
             "is_degraded": self.is_degraded,
             "error_breakdown": self.error_breakdown,
         }
@@ -154,6 +160,10 @@ def _row_to_metrics(row: dict[str, Any], window_hours: int) -> ToolMetrics:
         timeout_calls=int(row.get("timeout_calls", 0)),
         avg_latency_ms=float(row.get("avg_latency_ms", 0.0)),
         max_latency_ms=float(row.get("max_latency_ms", 0.0)),
+        p50_latency_ms=float(row.get("p50_latency_ms", 0.0)),
+        p95_latency_ms=float(row.get("p95_latency_ms", 0.0)),
+        p99_latency_ms=float(row.get("p99_latency_ms", 0.0)),
+        error_breakdown=dict(row.get("error_breakdown", {})),
     )
 
 

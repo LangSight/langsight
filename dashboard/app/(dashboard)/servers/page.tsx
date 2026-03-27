@@ -148,7 +148,12 @@ function ServerTable({ servers, metaByName, historyCache, invByName, onSelect, o
             </button>
           ))}
         </div>
-        <button onClick={onRunCheck} disabled={checking} className="ml-auto btn btn-secondary h-[30px] text-[11px]">
+        <button
+          onClick={onRunCheck}
+          disabled={checking}
+          title="Trigger a health check via the API container. For full coverage use: langsight monitor --once"
+          className="ml-auto btn btn-secondary h-[30px] text-[11px]"
+        >
           <RefreshCw size={11} className={checking ? "animate-spin" : ""} />
           {checking ? "Checking…" : "Run Check"}
         </button>
@@ -373,6 +378,18 @@ export default function ServersPage() {
   const { data: toolReliability } = useSWR<ToolReliability[]>(`/api/reliability/tools?hours=24${pid ? `&project_id=${encodeURIComponent(pid)}` : ""}`, fetcher, { refreshInterval: 60_000 });
   const { data: invocations } = useSWR<InvocationStat[]>(`/api/health/servers/invocations?hours=168${pid ? `&project_id=${encodeURIComponent(pid)}` : ""}`, fetcher, { refreshInterval: 60_000 });
   const invByName = useMemo(() => new Map((invocations ?? []).map(i => [i.server_name, i])), [invocations]);
+
+  // Pre-fetch history for all servers so Trend + Uptime show in the table view
+  const [historyCache, setHistoryCache] = useState<Map<string, HealthResult[]>>(new Map());
+  useEffect(() => {
+    if (!servers?.length) return;
+    servers.forEach((s) => {
+      if (historyCache.has(s.server_name)) return; // already loaded
+      getServerHistory(s.server_name, 20).then((h) => {
+        setHistoryCache((prev) => new Map(prev).set(s.server_name, h));
+      }).catch(() => {});
+    });
+  }, [servers]); // eslint-disable-line react-hooks/exhaustive-deps
   const { data: declaredTools } = useSWR<{ tool_name: string; description: string; input_schema: Record<string, unknown> }[]>(
     selectedServer ? `/api/servers/${encodeURIComponent(selectedServer)}/tools${pq}` : null,
     fetcher,
@@ -381,11 +398,24 @@ export default function ServersPage() {
   const metaByName = useMemo(() => { const m = new Map<string, ServerMetadata>(); for (const meta of metadata ?? []) m.set(meta.server_name, meta); return m; }, [metadata]);
   const selected = useMemo(() => servers?.find((s) => s.server_name === selectedServer) ?? null, [servers, selectedServer]);
 
-  // Consumers from lineage
+  // Consumers from lineage.
+  // MCP infra servers (catalog-mcp) may appear in traces under a shorter name (catalog).
+  // Try exact match first, then strip common suffixes: -mcp, -server, -agent.
   const consumers = useMemo(() => {
-    if (!selected || !lineage) return [] as { agent: string; calls: number; errors: number }[];
-    const id = `server:${selected.server_name}`;
-    return lineage.edges.filter((e) => e.target === id && e.type === "calls").map((e) => ({ agent: e.source.replace("agent:", ""), calls: e.metrics.call_count ?? 0, errors: e.metrics.error_count ?? 0 }));
+    if (!selected || !lineage) return [] as { agent: string; calls: number; errors: number; matchedAs: string }[];
+    const exact = `server:${selected.server_name}`;
+    const normalized = `server:${selected.server_name.replace(/-(mcp|server|agent)$/i, "")}`;
+    const matchId = lineage.edges.some((e) => e.target === exact && e.type === "calls")
+      ? exact
+      : normalized;
+    return lineage.edges
+      .filter((e) => e.target === matchId && e.type === "calls")
+      .map((e) => ({
+        agent: e.source.replace("agent:", ""),
+        calls: e.metrics.call_count ?? 0,
+        errors: e.metrics.error_count ?? 0,
+        matchedAs: matchId !== exact ? matchId.replace("server:", "") : "",
+      }));
   }, [selected, lineage]);
 
   async function runCheck() {
@@ -431,7 +461,7 @@ export default function ServersPage() {
           {/* State 1: Full-width table */}
           {!selectedServer && (
             <div className="flex-1 min-h-0">
-              <ServerTable servers={servers} metaByName={metaByName} historyCache={new Map()} invByName={invByName} onSelect={selectServer} onRunCheck={runCheck} checking={checking} />
+              <ServerTable servers={servers} metaByName={metaByName} historyCache={historyCache} invByName={invByName} onSelect={selectServer} onRunCheck={runCheck} checking={checking} />
             </div>
           )}
 
@@ -582,10 +612,19 @@ export default function ServersPage() {
                               </div>
                               {tool.description && <p className="text-[10px] text-muted-foreground mb-1.5 ml-3.5">{tool.description}</p>}
                               {rel ? (
-                                <div className="flex items-center gap-3 text-[10px] text-muted-foreground ml-3.5">
+                                <div className="flex items-center gap-3 text-[10px] text-muted-foreground ml-3.5 flex-wrap">
                                   <span style={{ fontFamily: "var(--font-geist-mono)" }}>{rel.total_calls} calls</span>
-                                  {rel.error_calls > 0 && <span style={{ color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{rel.error_calls} err</span>}
-                                  <span style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(rel.avg_latency_ms)}ms avg</span>
+                                  {rel.error_calls > 0 && (
+                                    <span title={`timeout:${rel.error_breakdown?.timeout ?? 0} conn:${rel.error_breakdown?.connection ?? 0} params:${rel.error_breakdown?.params ?? 0} server:${rel.error_breakdown?.server ?? 0}`}
+                                      style={{ color: "#ef4444", fontFamily: "var(--font-geist-mono)", cursor: "help" }}>
+                                      {rel.error_calls} err
+                                    </span>
+                                  )}
+                                  <span title="p50 median latency" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(rel.p50_latency_ms ?? rel.avg_latency_ms)}ms p50</span>
+                                  <span title="p95 latency — 95% of calls finish within this time"
+                                    style={{ fontFamily: "var(--font-geist-mono)", color: (rel.p95_latency_ms ?? 0) > 2000 ? "#ef4444" : (rel.p95_latency_ms ?? 0) > 1000 ? "#eab308" : "inherit" }}>
+                                    {Math.round(rel.p95_latency_ms ?? 0)}ms p95
+                                  </span>
                                   <div className="flex-1 h-[3px] rounded-full overflow-hidden" style={{ background: "hsl(var(--border))", minWidth: 40, maxWidth: 60 }}>
                                     <div className="h-full rounded-full" style={{ width: `${Math.min(100, rel.success_rate_pct)}%`, background: dotColor }} />
                                   </div>
@@ -608,9 +647,19 @@ export default function ServersPage() {
                     <div>
                       <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">Agents Using This Server</p>
                       {consumers.length === 0 ? (
-                        <p className="text-[11px] text-muted-foreground">No agents observed calling this server in the last 24h</p>
+                        <div className="space-y-2">
+                          <p className="text-[11px] text-muted-foreground">No agents observed calling this server in the last 24h.</p>
+                          <p className="text-[10px] text-muted-foreground opacity-70">
+                            Agent traces use the sub-agent name (e.g. <code className="mono-pill-primary">catalog</code>) while health checks use the MCP server name (e.g. <code className="mono-pill-primary">catalog-mcp</code>). If your agents call this server under a different name, check the <strong>Agents</strong> page → Servers tab.
+                          </p>
+                        </div>
                       ) : (
                         <div className="space-y-1">
+                          {consumers[0]?.matchedAs && (
+                            <p className="text-[10px] text-muted-foreground mb-2 opacity-70">
+                              Matched traces for <code className="mono-pill-primary">{consumers[0].matchedAs}</code> (sub-agent name in traces)
+                            </p>
+                          )}
                           {consumers.map((c) => (
                             <div key={c.agent} className="flex items-center justify-between rounded-lg px-3 py-2.5" style={{ background: "hsl(var(--muted))" }}>
                               <div className="flex items-center gap-2"><Bot size={11} style={{ color: "hsl(var(--primary))" }} /><span className="text-[12px] font-medium text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{c.agent}</span></div>

@@ -702,31 +702,59 @@ class ClickHouseBackend:
         hours: int = 24,
         project_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Return tool reliability metrics for the given time window.
+        """Return tool reliability metrics including latency percentiles.
 
-        Uses the mv_tool_reliability materialized view for fast aggregation.
-        project_id is now a first-class column in the MV — no base-table fallback needed.
+        Queries mcp_tool_calls directly (not the MV) so that ClickHouse
+        quantile() functions can operate on raw latency values.
+        The MV only stores sums and cannot produce accurate percentiles.
         """
         params: dict[str, Any] = {"hours": hours}
-        where = "WHERE hour >= now() - INTERVAL {hours:UInt32} HOUR"
+        where = "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR"
         if project_id:
             where += " AND project_id = {project_id:String}"
             params["project_id"] = project_id
         if server_name:
             where += " AND server_name = {server_name:String}"
             params["server_name"] = server_name
+
         result = await self._client.query(
             f"""
             SELECT
                 server_name,
                 tool_name,
-                sum(total_calls)       AS total_calls,
-                sum(success_calls)     AS success_calls,
-                sum(error_calls)       AS error_calls,
-                sum(timeout_calls)     AS timeout_calls,
-                sum(total_latency_ms)  AS total_latency_ms,
-                max(max_latency_ms)    AS max_latency_ms
-            FROM mv_tool_reliability
+                count()                                         AS total_calls,
+                countIf(status = 'success')                    AS success_calls,
+                countIf(status = 'error')                      AS error_calls,
+                countIf(status = 'timeout')                    AS timeout_calls,
+                round(avg(latency_ms), 2)                      AS avg_latency_ms,
+                round(max(latency_ms), 2)                      AS max_latency_ms,
+                round(quantile(0.50)(latency_ms), 2)           AS p50_latency_ms,
+                round(quantile(0.95)(latency_ms), 2)           AS p95_latency_ms,
+                round(quantile(0.99)(latency_ms), 2)           AS p99_latency_ms,
+                -- Error categorisation: bucket by error message content
+                countIf(status = 'error'
+                    AND (lower(error) LIKE '%timeout%'
+                         OR lower(error) LIKE '%timed out%'))  AS err_timeout,
+                countIf(status = 'error'
+                    AND (lower(error) LIKE '%connection%'
+                         OR lower(error) LIKE '%unreachable%'
+                         OR lower(error) LIKE '%refused%'))     AS err_connection,
+                countIf(status = 'error'
+                    AND (lower(error) LIKE '%validation%'
+                         OR lower(error) LIKE '%required%'
+                         OR lower(error) LIKE '%invalid%'
+                         OR lower(error) LIKE '%parameter%'))  AS err_params,
+                countIf(status = 'error'
+                    AND lower(error) NOT LIKE '%timeout%'
+                    AND lower(error) NOT LIKE '%timed out%'
+                    AND lower(error) NOT LIKE '%connection%'
+                    AND lower(error) NOT LIKE '%unreachable%'
+                    AND lower(error) NOT LIKE '%refused%'
+                    AND lower(error) NOT LIKE '%validation%'
+                    AND lower(error) NOT LIKE '%required%'
+                    AND lower(error) NOT LIKE '%invalid%'
+                    AND lower(error) NOT LIKE '%parameter%')   AS err_server
+            FROM mcp_tool_calls
             {where}
             GROUP BY server_name, tool_name
             ORDER BY total_calls DESC
@@ -736,9 +764,8 @@ class ClickHouseBackend:
 
         rows = []
         for row in result.result_rows:
-            total = int(row[2]) or 1  # avoid div-by-zero
+            total = int(row[2]) or 1
             success = int(row[3])
-            total_lat = float(row[6])
             rows.append(
                 {
                     "server_name": row[0],
@@ -748,8 +775,17 @@ class ClickHouseBackend:
                     "error_calls": int(row[4]),
                     "timeout_calls": int(row[5]),
                     "success_rate_pct": round(success / total * 100, 2),
-                    "avg_latency_ms": round(total_lat / total, 2),
+                    "avg_latency_ms": float(row[6]),
                     "max_latency_ms": float(row[7]),
+                    "p50_latency_ms": float(row[8]),
+                    "p95_latency_ms": float(row[9]),
+                    "p99_latency_ms": float(row[10]),
+                    "error_breakdown": {
+                        "timeout":    int(row[11]),
+                        "connection": int(row[12]),
+                        "params":     int(row[13]),
+                        "server":     int(row[14]),
+                    },
                 }
             )
         return rows

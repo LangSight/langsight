@@ -62,8 +62,12 @@ class TestToolMetrics:
         m = self._make(total=10, success=9)
         assert m.is_degraded is True
 
-    def test_is_degraded_when_avg_latency_above_2000ms(self) -> None:
-        m = self._make(total=10, success=10, avg_latency_ms=2500.0)
+    def test_is_degraded_when_p95_latency_above_2000ms(self) -> None:
+        """is_degraded uses p95 (not avg) for latency threshold."""
+        from langsight.reliability.engine import ToolMetrics
+        m = ToolMetrics(server_name="s", tool_name="t", window_hours=24,
+                        total_calls=10, success_calls=10,
+                        avg_latency_ms=500.0, p95_latency_ms=2500.0)
         assert m.is_degraded is True
 
     def test_not_degraded_when_success_95_and_latency_ok(self) -> None:
@@ -88,6 +92,7 @@ class TestToolMetrics:
             "total_calls", "success_calls", "error_calls", "timeout_calls",
             "success_rate_pct", "error_rate_pct",
             "avg_latency_ms", "max_latency_ms",
+            "p50_latency_ms", "p95_latency_ms", "p99_latency_ms",
             "is_degraded", "error_breakdown",
         }
         assert set(d.keys()) == expected

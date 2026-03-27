@@ -266,7 +266,11 @@ export interface ToolReliability {
   error_rate_pct: number;
   avg_latency_ms: number;
   max_latency_ms: number;
+  p50_latency_ms: number;
+  p95_latency_ms: number;
+  p99_latency_ms: number;
   is_degraded: boolean;
+  error_breakdown: { timeout: number; connection: number; params: number; server: number };
 }
 
 export interface ServerMetadata {

@@ -187,14 +187,22 @@ class TestGetToolReliability:
     async def test_returns_dict_per_tool(
         self, backend: ClickHouseBackend, mock_client: MagicMock
     ) -> None:
+        # Columns: server_name, tool_name, total_calls, success_calls, error_calls,
+        #          timeout_calls, avg_latency_ms, max_latency_ms,
+        #          p50_latency_ms, p95_latency_ms, p99_latency_ms,
+        #          err_timeout, err_connection, err_params, err_server
         mock_client.query.return_value.result_rows = [
-            ("pg", "query", 100, 95, 3, 2, 95.0, 42.0, 500.0)
+            ("pg", "query", 100, 95, 3, 2, 42.0, 500.0, 38.0, 95.0, 120.0, 1, 0, 1, 1)
         ]
         results = await backend.get_tool_reliability()
         assert len(results) == 1
         assert results[0]["server_name"] == "pg"
         assert results[0]["tool_name"] == "query"
         assert results[0]["success_rate_pct"] == 95.0
+        assert results[0]["p50_latency_ms"] == 38.0
+        assert results[0]["p95_latency_ms"] == 95.0
+        assert results[0]["p99_latency_ms"] == 120.0
+        assert results[0]["error_breakdown"] == {"timeout": 1, "connection": 0, "params": 1, "server": 1}
 
 
 class TestSpanRowPayloads:

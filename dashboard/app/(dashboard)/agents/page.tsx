@@ -687,7 +687,8 @@ function ServerToolsCard({ serverName, reliability, healthStatus, isMcpServer, p
                       <div className="flex items-center gap-3 flex-shrink-0 text-[10px]">
                         <span className="text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{rel.total_calls} calls</span>
                         {rel.error_calls > 0 && <span style={{ color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{rel.error_calls} err</span>}
-                        <span className="text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(rel.avg_latency_ms)}ms</span>
+                        <span className="text-muted-foreground" title="p50 median" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(rel.p50_latency_ms ?? rel.avg_latency_ms)}ms</span>
+                        {(rel.p95_latency_ms ?? 0) > 0 && <span title="p95" style={{ fontFamily: "var(--font-geist-mono)", color: (rel.p95_latency_ms ?? 0) > 2000 ? "#ef4444" : "inherit", opacity: 0.7 }}>p95:{Math.round(rel.p95_latency_ms ?? 0)}</span>}
                         <div className="w-10 h-1.5 rounded-full overflow-hidden" style={{ background: "hsl(var(--border))" }}>
                           <div className="h-full rounded-full" style={{ width: `${Math.min(100, rel.success_rate_pct)}%`, background: errColor }} />
                         </div>
