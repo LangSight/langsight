@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -357,9 +358,59 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             "api.startup",
             servers=len(app.state.config.servers),
         )
+
+        # ── Embedded monitor loop ──────────────────────────────────────────
+        # Start continuous health checks as a background task so users only
+        # need ONE command: `langsight serve`.  The loop respects the same
+        # config file and credentials as the CLI `langsight monitor`.
+        # Disable by setting LANGSIGHT_MONITOR_ENABLED=false (e.g. if you
+        # are running a separate `langsight monitor` daemon instead).
+        monitor_task: asyncio.Task | None = None
+        if settings.monitor_enabled and app.state.config.servers:
+            from langsight.health.checker import HealthChecker
+
+            _interval = settings.monitor_interval_seconds
+            _checker = HealthChecker(
+                storage=app.state.storage,
+                project_id="",  # global — visible to all projects
+            )
+            _servers = app.state.config.servers
+
+            async def _monitor_loop() -> None:
+                logger.info(
+                    "monitor.started",
+                    servers=len(_servers),
+                    interval_seconds=_interval,
+                )
+                while True:
+                    try:
+                        await _checker.check_many(_servers)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.error("monitor.cycle_error", error=str(exc))
+                    await asyncio.sleep(_interval)
+
+            monitor_task = asyncio.create_task(_monitor_loop())
+            logger.info(
+                "monitor.embedded",
+                servers=len(_servers),
+                interval_seconds=_interval,
+                note="disable with LANGSIGHT_MONITOR_ENABLED=false",
+            )
+        elif not app.state.config.servers:
+            logger.info(
+                "monitor.skipped",
+                reason="no servers in config — run `langsight monitor` separately",
+            )
+
         try:
             yield
         finally:
+            if monitor_task:
+                monitor_task.cancel()
+                try:
+                    await monitor_task
+                except asyncio.CancelledError:
+                    pass
             await app.state.storage.close()
             logger.info("api.shutdown")
 

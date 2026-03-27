@@ -101,6 +101,14 @@ class Settings(BaseSettings):
     security_scan_interval_seconds: int = 3600
     log_level: str = "INFO"
 
+    # --- Embedded monitor (runs inside `langsight serve`) -------------------
+    # Set LANGSIGHT_MONITOR_ENABLED=false to disable the built-in loop and
+    # run `langsight monitor` as a separate process instead.
+    monitor_enabled: bool = True
+    # Interval between health-check cycles when the embedded loop is active.
+    # Default 60s (gentler than CLI default of 30s — serves more users).
+    monitor_interval_seconds: int = 60
+
     # --- Auth ------------------------------------------------------------------
     # Comma-separated list of valid API keys, e.g. "key1,key2".
     # When empty (default), authentication is DISABLED — safe for local dev only.
