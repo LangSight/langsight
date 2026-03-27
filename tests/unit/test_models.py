@@ -52,6 +52,76 @@ class TestMCPServer:
         assert s.args == ["python", "server.py", "--debug"] or s.args == ["server.py", "--debug"]
         assert s.env["LOG_LEVEL"] == "DEBUG"
 
+    # ------------------------------------------------------------------
+    # health_tool + health_tool_args (added for backend deep-probe feature)
+    # ------------------------------------------------------------------
+
+    def test_health_tool_defaults_to_none(self) -> None:
+        """health_tool must be None by default — the feature is opt-in."""
+        s = MCPServer(name="t", transport=TransportType.STDIO)
+        assert s.health_tool is None
+
+    def test_health_tool_args_defaults_to_empty_dict(self) -> None:
+        """health_tool_args must default to {} so callers can always spread it."""
+        s = MCPServer(name="t", transport=TransportType.STDIO)
+        assert s.health_tool_args == {}
+
+    def test_health_tool_can_be_set(self) -> None:
+        """A non-None health_tool string must be stored and retrievable."""
+        s = MCPServer(
+            name="datahub",
+            transport=TransportType.SSE,
+            url="http://datahub:8080/sse",
+            health_tool="search_entities",
+        )
+        assert s.health_tool == "search_entities"
+
+    def test_health_tool_args_can_be_set(self) -> None:
+        """health_tool_args dict must be stored and retrievable."""
+        s = MCPServer(
+            name="datahub",
+            transport=TransportType.SSE,
+            url="http://datahub:8080/sse",
+            health_tool="search_entities",
+            health_tool_args={"query": "canary", "limit": 1},
+        )
+        assert s.health_tool_args == {"query": "canary", "limit": 1}
+
+    def test_health_tool_round_trip_serialisation(self) -> None:
+        """model_dump + model_validate must preserve health_tool fields."""
+        original = MCPServer(
+            name="pg",
+            transport=TransportType.STDIO,
+            command="python server.py",
+            health_tool="ping",
+            health_tool_args={"timeout": 2},
+        )
+        data = original.model_dump()
+        restored = MCPServer.model_validate(data)
+        assert restored.health_tool == "ping"
+        assert restored.health_tool_args == {"timeout": 2}
+
+    def test_health_tool_json_round_trip(self) -> None:
+        """model_dump_json + model_validate_json must preserve health_tool fields."""
+        original = MCPServer(
+            name="pg",
+            transport=TransportType.STDIO,
+            command="python server.py",
+            health_tool="ping",
+            health_tool_args={"k": "v"},
+        )
+        json_str = original.model_dump_json()
+        restored = MCPServer.model_validate_json(json_str)
+        assert restored.health_tool == original.health_tool
+        assert restored.health_tool_args == original.health_tool_args
+
+    def test_health_tool_none_after_round_trip(self) -> None:
+        """When health_tool is not set, round-trip must keep it as None."""
+        s = MCPServer(name="t", transport=TransportType.STDIO)
+        restored = MCPServer.model_validate(s.model_dump())
+        assert restored.health_tool is None
+        assert restored.health_tool_args == {}
+
 
 class TestToolInfo:
     def test_minimal_tool(self) -> None:

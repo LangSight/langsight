@@ -1,8 +1,8 @@
 # LangSight: Architecture Design
 
-> **Version**: 1.7.0
-> **Date**: 2026-03-22
-> **Status**: Active — v0.3 Prevention Layer (Tier 1) shipped: circuit breaker, loop detection, budget guardrails integrated into SDK `call_tool()` path. New alert types for prevention events. Health tag engine for session auto-classification. Dashboard sessions page updated with health tag column and filter (2026-03-22). Prevention Config shipped (2026-03-22): dashboard-managed thresholds via `prevention_config` Postgres table, 6 API endpoints, SDK `_apply_remote_config()` background fetch on `wrap()`, Settings → Prevention dashboard tab (section 2.9.2).
+> **Version**: 1.8.0
+> **Date**: 2026-03-27
+> **Status**: Active — v0.3 Prevention Layer (Tier 1) shipped: circuit breaker, loop detection, budget guardrails integrated into SDK `call_tool()` path. New alert types for prevention events. Health tag engine for session auto-classification. Dashboard sessions page updated with health tag column and filter (2026-03-22). Prevention Config shipped (2026-03-22): dashboard-managed thresholds via `prevention_config` Postgres table, 6 API endpoints, SDK `_apply_remote_config()` background fetch on `wrap()`, Settings → Prevention dashboard tab (section 2.9.2). v0.8.4: health_tool backend probe + MCPHealthToolError (2026-03-27). v0.8.5: inputSchema string coercion in _parse_tools() (2026-03-27). v0.8.6: /health merged into /servers, invocations endpoint, Agents Servers tab, upsert_server_tools on every check, project_id fix (2026-03-27).
 
 ---
 
@@ -66,14 +66,17 @@
 - Runs periodic health checks:
   - **Ping**: JSON-RPC `initialize` call — is the server responding?
   - **Tools list**: `tools/list` call — has the tool schema changed?
-  - **Sample invocation**: Optional — call a known-safe tool with test params to validate output
+  - **Health tool probe**: If `health_tool` is configured, calls that tool with `health_tool_args` after `tools/list` to verify the backend is alive. A successful `tools/list` but a failing health tool probe produces `DEGRADED` (backend down) rather than `DOWN` (MCP layer unreachable). This distinction is the primary purpose of the probe — e.g. a DataHub MCP server can serve its tool manifest while the underlying DataHub REST API is down.
 - Records results in ClickHouse (timestamp, server, status, latency, schema hash)
 - Manages server state transitions: `UP → DEGRADED → DOWN → STALE`
+- `upsert_server_tools` is called on every health check cycle (not just on schema drift) so the MCP Servers → Tools tab stays current
 
 **Key design decisions**:
 - Polling-based (not event-driven) — MCP servers don't push health status
 - Configurable intervals per server (default: 30s for health, 5min for schema check)
 - Rate limiting built in — never send more than N checks/min to a single server
+- **Health tool probe distinguishes MCP-layer failures from backend failures** (added v0.8.4, 2026-03-27): `ping()` calls the configured `health_tool` after `tools/list`. If the probe raises `MCPHealthToolError` the server transitions to `DEGRADED` instead of `DOWN`. This preserves the semantic: `DOWN` = MCP server unreachable; `DEGRADED` = MCP server up but backend unavailable. The `MCPHealthToolError` exception is raised by `checker.py` when the tool invocation returns an error or raises. Config: `health_tool: <tool_name>`, `health_tool_args: {key: value}`. Optional — omitting it skips the probe.
+- **`inputSchema` string coercion** (added v0.8.5, 2026-03-27): `_parse_tools()` now handles MCP servers (e.g. atlassian-mcp) that return `inputSchema` as a JSON string instead of a dict. The parser calls `json.loads()` when it detects a string value, making schema tracking robust against non-compliant server implementations. No config change required.
 - **Schema tracking: structural diff, not just hash** (added v0.8.0, 2026-03-26): when a hash mismatch is detected, `classify_drift(old_tools, new_tools)` computes an atomic diff across tool definitions. Each change is classified as `BREAKING` (tool_removed, required_param_removed, required_param_added, param_type_changed), `COMPATIBLE` (tool_added, optional_param_added), or `WARNING` (description_changed — potential poisoning vector). The full `SchemaDriftEvent` (server, changes, has_breaking, hashes, timestamp) is stored in the `schema_drift_events` ClickHouse table. Source: `src/langsight/health/schema_tracker.py`.
 - **MCP Server Scorecard** (added v0.8.0, 2026-03-26): `ScorecardEngine.compute()` produces an A-F composite grade from five weighted dimensions (Availability 30%, Security 25%, Reliability 20%, Schema Stability 15%, Performance 10%). Hard veto caps override the numeric result for fatal flaws (10+ consecutive failures → F, active critical CVE → F, confirmed poisoning → F). Exposed via `GET /api/health/servers/{name}/scorecard`. Source: `src/langsight/health/scorecard.py`.
 
@@ -252,6 +255,7 @@ accept_invite()             → Postgres  (fixed 2026-03-21 — was missing dele
 | Group | Examples | Auth |
 |---|---|---|
 | `/api/health` | GET server list, GET server detail | API key |
+| `/api/health/servers/invocations` | GET last_called_at, last_call_ok, total_calls per server (7-day window, from tool call traces) — added v0.8.6 | API key |
 | `/api/security` | GET scan results, POST trigger scan | API key |
 | `/api/tools` | GET tool metrics, GET tool errors | API key |
 | `/api/costs` | GET cost breakdown, GET cost trends | API key |
@@ -731,7 +735,7 @@ At current scale (demo data, single-digit projects) this is invisible — ClickH
 | `alerts` | Fired alerts with lifecycle (firing/ack/resolved) |
 | `alert_config` | Singleton row: Slack webhook URL + per-alert-type enable flags. Previously in-memory in `app.state`; persisted to Postgres so settings survive API restarts. (added 2026-03-19) |
 | `audit_logs` | Append-only auth/RBAC events: login, API key create/revoke, role change, settings saved. Previously an in-memory ring buffer (last 50 events); now a proper DB table with async writes via `asyncio.create_task`. (added 2026-03-19) |
-| `api_keys` | API authentication keys (sha256-hashed, never plaintext) |
+| `api_keys` | API authentication keys (sha256-hashed, never plaintext). `project_id UUID NULL` added v0.8.1 — non-null means the key is project-scoped; NULL means global. |
 | `users` | User accounts created at invite acceptance |
 | `invite_tokens` | One-time invite tokens for user onboarding |
 | `projects` | Project definitions (name, created_at) |
@@ -746,6 +750,12 @@ At current scale (demo data, single-digit projects) this is invisible — ClickH
 | `GET /api/health/servers/{name}/scorecard` | A-F composite health grade — score, grade, 5 dimension scores, cap_applied |
 | `GET /api/health/servers/{name}/drift-history` | Recent schema drift events, newest first. `?limit=20` |
 | `GET /api/health/servers/{name}/drift-impact?tool_name=<tool>&hours=24` | Agents/sessions that called a changed tool (consumer impact) |
+
+**v0.8.1 schema migrations** (auto-applied on API startup, idempotent):
+
+| Table | Change | Notes |
+|-------|--------|-------|
+| `api_keys` | `project_id UUID NULL` added via `ALTER TABLE … ADD COLUMN IF NOT EXISTS` | Existing keys retain `NULL` (global scope). New project-scoped keys set this to the target project UUID at creation. |
 
 **v0.8.0 schema migrations** (auto-applied on API startup, idempotent):
 
@@ -981,13 +991,26 @@ The original plan was to forward the NextAuth JWT as `Authorization: Bearer` to 
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Strict-Transport-Security` | `max-age=31536000` (HTTPS only) |
 
-### Project isolation (added Phase 10, 2026-03-19)
+### Project isolation (added Phase 10, 2026-03-19; updated v0.8.1, 2026-03-26)
 
-`get_active_project_id` FastAPI dependency:
-1. Reads `project_id` query param from the request
-2. Verifies the caller is a member of that project (or is global admin)
-3. Returns the `project_id` to pass as a DB-level filter, or `None` for global admin with no filter
-4. Non-members receive HTTP 404 — project existence is not confirmed to non-members (no enumeration)
+**`ApiKeyRecord.project_id`** (added v0.8.1): the `api_keys` Postgres table now has a nullable `project_id UUID` column. When a project-scoped API key is created in the dashboard, its `project_id` is set to the target project's UUID. A global key leaves `project_id = NULL`.
+
+This makes the API key itself the project selector. Engineers no longer need to pass `?project_id=` query params or configure `.langsight.yaml` — they export `LANGSIGHT_API_KEY=<project-scoped-key>` and every CLI command is automatically scoped.
+
+**`LangSightConfig` new fields** (v0.8.1):
+- `project: str = ""` — human-readable project slug (display only, not used for routing)
+- `project_id: str = ""` — project UUID, used as a fallback when the API key carries no `project_id`
+
+**`HealthChecker(project_id=config.project_id)`** — the health checker now accepts a `project_id` at construction time and stamps all `health_results` rows with it. Previously health results were written without a project tag when using the CLI without a dashboard API key.
+
+`get_active_project_id` FastAPI dependency (priority order updated v0.8.1):
+1. API key's embedded `project_id` (highest priority — "API key = project")
+2. `.langsight.yaml` `project_id` field (config file override)
+3. `project_id` query param (advanced / direct API use)
+4. Admin with no project context → `None` (global view, no filter)
+5. Non-admin with no project context → HTTP 400
+
+Previously the dependency read the query param first, then verified membership. The key-embedded `project_id` was not consulted at all. This change means the API key is the authoritative source of project context — the client never needs to know or supply the UUID.
 
 All ClickHouse queries in `storage/clickhouse.py` that read from `mcp_tool_calls` accept an optional `project_id` parameter and apply it as a `WHERE project_id = {project_id}` clause. Filtering is at the DB layer — no Python post-filter.
 

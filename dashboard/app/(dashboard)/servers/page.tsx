@@ -58,7 +58,16 @@ function SparkLine({ history }: { history: HealthResult[] }) {
 }
 
 /* ── Sort table ─────────────────────────────────────────────── */
-type SortCol = "name" | "status" | "latency" | "uptime" | "tools" | "checked";
+type SortCol = "name" | "status" | "latency" | "uptime" | "tools" | "checked" | "lastUsed";
+
+interface InvocationStat {
+  server_name: string;
+  last_called_at: string | null;
+  last_call_ok: boolean;
+  last_call_status: string;
+  total_calls: number;
+  success_rate_pct: number;
+}
 
 function ThCell({ col, label, sortCol, sortDir, onSort, className }: { col: SortCol; label: string; sortCol: SortCol; sortDir: "asc" | "desc"; onSort: (c: SortCol) => void; className?: string }) {
   const active = sortCol === col;
@@ -73,9 +82,9 @@ function ThCell({ col, label, sortCol, sortDir, onSort, className }: { col: Sort
 }
 
 /* ── Server table (State 1) ─────────────────────────────────── */
-function ServerTable({ servers, metaByName, historyCache, onSelect, onRunCheck, checking }: {
+function ServerTable({ servers, metaByName, historyCache, invByName, onSelect, onRunCheck, checking }: {
   servers: HealthResult[]; metaByName: Map<string, ServerMetadata>; historyCache: Map<string, HealthResult[]>;
-  onSelect: (name: string) => void; onRunCheck: () => void; checking: boolean;
+  invByName: Map<string, InvocationStat>; onSelect: (name: string) => void; onRunCheck: () => void; checking: boolean;
 }) {
   const [sortCol, setSortCol] = useState<SortCol>("status");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -106,6 +115,11 @@ function ServerTable({ servers, metaByName, historyCache, onSelect, onRunCheck, 
       else if (sortCol === "latency") diff = (a.latency_ms ?? 9999) - (b.latency_ms ?? 9999);
       else if (sortCol === "tools") diff = (b.tools_count ?? 0) - (a.tools_count ?? 0);
       else if (sortCol === "checked") diff = new Date(b.checked_at).getTime() - new Date(a.checked_at).getTime();
+      else if (sortCol === "lastUsed") {
+        const tA = invByName.get(a.server_name)?.last_called_at ?? "";
+        const tB = invByName.get(b.server_name)?.last_called_at ?? "";
+        diff = tB.localeCompare(tA);
+      }
       else if (sortCol === "uptime") {
         const upA = historyCache.get(a.server_name) ?? []; const upB = historyCache.get(b.server_name) ?? [];
         const rateA = upA.length ? upA.filter((h) => h.status === "up").length / upA.length : 0;
@@ -176,6 +190,8 @@ function ServerTable({ servers, metaByName, historyCache, onSelect, onRunCheck, 
               <ThCell col="uptime" label="Uptime" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="tools" label="Tools" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <ThCell col="checked" label="Last Checked" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              <ThCell col="lastUsed" label="Last Used" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Last OK?</th>
               <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Timestamp</th>
             </tr>
           </thead>
@@ -208,6 +224,20 @@ function ServerTable({ servers, metaByName, historyCache, onSelect, onRunCheck, 
                     {upPct !== null ? <span className="text-[11px] font-semibold" style={{ fontFamily: "var(--font-geist-mono)", color: upPct > 95 ? "#22c55e" : upPct > 80 ? "#eab308" : "#ef4444" }}>{upPct.toFixed(0)}%</span> : <span className="text-[11px] text-muted-foreground">—</span>}
                   </td>
                   <td className="px-3 py-2.5 text-[11px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{server.tools_count ?? "—"}</td>
+                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground">
+                    {invByName.get(server.server_name)?.last_called_at
+                      ? <Timestamp iso={invByName.get(server.server_name)!.last_called_at!} compact />
+                      : <span className="opacity-30">never</span>}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {(() => {
+                      const inv = invByName.get(server.server_name);
+                      if (!inv?.last_called_at) return <span className="text-[10px] text-muted-foreground opacity-30">—</span>;
+                      return inv.last_call_ok
+                        ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold" style={{ color: "#22c55e" }}>✓ success</span>
+                        : <span className="inline-flex items-center gap-1 text-[10px] font-semibold" style={{ color: "#ef4444" }}>✗ {inv.last_call_status}</span>;
+                    })()}
+                  </td>
                   <td className="px-3 py-2.5 text-[11px] text-muted-foreground"><Timestamp iso={server.checked_at} compact /></td>
                   <td className="px-3 py-2.5 text-[10px] text-muted-foreground tabular-nums" style={{ fontFamily: "var(--font-geist-mono)", opacity: 0.7 }}>{formatExact(server.checked_at)}</td>
                 </tr>
@@ -359,6 +389,8 @@ export default function ServersPage() {
   const { data: metadata, mutate: mutateMetadata } = useSWR<ServerMetadata[]>(`/api/servers/metadata${pq}`, () => listServerMetadata(pid), { refreshInterval: 60_000 });
   const { data: lineage } = useSWR<LineageGraph>(`/api/agents/lineage?hours=24${pid ? `&project_id=${encodeURIComponent(pid)}` : ""}`, fetcher, { refreshInterval: 60_000 });
   const { data: toolReliability } = useSWR<ToolReliability[]>(`/api/reliability/tools?hours=24${pid ? `&project_id=${encodeURIComponent(pid)}` : ""}`, fetcher, { refreshInterval: 60_000 });
+  const { data: invocations } = useSWR<InvocationStat[]>(`/api/health/servers/invocations?hours=168${pid ? `&project_id=${encodeURIComponent(pid)}` : ""}`, fetcher, { refreshInterval: 60_000 });
+  const invByName = useMemo(() => new Map((invocations ?? []).map(i => [i.server_name, i])), [invocations]);
   const { data: declaredTools } = useSWR<{ tool_name: string; description: string; input_schema: Record<string, unknown> }[]>(
     selectedServer ? `/api/servers/${encodeURIComponent(selectedServer)}/tools${pq}` : null,
     fetcher,
@@ -417,7 +449,7 @@ export default function ServersPage() {
           {/* State 1: Full-width table */}
           {!selectedServer && (
             <div className="flex-1 min-h-0">
-              <ServerTable servers={servers} metaByName={metaByName} historyCache={new Map()} onSelect={selectServer} onRunCheck={runCheck} checking={checking} />
+              <ServerTable servers={servers} metaByName={metaByName} historyCache={new Map()} invByName={invByName} onSelect={selectServer} onRunCheck={runCheck} checking={checking} />
             </div>
           )}
 

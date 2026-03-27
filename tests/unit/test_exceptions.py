@@ -9,6 +9,7 @@ from langsight.exceptions import (
     LangSightError,
     LoopDetectedError,
     MCPConnectionError,
+    MCPHealthToolError,
     MCPProtocolError,
     MCPTimeoutError,
     SchemaChangedError,
@@ -133,3 +134,61 @@ class TestCircuitBreakerOpenError:
         with pytest.raises(CircuitBreakerOpenError) as exc_info:
             raise CircuitBreakerOpenError("s3-mcp", 10.0)
         assert exc_info.value.server_name == "s3-mcp"
+
+
+# ---------------------------------------------------------------------------
+# MCPHealthToolError  (new in recent commit — health probe support)
+# ---------------------------------------------------------------------------
+
+
+class TestMCPHealthToolError:
+    """Tests for MCPHealthToolError — MCP layer alive but backend degraded."""
+
+    def test_is_subclass_of_mcp_connection_error(self) -> None:
+        """MCPHealthToolError must inherit from MCPConnectionError so callers
+        that catch MCPConnectionError keep working after the new subclass lands.
+        """
+        assert issubclass(MCPHealthToolError, MCPConnectionError)
+
+    def test_is_subclass_of_langsight_error(self) -> None:
+        assert issubclass(MCPHealthToolError, LangSightError)
+
+    def test_not_a_timeout_error(self) -> None:
+        """MCPHealthToolError is a different failure mode from MCPTimeoutError.
+        The two must NOT share a subclass relationship.
+        """
+        assert not issubclass(MCPHealthToolError, MCPTimeoutError)
+
+    def test_can_be_raised_with_message(self) -> None:
+        with pytest.raises(MCPHealthToolError):
+            raise MCPHealthToolError("health_tool 'ping' returned error: connection refused")
+
+    def test_message_preserved(self) -> None:
+        msg = "health_tool 'ping' not found in tools/list"
+        err = MCPHealthToolError(msg)
+        assert str(err) == msg
+
+    def test_caught_as_mcp_connection_error(self) -> None:
+        """Callers catching the parent class must still intercept it."""
+        with pytest.raises(MCPConnectionError):
+            raise MCPHealthToolError("backend down")
+
+    def test_caught_as_langsight_error(self) -> None:
+        """Top-level LangSightError catch must also intercept it."""
+        with pytest.raises(LangSightError):
+            raise MCPHealthToolError("backend down")
+
+    def test_not_caught_as_mcp_timeout_error(self) -> None:
+        """MCPTimeoutError handler must NOT accidentally catch MCPHealthToolError."""
+        raised = MCPHealthToolError("degraded")
+        assert not isinstance(raised, MCPTimeoutError)
+
+    def test_can_be_chained_with_cause(self) -> None:
+        """Exception chaining (__cause__) must work for 'raise X from Y' patterns."""
+        original = ConnectionRefusedError("port 5432 closed")
+        with pytest.raises(MCPHealthToolError) as exc_info:
+            try:
+                raise original
+            except ConnectionRefusedError as exc:
+                raise MCPHealthToolError("health probe failed") from exc
+        assert exc_info.value.__cause__ is original

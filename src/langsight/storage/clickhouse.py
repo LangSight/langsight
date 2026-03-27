@@ -754,6 +754,55 @@ class ClickHouseBackend:
             )
         return rows
 
+    async def get_server_invocation_stats(
+        self,
+        project_id: str | None = None,
+        hours: int = 168,  # 7 days
+    ) -> list[dict[str, Any]]:
+        """Return last-invocation time and success status per server.
+
+        Queries mcp_tool_calls directly (not the MV) to get the most-recent
+        call timestamp and whether it succeeded. Used for "Last Used" and
+        "Last OK?" columns in the MCP Servers dashboard table.
+        """
+        params: dict[str, Any] = {"hours": hours}
+        project_filter = ""
+        if project_id:
+            project_filter = "AND project_id = {project_id:String}"
+            params["project_id"] = project_id
+
+        result = await self._client.query(
+            f"""
+            SELECT
+                server_name,
+                max(started_at)                    AS last_called_at,
+                argMax(status, started_at)         AS last_call_status,
+                count()                            AS total_calls,
+                countIf(status = 'success')        AS success_calls
+            FROM mcp_tool_calls
+            WHERE started_at >= now() - INTERVAL {{hours:UInt32}} HOUR
+              AND server_name != ''
+              {project_filter}
+            GROUP BY server_name
+            ORDER BY last_called_at DESC
+            """,
+            parameters=params,
+        )
+        rows = []
+        for row in result.result_rows:
+            total = int(row[3]) or 1
+            rows.append(
+                {
+                    "server_name": row[0],
+                    "last_called_at": row[1].isoformat() if row[1] else None,
+                    "last_call_status": row[2],
+                    "last_call_ok": row[2] == "success",
+                    "total_calls": int(row[3]),
+                    "success_rate_pct": round(int(row[4]) / total * 100, 1),
+                }
+            )
+        return rows
+
     # ---------------------------------------------------------------------------
     # Agent sessions — multi-agent tracing queries
     # ---------------------------------------------------------------------------

@@ -6,6 +6,58 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-03-27
+
+### Added
+- **`GET /api/health/servers/invocations`** — new endpoint returning `last_called_at`, `last_call_ok`, and `total_calls` per server name, derived from tool call traces over a 7-day window in ClickHouse.
+- **MCP Servers: "Last Used" and "Last OK?" columns** — the `/servers` table now shows when each server was last invoked by an agent and whether that call succeeded, sourced from the new invocations endpoint.
+- **Agents → Servers tab** — the agent detail panel gains a fifth "Servers" tab listing every MCP server the agent has called: server name, tools count, total calls, error count, and health status. Gives an agent-first view of infrastructure dependencies.
+
+### Changed
+- **Tool Health page merged into MCP Servers** — `/health` now permanently redirects to `/servers`. Tool reliability metrics are accessible from the Tools tab of each server's detail panel. The standalone Tool Health nav entry has been removed.
+- **Cost page source filter renamed** — the "All servers" filter in the Cost Analytics page is now labelled "All sources" to reflect that costs can originate from sub-agents acting as tool providers, not only from MCP servers.
+- **`upsert_server_tools` called on every health check** — previously only called when schema drift was detected. Now called unconditionally so the MCP Servers → Tools tab is populated after the first health check, not only after a schema change.
+
+### Fixed
+- **Tools tab `project_id` bug** — tools were not saved with `project_id`, causing the MCP Servers → Tools tab to appear empty for project-scoped installs. `upsert_server_tools` now correctly stamps `project_id` on every tool record.
+
+## [0.8.5] - 2026-03-27
+
+### Fixed
+- **`_parse_tools()` handles `inputSchema` as JSON string** — MCP servers that return `inputSchema` as a serialised JSON string (e.g. atlassian-mcp) instead of a dict now parse correctly. `_parse_tools()` calls `json.loads()` when it detects a string value, making schema tracking robust against non-compliant server implementations. Previously these servers would cause a `TypeError` during schema hash computation and surface as schema drift on every check.
+
+## [0.8.4] - 2026-03-27
+
+### Added
+- **`health_tool` backend probe** — new per-server config fields `health_tool` and `health_tool_args`. When set, `ping()` calls the specified tool (with the given args) after `tools/list` to verify the backend application is alive. A failing probe marks the server `DEGRADED` instead of `DOWN`, preserving the semantic distinction: `DOWN` means the MCP layer is unreachable; `DEGRADED` means the MCP layer is up but the backend is down. The probe is optional — omitting `health_tool` skips it.
+- **`MCPHealthToolError` exception** — raised by `checker.py` when the health tool probe fails (tool invocation error, unexpected response, or timeout). Caught in `ping()` to produce the `DEGRADED` status.
+
+### Config example
+```yaml
+servers:
+  - name: datahub
+    transport: streamable_http
+    url: https://datahub-mcp.internal.company.com/mcp
+    health_tool: search_entities
+    health_tool_args:
+      query: "test"
+      count: 1
+    timeout_seconds: 15
+```
+
+## [0.8.1] - 2026-03-26
+
+### Added
+- **Project-scoped API keys** — `ApiKeyRecord` gains `project_id: str | None`. Creating an API key in the dashboard now lets you select a project. That key automatically scopes all CLI commands and SDK calls to that project — no `--project` flag, no config changes needed.
+- **`LangSightConfig` project fields** — two new fields: `project: str = ""` (human-readable slug, display only) and `project_id: str = ""` (UUID fallback when the API key carries no project). Set via `.langsight.yaml` or `LANGSIGHT_PROJECT_ID` env var.
+- **`HealthChecker` project stamping** — `HealthChecker` now accepts `project_id` at construction and stamps all `health_results` rows with it. Previously health results written via the CLI had no project tag.
+
+### Changed
+- **`get_active_project_id` priority order updated**: API key's embedded `project_id` is now highest priority (was not consulted before). Full order: (1) API key project_id, (2) `.langsight.yaml` project_id, (3) query param, (4) admin/auth-disabled → None, (5) non-admin without project → HTTP 400.
+
+### Schema
+- `api_keys` table: `project_id UUID NULL` added via `ALTER TABLE … ADD COLUMN IF NOT EXISTS`. Existing keys retain `NULL` (global scope). Auto-applied on API startup, idempotent.
+
 ## [0.8.0] - 2026-03-26
 
 ### Added

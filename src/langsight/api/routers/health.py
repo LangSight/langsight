@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
@@ -81,6 +82,23 @@ async def list_servers_health(
           for name in sorted(all_names))
     )
     return [h[0] for h in histories if h]
+
+
+@router.get("/servers/invocations")
+async def get_server_invocations(
+    hours: int = Query(default=168, ge=1, le=720, description="Look-back window in hours"),
+    storage: StorageBackend = Depends(get_storage),
+    project_id: str | None = Depends(get_active_project_id),
+) -> list[dict]:
+    """Per-server last-invocation stats: last_called_at, last_call_ok, total_calls.
+
+    Must be declared BEFORE /servers/{server_name} to avoid route shadowing.
+    Used by the MCP Servers dashboard 'Last Used' and 'Last OK?' columns.
+    """
+    fn = getattr(storage, "get_server_invocation_stats", None)
+    if fn is None or not inspect.iscoroutinefunction(fn):
+        return []
+    return await fn(project_id=project_id, hours=hours)
 
 
 @router.get(
@@ -271,3 +289,5 @@ async def get_drift_impact(
     if fn is None:
         return []
     return await fn(server_name=server_name, tool_name=tool_name, hours=hours)
+
+

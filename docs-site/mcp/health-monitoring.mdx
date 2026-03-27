@@ -14,19 +14,22 @@ LangSight connects to each configured MCP server on a schedule, runs the MCP `in
 | Status | Icon | Meaning |
 |--------|------|---------|
 | `up` | ✓ | Server responded normally — latency within bounds |
-| `degraded` | ⚠ | Server responded but schema drift was detected |
-| `down` | ✗ | Server unreachable, timed out, or returned an error |
+| `degraded` | ⚠ | MCP layer is up but the backend is unhealthy — schema drift detected, or a `health_tool` probe failed |
+| `down` | ✗ | MCP server unreachable, timed out, or `initialize`/`tools/list` failed |
 | `stale` | — | No health check has run in the configured interval |
 
 ### How `degraded` is set
 
-A server transitions to `degraded` when its tool schema hash changes from the stored baseline. This covers:
+A server transitions to `degraded` in two ways:
 
+**Schema drift** — the tool schema hash changes from the stored baseline. This covers:
 - A tool was added or removed
 - A tool's input schema changed (required parameters, types)
 - A tool description was modified (potential [poisoning vector](/cli/security-scan))
 
 The `degraded` state prompts you to inspect the drift before deciding whether to accept or reject the change. See [Schema Drift](/mcp/schema-drift) for the full diff.
+
+**Health tool probe failure** — if you configure a `health_tool` (see [Backend probe](#backend-probe) below), and that tool call fails after a successful `tools/list`, the server is marked `degraded`. This means the MCP layer is reachable but the backend application it wraps is down or unhealthy.
 
 ### How `down` is set
 
@@ -213,6 +216,35 @@ servers:
 
 ---
 
+## Backend probe
+
+Some MCP servers can respond to `tools/list` while the backend application they wrap is down. For example, a DataHub MCP server may serve its tool manifest from a local cache while the DataHub REST API is unreachable. The standard `up`/`down` check would show the server as healthy.
+
+The `health_tool` probe solves this. Configure a tool to call as a liveness check — if it fails, LangSight marks the server `degraded` instead of `up`.
+
+```yaml
+servers:
+  - name: datahub
+    transport: streamable_http
+    url: https://datahub-mcp.internal.company.com/mcp
+    health_tool: search_entities      # tool to call as a backend liveness probe
+    health_tool_args:                 # arguments passed to the tool
+      query: "test"
+      count: 1
+    timeout_seconds: 15              # raise timeout for slower backends
+```
+
+The probe runs after `tools/list` on every health check cycle. If the tool call raises an error or returns an unexpected response, the result is `degraded` (not `down`) — preserving the distinction between "MCP layer unreachable" and "MCP layer up, backend down".
+
+Choose a tool that:
+- Is cheap (a narrow read or search with a small result set)
+- Exercises the critical backend path (database read, API call)
+- Does not mutate state
+
+Omitting `health_tool` skips the probe entirely and restores the previous behavior.
+
+---
+
 ## Data persistence
 
 Health check results are stored in ClickHouse with a 90-day TTL. The schema:
@@ -253,9 +285,14 @@ See [Health API](/api-reference/health) for the full endpoint reference.
 
 The **MCP Servers** page (`/servers`) shows:
 
-- A sortable catalog with current status, p99 latency sparkline, and uptime % per server
+- A sortable catalog with current status, p99 latency sparkline, uptime %, **Last Used**, and **Last OK?** columns
+  - **Last Used**: timestamp of the most recent tool call by any agent (7-day window)
+  - **Last OK?**: whether the most recent tool call completed without error
 - A **Needs Attention** banner listing any server that is `DOWN` or `DEGRADED`
-- A detail panel with a health history chart and table for each server
+- A detail panel with four tabs: About, Tools, Health history, and Consumers
+- Tool reliability metrics (calls, errors, p99 latency, success rate) in the **Tools** tab
+
+The former `/health` (Tool Health) page redirects to `/servers` — all tool reliability data is now in the Tools tab.
 
 The dashboard pulls from the same ClickHouse data as the CLI.
 

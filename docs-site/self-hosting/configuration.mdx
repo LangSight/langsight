@@ -19,6 +19,13 @@ servers:
     url: http://localhost:8080/sse  # sse/streamable_http only
     tags: [production, data]        # optional labels
     timeout_seconds: 5              # default: 5
+    # Optional: backend liveness probe (v0.8.4)
+    # Calls health_tool after tools/list on every check.
+    # Failure → DEGRADED (backend down) instead of DOWN (MCP unreachable).
+    health_tool: search_entities    # tool name to call as a probe
+    health_tool_args:               # arguments passed to the tool
+      query: "test"
+      count: 1
     # Optional: v0.3 circuit breaker per-server override
     circuit_breaker:
       failure_threshold: 5    # open after N consecutive failures

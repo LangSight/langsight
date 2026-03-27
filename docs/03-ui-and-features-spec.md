@@ -1,8 +1,8 @@
 # LangSight: UI & Features Specification
 
-> **Version**: 1.6.0
-> **Date**: 2026-03-26
-> **Status**: Active — updated with `langsight add` command, `langsight scorecard` command, `langsight init` expanded to 10+ IDE clients with correct macOS paths, schema drift structural diff display (v0.8.0, 2026-03-26)
+> **Version**: 1.7.0
+> **Date**: 2026-03-27
+> **Status**: Active — updated with `langsight add` command, `langsight scorecard` command, `langsight init` expanded to 10+ IDE clients with correct macOS paths, schema drift structural diff display (v0.8.0, 2026-03-26); health_tool backend probe, inputSchema string fix (v0.8.4–v0.8.5, 2026-03-27); MCP Servers page merged with Tool Health, Last Used / Last OK columns, Agents Servers tab, costs source filter rename (v0.8.6, 2026-03-27)
 
 ---
 
@@ -25,6 +25,8 @@ CLI is the priority. Dashboard is built on the same FastAPI backend, so CLI user
 
 Interactive setup wizard that discovers all configured MCP servers and generates `.langsight.yaml`.
 Updated v0.8.0 (2026-03-26): now covers 10+ IDE clients, runs a first health check automatically.
+
+**Project scoping note (v0.8.1)**: `langsight init` does not ask for a project ID. Project scoping is entirely dashboard-side — the engineer creates a project-scoped API key in the dashboard and exports it as `LANGSIGHT_API_KEY`. The CLI is project-agnostic. Same applies to `langsight add`.
 
 ```
 $ langsight init
@@ -198,9 +200,10 @@ Summary: 3 healthy, 1 degraded, 1 down, 1 schema change
 | Status | Meaning | Condition |
 |---|---|---|
 | ✅ UP | Server is healthy | Responds to health check within timeout, no errors |
+| ⚠ DEGRADED | MCP layer up but backend unhealthy | Schema drift detected, OR `health_tool` probe failed (backend down) — added v0.8.4 |
 | ⚠ SLOW | Server responding but degraded | p99 latency > 3x baseline |
 | ⚠ STALE | Server up but returning outdated data | Output timestamps older than configured max age |
-| ❌ DOWN | Server not responding | 3+ consecutive health check failures |
+| ❌ DOWN | MCP server unreachable | 3+ consecutive health check failures (initialize/tools/list failed) |
 | 🔄 CHANGED | Schema change detected | Tool schema hash differs from last check |
 
 ---
@@ -455,6 +458,13 @@ $ langsight config test          # Test connections to all servers
 # LangSight Configuration
 version: "1"
 
+# Project scoping (optional — added v0.8.1)
+# These fields are only needed if you cannot use a project-scoped API key.
+# When LANGSIGHT_API_KEY is a project-scoped key, project_id is ignored here.
+# See docs-site/mcp/project-scoping.mdx for the full priority resolution.
+project: "production"           # human-readable slug (display only)
+project_id: ""                  # project UUID — blank means global scope
+
 # MCP servers to monitor
 servers:
   - name: snowflake-mcp
@@ -477,6 +487,20 @@ servers:
     url: http://localhost:8080/mcp
     max_data_age: 24h        # Alert if data older than this
     tags: [production, knowledge]
+
+  # Backend probe — verify the application behind the MCP server is healthy
+  # (added v0.8.4): health_tool is called after tools/list on every health check.
+  # If the tool call fails, the server is marked DEGRADED (backend down) rather
+  # than DOWN (MCP layer unreachable). Omit to skip the probe.
+  - name: datahub
+    transport: streamable_http
+    url: https://datahub-mcp.internal.company.com/mcp
+    health_tool: search_entities           # tool to call as a liveness probe
+    health_tool_args:                       # arguments passed to the tool
+      query: "test"
+      count: 1
+    timeout_seconds: 15
+    tags: [production, metadata]
 
 # Alerting
 alerts:
@@ -529,6 +553,7 @@ redact_payloads: false
 |---|---|
 | `LANGSIGHT_SLACK_WEBHOOK` | `alerts.slack_webhook` |
 | `LANGSIGHT_STORAGE_MODE` | `storage.mode` |
+| `LANGSIGHT_PROJECT_ID` | `project_id` — fallback project UUID when using a global API key (added v0.8.1) |
 | `LANGSIGHT_POSTGRES_URL` | `storage.postgres_url` |
 | `LANGSIGHT_CLICKHOUSE_URL` | `storage.clickhouse_url` |
 | `LANGSIGHT_API_KEYS` | API key list (comma-separated) |
@@ -565,11 +590,12 @@ The Agents page renders in one of three states depending on what is selected:
 
 **State 2 — Agent selected (280px sidebar + detail panel)**
 - Left sidebar groups all agents; active agent is highlighted
-- Detail panel shows 4 tabs:
+- Detail panel shows 5 tabs:
   - **About**: Editable description, owner, tags, status (active/deprecated/experimental), runbook URL — writes to `PUT /api/agents/metadata/{name}` on blur
   - **Overview**: Stat tiles (sessions, error rate, avg duration, total cost), recent sessions list with links to `/sessions/{id}`
   - **Topology**: Per-agent subgraph using the shared SVG `lineage-graph` renderer scoped to the selected agent's edges; sidebar collapses to 56px icon rail to maximize graph area (see State 3)
   - **Sessions**: Paginated list of recent sessions for this agent
+  - **Servers** (added v0.8.6): Lists the MCP servers this agent has called, derived from trace data. Columns: Server name, Tools (count of distinct tools called), Calls (total call count), Errors, Health status. Health status is sourced from `GET /api/health/servers/invocations` and the server's latest health check result. This tab gives an agent-first view of infrastructure dependencies — equivalent to the "Consumers" tab on the server side viewed in reverse.
 
 **State 3 — Topology tab active (icon-rail sidebar + full-width graph)**
 - Left sidebar collapses to 56px showing only agent status dots
@@ -709,8 +735,12 @@ Reusable date range control for any dashboard page that needs time-windowed data
 
 New page added 2026-03-20. Uses the same adaptive 3-state layout as the Agents page.
 
+**v0.8.6 change**: The former `/health` (Tool Health) page is merged into `/servers`. The `/health` route now redirects to `/servers`. All tool reliability data is accessible from the Tools tab of each server's detail panel.
+
 **State 1 — No server selected (full-width table)**
-- Columns: Server name, Owner, Tags, Status, Latency (sparkline trend), Uptime, Tools count, Last Checked
+- Columns: Server name, Owner, Tags, Status, Latency (sparkline trend), Uptime, Tools count, **Last Used**, **Last OK?**, Last Checked
+  - **Last Used** (added v0.8.6): timestamp of the most recent tool call from traces (7-day window), sourced from `GET /api/health/servers/invocations`
+  - **Last OK?** (added v0.8.6): whether the most recent tool call completed without error, also from invocations data
 - Sortable on all columns
 - Needs Attention banner when any server is `down` or `degraded`
 - Status filter bar: All / Down / Degraded / Up with live counts
@@ -719,7 +749,7 @@ New page added 2026-03-20. Uses the same adaptive 3-state layout as the Agents p
 **State 2 — Server selected (280px sidebar + detail panel)**
 - Detail panel has 4 tabs:
   - **About**: Editable description, owner, tags, transport type, runbook URL, last error — writes to `PUT /api/servers/metadata/{name}` on blur
-  - **Tools**: All declared tools with name, description, input schema summary, and reliability metrics (total calls, errors, p99 latency, success rate). Populated automatically via SDK tool-schema capture (see Section 5 below). Tools that exist but were never called appear with 0 calls and their description.
+  - **Tools**: All declared tools with name, description, input schema summary, and reliability metrics (total calls, errors, p99 latency, success rate). Populated on every health check cycle via `upsert_server_tools` (changed from v0.8.6 — was only on schema drift; now always updated so the tab is never empty after a fresh check). Tools that exist but were never called appear with 0 calls and their description. Fixed in v0.8.6: tools now correctly saved with `project_id` — was missing, causing the tab to appear empty.
   - **Health**: Uptime percentage, latency trend chart (Recharts AreaChart), last 15 health checks table (timestamp, status, latency, tools count, error)
   - **Consumers**: Which agents call this server, derived from lineage graph data
 
@@ -732,13 +762,15 @@ New page added 2026-03-20. Uses the same adaptive 3-state layout as the Agents p
 - `PUT /api/servers/metadata/{name}` — upsert metadata for a server
 - `GET /api/servers/{name}/tools` — list declared tools for a server
 - `PUT /api/servers/{name}/tools` — bulk-upsert tool declarations (used by SDK auto-capture)
+- `GET /api/health/servers/invocations` — returns `last_called_at`, `last_call_ok`, `total_calls` per server name (7-day window from tool call traces in ClickHouse) — added v0.8.6
 
-**Sidebar navigation**: "MCP Servers" entry added between Agents and Costs in the primary nav (`href="/servers"`, `Server` icon, indigo accent).
+**Sidebar navigation**: "MCP Servers" entry added between Agents and Costs in the primary nav (`href="/servers"`, `Server` icon, indigo accent). The former "Tool Health" nav entry (`/health`) has been removed; `/health` redirects to `/servers` (changed v0.8.6).
 
 ### 4.5 Tool Health / Reliability Page
 
-**Performance** (optimized 2026-03-21): The health page no longer preloads health history for all servers on mount (was O(N) API calls). History is now fetched lazily when a server row is expanded, reducing initial page load time proportional to server count.
+**v0.8.6 change**: This page has been merged into the MCP Servers Catalog (section 4.4). The `/health` route redirects to `/servers`. Tool reliability metrics are now surfaced in the **Tools** tab of each server's detail panel.
 
+The previous standalone content is preserved here for reference only:
 - **Metrics table**: Tool name, success rate (with sparkline), p50/p95/p99 latency, error rate, call volume
 - **Color coding**: Green (>95% success), Yellow (80-95%), Red (<80%)
 - **Click tool → drill-down**: Error breakdown by category, latency histogram, recent failures with trace links
@@ -752,6 +784,7 @@ New page added 2026-03-20. Uses the same adaptive 3-state layout as the Agents p
 ### 4.7 Cost Analytics Page
 - **Shipped now**: Summary cards plus live breakdowns by tool, by agent, and by session
 - **Data source**: `/api/costs/breakdown` from ClickHouse-backed traced tool calls
+- **Source filter** (changed v0.8.6): The server/source filter previously labelled "All servers" is now labelled **"All sources"** — reflects that costs can originate from sub-agents acting as tool providers, not only from MCP servers
 - **Next layer**: Trend charts, anomaly highlights, and budget alerts
 
 ### 4.8 Alerts Page

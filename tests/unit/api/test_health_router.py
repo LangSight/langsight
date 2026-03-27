@@ -142,6 +142,117 @@ class TestGetServerHistory:
         assert (await c.get("/api/health/servers/pg/history?limit=500")).status_code == 422
 
 
+class TestGetServerInvocations:
+    """GET /api/health/servers/invocations — must not be shadowed by /{server_name}."""
+
+    async def test_invocations_endpoint_returns_200(self, client) -> None:
+        """Route is reachable and returns 200 OK."""
+        c, mock_storage = client
+        mock_storage.get_server_invocation_stats = AsyncMock(return_value=[])
+        response = await c.get("/api/health/servers/invocations")
+        assert response.status_code == 200
+
+    async def test_invocations_returns_empty_list_when_no_data(self, client) -> None:
+        """Returns [] when storage has no invocation stats."""
+        c, mock_storage = client
+        mock_storage.get_server_invocation_stats = AsyncMock(return_value=[])
+        data = (await c.get("/api/health/servers/invocations")).json()
+        assert data == []
+
+    async def test_invocations_returns_data_from_storage(self, client) -> None:
+        """Returns the list produced by storage.get_server_invocation_stats."""
+        c, mock_storage = client
+        mock_storage.get_server_invocation_stats = AsyncMock(return_value=[
+            {
+                "server_name": "postgres-mcp",
+                "last_called_at": "2026-03-25T10:00:00+00:00",
+                "last_call_ok": True,
+                "last_call_status": "success",
+                "total_calls": 42,
+                "success_rate_pct": 97.6,
+            }
+        ])
+        data = (await c.get("/api/health/servers/invocations")).json()
+        assert len(data) == 1
+        assert data[0]["server_name"] == "postgres-mcp"
+        assert data[0]["last_call_ok"] is True
+        assert data[0]["total_calls"] == 42
+
+    async def test_invocations_returns_empty_list_when_storage_has_no_method(
+        self, tmp_path: Path
+    ) -> None:
+        """If storage does not have get_server_invocation_stats, returns []
+        (graceful degradation — old storage backends keep working).
+
+        Uses a spec-restricted mock so getattr(storage, 'get_server_invocation_stats', None)
+        truly returns None — matching the router's guard condition.
+        """
+        from langsight.storage.base import StorageBackend
+
+        # Create a MagicMock that only has methods defined on StorageBackend.
+        # get_server_invocation_stats is NOT on StorageBackend, so getattr
+        # with default=None will return None — triggering the [] early return.
+        bare_storage = MagicMock(spec=StorageBackend)
+        bare_storage.list_api_keys = AsyncMock(return_value=[])
+        bare_storage.get_health_history = AsyncMock(return_value=[_result()])
+        bare_storage.get_distinct_health_server_names = AsyncMock(return_value=set())
+        bare_storage.close = AsyncMock()
+
+        cfg = tmp_path / ".langsight.yaml"
+        cfg.write_text(yaml.dump({"servers": []}))
+
+        app = create_app(config_path=cfg)
+        app.state.storage = bare_storage
+        app.state.config = load_config(cfg)
+        app.state.api_keys = []
+
+        from httpx import ASGITransport, AsyncClient
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c2:
+            response = await c2.get("/api/health/servers/invocations")
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+    async def test_invocations_not_shadowed_by_server_name_route(self, client) -> None:
+        """'invocations' must not be treated as a {server_name} path parameter.
+
+        If the route ordering is wrong, GET /servers/invocations would hit
+        GET /servers/{server_name} with server_name='invocations' and return
+        404 instead of the invocation stats list.
+        """
+        c, mock_storage = client
+        mock_storage.get_server_invocation_stats = AsyncMock(return_value=[])
+        # This must NOT return 404
+        response = await c.get("/api/health/servers/invocations")
+        assert response.status_code != 404
+
+    async def test_invocations_default_hours_param(self, client) -> None:
+        """Default ?hours=168 is accepted (within the 1–720 range)."""
+        c, mock_storage = client
+        mock_storage.get_server_invocation_stats = AsyncMock(return_value=[])
+        response = await c.get("/api/health/servers/invocations?hours=168")
+        assert response.status_code == 200
+
+    async def test_invocations_hours_out_of_range_rejected(self, client) -> None:
+        """hours=0 is below the minimum of 1 — must return 422."""
+        c, mock_storage = client
+        response = await c.get("/api/health/servers/invocations?hours=0")
+        assert response.status_code == 422
+
+    async def test_invocations_hours_above_maximum_rejected(self, client) -> None:
+        """hours=721 is above the maximum of 720 — must return 422."""
+        c, mock_storage = client
+        response = await c.get("/api/health/servers/invocations?hours=721")
+        assert response.status_code == 422
+
+    async def test_invocations_calls_storage_with_project_id(self, client) -> None:
+        """project_id from auth must be forwarded to get_server_invocation_stats."""
+        c, mock_storage = client
+        mock_storage.get_server_invocation_stats = AsyncMock(return_value=[])
+        await c.get("/api/health/servers/invocations")
+        mock_storage.get_server_invocation_stats.assert_called_once()
+
+
 class TestTriggerHealthCheck:
     async def test_returns_200(self, client) -> None:
         c, _ = client
