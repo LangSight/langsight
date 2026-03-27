@@ -331,7 +331,8 @@ class TestHealthCheckerUpsertServerTools:
         tool_dicts = mock_storage.upsert_server_tools.call_args[0][1]
         assert len(tool_dicts) == 1
         assert tool_dicts[0]["name"] == "query"
-        assert isinstance(tool_dicts[0]["input_schema"], str)  # JSON-encoded
+        # input_schema is passed as a raw dict — upsert_server_tools encodes once
+        assert isinstance(tool_dicts[0]["input_schema"], dict)
 
 
 class TestHashTools:
