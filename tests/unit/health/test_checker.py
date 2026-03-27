@@ -319,7 +319,7 @@ class TestHealthCheckerUpsertServerTools:
         self, server: MCPServer
     ) -> None:
         """Each dict passed to upsert_server_tools must have name, description,
-        and input_schema (as JSON string) keys.
+        and input_schema (as raw dict) keys — encoding is done inside upsert_server_tools.
         """
         mock_storage = _make_storage()
 
@@ -333,6 +333,69 @@ class TestHealthCheckerUpsertServerTools:
         assert tool_dicts[0]["name"] == "query"
         # input_schema is passed as a raw dict — upsert_server_tools encodes once
         assert isinstance(tool_dicts[0]["input_schema"], dict)
+
+
+class TestSchemaTrackerDictToTool:
+    """Regression tests for double-encoded input_schema in schema tracker.
+
+    Bug: schema_tracker stored tool dicts with input_schema as a JSON string
+    (double-encoded). When reloaded and passed to _dict_to_tool, creating ToolInfo
+    would fail if the string was not properly decoded.
+    """
+
+    def test_dict_to_tool_with_string_input_schema(self) -> None:
+        """_dict_to_tool must handle input_schema stored as a JSON string."""
+        from langsight.health.schema_tracker import _dict_to_tool
+
+        d = {
+            "name": "search",
+            "description": "Search entities",
+            "input_schema": '{"type": "object", "properties": {"query": {"type": "string"}}}',
+        }
+        tool = _dict_to_tool(d)
+        assert tool.name == "search"
+        assert isinstance(tool.input_schema, dict)
+        assert tool.input_schema["type"] == "object"
+
+    def test_dict_to_tool_with_dict_input_schema(self) -> None:
+        """_dict_to_tool must handle input_schema already as a dict (normal case)."""
+        from langsight.health.schema_tracker import _dict_to_tool
+
+        d = {
+            "name": "get_product",
+            "description": None,
+            "input_schema": {"type": "object", "properties": {"id": {"type": "integer"}}},
+        }
+        tool = _dict_to_tool(d)
+        assert isinstance(tool.input_schema, dict)
+        assert tool.input_schema["type"] == "object"
+
+    def test_dict_to_tool_with_invalid_string_falls_back_to_empty(self) -> None:
+        """_dict_to_tool must fall back to {} when input_schema string is invalid JSON."""
+        from langsight.health.schema_tracker import _dict_to_tool
+
+        d = {"name": "broken", "description": None, "input_schema": "not-valid-json{{{"}
+        tool = _dict_to_tool(d)
+        assert isinstance(tool.input_schema, dict)
+        assert tool.input_schema == {}
+
+    def test_tool_to_dict_passes_raw_dict(self) -> None:
+        """_tool_to_dict must produce a raw dict for input_schema (not json.dumps).
+
+        Regression: previously encoded as JSON string, causing double-encoding
+        when upsert_server_tools called json.dumps() again internally.
+        """
+        from langsight.health.schema_tracker import _tool_to_dict
+        from langsight.models import ToolInfo
+
+        tool = ToolInfo(
+            name="query",
+            input_schema={"type": "object", "properties": {"sql": {"type": "string"}}},
+        )
+        d = _tool_to_dict(tool)
+        assert isinstance(d["input_schema"], dict), (
+            "input_schema must be a raw dict — upsert_server_tools encodes once"
+        )
 
 
 class TestHashTools:
