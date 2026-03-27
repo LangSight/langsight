@@ -1,0 +1,145 @@
+---
+title: "Project Scoping"
+description: "How project-scoped API keys automatically route all CLI output to the right project — no flags needed."
+---
+
+## Start without a project (Phase 1)
+
+You do not need a project to use LangSight. If you are a solo developer or running a single-tenant self-hosted install, skip this page entirely.
+
+```bash
+pip install langsight
+langsight init
+langsight mcp-health   # project_id = "" — data is globally visible
+```
+
+Everything works. Spans, health checks, and security scans land in a global namespace visible to all admins on the instance. No `--project` flag exists, and none is needed here.
+
+---
+
+## When projects matter (Phase 2)
+
+Once your team grows — multiple environments, multiple agents, multiple engineers — you want data isolated per project. LangSight uses a simple model: **one API key = one project**.
+
+You create a project-scoped API key in the dashboard. That key carries the project ID inside it. When the CLI or SDK presents that key, every piece of data it writes is automatically tagged to the right project. No config changes, no flags.
+
+---
+
+## How to set up project scoping
+
+### Step 1 — Create a project
+
+In the dashboard: sidebar project switcher → **New Project** → enter a name.
+
+### Step 2 — Create a project-scoped API key
+
+Dashboard → Settings → API Keys → **Create Key** → select the target project from the dropdown.
+
+The key will look like `lsk_prod_abc123...`. Copy it — it is only shown once.
+
+### Step 3 — Export the key
+
+```bash
+export LANGSIGHT_API_KEY=lsk_prod_abc123...
+```
+
+### Step 4 — Run any command
+
+```bash
+langsight mcp-health
+langsight monitor
+langsight security-scan
+```
+
+All output is automatically scoped to the project that key belongs to. No `--project` flag, no config changes.
+
+---
+
+## Multiple environments
+
+Different key, different project. That is all.
+
+```bash
+# production monitoring
+LANGSIGHT_API_KEY=lsk_prod_abc123 langsight monitor
+
+# staging monitoring
+LANGSIGHT_API_KEY=lsk_staging_xyz456 langsight monitor
+```
+
+Run both in parallel. The production project and the staging project stay completely isolated in the dashboard.
+
+---
+
+## `.langsight.yaml` override (advanced)
+
+If you cannot use environment variables — for example, in a CI system that injects config files but not secrets — you can set `project_id` directly in `.langsight.yaml`:
+
+```yaml
+# .langsight.yaml
+project_id: "your-project-uuid-here"  # explicit fallback
+project: "production"                  # human-readable slug (display only)
+
+servers:
+  - name: snowflake-mcp
+    transport: stdio
+    command: npx
+    args: ["-y", "@anthropic/mcp-server-snowflake"]
+```
+
+The `project` field is a human-readable label for your own reference. The `project_id` field is the UUID that routes data to the right project. Find the UUID in the dashboard under Settings → Projects.
+
+<Note>
+  An API key's project always takes priority over the `project_id` in
+  `.langsight.yaml`. Use the API key approach whenever possible — it is simpler
+  and does not require editing config files per environment.
+</Note>
+
+---
+
+## Priority resolution
+
+When LangSight resolves which project to scope a request to, it follows this order:
+
+| Priority | Source | Notes |
+|----------|--------|-------|
+| 1 (highest) | API key's embedded `project_id` | Set at key creation in the dashboard. Recommended. |
+| 2 | `project_id` in `.langsight.yaml` | Explicit config override. |
+| 3 | `project_id` query param | Advanced / direct API use only. |
+| 4 | Admin with no project context | Returns global view with no filter. |
+| 5 | Non-admin with no project | HTTP 400 — project context is required for non-admins. |
+
+If your key is global (not scoped to a project) and you are not an admin, you must either use a project-scoped key or set `project_id` in config.
+
+---
+
+## `langsight init` and `langsight add` never ask for project_id
+
+These commands create and manage your local `.langsight.yaml`. Project scoping is entirely dashboard-side: you pick the project when you create the API key. The CLI commands themselves are project-agnostic — they use whatever key is in `LANGSIGHT_API_KEY`.
+
+---
+
+## When you do not need this
+
+- Solo developer on a single-tenant instance — skip projects entirely.
+- Running without the dashboard (`langsight mcp-health` only, no API server) — `project_id` has no effect.
+- You are the global admin — you can see all projects without scoping.
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Projects" icon="folder" href="/projects">
+    Creating projects, RBAC roles, and the project switcher.
+  </Card>
+  <Card title="Users" icon="users" href="/users">
+    Invite team members and assign project roles.
+  </Card>
+  <Card title="MCP Quickstart" icon="bolt" href="/mcp/quickstart">
+    Get MCP health monitoring running in under 5 minutes.
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/self-hosting/configuration">
+    Full list of environment variables and config keys.
+  </Card>
+</CardGroup>

@@ -1,0 +1,304 @@
+---
+title: "MCP Server Authentication"
+description: "Configure authentication for every MCP server transport — from local stdio to OAuth-backed remote servers."
+---
+
+## Overview
+
+MCP servers run over different transports and use different authentication models. LangSight supports four patterns: no auth (local stdio), API key or Bearer token (HTTP/SSE), OAuth via `mcp-remote` (managed services like Atlassian and GitHub), and environment variable injection (arbitrary secrets passed to subprocess servers).
+
+All authentication config lives in `.langsight.yaml`. **Never hardcode secrets in the YAML file.** Use `${ENV_VAR}` syntax everywhere — LangSight expands the value from the environment at runtime and the YAML itself remains safe to commit.
+
+---
+
+## No auth — local stdio servers
+
+Local MCP servers launched as subprocesses (e.g. your own Postgres MCP, a local filesystem server) require no authentication at the MCP protocol level. Access control is inherited from the operating system: only the user who spawns LangSight can connect.
+
+```yaml
+# .langsight.yaml
+servers:
+  - name: postgres-mcp
+    transport: stdio
+    command: uv
+    args: [run, python, server.py]
+```
+
+LangSight spawns the process, runs the MCP `initialize` handshake, and kills the process when the check completes. No credentials are exchanged.
+
+<Note>
+  stdio servers run with the same environment as the LangSight process. If your
+  server reads a `DATABASE_URL` env var, make sure that variable is set in the
+  shell where you run `langsight monitor`.
+</Note>
+
+---
+
+## API key / Bearer token — HTTP and SSE servers
+
+Remote MCP servers behind an HTTP API (streamable HTTP or SSE transport) typically require a token in the `Authorization` header or a custom header such as `X-API-Key`.
+
+```yaml
+servers:
+  - name: my-api-mcp
+    transport: streamable_http
+    url: https://api.example.com/mcp
+    headers:
+      Authorization: "Bearer ${MY_API_TOKEN}"
+```
+
+For custom header schemes:
+
+```yaml
+servers:
+  - name: internal-platform-mcp
+    transport: streamable_http
+    url: https://platform.internal.company.com/mcp
+    headers:
+      X-API-Key: "${PLATFORM_MCP_KEY}"
+      X-Tenant-ID: "acme-prod"
+```
+
+<Warning>
+  Never put the token value directly in the YAML — use `${ENV_VAR}` syntax.
+  LangSight resolves these at runtime from the process environment. The YAML
+  file is safe to commit to version control when all secret values use this
+  syntax.
+</Warning>
+
+### Setting the token at runtime
+
+```bash
+export MY_API_TOKEN=sk-your-token-here
+langsight mcp-health
+```
+
+Or in Docker:
+
+```yaml
+# docker-compose.yml
+services:
+  langsight:
+    image: langsight/langsight:0.9.0
+    environment:
+      MY_API_TOKEN: "${MY_API_TOKEN}"
+```
+
+---
+
+## OAuth via mcp-remote — managed services
+
+Managed MCP services like Atlassian, GitHub, and Linear require OAuth flows. These are handled by [`mcp-remote`](https://github.com/modelcontextprotocol/mcp-remote) — a proxy that manages the OAuth token lifecycle. LangSight spawns `npx mcp-remote` as a stdio subprocess; `mcp-remote` handles the OAuth flow and stores the token in `~/.mcp-auth`.
+
+```yaml
+servers:
+  - name: atlassian-mcp
+    transport: stdio
+    command: npx
+    args: [mcp-remote, "https://mcp.atlassian.com/v1/mcp"]
+    timeout_seconds: 15
+```
+
+```yaml
+servers:
+  - name: github-mcp
+    transport: stdio
+    command: npx
+    args: [mcp-remote, "https://api.githubcopilot.com/mcp/"]
+    timeout_seconds: 15
+```
+
+### First-time OAuth setup
+
+On the first run, `mcp-remote` opens a browser for the OAuth consent screen. Once you authorise, the token is cached in `~/.mcp-auth` and all subsequent health checks are fully automatic.
+
+**Step 1 — Trigger the OAuth flow manually:**
+
+```bash
+npx mcp-remote https://mcp.atlassian.com/v1/mcp
+```
+
+A browser window opens. Complete the OAuth flow. The token is saved to `~/.mcp-auth`.
+
+**Step 2 — Verify the token is cached:**
+
+```bash
+ls ~/.mcp-auth/
+# mcp_atlassian_com_v1_mcp.json   (token for this server)
+```
+
+**Step 3 — Run a health check:**
+
+```bash
+langsight mcp-health --server atlassian-mcp
+```
+
+LangSight spawns `npx mcp-remote`, which reads the cached token and connects. No browser window opens on subsequent runs.
+
+### Token expiry
+
+`mcp-remote` refreshes tokens automatically when they expire, provided the OAuth server supports refresh tokens. If the token cannot be refreshed (e.g. the refresh token itself has expired), the health check will show the server as `down` with an authentication error. Re-run `npx mcp-remote <url>` manually to re-authorise.
+
+<Note>
+  The `~/.mcp-auth` directory must be accessible to the process running
+  `langsight`. When running in Docker, mount it as a volume:
+  `~/.mcp-auth:/root/.mcp-auth:ro`
+</Note>
+
+### Increased timeout for OAuth servers
+
+OAuth-backed servers can be slower to respond than local servers. Set `timeout_seconds` to a higher value (15–30s is typical):
+
+```yaml
+servers:
+  - name: atlassian-mcp
+    transport: stdio
+    command: npx
+    args: [mcp-remote, "https://mcp.atlassian.com/v1/mcp"]
+    timeout_seconds: 15   # default is 5s — increase for OAuth servers
+```
+
+---
+
+## Environment variable injection — subprocess env
+
+Some MCP servers are configured entirely through environment variables passed to the subprocess. Use the `env` key to inject variables without exposing them in `args`.
+
+```yaml
+servers:
+  - name: datahub
+    transport: stdio
+    command: uvx
+    args: [mcp-server-datahub@latest]
+    env:
+      DATAHUB_GMS_URL: https://datahub.prod.example.com/api/gms
+      DATAHUB_GMS_TOKEN: "${DATAHUB_TOKEN}"
+      DATAHUB_SKIP_SSL_VERIFICATION: "true"
+    timeout_seconds: 15
+```
+
+Variables in `env` are merged with the subprocess environment. Use `${VAR}` to pull values from the LangSight process environment. Static values (non-secret config like a URL or a feature flag) can be written directly.
+
+<Note>
+  `env` keys are available to the MCP subprocess only — they are not set in
+  the LangSight process itself. This is intentional: you can inject credentials
+  scoped to one server without polluting the global environment.
+</Note>
+
+---
+
+## Per-server timeout
+
+The default connection timeout is **5 seconds**. Increase it for servers that are slow to initialise: OAuth proxies, servers that connect to external APIs, or servers with heavy startup costs.
+
+```yaml
+servers:
+  - name: datahub
+    transport: stdio
+    command: uvx
+    args: [mcp-server-datahub@latest]
+    env:
+      DATAHUB_GMS_TOKEN: "${DATAHUB_TOKEN}"
+    timeout_seconds: 15   # raise from 5s default for slow backends
+```
+
+If a server does not respond within `timeout_seconds`, the health check records `status: down` with `error: "timeout after 15s"`.
+
+---
+
+## Backend liveness probe (health_tool)
+
+Some MCP servers answer `tools/list` successfully even when the backend application they wrap is down. For example, a DataHub MCP may serve its tool manifest from a local cache while the DataHub REST API is unreachable. The standard health check would report the server as `up` — incorrectly.
+
+The `health_tool` probe solves this: LangSight calls a specific tool after `tools/list` as a backend liveness check.
+
+```yaml
+servers:
+  - name: datahub
+    transport: stdio
+    command: uvx
+    args: [mcp-server-datahub@latest]
+    env:
+      DATAHUB_GMS_TOKEN: "${DATAHUB_TOKEN}"
+    health_tool: search_entities
+    health_tool_args:
+      query: "test"
+      count: 1
+    timeout_seconds: 15
+```
+
+### Status semantics with health_tool
+
+| Status | What it means |
+|--------|---------------|
+| `up` | MCP layer responded + backend probe succeeded |
+| `degraded` | MCP layer is up, `tools/list` succeeded, but the backend probe failed |
+| `down` | MCP layer is unreachable or `initialize`/`tools/list` failed |
+
+The `degraded` state is important: it preserves the distinction between "the MCP server process is broken" (`down`) and "the MCP server is running but the system it wraps is broken" (`degraded`). Without `health_tool`, both cases show as `up`.
+
+### Choosing a good health_tool
+
+Pick a tool that:
+- Makes a real read request to the backend (a database query, an API call)
+- Returns quickly with a small result set
+- Does not mutate state (read-only)
+
+A search with `count: 1` is a good pattern for data catalogue servers. A `ping` or `status` tool is ideal if the server exposes one.
+
+---
+
+## Reference: full authentication examples
+
+<CodeGroup>
+```yaml Local stdio (no auth)
+servers:
+  - name: postgres-mcp
+    transport: stdio
+    command: uv
+    args: [run, python, server.py]
+```
+
+```yaml Bearer token (HTTP)
+servers:
+  - name: my-api-mcp
+    transport: streamable_http
+    url: https://api.example.com/mcp
+    headers:
+      Authorization: "Bearer ${MY_API_TOKEN}"
+```
+
+```yaml OAuth via mcp-remote
+servers:
+  - name: atlassian-mcp
+    transport: stdio
+    command: npx
+    args: [mcp-remote, "https://mcp.atlassian.com/v1/mcp"]
+    timeout_seconds: 15
+```
+
+```yaml Env var injection (DataHub)
+servers:
+  - name: datahub
+    transport: stdio
+    command: uvx
+    args: [mcp-server-datahub@latest]
+    env:
+      DATAHUB_GMS_URL: https://datahub.prod.example.com/api/gms
+      DATAHUB_GMS_TOKEN: "${DATAHUB_TOKEN}"
+      DATAHUB_SKIP_SSL_VERIFICATION: "true"
+    health_tool: search_entities
+    health_tool_args:
+      query: "test"
+      count: 1
+    timeout_seconds: 15
+```
+</CodeGroup>
+
+---
+
+## Related
+
+- [Health Monitoring](/mcp/health-monitoring) — status states, check protocol, backend probe details
+- [Server Discovery](/mcp/server-discovery) — how `langsight init` reads auth from existing IDE configs
+- [Configuration Reference](/self-hosting/configuration) — full `.langsight.yaml` schema

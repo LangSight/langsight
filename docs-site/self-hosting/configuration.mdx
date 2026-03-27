@@ -74,6 +74,12 @@ costs:
 # PII protection — omit input_args and output_result from all spans
 # When enabled, payload panels in the Trace tab are empty
 redact_payloads: false
+
+# Embedded monitor (v0.9.0+)
+# langsight serve starts a background health check loop by default.
+# Set monitor_enabled: false to run the API without a monitor (advanced).
+monitor_enabled: true              # default: true
+monitor_interval_seconds: 60       # default: 60 — seconds between check cycles
 ```
 
 <Warning>
@@ -92,6 +98,8 @@ All settings can be overridden with environment variables using the `LANGSIGHT_`
 | `alerts.slack_webhook` | `LANGSIGHT_SLACK_WEBHOOK` | |
 | `health_check_interval_seconds` | `LANGSIGHT_HEALTH_CHECK_INTERVAL_SECONDS` | |
 | `redact_payloads` | `LANGSIGHT_REDACT_PAYLOADS` | `true` or `false` |
+| `monitor_enabled` | `LANGSIGHT_MONITOR_ENABLED` | `true` (default) or `false` — controls the embedded monitor loop inside `langsight serve`. Set `false` to run the API without a background health check loop. |
+| `monitor_interval_seconds` | `LANGSIGHT_MONITOR_INTERVAL_SECONDS` | Seconds between health check cycles when the embedded monitor is enabled (default: `60`). |
 | *(admin bootstrap)* | `LANGSIGHT_ADMIN_EMAIL` | First-run only — creates admin account |
 | *(admin bootstrap)* | `LANGSIGHT_ADMIN_PASSWORD` | First-run only |
 | *(auth)* | `LANGSIGHT_AUTH_SECRET` | Required — shared session signing secret between Next.js and FastAPI (min 32 chars). Set the same value for both services. |

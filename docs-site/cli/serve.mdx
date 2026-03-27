@@ -20,11 +20,20 @@ langsight serve [OPTIONS]
 
 ## What it does
 
-Starts the FastAPI REST API server. The API is used by:
+Starts the FastAPI REST API server and (as of v0.9.0) an embedded background monitor loop. The API is used by:
 - The LangSight SDK (`POST /api/traces/spans`)
 - OTLP integrations (`POST /api/traces/otlp`)
-- The Phase 4 dashboard
+- The dashboard
 - Any custom tooling querying health/security data
+
+**Embedded monitor (v0.9.0+):** `langsight serve` now starts a continuous health check loop in the background alongside the API. The loop runs every 60 seconds by default. Before v0.9.0, you needed a separate `langsight monitor` process. Control the embedded monitor with:
+
+| Environment variable | Default | Effect |
+|---|---|---|
+| `LANGSIGHT_MONITOR_ENABLED` | `true` | Set `false` to disable the embedded loop |
+| `LANGSIGHT_MONITOR_INTERVAL_SECONDS` | `60` | Seconds between health check cycles |
+
+See [Production Deployment](/self-hosting/production) for deployment patterns including the advanced separate-monitor setup.
 
 ## Start the server
 

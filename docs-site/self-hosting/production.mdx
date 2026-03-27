@@ -1,0 +1,200 @@
+---
+title: "Production Deployment"
+description: "Deploy LangSight in production — one command starts everything in v0.9.0."
+---
+
+## One command starts everything
+
+As of v0.9.0, `langsight serve` embeds the monitor loop. A single command starts:
+
+- The REST API on port 8000
+- The background health check loop (every 60 seconds by default)
+- The dashboard on port 3003 (via Docker)
+
+```bash
+langsight serve
+```
+
+Before v0.9.0, you needed two processes: `langsight serve` for the API and `langsight monitor` for continuous health checks. Now they are unified. The embedded monitor runs in a background thread inside the API process and requires no separate process, supervisor entry, or cron job.
+
+<Note>
+  The embedded monitor writes health check results to the same ClickHouse and
+  Postgres instances as the API. Dashboard data is always current — no sync
+  delay between a standalone monitor process and the API.
+</Note>
+
+---
+
+## Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LANGSIGHT_MONITOR_ENABLED` | `true` | Set `false` to disable the embedded monitor loop |
+| `LANGSIGHT_MONITOR_INTERVAL_SECONDS` | `60` | Seconds between health check cycles |
+| `LANGSIGHT_API_KEYS` | _(empty)_ | Comma-separated API keys. When set, all routes require `X-API-Key`. |
+
+All `LANGSIGHT_*` variables can also be set via `.langsight.yaml`. See [Configuration Reference](/self-hosting/configuration).
+
+---
+
+## Docker Compose — HTTP and SSE servers
+
+The standard production deployment for teams using remote MCP servers (streamable HTTP or SSE transport).
+
+```yaml
+# docker-compose.override.yml  (merge with the root docker-compose.yml)
+services:
+  langsight:
+    image: langsight/langsight:0.9.0
+    environment:
+      LANGSIGHT_API_KEYS: "your-api-key"
+      LANGSIGHT_MONITOR_ENABLED: "true"
+      LANGSIGHT_MONITOR_INTERVAL_SECONDS: "60"
+      MY_DATAHUB_TOKEN: "token-here"
+    volumes:
+      - ~/.langsight.yaml:/config/.langsight.yaml
+    ports:
+      - "8000:8000"
+```
+
+Start the full stack:
+
+```bash
+cp .env.example .env
+# fill in LANGSIGHT_ADMIN_EMAIL, LANGSIGHT_ADMIN_PASSWORD, AUTH_SECRET, etc.
+docker compose up -d
+docker compose exec api uv run alembic upgrade head
+```
+
+Open the dashboard at `http://localhost:3003`. Health checks start running automatically — no extra commands needed.
+
+See [Docker Compose](/self-hosting/docker-compose) for the full stack setup including ClickHouse, Postgres, and the OTEL Collector.
+
+---
+
+## stdio servers in Docker
+
+stdio MCP servers run as subprocesses spawned by LangSight. When running LangSight inside Docker, the required runtimes (Node.js for `npx`/`mcp-remote`, Python packages for `uvx`) must be present in the container image.
+
+Build a custom image that extends the base:
+
+```dockerfile
+FROM langsight/langsight:0.9.0
+
+# For npx-based servers (mcp-remote, @modelcontextprotocol/* packages)
+RUN apt-get update && apt-get install -y nodejs npm && rm -rf /var/lib/apt/lists/*
+
+# For Python-based servers
+RUN pip install mcp-server-datahub
+
+# For OAuth-backed servers: mount ~/.mcp-auth at runtime
+# docker run -v ~/.mcp-auth:/root/.mcp-auth:ro ...
+```
+
+For OAuth-backed servers (Atlassian, GitHub via `mcp-remote`), the `~/.mcp-auth` token cache must be accessible inside the container. Mount it as a read-only volume:
+
+```yaml
+services:
+  langsight:
+    build: .
+    volumes:
+      - ~/.langsight.yaml:/config/.langsight.yaml
+      - ~/.mcp-auth:/root/.mcp-auth:ro   # OAuth token cache
+```
+
+<Warning>
+  The `~/.mcp-auth` volume contains OAuth tokens. Mount it read-only (`:ro`)
+  to prevent the container from modifying the token cache.
+</Warning>
+
+---
+
+## Advanced: separate monitor process
+
+The embedded monitor (default) is the right choice for most deployments. Use a separate monitor process only in specific high-availability scenarios where you want the health check loop to restart independently of the API process.
+
+### API only (no embedded monitor)
+
+```bash
+LANGSIGHT_MONITOR_ENABLED=false langsight serve
+```
+
+The API starts without any background health check loop. Dashboard health data will go stale unless you run a monitor separately.
+
+### Dedicated monitor with custom interval
+
+```bash
+langsight monitor --interval 30
+```
+
+This runs the continuous health check daemon at 30-second intervals and exits only when killed. Deploy it as a separate container or systemd service alongside the API.
+
+### When to use a separate monitor
+
+- High-availability setups where the API and monitor have independent restart policies
+- Environments where the API pod cannot be given the permissions needed to spawn stdio subprocesses (e.g. restricted Kubernetes namespaces)
+- Situations where you want the monitor to run at a faster cadence than the API response SLA allows
+
+In all other cases, the embedded monitor is simpler and requires less operational overhead.
+
+---
+
+## CI/CD pre-deploy health check
+
+Use `langsight monitor --once` to block a deployment when any MCP server is unhealthy:
+
+```bash
+langsight monitor --once
+```
+
+`--once` runs a single health check cycle across all configured servers and exits. The exit code:
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | All servers `up` |
+| `1` | One or more servers `down` or `degraded` |
+
+Use this in a CI/CD pipeline to prevent deploying an agent when its MCP dependencies are unhealthy:
+
+```yaml
+# .github/workflows/deploy.yml
+jobs:
+  deploy:
+    steps:
+      - name: MCP health pre-check
+        run: langsight monitor --once
+        env:
+          LANGSIGHT_API_KEY: ${{ secrets.LANGSIGHT_API_KEY }}
+        # exits 1 if any server is DOWN or DEGRADED — blocks the deploy
+
+      - name: Deploy agent
+        run: ./scripts/deploy.sh
+```
+
+<Tip>
+  `langsight mcp-health` also exits 1 on any unhealthy server and is faster
+  (runs a one-shot check without storing results). Use `monitor --once` when
+  you want results persisted to ClickHouse for audit purposes; use `mcp-health`
+  for lightweight CI checks where you only care about the exit code.
+</Tip>
+
+---
+
+## Upgrade
+
+```bash
+docker compose pull
+docker compose up -d
+docker compose exec api uv run alembic upgrade head
+```
+
+Health check history and span data are preserved across upgrades — both live in named Docker volumes.
+
+---
+
+## Related
+
+- [Docker Compose](/self-hosting/docker-compose) — full stack setup with all services
+- [Configuration Reference](/self-hosting/configuration) — all environment variables
+- [langsight serve](/cli/serve) — CLI reference for the API server command
+- [langsight monitor](/cli/monitor) — CLI reference for the standalone monitor daemon

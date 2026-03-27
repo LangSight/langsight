@@ -104,8 +104,11 @@
         "mcp/quickstart",
         "mcp/server-discovery",
         "mcp/health-monitoring",
+        "mcp/authentication",
+        "mcp/mcp-servers-dashboard",
         "mcp/schema-drift",
-        "mcp/scorecard"
+        "mcp/scorecard",
+        "mcp/project-scoping"
       ]
     },
     {
@@ -133,6 +136,7 @@
       "group": "Self-Hosting",
       "pages": [
         "self-hosting/docker-compose",
+        "self-hosting/production",
         "self-hosting/configuration",
         "self-hosting/storage",
         "database-connections"

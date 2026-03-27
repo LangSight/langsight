@@ -6,6 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-03-27
+
+### Added
+- **Embedded monitor loop in `langsight serve`** — `langsight serve` now starts a background health check loop alongside the API. Before v0.9.0, production deployments required two separate processes (`langsight serve` + `langsight monitor`). Now one command starts everything. The loop runs every 60 seconds by default and writes results to the same ClickHouse and Postgres instances as the API.
+- **`LANGSIGHT_MONITOR_ENABLED` env var** — controls whether `langsight serve` starts the embedded monitor loop (default: `true`). Set `false` to run the API without a background health check, then use a separate `langsight monitor` process (advanced HA deployments).
+- **`LANGSIGHT_MONITOR_INTERVAL_SECONDS` env var** — configures the health check cycle interval for the embedded monitor (default: `60`).
+- **`monitor_enabled` and `monitor_interval_seconds` config keys** — equivalent YAML config keys in `.langsight.yaml`.
+- **Docs: MCP authentication guide** — `docs-site/mcp/authentication.mdx` covering all four auth patterns: no auth (stdio), Bearer token (HTTP/SSE), OAuth via mcp-remote, and env var injection.
+- **Docs: MCP Servers dashboard guide** — `docs-site/mcp/mcp-servers-dashboard.mdx` covering the unified `/servers` page, all four detail panel tabs, Run Check button, and Last Ping vs Last Tool Call distinction.
+- **Docs: Production deployment guide** — `docs-site/self-hosting/production.mdx` covering the embedded monitor, Docker Compose setup for stdio and HTTP servers, separate monitor pattern, and CI/CD pre-deploy health checks.
+
+### Changed
+- **`langsight serve` output** — startup message now includes embedded monitor status: `Monitor: enabled (60s interval)` or `Monitor: disabled`.
+- **`monitor_enabled` and `monitor_interval_seconds`** added to the full `.langsight.yaml` schema in configuration docs.
+- **`cli/serve.mdx`** updated to document the embedded monitor and the two new env vars.
+
 ## [0.8.6] - 2026-03-27
 
 ### Added

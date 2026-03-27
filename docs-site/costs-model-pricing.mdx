@@ -92,6 +92,24 @@ X-API-Key: lsk_admin_key
 
 Spans with an unrecognised `model_id` appear in cost reports with `$0.00` cost and a warning flag until pricing is added.
 
+## All sources filter
+
+The **All sources** filter (previously labelled "All servers") on the Cost Analytics page shows costs grouped by `server_name` from tool call traces. This field includes:
+
+- **LLM providers** — e.g. `gemini`, `claude`, `gpt-4o` (costs calculated from token counts)
+- **Sub-agents** — e.g. `catalog`, `analyst` (agents acting as tool providers in multi-agent pipelines)
+- **Any other service** tracked by the LangSight SDK
+
+It does **not** show MCP infrastructure server names like `catalog-mcp` — those are health-checked by `langsight monitor` but are not cost sources themselves. The cost source is the service that consumes tokens or incurs per-call charges, not the MCP proxy in front of it.
+
+Filter by a specific source to see cost per LLM provider or per sub-agent:
+
+```bash
+GET /api/costs/breakdown?project_id=production&window=7d&server_name=gemini
+```
+
+---
+
 ## Per-project cost filtering
 
 All cost queries are scoped to a project. Use the project switcher in the sidebar to filter the Costs page, or pass `project_id` to the API:

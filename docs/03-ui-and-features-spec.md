@@ -1,8 +1,8 @@
 # LangSight: UI & Features Specification
 
-> **Version**: 1.7.0
+> **Version**: 1.8.0
 > **Date**: 2026-03-27
-> **Status**: Active — updated with `langsight add` command, `langsight scorecard` command, `langsight init` expanded to 10+ IDE clients with correct macOS paths, schema drift structural diff display (v0.8.0, 2026-03-26); health_tool backend probe, inputSchema string fix (v0.8.4–v0.8.5, 2026-03-27); MCP Servers page merged with Tool Health, Last Used / Last OK columns, Agents Servers tab, costs source filter rename (v0.8.6, 2026-03-27)
+> **Status**: Active — updated with `langsight add` command, `langsight scorecard` command, `langsight init` expanded to 10+ IDE clients with correct macOS paths, schema drift structural diff display (v0.8.0, 2026-03-26); health_tool backend probe, inputSchema string fix (v0.8.4–v0.8.5, 2026-03-27); MCP Servers page merged with Tool Health, Last Used / Last OK columns, Agents Servers tab, costs source filter rename (v0.8.6, 2026-03-27); embedded monitor loop in `langsight serve`, `LANGSIGHT_MONITOR_ENABLED`, `LANGSIGHT_MONITOR_INTERVAL_SECONDS` (v0.9.0, 2026-03-27)
 
 ---
 
@@ -546,6 +546,12 @@ otel:
 # transmission — payloads never leave the host process.
 # Default: false (payloads captured for maximum debuggability).
 redact_payloads: false
+
+# Embedded monitor (v0.9.0) — controls the background health check loop
+# started automatically by `langsight serve`. Set monitor_enabled: false to
+# run the API without a background health check (advanced HA deployments only).
+monitor_enabled: true              # default: true
+monitor_interval_seconds: 60       # default: 60 — seconds between check cycles
 ```
 
 **Environment variable overrides** (all use `LANGSIGHT_` prefix):
@@ -557,6 +563,8 @@ redact_payloads: false
 | `LANGSIGHT_POSTGRES_URL` | `storage.postgres_url` |
 | `LANGSIGHT_CLICKHOUSE_URL` | `storage.clickhouse_url` |
 | `LANGSIGHT_API_KEYS` | API key list (comma-separated) |
+| `LANGSIGHT_MONITOR_ENABLED` | `monitor_enabled` — `true` (default) or `false`. Controls embedded monitor loop in `langsight serve`. (added v0.9.0) |
+| `LANGSIGHT_MONITOR_INTERVAL_SECONDS` | `monitor_interval_seconds` — seconds between embedded monitor health check cycles (default: `60`). (added v0.9.0) |
 | `LANGSIGHT_TRUSTED_PROXY_CIDRS` | Trusted proxy network CIDRs (default: `127.0.0.1/32,::1/128`) |
 | `LANGSIGHT_DASHBOARD_URL` | Base URL used in invite email links |
 | `LANGSIGHT_CORS_ORIGINS` | Comma-separated allowed CORS origins |

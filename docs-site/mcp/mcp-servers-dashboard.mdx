@@ -1,0 +1,167 @@
+---
+title: "MCP Servers Dashboard"
+description: "The unified /servers page — health status, tool catalog, latency trends, and agent consumers for every MCP server."
+---
+
+## Overview
+
+The **MCP Servers** page at `/servers` is the unified view for every MCP server LangSight has observed or health-checked. It replaced the old Tool Health page in v0.8.6 — all tool reliability metrics are now in the Tools tab of each server's detail panel. The old `/health` URL permanently redirects to `/servers`.
+
+---
+
+## Server table
+
+The table lists every known MCP server with the following columns:
+
+| Column | Description |
+|--------|-------------|
+| Server | Server name — from `server_name` field in health check config or spans |
+| Owner | Editable in the detail panel. Set it to the team or person responsible. |
+| Tags | Editable labels (e.g. `production`, `data`, `external`) |
+| Status | Current health status from the most recent health check: `up`, `degraded`, `down`, or `stale` |
+| Latency | Current p99 latency with a sparkline showing the trend across the last 20 checks |
+| Uptime | Uptime percentage across the last 20 health checks |
+| Tools | Number of declared tools known for this server |
+| Last Ping | Time since the most recent health check ran |
+
+### Sorting and filtering
+
+Click any column header to sort by that column. Use the status filter to narrow the table:
+
+| Filter | Shows |
+|--------|-------|
+| All | Every server |
+| Down | Servers with status `down` |
+| Degraded | Servers with status `degraded` |
+| Up | Servers with status `up` |
+
+### Needs Attention banner
+
+When any server is `down` or `degraded`, a red banner appears above the table listing the affected servers by name. Click a server name in the banner to jump directly to its detail panel.
+
+---
+
+## Server detail panel
+
+Click any row in the table to open the detail panel. The panel has four tabs.
+
+### About tab
+
+Editable metadata for this server. All fields save on blur via `PUT /api/servers/metadata/{name}`.
+
+| Field | Description |
+|-------|-------------|
+| Description | What this server does |
+| Owner | Team or person responsible |
+| Tags | Labels for filtering (`production`, `data`, `external`, etc.) |
+| Transport | `stdio`, `sse`, or `streamable_http` — read-only, set by config |
+| Runbook URL | Link to the operational runbook for this server |
+
+**Tool Call Activity (7d)**
+
+When the server has trace data from instrumented agents, the About tab also shows:
+
+| Field | Description |
+|-------|-------------|
+| Last Tool Call | When an agent last called any tool on this server |
+| Last Result | Whether the most recent tool call succeeded (✓ success) or failed (✗ error) |
+| Total Calls | Total tool calls in the last 7 days from all agents |
+| Success Rate | Percentage of successful tool calls across the 7-day window |
+
+This section appears automatically once trace data is available — no configuration is needed.
+
+### Tools tab
+
+A table of every tool the server exposes. Tools are populated automatically when `langsight monitor` runs — no manual registration is needed.
+
+| Column | Description |
+|--------|-------------|
+| Tool name | Name as returned by `tools/list` |
+| Description | Tool description from the MCP schema |
+| Parameters | Input parameters shown as coloured badges — indigo for required, grey for optional |
+| Total calls | Calls from instrumented agents in the selected time window |
+| Errors | Failed calls |
+| p99 latency | 99th percentile latency |
+| Success rate | Percentage of successful calls |
+
+Tools that exist in the server's schema but have not been called by instrumented agents appear with `0 calls` and their description from the schema.
+
+<Note>
+  If the Tools tab shows zero tools, run `langsight monitor --once`. Tools are
+  populated from the `tools/list` response on every health check cycle. They
+  persist in Postgres and update on each subsequent check.
+</Note>
+
+### Health tab
+
+Historical health data for this server:
+
+- Uptime percentage across the last 20 health checks
+- Average latency across the last 20 checks
+- Total check count
+- Latency chart across the last 20 checks
+- Table of the last 15 individual health check results: timestamp, status, latency, tools count, and error message
+
+### Consumers tab
+
+Which agents have called this server in the last 24 hours, derived from trace lineage. Shows:
+
+- Agent name
+- Total calls from that agent to this server in the last 24h
+- Link to that agent's entry in the [Agents](/agents) catalog
+
+**Name matching:** Agents often call an MCP server using a short name (e.g. `catalog`) while the server appears in health check config under a longer name (e.g. `catalog-mcp`). LangSight automatically matches these by stripping the `-mcp` suffix when resolving consumers. If your agent calls `catalog` in traces and your config has `catalog-mcp`, they are treated as the same server in the Consumers tab.
+
+---
+
+## Run Check button
+
+The **Run Check** button in the detail panel header triggers an immediate health check for the selected server. Results appear in the Health tab within a few seconds.
+
+The embedded monitor (v0.9.0+) runs automatically every 60 seconds — the Run Check button is for ad-hoc refreshes. Use it when:
+
+- You just restarted an MCP server and want to confirm it is healthy without waiting for the next cycle
+- You are debugging a server and want immediate feedback
+
+<Note>
+  The Run Check button calls `POST /api/health/check` with the server config
+  from the API container's `.langsight.yaml`. For OAuth-backed stdio servers
+  (e.g. Atlassian via `mcp-remote`) that require a token cache at
+  `~/.mcp-auth`, the check is most reliable when run via `langsight monitor
+  --once` from the CLI, since that uses the local token cache. The Run Check
+  button works for HTTP servers and non-OAuth stdio servers.
+</Note>
+
+---
+
+## Last Ping vs Last Tool Call
+
+These two timestamps measure different things and are intentionally separate:
+
+| Field | Location | What it measures |
+|-------|----------|-----------------|
+| Last Ping | Table column | When LangSight last ran a synthetic health check (via `langsight monitor`) |
+| Last Tool Call | About tab | When an agent last actually called a tool on this server (from real agent traces) |
+
+A server can show `Last Ping: 30s ago` (healthy check cycle) while `Last Tool Call: 3 days ago` (no agent has actually used it recently). This distinction is useful for identifying servers that are monitored but idle, or servers that agents use heavily but that are not in the health check config.
+
+---
+
+## Tool count is 0?
+
+Tools are populated by `langsight monitor`. If you have just configured a server and the Tools tab is empty:
+
+1. Run `langsight monitor --once` — this runs one health check cycle, calls `tools/list` on each server, and stores the tool schemas in Postgres.
+2. Reload the MCP Servers page. Tools appear immediately after the check completes.
+
+Tools persist across restarts and update on every subsequent health check. You do not need to run `monitor --once` again after the first time — the embedded monitor keeps them current.
+
+---
+
+## Related
+
+- [Health Monitoring](/mcp/health-monitoring) — status states and health check protocol
+- [Schema Drift](/mcp/schema-drift) — what causes `degraded` status
+- [Server Scorecard](/mcp/scorecard) — A-F composite grade per server
+- [Agents — Servers tab](/agents) — see MCP server dependencies from the agent's perspective
+- [Health API](/api-reference/health) — REST endpoints for server health data

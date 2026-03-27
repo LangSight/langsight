@@ -229,6 +229,44 @@ Per-tool reliability breakdown for this agent: call count, error rate, p99 laten
 
 Full-width call graph showing every MCP server this agent has connected to. Edges are weighted by call volume. Click an edge to see the per-tool breakdown. Click a server node to jump to that server's entry in the [MCP Servers](/mcp-servers) catalog.
 
+### Servers tab
+
+Shows every MCP server (and sub-agent) this agent called in the selected time window. Added in v0.8.6.
+
+**Layout:** Each server is displayed as a card in a list. Click any card to expand it and see the individual tools the agent called on that server.
+
+**Per-server card (collapsed):**
+
+| Field | Description |
+|-------|-------------|
+| Server name | Name as it appears in health check config or traces |
+| Badge | **MCP Server** (indigo) or **Sub-agent** (grey) — see badge types below |
+| Tool count | Number of distinct tools called on this server in the time window |
+| Total calls | Total tool invocations from this agent to this server |
+| Errors | Failed calls |
+| Health status | Current health check status (`up`, `degraded`, `down`) — only shown for MCP Servers |
+
+**Per-tool breakdown (expanded):**
+
+| Column | Description |
+|--------|-------------|
+| Tool name | Tool as called by this agent |
+| Call count | Times this agent called this tool |
+| Error count | Failed calls |
+| Avg latency | Mean latency for this agent's calls to this tool |
+| Success rate | Visual progress bar showing the success percentage |
+
+**Badge types:**
+
+| Badge | Colour | Meaning |
+|-------|--------|---------|
+| MCP Server | Indigo | This server appears in health check config — it is actively monitored |
+| Sub-agent | Grey | This server appears only in traces, not in health check config |
+
+A server with a Sub-agent badge is still tracked for call volume and error counts, but LangSight does not run health checks against it. To start monitoring it, add it to `.langsight.yaml` with `langsight add`.
+
+**Matching across names:** An agent may call a server as `catalog` in traces while the health check config registers it as `catalog-mcp`. LangSight matches these by stripping the `-mcp` suffix. Both may appear in the Servers tab separately — `catalog` as Sub-agent and `catalog-mcp` as MCP Server — until you reconcile the names.
+
 ### SLOs tab
 
 Shows all SLOs defined for this agent and lets you create or delete them without leaving the page. See [Configuring SLOs](#configuring-slos) for the full walkthrough.
@@ -303,3 +341,4 @@ For the full definition of the `loop_detected` health tag and how it composes wi
 | `GET` | `/api/agents` | List all known agent names with session counts and health scores |
 | `GET` | `/api/agents/{name}/sessions` | Sessions for a specific agent (supports `window`, `health_tag`, `limit` query params) |
 | `GET` | `/api/agents/{name}/health` | Health score and status for an agent in a given window |
+| `GET` | `/api/agents/{name}/servers` | MCP servers and sub-agents called by this agent (supports `window` query param) |
