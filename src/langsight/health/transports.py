@@ -159,9 +159,17 @@ def _parse_tools(raw_tools: list[Tool]) -> list[ToolInfo]:
         input_schema: dict[str, Any] = {}
         if t.inputSchema:
             raw_schema = t.inputSchema
-            input_schema = (
-                raw_schema.model_dump() if hasattr(raw_schema, "model_dump") else dict(raw_schema)
-            )
+            if isinstance(raw_schema, str):
+                # Some MCP servers (e.g. atlassian-mcp) return inputSchema as a
+                # JSON-encoded string rather than a dict. Parse it defensively.
+                try:
+                    input_schema = json.loads(raw_schema)
+                except (json.JSONDecodeError, ValueError):
+                    input_schema = {}
+            elif hasattr(raw_schema, "model_dump"):
+                input_schema = raw_schema.model_dump()
+            else:
+                input_schema = dict(raw_schema)
         tools.append(
             ToolInfo(
                 name=t.name,

@@ -18,7 +18,7 @@ import { Timestamp } from "@/components/timestamp";
 import { LineageGraph as LineageGraphComponent, type GraphNode, type GraphEdge } from "@/components/lineage-graph";
 import { AgentTopology } from "@/components/agent-topology";
 import { EditableTextarea, EditableText, EditableTags, EditableUrl } from "@/components/editable-field";
-import type { AgentSession, AgentMetadata, CostsBreakdownResponse, LineageGraph, HealthResult } from "@/lib/types";
+import type { AgentSession, AgentMetadata, CostsBreakdownResponse, LineageGraph, HealthResult, ToolReliability } from "@/lib/types";
 
 /* ── Types ──────────────────────────────────────────────────── */
 type AgentSummary = {
@@ -32,7 +32,7 @@ type AgentSummary = {
   total_output_tokens: number;
   avg_tokens_per_session: number;
 };
-type DetailTab = "about" | "overview" | "topology" | "sessions" | "slos";
+type DetailTab = "about" | "overview" | "servers" | "topology" | "sessions" | "slos";
 type SortCol = "name" | "healthScore" | "errorRate" | "cost" | "lastActive" | "sessions";
 
 /* ── Helpers ────────────────────────────────────────────────── */
@@ -603,6 +603,89 @@ function SLOTab({ agentName, slos, projectId, onRefresh }: {
   );
 }
 
+/* ── Per-server tool card (fetches declared tools independently) ── */
+const STATUS_COLOR_MAP: Record<string, string> = { up: "#22c55e", degraded: "#eab308", down: "#ef4444", stale: "#6b7280" };
+
+function ServerToolsCard({ serverName, reliability, healthStatus, projectId }: {
+  serverName: string;
+  reliability: ToolReliability[];
+  healthStatus: string | undefined;
+  projectId: string | null;
+}) {
+  const pq = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+  const { data: declared } = useSWR<{ tool_name: string; description: string; input_schema: Record<string, unknown> }[]>(
+    `/api/servers/${encodeURIComponent(serverName)}/tools${pq}`,
+    fetcher,
+    { refreshInterval: 60_000 },
+  );
+
+  // Merge declared (schema) + observed (call stats)
+  const allNames = new Set([...(declared ?? []).map(d => d.tool_name), ...reliability.map(r => r.tool_name)]);
+  const tools = Array.from(allNames).sort().map((name) => ({
+    name,
+    description: declared?.find(d => d.tool_name === name)?.description ?? "",
+    rel: reliability.find(r => r.tool_name === name) ?? null,
+    isDeclared: !!(declared?.find(d => d.tool_name === name)),
+  }));
+
+  const statusColor = STATUS_COLOR_MAP[healthStatus ?? ""] ?? "#6b7280";
+
+  return (
+    <div className="rounded-xl border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
+      {/* Server header */}
+      <div className="flex items-center gap-2.5 px-4 py-2.5" style={{ background: "hsl(var(--card-raised))", borderBottom: "1px solid hsl(var(--border))" }}>
+        <Server size={13} style={{ color: "hsl(var(--primary))" }} />
+        <span className="text-[12px] font-bold text-foreground flex-1" style={{ fontFamily: "var(--font-geist-mono)" }}>{serverName}</span>
+        {healthStatus && (
+          <span className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: statusColor }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusColor }} />
+            {healthStatus}
+          </span>
+        )}
+        <span className="text-[10px] text-muted-foreground">{tools.length} tool{tools.length !== 1 ? "s" : ""}</span>
+      </div>
+
+      {/* Tool list */}
+      {tools.length === 0 ? (
+        <p className="px-4 py-3 text-[11px] text-muted-foreground">No tools observed yet</p>
+      ) : (
+        <div className="divide-y" style={{ borderColor: "hsl(var(--border) / 0.5)" }}>
+          {tools.map((tool) => {
+            const rel = tool.rel;
+            const errColor = rel && rel.error_rate_pct > 10 ? "#ef4444" : rel && rel.error_rate_pct > 0 ? "#eab308" : "#22c55e";
+            return (
+              <div key={tool.name} className="px-4 py-2.5 hover:bg-accent/10 transition-colors">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {rel ? <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1" style={{ background: errColor }} /> : <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1" style={{ background: "#6b7280" }} />}
+                    <div className="min-w-0">
+                      <span className="text-[11px] font-semibold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{tool.name}</span>
+                      {!tool.isDeclared && <span className="ml-1.5 text-[8px] px-1 py-0.5 rounded text-muted-foreground" style={{ background: "hsl(var(--border))" }}>observed</span>}
+                      {tool.description && <p className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-xs">{tool.description}</p>}
+                    </div>
+                  </div>
+                  {rel ? (
+                    <div className="flex items-center gap-3 flex-shrink-0 text-[10px]">
+                      <span className="text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{rel.total_calls} calls</span>
+                      {rel.error_calls > 0 && <span style={{ color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{rel.error_calls} err</span>}
+                      <span className="text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(rel.avg_latency_ms)}ms</span>
+                      <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ background: "hsl(var(--border))" }}>
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, rel.success_rate_pct)}%`, background: errColor }} />
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground flex-shrink-0">schema only</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Page ───────────────────────────────────────────────────── */
 export default function AgentsPage() {
   const { activeProject } = useProject();
@@ -627,6 +710,7 @@ export default function AgentsPage() {
   const pid = activeProject?.id ?? null;
   const { data: metadata, mutate: mutateMetadata } = useSWR<AgentMetadata[]>(`/api/agents/metadata${p}`, () => listAgentMetadata(pid), { refreshInterval: 300_000 });
   const { data: healthServers } = useSWR<HealthResult[]>("/api/health/servers", fetcher, { refreshInterval: 30_000 });
+  const { data: toolReliability } = useSWR<ToolReliability[]>(`/api/reliability/tools?hours=${hours}${p}`, fetcher, { refreshInterval: 60_000 });
   const { data: loopCounts } = useSWR<{ agent_name: string; loop_count: number }[]>(
     `/api/agents/loop-counts?hours=${hours}${p}`,
     () => getAgentLoopCounts(hours, pid),
@@ -762,12 +846,15 @@ export default function AgentsPage() {
                   </div>
                   {/* Tabs */}
                   <div className="flex mt-3 -mb-3">
-                    {(["about", "overview", "topology", "sessions", "slos"] as DetailTab[]).map((tab) => (
-                      <button key={tab} onClick={() => { setActiveTab(tab); if (tab !== "topology") setRailExpanded(false); }}
-                        className={cn("px-3 py-2 text-[12px] font-medium border-b-2 -mb-px transition-colors capitalize", activeTab === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
-                        {tab}
-                      </button>
-                    ))}
+                    {(["about", "overview", "servers", "topology", "sessions", "slos"] as DetailTab[]).map((tab) => {
+                      const badge = tab === "servers" ? (selected.servers_used.length) : 0;
+                      return (
+                        <button key={tab} onClick={() => { setActiveTab(tab); if (tab !== "topology") setRailExpanded(false); }}
+                          className={cn("px-3 py-2 text-[12px] font-medium border-b-2 -mb-px transition-colors capitalize", activeTab === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
+                          {tab}{badge > 0 && <span className="ml-1 text-[9px] text-muted-foreground">{badge}</span>}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -822,6 +909,36 @@ export default function AgentsPage() {
                               {handoffSources.length > 0 && <div className="flex items-center justify-between text-[11px]"><span className="text-muted-foreground">Called by</span><span className="font-medium text-foreground">{handoffSources.join(", ")}</span></div>}
                             </div>
                           </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* SERVERS */}
+                    {activeTab === "servers" && (() => {
+                      const serverHealthMap = new Map((healthServers ?? []).map(h => [h.server_name, h.status]));
+                      const servers = selected.servers_used;
+                      if (servers.length === 0) return (
+                        <div className="text-center py-12">
+                          <Server size={22} className="text-muted-foreground opacity-30 mx-auto mb-3" />
+                          <p className="text-[12px] font-semibold text-foreground mb-1">No servers observed</p>
+                          <p className="text-[11px] text-muted-foreground">Run your agent — server connections appear from trace data</p>
+                        </div>
+                      );
+                      return (
+                        <div className="space-y-3">
+                          <p className="text-[10px] text-muted-foreground">
+                            Showing {servers.length} MCP server{servers.length !== 1 ? "s" : ""} observed in the last {hours}h.
+                            Call stats are across all agents on these servers.
+                          </p>
+                          {servers.map((srv) => (
+                            <ServerToolsCard
+                              key={srv}
+                              serverName={srv}
+                              reliability={(toolReliability ?? []).filter(r => r.server_name === srv)}
+                              healthStatus={serverHealthMap.get(srv)}
+                              projectId={pid}
+                            />
+                          ))}
                         </div>
                       );
                     })()}

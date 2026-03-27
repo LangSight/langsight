@@ -294,7 +294,7 @@ export default function CostsPage() {
             <Filter size={13} className="text-muted-foreground mr-1" />
 
             <MultiSelectDropdown
-              placeholder="All servers"
+              placeholder="All sources"
               options={servers.map((s) => ({ value: s, label: s }))}
               selected={serverFilter}
               onChange={setServerFilter}
@@ -339,8 +339,8 @@ export default function CostsPage() {
           {/* Active filter pills */}
           {hasFilters && (
             <div className="flex flex-wrap gap-1.5">
-              {serverFilter.length === 1 && <FilterPill label="Server" value={serverFilter[0]} onClear={() => setServerFilter([])} />}
-              {serverFilter.length > 1 && <FilterPill label="Servers" value={`${serverFilter.length} selected`} onClear={() => setServerFilter([])} />}
+              {serverFilter.length === 1 && <FilterPill label="Source" value={serverFilter[0]} onClear={() => setServerFilter([])} />}
+              {serverFilter.length > 1 && <FilterPill label="Sources" value={`${serverFilter.length} selected`} onClear={() => setServerFilter([])} />}
               {agentFilter.length === 1 && <FilterPill label="Agent" value={agentFilter[0]} onClear={() => setAgentFilter([])} />}
               {agentFilter.length > 1 && <FilterPill label="Agents" value={`${agentFilter.length} selected`} onClear={() => setAgentFilter([])} />}
               {modelFilter.length === 1 && <FilterPill label="Model" value={modelFilter[0]} onClear={() => setModelFilter([])} />}
@@ -411,7 +411,7 @@ export default function CostsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card-raised))" }}>
-                    {["Server", "Tool", "Type", "Model", "Calls", "$/Call", "Total"].map((h) => (
+                    {["Source", "Tool", "Type", "Model", "Calls", "$/Call", "Total"].map((h) => (
                       <th key={h} className="px-5 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>

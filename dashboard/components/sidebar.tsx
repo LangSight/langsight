@@ -6,7 +6,7 @@ import { signOut, useSession } from "next-auth/react";
 import { useState, useEffect } from "react";
 import useSWR from "swr";
 import {
-  LayoutDashboard, Activity, Shield, GitBranch, DollarSign, Bot,
+  LayoutDashboard, Shield, GitBranch, DollarSign, Bot,
   LogOut, Settings, Folder, ChevronDown, Plus, Check,
   Zap, ChevronRight, Server, Radio,
 } from "lucide-react";
@@ -27,7 +27,6 @@ const PRIMARY_NAV = [
 
 const INFRA_NAV = [
   { href: "/live",     label: "Live",         icon: Radio,    color: "#22c55e" },
-  { href: "/health",   label: "Tool Health",  icon: Activity, color: "#f59e0b" },
   { href: "/security", label: "MCP Security", icon: Shield,   color: "#ef4444" },
   { href: "/alerts",   label: "Alerts",       icon: Zap,      color: "#f97316" },
 ];

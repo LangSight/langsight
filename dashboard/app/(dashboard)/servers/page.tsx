@@ -4,10 +4,9 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
-import Link from "next/link";
 import {
   Server, ChevronRight, Search, RefreshCw, ChevronDown,
-  ChevronUp, ChevronLast, AlertTriangle, X, Bot, Activity,
+  ChevronUp, ChevronLast, AlertTriangle, X, Bot,
 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { fetcher, triggerHealthCheck, getServerHistory, listServerMetadata, upsertServerMetadata, discoverServers } from "@/lib/api";
@@ -394,9 +393,6 @@ export default function ServersPage() {
             {isLoading ? "Loading…" : `${servers?.length ?? 0} server${(servers?.length ?? 0) !== 1 ? "s" : ""} · catalog + health`}
           </p>
         </div>
-        <Link href="/health" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/40 transition-colors" style={{ border: "1px solid hsl(var(--border))" }}>
-          <Activity size={12} /> Tool Health →
-        </Link>
       </div>
 
       {/* Content */}

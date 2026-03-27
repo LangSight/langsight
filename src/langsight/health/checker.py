@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime
 
 import structlog
@@ -89,6 +90,23 @@ class HealthChecker:
                     await upsert_fn(
                         server_name=server.name,
                         transport=server.transport.value,
+                        project_id=self._project_id or None,
+                    )
+                # Persist tool catalog so the dashboard Tools tab always shows
+                # current tools — not just on first run or schema drift.
+                upsert_tools_fn = getattr(self._storage, "upsert_server_tools", None)
+                if upsert_tools_fn and asyncio.iscoroutinefunction(upsert_tools_fn) and tools:
+                    tool_dicts = [
+                        {
+                            "name": t.name,
+                            "description": t.description or "",
+                            "input_schema": json.dumps(t.input_schema or {}),
+                        }
+                        for t in tools
+                    ]
+                    await upsert_tools_fn(
+                        server.name,
+                        tool_dicts,
                         project_id=self._project_id or None,
                     )
 
