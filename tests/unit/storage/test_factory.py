@@ -34,11 +34,21 @@ class TestOpenStorage:
         mock_open.assert_called_once_with("postgresql://user:pass@localhost:5432/test", min_size=2, max_size=50)
         assert storage is mock_backend
 
-    async def test_sqlite_mode_raises_config_error(self) -> None:
-        """SQLite has been removed — using it should raise a clear error."""
+    async def test_sqlite_mode_returns_sqlite_backend(self) -> None:
+        """sqlite mode is valid — returns a SQLiteBackend without raising."""
+        from langsight.storage.sqlite import SQLiteBackend
+
         config = StorageConfig(mode="sqlite")
-        with pytest.raises(ConfigError, match="SQLite has been removed"):
-            await open_storage(config)
+        mock_backend = AsyncMock(spec=SQLiteBackend)
+
+        with patch(
+            "langsight.storage.sqlite.SQLiteBackend.open",
+            new_callable=AsyncMock,
+            return_value=mock_backend,
+        ):
+            storage = await open_storage(config)
+
+        assert storage is mock_backend
 
     async def test_unknown_mode_raises_config_error(self) -> None:
         config = StorageConfig(mode="redis")
