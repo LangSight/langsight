@@ -447,6 +447,54 @@ class DualStorage:
     ) -> list[dict[str, object]]:
         return await self._meta.get_server_tools(server_name, project_id=project_id)
 
+    # ── Fired alerts (delegated to metadata/Postgres) ────────────────────────
+
+    async def save_fired_alert(
+        self,
+        alert_id: str,
+        alert_type: str,
+        severity: str,
+        server_name: str,
+        title: str,
+        message: str,
+        session_id: str | None = None,
+        project_id: str = "",
+    ) -> None:
+        return await self._meta.save_fired_alert(
+            alert_id=alert_id,
+            alert_type=alert_type,
+            severity=severity,
+            server_name=server_name,
+            title=title,
+            message=message,
+            session_id=session_id,
+            project_id=project_id,
+        )
+
+    async def get_fired_alerts(
+        self,
+        project_id: str = "",
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        return await self._meta.get_fired_alerts(project_id=project_id, status=status, limit=limit, offset=offset)
+
+    async def count_fired_alerts(self, project_id: str = "", status: str | None = None) -> int:
+        return await self._meta.count_fired_alerts(project_id=project_id, status=status)
+
+    async def ack_alert(self, alert_id: str, acked_by: str = "user") -> bool:
+        return await self._meta.ack_alert(alert_id=alert_id, acked_by=acked_by)
+
+    async def resolve_alert(self, alert_id: str) -> bool:
+        return await self._meta.resolve_alert(alert_id=alert_id)
+
+    async def snooze_alert(self, alert_id: str, snooze_minutes: int) -> bool:
+        return await self._meta.snooze_alert(alert_id=alert_id, snooze_minutes=snooze_minutes)
+
+    async def get_alert_counts(self, project_id: str = "") -> dict[str, int]:
+        return await self._meta.get_alert_counts(project_id=project_id)
+
     # ── ClickHouse extension methods ──────────────────────────────────────────
     # Methods not in the base StorageBackend protocol but used by API routers
     # via hasattr/getattr (e.g. get_session_trace, compare_sessions,

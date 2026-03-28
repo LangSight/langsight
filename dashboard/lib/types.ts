@@ -144,6 +144,41 @@ export interface SessionCostBreakdownEntry {
   total_cost_usd: number;
 }
 
+// ─── Fired Alerts ────────────────────────────────────────────────────────────
+
+export type AlertStatus = "active" | "acked" | "snoozed" | "resolved";
+
+export interface FiredAlert {
+  id: string;
+  alert_type: string;
+  severity: "critical" | "warning" | "info";
+  server_name: string;
+  session_id: string | null;
+  title: string;
+  message: string;
+  fired_at: string;
+  status: AlertStatus;
+  acked_at: string | null;
+  acked_by: string | null;
+  snoozed_until: string | null;
+  resolved_at: string | null;
+  project_id: string;
+}
+
+export interface AlertFeedResponse {
+  total: number;
+  limit: number;
+  offset: number;
+  alerts: FiredAlert[];
+}
+
+export interface AlertCounts {
+  critical: number;
+  warning: number;
+  info: number;
+  total: number;
+}
+
 export interface AnomalyResult {
   server_name: string;
   tool_name: string;

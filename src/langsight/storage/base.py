@@ -225,6 +225,52 @@ class StorageBackend(Protocol):
         """Upsert the singleton alert config row."""
         ...
 
+    # ── Fired alerts (persisted history + lifecycle) ─────────────────────────
+
+    async def save_fired_alert(
+        self,
+        alert_id: str,
+        alert_type: str,
+        severity: str,
+        server_name: str,
+        title: str,
+        message: str,
+        session_id: str | None = None,
+        project_id: str = "",
+    ) -> None:
+        """Persist a fired alert for history and lifecycle management."""
+        ...
+
+    async def get_fired_alerts(
+        self,
+        project_id: str = "",
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Return fired alerts, most-recent-first."""
+        ...
+
+    async def count_fired_alerts(self, project_id: str = "", status: str | None = None) -> int:
+        """Count fired alerts matching the given filters."""
+        ...
+
+    async def ack_alert(self, alert_id: str, acked_by: str = "user") -> bool:
+        """Mark an alert as acknowledged. Returns True if updated."""
+        ...
+
+    async def resolve_alert(self, alert_id: str) -> bool:
+        """Mark an alert as resolved. Returns True if updated."""
+        ...
+
+    async def snooze_alert(self, alert_id: str, snooze_minutes: int) -> bool:
+        """Snooze an alert for N minutes. Returns True if updated."""
+        ...
+
+    async def get_alert_counts(self, project_id: str = "") -> dict[str, int]:
+        """Return count of active alerts per severity."""
+        ...
+
     # ── Audit logs ────────────────────────────────────────────────────────────
 
     async def append_audit_log(

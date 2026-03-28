@@ -1,5 +1,7 @@
 import type {
   AgentSession,
+  AlertCounts,
+  AlertFeedResponse,
   AnomalyResult,
   ApiKeyCreatedResponse,
   ApiKeyResponse,
@@ -198,6 +200,24 @@ export const saveAlertsConfig = (body: {
 
 export const testSlackWebhook = () =>
   post<{ ok: boolean; message: string }>("/alerts/test");
+
+// ─── Alert feed (fired alerts + lifecycle) ────────────────────────────────────
+export const getAlertFeed = (projectId?: string | null, status?: string, limit = 50, offset = 0) =>
+  get<AlertFeedResponse>(
+    `/alerts/feed?limit=${limit}&offset=${offset}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}${status && status !== "all" ? `&status=${encodeURIComponent(status)}` : ""}`
+  );
+
+export const getAlertCounts = (projectId?: string | null) =>
+  get<AlertCounts>(`/alerts/counts${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""}`);
+
+export const ackAlert = (alertId: string) =>
+  post<{ ok: boolean }>(`/alerts/${encodeURIComponent(alertId)}/ack`, { acked_by: "user" });
+
+export const resolveAlert = (alertId: string) =>
+  post<{ ok: boolean }>(`/alerts/${encodeURIComponent(alertId)}/resolve`, {});
+
+export const snoozeAlert = (alertId: string, minutes: 15 | 60 | 240 | 1440) =>
+  post<{ ok: boolean }>(`/alerts/${encodeURIComponent(alertId)}/snooze`, { minutes });
 
 // ─── Audit logs ───────────────────────────────────────────────────────────────
 export const getAuditLogs = (limit = 50, offset = 0) =>

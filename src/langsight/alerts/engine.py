@@ -11,14 +11,19 @@ Design principles:
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from langsight.models import HealthCheckResult, ServerStatus
 from langsight.sdk.models import PreventionEvent
+
+if TYPE_CHECKING:
+    from langsight.storage.base import StorageBackend
 
 logger = structlog.get_logger()
 
@@ -85,10 +90,14 @@ class AlertEngine:
         self,
         consecutive_failures_threshold: int = 2,
         latency_spike_multiplier: float = 3.0,
+        storage: StorageBackend | None = None,
+        project_id: str = "",
     ) -> None:
         self._threshold = consecutive_failures_threshold
         self._latency_multiplier = latency_spike_multiplier
         self._states: dict[str, _ServerState] = {}
+        self._storage = storage
+        self._project_id = project_id
 
     def seed_from_history(self, history: list[HealthCheckResult]) -> None:
         """Seed baseline state from recent health check history.
@@ -110,6 +119,25 @@ class AlertEngine:
                 state.consecutive_failures = 0
             elif result.status == ServerStatus.DOWN:
                 state.consecutive_failures += 1
+
+    async def _persist_alerts(self, alerts: list[Alert], session_id: str | None = None) -> None:
+        """Fire-and-forget persist to storage — never raises."""
+        if not self._storage or not alerts:
+            return
+        for alert in alerts:
+            try:
+                await self._storage.save_fired_alert(
+                    alert_id=uuid.uuid4().hex,
+                    alert_type=alert.alert_type.value,
+                    severity=alert.severity.value,
+                    server_name=alert.server_name,
+                    title=alert.title,
+                    message=alert.message,
+                    session_id=session_id,
+                    project_id=self._project_id,
+                )
+            except Exception:  # noqa: BLE001
+                pass  # Never let storage errors block alert delivery
 
     def evaluate(self, result: HealthCheckResult) -> list[Alert]:
         """Evaluate a health check result and return any new alerts to fire.

@@ -307,6 +307,27 @@ _DDL_STATEMENTS = [
         settings_json   JSONB   NOT NULL DEFAULT '{}'
     )
     """,
+    # Fired alerts — persisted alert history with ack/resolve/snooze lifecycle
+    """
+    CREATE TABLE IF NOT EXISTS fired_alerts (
+        id            TEXT        PRIMARY KEY,
+        alert_type    TEXT        NOT NULL,
+        severity      TEXT        NOT NULL,
+        server_name   TEXT        NOT NULL DEFAULT '',
+        session_id    TEXT,
+        title         TEXT        NOT NULL,
+        message       TEXT        NOT NULL,
+        fired_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        status        TEXT        NOT NULL DEFAULT 'active',
+        acked_at      TIMESTAMPTZ,
+        acked_by      TEXT,
+        snoozed_until TIMESTAMPTZ,
+        resolved_at   TIMESTAMPTZ,
+        project_id    TEXT        NOT NULL DEFAULT ''
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_fired_alerts_project_status ON fired_alerts (project_id, status, fired_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_fired_alerts_fired_at ON fired_alerts (fired_at DESC)",
 ]
 
 
@@ -843,6 +864,171 @@ class PostgresBackend:
             slack_webhook,
             json.dumps(alert_types),
         )
+
+    # ── Fired alerts (persisted alert history) ───────────────────────────────
+
+    async def save_fired_alert(
+        self,
+        alert_id: str,
+        alert_type: str,
+        severity: str,
+        server_name: str,
+        title: str,
+        message: str,
+        session_id: str | None = None,
+        project_id: str = "",
+    ) -> None:
+        """Persist a fired alert for history and lifecycle management."""
+        from datetime import UTC, datetime
+
+        await self._pool.execute(
+            """
+            INSERT INTO fired_alerts
+                (id, alert_type, severity, server_name, session_id, title, message, fired_at, status, project_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', $9)
+            ON CONFLICT (id) DO NOTHING
+            """,
+            alert_id,
+            alert_type,
+            severity,
+            server_name,
+            session_id,
+            title,
+            message,
+            datetime.now(UTC),
+            project_id,
+        )
+
+    async def get_fired_alerts(
+        self,
+        project_id: str = "",
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Return fired alerts, most-recent-first."""
+        from datetime import UTC, datetime
+
+        where_clauses = ["(project_id = $1 OR project_id = '')"]
+        params: list[Any] = [project_id]
+        idx = 2
+
+        if status and status != "all":
+            if status == "snoozed":
+                where_clauses.append(f"(status = 'snoozed' AND snoozed_until > ${idx})")
+                params.append(datetime.now(UTC))
+            else:
+                where_clauses.append(f"status = ${idx}")
+                params.append(status)
+            idx += 1
+
+        where = " AND ".join(where_clauses)
+        rows = await self._pool.fetch(
+            f"""
+            SELECT id, alert_type, severity, server_name, session_id,
+                   title, message, fired_at, status,
+                   acked_at, acked_by, snoozed_until, resolved_at, project_id
+            FROM fired_alerts
+            WHERE {where}
+            ORDER BY fired_at DESC
+            LIMIT ${idx} OFFSET ${idx + 1}
+            """,
+            *params,
+            limit,
+            offset,
+        )
+        return [dict(r) for r in rows]
+
+    async def count_fired_alerts(self, project_id: str = "", status: str | None = None) -> int:
+        """Count fired alerts matching the given filters."""
+        from datetime import UTC, datetime
+
+        where_clauses = ["(project_id = $1 OR project_id = '')"]
+        params: list[Any] = [project_id]
+        idx = 2
+
+        if status and status != "all":
+            if status == "snoozed":
+                where_clauses.append(f"(status = 'snoozed' AND snoozed_until > ${idx})")
+                params.append(datetime.now(UTC))
+            else:
+                where_clauses.append(f"status = ${idx}")
+                params.append(status)
+
+        where = " AND ".join(where_clauses)
+        row = await self._pool.fetchrow(
+            f"SELECT COUNT(*) AS n FROM fired_alerts WHERE {where}", *params
+        )
+        return int(row["n"]) if row else 0
+
+    async def ack_alert(self, alert_id: str, acked_by: str = "user") -> bool:
+        """Mark an alert as acknowledged. Returns True if updated."""
+        from datetime import UTC, datetime
+
+        result = await self._pool.execute(
+            """
+            UPDATE fired_alerts
+            SET status = 'acked', acked_at = $1, acked_by = $2
+            WHERE id = $3 AND status = 'active'
+            """,
+            datetime.now(UTC),
+            acked_by,
+            alert_id,
+        )
+        return result.endswith("1")
+
+    async def resolve_alert(self, alert_id: str) -> bool:
+        """Mark an alert as resolved. Returns True if updated."""
+        from datetime import UTC, datetime
+
+        result = await self._pool.execute(
+            """
+            UPDATE fired_alerts
+            SET status = 'resolved', resolved_at = $1
+            WHERE id = $2 AND status NOT IN ('resolved')
+            """,
+            datetime.now(UTC),
+            alert_id,
+        )
+        return result.endswith("1")
+
+    async def snooze_alert(self, alert_id: str, snooze_minutes: int) -> bool:
+        """Snooze an alert for N minutes. Returns True if updated."""
+        from datetime import UTC, datetime, timedelta
+
+        until = datetime.now(UTC) + timedelta(minutes=snooze_minutes)
+        result = await self._pool.execute(
+            """
+            UPDATE fired_alerts
+            SET status = 'snoozed', snoozed_until = $1
+            WHERE id = $2 AND status NOT IN ('resolved')
+            """,
+            until,
+            alert_id,
+        )
+        return result.endswith("1")
+
+    async def get_alert_counts(self, project_id: str = "") -> dict[str, int]:
+        """Return count of active alerts per severity."""
+        from datetime import UTC, datetime
+
+        rows = await self._pool.fetch(
+            """
+            SELECT severity, COUNT(*) AS n
+            FROM fired_alerts
+            WHERE (project_id = $1 OR project_id = '')
+              AND status = 'active'
+            GROUP BY severity
+            """,
+            project_id,
+        )
+        counts: dict[str, int] = {"critical": 0, "warning": 0, "info": 0, "total": 0}
+        for row in rows:
+            sev = row["severity"]
+            n = int(row["n"])
+            counts[sev] = n
+            counts["total"] += n
+        return counts
 
     # ── Instance settings (global, singleton) ────────────────────────────────
 

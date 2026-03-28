@@ -306,3 +306,11 @@ class SQLiteBackend(StorageBackend):
     async def save_session_health_tag(self, session_id: str, health_tag: str, details: str | None = None, project_id: str | None = None) -> None: pass
     async def get_session_health_tag(self, session_id: str, project_id: str | None = None) -> str | None: return None
     async def get_untagged_sessions(self, inactive_seconds: int = 30, limit: int = 100, project_id: str | None = None) -> list[str]: return []
+    # Fired alerts — no-ops for local scan-only mode
+    async def save_fired_alert(self, alert_id: str, alert_type: str, severity: str, server_name: str, title: str, message: str, session_id: str | None = None, project_id: str = "") -> None: pass
+    async def get_fired_alerts(self, project_id: str = "", status: str | None = None, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]: return []
+    async def count_fired_alerts(self, project_id: str = "", status: str | None = None) -> int: return 0
+    async def ack_alert(self, alert_id: str, acked_by: str = "user") -> bool: return False
+    async def resolve_alert(self, alert_id: str) -> bool: return False
+    async def snooze_alert(self, alert_id: str, snooze_minutes: int) -> bool: return False
+    async def get_alert_counts(self, project_id: str = "") -> dict[str, int]: return {"critical": 0, "warning": 0, "info": 0, "total": 0}

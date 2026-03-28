@@ -25,6 +25,7 @@ from langsight.api.rate_limit import limiter  # single global instance
 from langsight.api.routers import (
     agents,
     alerts_config,
+    alerts_feed,
     auth,
     costs,
     health,
@@ -479,6 +480,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     # Auth router — key management endpoints, also require auth (except first-run bootstrap)
     app.include_router(auth.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(alerts_config.router, prefix="/api", dependencies=_auth_dep)
+    app.include_router(alerts_feed.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(agents.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(servers.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(lineage.router, prefix="/api", dependencies=_auth_dep)
