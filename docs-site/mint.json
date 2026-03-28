@@ -107,8 +107,16 @@
         "mcp/authentication",
         "mcp/mcp-servers-dashboard",
         "mcp/schema-drift",
+        "mcp/tool-schemas",
+        "mcp/blast-radius",
         "mcp/scorecard",
         "mcp/project-scoping"
+      ]
+    },
+    {
+      "group": "Agents",
+      "pages": [
+        "agents/prevention-config"
       ]
     },
     {

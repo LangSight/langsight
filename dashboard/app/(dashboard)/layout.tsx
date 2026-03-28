@@ -7,7 +7,6 @@ import { useEffect, useState, useTransition } from "react";
 
 const PAGE_META: Record<string, { title: string; description: string }> = {
   "/":            { title: "Dashboard",      description: "Agent runtime health at a glance" },
-  "/monitoring":  { title: "Monitoring",     description: "Traffic, errors, latency, tokens, and costs over time" },
   "/sessions":    { title: "Sessions",       description: "Full traces of every agent workflow" },
   "/agents":    { title: "Agents",         description: "Per-agent performance, costs, and error rates" },
   "/costs":     { title: "Cost Attribution", description: "Per-tool, per-agent, and per-session cost breakdown" },

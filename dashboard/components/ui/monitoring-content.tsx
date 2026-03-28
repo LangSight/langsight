@@ -1,8 +1,7 @@
 "use client";
 
 /**
- * Shared monitoring content sections rendered by both the home overview page
- * and the /monitoring page. Eliminates duplicated chart + table code.
+ * Shared monitoring content sections rendered by the home overview page.
  *
  * Consumers pass already-fetched data and styling constants so this component
  * stays purely presentational (no SWR / no data fetching).
@@ -11,6 +10,7 @@
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  Brush, Legend,
 } from "recharts";
 import {
   Activity, Zap, AlertTriangle, Clock, Coins, Cpu, Server,
@@ -108,63 +108,161 @@ export function OverviewStatCards({
   );
 }
 
-/* ── Overview charts (4 charts) ─────────────────────────────────── */
-export function OverviewCharts({ chartData }: { chartData: ChartBucket[] }) {
+/* ── Shared brush style ────────────────────────────────────────── */
+const BRUSH_PROPS = {
+  height: 20,
+  stroke: "hsl(var(--border))",
+  fill: "hsl(var(--muted))",
+  travellerWidth: 8,
+  style: { fontSize: 9, fontFamily: "var(--font-geist-mono)" },
+} as const;
+
+/* ── Agent charts ──────────────────────────────────────────────── */
+export function AgentCharts({ chartData, hours, onHoursChange }: {
+  chartData: ChartBucket[];
+  hours?: number;
+  onHoursChange?: (h: number) => void;
+}) {
   return (
     <>
       <div className="grid lg:grid-cols-2 gap-3">
-        <ChartCard title="Agent Runs" ariaLabel="Bar chart showing agent run counts over time">
+        <ChartCard title="Agent Sessions" ariaLabel="Bar chart showing agent session counts over time" hours={hours} onHoursChange={onHoursChange}>
+          {(isExpanded) => (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData}>
+                <CartesianGrid {...GRID_STYLE} />
+                <XAxis dataKey="label" tick={AXIS_STYLE} />
+                <YAxis tick={AXIS_STYLE} width={35} />
+                <Tooltip content={<ChartTooltip />} />
+                {isExpanded && <Legend wrapperStyle={{ fontSize: 11 }} />}
+                <Bar dataKey="sessions" name="Sessions" fill="#14b8a6" radius={[3, 3, 0, 0]} />
+                {isExpanded && <Brush dataKey="label" {...BRUSH_PROPS} />}
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+        <ChartCard title="Agent Error Rate" ariaLabel="Line chart showing percentage of agent sessions with at least one failed tool call" hours={hours} onHoursChange={onHoursChange}>
+          {(isExpanded) => (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <CartesianGrid {...GRID_STYLE} />
+                <XAxis dataKey="label" tick={AXIS_STYLE} />
+                <YAxis tick={AXIS_STYLE} width={35} tickFormatter={v => `${(v * 100).toFixed(0)}%`} />
+                <Tooltip content={<ChartTooltip formatter={v => `${(v * 100).toFixed(1)}%`} />} />
+                {isExpanded && <Legend wrapperStyle={{ fontSize: 11 }} />}
+                <Line type="monotone" dataKey="session_error_rate" name="Session Error Rate" stroke="#ef4444" strokeWidth={2} dot={false} />
+                {isExpanded && <Brush dataKey="label" {...BRUSH_PROPS} />}
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-3">
+        <ChartCard title="Agent p99 Latency" ariaLabel="Line chart showing p99 agent execution duration over time" hours={hours} onHoursChange={onHoursChange}>
+          {(isExpanded) => (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <CartesianGrid {...GRID_STYLE} />
+                <XAxis dataKey="label" tick={AXIS_STYLE} />
+                <YAxis tick={AXIS_STYLE} width={45} tickFormatter={v => formatLatency(v)} />
+                <Tooltip content={<ChartTooltip formatter={v => formatLatency(v)} />} />
+                {isExpanded && <Legend wrapperStyle={{ fontSize: 11 }} />}
+                <Line type="monotone" dataKey="session_p99_ms" name="p99 (agent)" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                {isExpanded && <Brush dataKey="label" {...BRUSH_PROPS} />}
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+        <ChartCard title="Agent Token Usage" ariaLabel="Stacked area chart showing LLM input and output token usage over time" hours={hours} onHoursChange={onHoursChange}>
+          {(isExpanded) => (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <CartesianGrid {...GRID_STYLE} />
+                <XAxis dataKey="label" tick={AXIS_STYLE} />
+                <YAxis tick={AXIS_STYLE} width={45} tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
+                <Tooltip content={<ChartTooltip />} />
+                {isExpanded && <Legend wrapperStyle={{ fontSize: 11 }} />}
+                <Area type="monotone" dataKey="input_tokens" name="Input" stackId="1" stroke="#0ea5e9" fill="#0ea5e920" />
+                <Area type="monotone" dataKey="output_tokens" name="Output" stackId="1" stroke="#14b8a6" fill="#14b8a620" />
+                {isExpanded && <Brush dataKey="label" {...BRUSH_PROPS} />}
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+      </div>
+    </>
+  );
+}
+
+/* ── MCP charts ────────────────────────────────────────────────── */
+export function McpCharts({ chartData, hours, onHoursChange }: {
+  chartData: ChartBucket[];
+  hours?: number;
+  onHoursChange?: (h: number) => void;
+}) {
+  return (
+    <div className="grid lg:grid-cols-3 gap-3">
+      <ChartCard title="MCP Tool Calls" ariaLabel="Bar chart showing MCP tool call volume over time" hours={hours} onHoursChange={onHoursChange}>
+        {(isExpanded) => (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData}>
               <CartesianGrid {...GRID_STYLE} />
               <XAxis dataKey="label" tick={AXIS_STYLE} />
               <YAxis tick={AXIS_STYLE} width={35} />
               <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="sessions" name="Sessions" fill="#14b8a6" radius={[3, 3, 0, 0]} />
+              {isExpanded && <Legend wrapperStyle={{ fontSize: 11 }} />}
+              <Bar dataKey="tool_calls" name="Tool Calls" fill="#0ea5e9" radius={[3, 3, 0, 0]} />
+              {isExpanded && <Brush dataKey="label" {...BRUSH_PROPS} />}
             </BarChart>
           </ResponsiveContainer>
-        </ChartCard>
+        )}
+      </ChartCard>
 
-        <ChartCard title="Error Rate" ariaLabel="Line chart showing error rate over time">
+      <ChartCard title="MCP Error Rate" ariaLabel="Line chart showing MCP tool call error rate over time" hours={hours} onHoursChange={onHoursChange}>
+        {(isExpanded) => (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <CartesianGrid {...GRID_STYLE} />
               <XAxis dataKey="label" tick={AXIS_STYLE} />
               <YAxis tick={AXIS_STYLE} width={35} tickFormatter={v => `${(v * 100).toFixed(0)}%`} />
               <Tooltip content={<ChartTooltip formatter={v => `${(v * 100).toFixed(1)}%`} />} />
+              {isExpanded && <Legend wrapperStyle={{ fontSize: 11 }} />}
               <Line type="monotone" dataKey="error_rate" name="Error Rate" stroke="#ef4444" strokeWidth={2} dot={false} />
+              {isExpanded && <Brush dataKey="label" {...BRUSH_PROPS} />}
             </LineChart>
           </ResponsiveContainer>
-        </ChartCard>
-      </div>
+        )}
+      </ChartCard>
 
-      <div className="grid lg:grid-cols-2 gap-3">
-        <ChartCard title="Latency (p99)" ariaLabel="Line chart showing p99 and average latency over time">
+      <ChartCard title="MCP p99 Latency" ariaLabel="Line chart showing MCP tool call p99 and average latency over time" hours={hours} onHoursChange={onHoursChange}>
+        {(isExpanded) => (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <CartesianGrid {...GRID_STYLE} />
               <XAxis dataKey="label" tick={AXIS_STYLE} />
               <YAxis tick={AXIS_STYLE} width={45} tickFormatter={v => formatLatency(v)} />
               <Tooltip content={<ChartTooltip formatter={v => formatLatency(v)} />} />
+              {isExpanded && <Legend wrapperStyle={{ fontSize: 11 }} />}
               <Line type="monotone" dataKey="p99_latency_ms" name="p99" stroke="#8b5cf6" strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="avg_latency_ms" name="avg" stroke="#8b5cf680" strokeWidth={1} dot={false} strokeDasharray="4 2" />
+              {isExpanded && <Brush dataKey="label" {...BRUSH_PROPS} />}
             </LineChart>
           </ResponsiveContainer>
-        </ChartCard>
+        )}
+      </ChartCard>
+    </div>
+  );
+}
 
-        <ChartCard title="Token Usage" ariaLabel="Stacked area chart showing input and output token usage over time">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData}>
-              <CartesianGrid {...GRID_STYLE} />
-              <XAxis dataKey="label" tick={AXIS_STYLE} />
-              <YAxis tick={AXIS_STYLE} width={45} tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
-              <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="input_tokens" name="Input" stackId="1" stroke="#0ea5e9" fill="#0ea5e920" />
-              <Area type="monotone" dataKey="output_tokens" name="Output" stackId="1" stroke="#14b8a6" fill="#14b8a620" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </div>
+/** @deprecated Use AgentCharts + McpCharts instead */
+export function OverviewCharts({ chartData }: { chartData: ChartBucket[] }) {
+  return (
+    <>
+      <AgentCharts chartData={chartData} />
+      <McpCharts chartData={chartData} />
     </>
   );
 }

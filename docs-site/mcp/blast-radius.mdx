@@ -1,0 +1,284 @@
+---
+title: "Blast Radius"
+description: "When an MCP server goes down, instantly see which agents and sessions are affected — based on real tool-call traffic from the last 24 hours."
+---
+
+## What it is
+
+Blast Radius answers the first question in any MCP server outage: **who is affected?**
+
+When a server goes `DOWN` or `DEGRADED`, LangSight queries real tool-call traffic from the last 24 hours and computes exactly which agents called this server, how many sessions they ran, and what the error rate was. It classifies the outage severity — `CRITICAL`, `HIGH`, `MEDIUM`, or `LOW` — based on how many agents and sessions are at risk.
+
+For servers that are currently `UP`, Blast Radius shows a pre-emptive view: "if this server went down right now, here is what would be affected."
+
+---
+
+## Where to find it
+
+**MCP Servers** (`/servers`) → click any server name → **Health tab**
+
+The Blast Radius panel appears at the top of the Health tab, above the health history chart.
+
+---
+
+## Severity classification
+
+| Severity | Condition |
+|---|---|
+| `CRITICAL` | More than 5 distinct agents, or more than 100 sessions at risk in the last 24h |
+| `HIGH` | More than 2 agents, or more than 20 sessions |
+| `MEDIUM` | Any recent traffic — at least one agent called this server in the last 24h |
+| `LOW` | No traffic in the last 24h — no agents will be immediately impacted |
+
+`LOW` does not mean the server is unimportant. It means no agent has called it recently. A server that is used infrequently (e.g., a nightly batch job) will show `LOW` during the day even if its failure would be catastrophic during the batch window.
+
+---
+
+## What the UI shows
+
+### Banner
+
+**For DOWN or DEGRADED servers:**
+
+A red banner with a red left border appears at the top of the Health tab:
+
+```
+Active Outage — Blast Radius
+This server is currently DOWN. Based on traffic in the last 24h:
+```
+
+**For UP servers:**
+
+A grey banner appears:
+
+```
+If this server went down:
+Based on traffic in the last 24h:
+```
+
+### Summary metric cards
+
+Three cards below the banner:
+
+| Card | Value |
+|---|---|
+| Agents at risk | Number of distinct agent names that called this server in the last 24h |
+| Sessions at risk | Number of distinct session IDs that touched this server |
+| Calls (24h) | Total tool call volume from all agents |
+
+### Per-agent breakdown
+
+Each affected agent is shown as a card:
+
+| Field | Description |
+|---|---|
+| Agent name | From `agent_name` span attribute |
+| Call count | Total tool calls from this agent to this server in the last 24h |
+| Session count | Distinct sessions in which this agent called this server |
+| Error count | Failed calls |
+| Error rate badge | Red badge showing `X% errors` — only displayed when error rate > 0% |
+| Avg latency | Mean tool call latency |
+| Last called | Timestamp of the most recent call |
+
+Agents are sorted by call count, highest first.
+
+<Note>
+  The Blast Radius panel is read-only. It reflects traffic data already in ClickHouse — it does not perform any new health checks or projections. The 24-hour window is fixed and not configurable in the UI. Use the API for custom time windows.
+</Note>
+
+---
+
+## How blast radius is computed
+
+The backend queries `mcp_tool_calls` in ClickHouse for the specified time window, grouped by `agent_name`:
+
+```sql
+SELECT
+    agent_name,
+    COUNT(DISTINCT session_id) AS session_count,
+    COUNT(*)                   AS call_count,
+    countIf(status = 'error')  AS error_count,
+    avg(latency_ms)            AS avg_latency_ms,
+    max(started_at)            AS last_called_at
+FROM mcp_tool_calls
+WHERE
+    server_name = {server_name:String}
+    AND started_at >= now() - INTERVAL {hours:UInt32} HOUR
+    AND project_id = {project_id:String}
+GROUP BY agent_name
+ORDER BY call_count DESC
+```
+
+Severity is determined from the aggregated totals:
+- `total_agents` = number of distinct `agent_name` values returned
+- `total_sessions` = sum of `session_count` across all agents
+
+```python
+if total_agents > 5 or total_sessions > 100:
+    severity = "CRITICAL"
+elif total_agents > 2 or total_sessions > 20:
+    severity = "HIGH"
+elif total_agents > 0:
+    severity = "MEDIUM"
+else:
+    severity = "LOW"
+```
+
+The computation is implemented in `src/langsight/rca/blast_radius.py` as `compute_blast_radius()`, which returns a `BlastRadiusResult` Pydantic model.
+
+---
+
+## API reference
+
+### Get blast radius for a server
+
+```bash
+GET /api/health/servers/{name}/blast-radius
+```
+
+**Query parameters:**
+
+<ParamField query="hours" type="integer" default="24">
+  Time window in hours. How far back to look in tool-call history when computing impact.
+</ParamField>
+
+**Example:**
+
+```bash
+curl "http://localhost:8000/api/health/servers/postgres-mcp/blast-radius?hours=24"
+```
+
+**Response:**
+
+```json
+{
+  "server_name": "postgres-mcp",
+  "server_status": "down",
+  "window_hours": 24,
+  "severity": "HIGH",
+  "total_agents": 3,
+  "total_sessions": 47,
+  "total_calls": 312,
+  "affected_agents": [
+    {
+      "agent_name": "research-agent",
+      "call_count": 201,
+      "session_count": 31,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "avg_latency_ms": 88.4,
+      "last_called_at": "2026-03-27T09:14:22Z"
+    },
+    {
+      "agent_name": "support-agent",
+      "call_count": 89,
+      "session_count": 14,
+      "error_count": 3,
+      "error_rate": 3.4,
+      "avg_latency_ms": 102.1,
+      "last_called_at": "2026-03-27T08:55:10Z"
+    },
+    {
+      "agent_name": "summary-agent",
+      "call_count": 22,
+      "session_count": 2,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "avg_latency_ms": 74.9,
+      "last_called_at": "2026-03-27T06:30:00Z"
+    }
+  ]
+}
+```
+
+### Response fields
+
+<ResponseField name="server_name" type="string">
+  The MCP server identifier.
+</ResponseField>
+
+<ResponseField name="server_status" type="string">
+  Current health check status: `up`, `degraded`, or `down`.
+</ResponseField>
+
+<ResponseField name="severity" type="string">
+  Computed blast radius severity: `CRITICAL`, `HIGH`, `MEDIUM`, or `LOW`.
+</ResponseField>
+
+<ResponseField name="total_agents" type="integer">
+  Number of distinct agents that called this server in the time window.
+</ResponseField>
+
+<ResponseField name="total_sessions" type="integer">
+  Number of distinct sessions that touched this server in the time window.
+</ResponseField>
+
+<ResponseField name="total_calls" type="integer">
+  Total tool call volume from all agents in the time window.
+</ResponseField>
+
+<ResponseField name="affected_agents" type="array">
+  Per-agent breakdown. Sorted by `call_count` descending.
+</ResponseField>
+
+---
+
+## Python module
+
+The blast radius computation is available as a standalone function for use in custom alerting pipelines or RCA scripts:
+
+```python
+from langsight.rca.blast_radius import compute_blast_radius
+from langsight.storage.clickhouse import ClickHouseStorage
+
+storage = ClickHouseStorage(url="clickhouse://localhost:9000/langsight")
+
+result = await compute_blast_radius(
+    server_name="postgres-mcp",
+    storage=storage,
+    hours=24,
+    project_id="proj_abc123",
+    server_status="down",
+)
+
+print(result.severity)          # "HIGH"
+print(result.total_agents)      # 3
+print(result.total_sessions)    # 47
+for agent in result.affected_agents:
+    print(agent.agent_name, agent.session_count)
+```
+
+`BlastRadiusResult` is a Pydantic model — all fields are typed and validated.
+
+---
+
+## Using blast radius in incident response
+
+When you get paged for a server outage, the recommended workflow is:
+
+<Steps>
+  <Step title="Open MCP Servers and find the affected server">
+    The server table shows `DOWN` or `DEGRADED` status. Click the server name.
+  </Step>
+  <Step title="Check the Blast Radius severity">
+    The Health tab opens with the Blast Radius banner at the top. Read the severity and the agent list. This tells you how many teams are affected and who to notify.
+  </Step>
+  <Step title="Check the Drift tab">
+    If the server went `DEGRADED`, there may be a schema drift event that explains what changed. A `BREAKING` drift with high blast radius is the highest-priority combination.
+  </Step>
+  <Step title="Page the right teams">
+    Use the affected agent list to find which teams own each agent. The `last_called_at` field tells you which agents are actively running right now vs. which ran earlier.
+  </Step>
+  <Step title="Track recovery">
+    Once the server recovers, the Blast Radius panel switches from the red "Active Outage" banner to the grey pre-emptive view. Confirm session error rates drop to baseline on the affected agents' detail pages.
+  </Step>
+</Steps>
+
+---
+
+## Related
+
+- [Health Monitoring](/mcp/health-monitoring) — how `DOWN` and `DEGRADED` status is determined
+- [Schema Drift Detection](/mcp/schema-drift) — breaking changes that cause DEGRADED status
+- [MCP Servers Dashboard](/mcp/mcp-servers-dashboard) — full detail panel reference
+- [Session Health](/session-health) — session-level health tags that reflect server outages

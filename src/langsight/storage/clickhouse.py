@@ -555,6 +555,73 @@ class ClickHouseBackend:
             for row in result.result_rows
         ]
 
+    async def get_blast_radius_data(
+        self,
+        server_name: str,
+        hours: int = 24,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Return per-agent call stats and total distinct sessions for blast radius.
+
+        Two queries run concurrently:
+          1. Per-agent breakdown: call_count, session_count, error_count, avg_latency.
+          2. Total distinct sessions across all agents (avoids double-counting).
+        """
+        project_filter = ""
+        params: dict[str, Any] = {"server_name": server_name, "hours": hours}
+        if project_id:
+            project_filter = "AND (project_id = {project_id:String} OR project_id = '')"
+            params["project_id"] = project_id
+
+        agent_query = f"""
+            SELECT
+                agent_name,
+                COUNT(DISTINCT session_id) AS session_count,
+                COUNT(*)                   AS call_count,
+                countIf(status = 'error')  AS error_count,
+                avg(latency_ms)            AS avg_latency_ms,
+                max(started_at)            AS last_called_at
+            FROM mcp_tool_calls
+            WHERE
+                server_name = {{server_name:String}}
+                AND started_at >= now() - INTERVAL {{hours:UInt32}} HOUR
+                {project_filter}
+            GROUP BY agent_name
+            ORDER BY call_count DESC
+            LIMIT 50
+        """
+
+        sessions_query = f"""
+            SELECT COUNT(DISTINCT session_id) AS total_sessions
+            FROM mcp_tool_calls
+            WHERE
+                server_name = {{server_name:String}}
+                AND started_at >= now() - INTERVAL {{hours:UInt32}} HOUR
+                {project_filter}
+        """
+
+        import asyncio
+        agent_res, session_res = await asyncio.gather(
+            self._client.query(agent_query, parameters=params),
+            self._client.query(sessions_query, parameters=params),
+        )
+
+        agents = [
+            {
+                "agent_name": row[0],
+                "session_count": int(row[1]),
+                "call_count": int(row[2]),
+                "error_count": int(row[3]),
+                "avg_latency_ms": float(row[4]) if row[4] is not None else None,
+                "last_called_at": row[5],
+            }
+            for row in agent_res.result_rows
+        ]
+
+        total_sessions = int(session_res.result_rows[0][0]) if session_res.result_rows else 0
+
+        return {"agents": agents, "total_sessions": total_sessions}
+
     async def close(self) -> None:
         """Close the ClickHouse connection."""
         await self._client.close()
@@ -1572,7 +1639,14 @@ class ClickHouseBackend:
                 quantile(0.99)(latency_ms)                                       AS p99_latency_ms,
                 sum(input_tokens)                                                AS input_tokens,
                 sum(output_tokens)                                               AS output_tokens,
-                uniqExactIf(agent_name, agent_name != '')                        AS agents
+                uniqExactIf(agent_name, agent_name != '')                        AS agents,
+                uniqExactIf(session_id,
+                    status != 'success' AND span_type = 'tool_call')             AS failed_sessions,
+                if(uniqExact(session_id) > 0,
+                   uniqExactIf(session_id,
+                       status != 'success' AND span_type = 'tool_call') /
+                   uniqExact(session_id), 0)                                     AS session_error_rate,
+                quantileIf(0.99)(latency_ms, span_type = 'agent')               AS session_p99_ms
             FROM mcp_tool_calls
             {where}
             GROUP BY bucket
@@ -1591,6 +1665,9 @@ class ClickHouseBackend:
             "input_tokens",
             "output_tokens",
             "agents",
+            "failed_sessions",
+            "session_error_rate",
+            "session_p99_ms",
         ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 

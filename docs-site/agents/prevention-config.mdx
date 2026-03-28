@@ -1,0 +1,318 @@
+---
+title: "Prevention Config (Guards)"
+description: "Configure per-agent safety controls — loop detection, budget caps, and circuit breakers — that run inside the LangSight SDK before each tool call."
+---
+
+## What it is
+
+Prevention Config (displayed as **Guards** in the dashboard) lets you configure per-agent safety controls that run inside the LangSight SDK before each tool call is made. These controls are enforced at the call site — before the tool executes — not after the fact.
+
+Three guard types are available:
+
+<CardGroup cols={3}>
+  <Card title="Loop Detection" icon="arrow-rotate-left">
+    Detect and stop agents that call the same tool repeatedly with the same arguments, alternating between two calls, or retrying a failing call without progress.
+  </Card>
+  <Card title="Budget Controls" icon="circle-dollar-to-slot">
+    Cap the LLM + tool cost or wall-clock time of a session. Soft alerts before the hard limit; hard terminate when the limit is reached.
+  </Card>
+  <Card title="Circuit Breaker" icon="bolt">
+    Prevent an agent from hammering a failing MCP server. Trip the circuit after N failures, hold it open during a cooldown period, then allow limited traffic to test recovery.
+  </Card>
+</CardGroup>
+
+---
+
+## Where to find it
+
+**Agents** (`/agents`) → click any agent name → **Guards tab**
+
+---
+
+## Loop Detection
+
+Loop detection fires before each tool call by checking three patterns in the current session's call history:
+
+| Pattern | Description |
+|---|---|
+| **Repetition** | Same tool called with identical arguments N times consecutively |
+| **Ping-pong** | Alternating between two tool+argument pairs repeatedly (A→B→A→B→A...) |
+| **Retry without progress** | Same tool failing with the same error N times in a row |
+
+When a pattern is detected, the call is blocked and a `loop_detected` health tag is applied to the session.
+
+### Configuration fields
+
+<ParamField body="enabled" type="boolean" default="true">
+  Turn loop detection on or off for this agent.
+</ParamField>
+
+<ParamField body="threshold" type="integer" default="5">
+  Number of consecutive repeat calls before the loop is detected and the action fires.
+</ParamField>
+
+<ParamField body="action" type="string" default="warn">
+  What to do when a loop is detected.
+
+  - `warn` — log the event and fire a LangSight alert, but allow the call to proceed. The session is tagged `loop_detected`.
+  - `terminate` — block the call and terminate the session immediately. The session is tagged `loop_detected`.
+</ParamField>
+
+<ParamField body="max_steps" type="integer">
+  Hard cap on total tool calls per session, regardless of repetition. When the session reaches this limit, the next call is blocked and the session is terminated. Leave unset for no limit.
+</ParamField>
+
+<Note>
+  The `warn` action is the recommended starting point. Use it to measure how frequently loops occur before switching to `terminate`. Switching to `terminate` too early can break agents that use intentional retry logic.
+</Note>
+
+---
+
+## Budget Controls
+
+Budget controls enforce cost and time limits per session. Limits are evaluated before each LLM call and tool call.
+
+<ParamField body="max_cost_usd" type="number">
+  Hard cost cap per session in USD. When the running total of LLM cost + tool cost reaches this value, the session is terminated and tagged `budget_exceeded`. Leave unset for no limit.
+</ParamField>
+
+<ParamField body="soft_alert_threshold_usd" type="number">
+  Warn when session cost reaches this value. A LangSight alert fires and the session is tagged `budget_warning`, but execution continues. Must be less than `max_cost_usd`.
+</ParamField>
+
+<ParamField body="max_wall_time_seconds" type="integer">
+  Maximum session wall-clock time in seconds. When elapsed time exceeds this value, the next tool call is blocked and the session is terminated with `budget_exceeded`.
+</ParamField>
+
+<Warning>
+  Cost estimates are computed from model pricing tables. Actual billed amounts may differ slightly depending on provider pricing changes and rounding. Use budget controls as a safety net, not a billing guarantee.
+</Warning>
+
+---
+
+## Circuit Breaker
+
+The circuit breaker prevents an agent from repeatedly calling a failing MCP server. It operates in three states:
+
+| State | Behaviour |
+|---|---|
+| **Closed** | Normal operation — calls are allowed through |
+| **Open** | Tripped after N failures — all calls to the server are blocked immediately |
+| **Half-open** | After the cooldown period — a limited number of calls are allowed through to test whether the server has recovered |
+
+If the half-open test calls succeed, the circuit closes and normal operation resumes. If they fail, the circuit re-opens and the cooldown timer resets.
+
+### Configuration fields
+
+<ParamField body="enabled" type="boolean" default="true">
+  Turn the circuit breaker on or off for this agent.
+</ParamField>
+
+<ParamField body="open_after_failures" type="integer" default="5">
+  Number of consecutive failures before the circuit trips to open state.
+</ParamField>
+
+<ParamField body="cooldown_seconds" type="integer" default="30">
+  How long (in seconds) the circuit stays open before transitioning to half-open and allowing test traffic.
+</ParamField>
+
+<ParamField body="half_open_max_calls" type="integer" default="3">
+  Maximum number of calls allowed in the half-open state to test whether the server has recovered.
+</ParamField>
+
+<Note>
+  The circuit breaker operates per-agent, per-server. An agent calling two servers has independent circuit breakers for each. One server failing does not trip the circuit for the other.
+</Note>
+
+---
+
+## Config inheritance
+
+Guards configuration uses a two-level inheritance model:
+
+### Project default
+
+A single configuration that applies to all agents in the project. Set it in **Settings → Projects → Prevention Default**.
+
+All agents without an agent-specific override inherit the project default. Changes to the project default take effect on the next agent run — there is no restart required.
+
+### Agent override
+
+When you save a config from the Guards tab for a specific agent, it creates an agent-level override. The Guards tab shows an **"Agent-specific config"** banner to indicate that this agent is no longer using the project default.
+
+Agent overrides take precedence over the project default in every field — there is no partial merge. If you set an agent override, the entire config (loop detection, budget, circuit breaker) comes from the override, not the project default.
+
+### Reset to default
+
+The **"Reset to project default"** button in the Guards tab deletes the agent-specific override. On the next agent run, the agent falls back to the project default. The historical guard events (loop detections, budget alerts) are not deleted — they remain in the session history.
+
+---
+
+## How to configure Guards
+
+<Steps>
+  <Step title="Open the agent detail panel">
+    Go to **Agents** (`/agents`) and click the agent name you want to configure.
+  </Step>
+  <Step title="Select the Guards tab">
+    The Guards tab shows the current configuration — either the project default (with a grey "Using project default" banner) or an agent-specific override (with an indigo "Agent-specific config" banner).
+  </Step>
+  <Step title="Configure the controls">
+    Adjust the loop detection threshold, budget limits, and circuit breaker settings using the form fields. Each section can be enabled or disabled independently.
+  </Step>
+  <Step title="Save config">
+    Click **Save config**. The configuration is stored immediately in PostgreSQL and applied on the next tool call from this agent.
+  </Step>
+</Steps>
+
+<Tip>
+  Start with loop detection `enabled=true`, `action=warn`, `threshold=5`. Monitor the Agents table **Loops** column for a few days to understand your agents' natural retry patterns before switching to `action=terminate`.
+</Tip>
+
+---
+
+## Data storage
+
+Prevention configs are stored in the `prevention_configs` table in PostgreSQL:
+
+```sql
+CREATE TABLE prevention_configs (
+    id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id                TEXT NOT NULL,
+    agent_name                TEXT,        -- NULL = project default
+    loop_enabled              BOOLEAN NOT NULL DEFAULT true,
+    loop_threshold            INTEGER NOT NULL DEFAULT 5,
+    loop_action               TEXT NOT NULL DEFAULT 'warn',
+    loop_max_steps            INTEGER,
+    budget_max_cost_usd       NUMERIC(10, 6),
+    budget_soft_alert_usd     NUMERIC(10, 6),
+    budget_max_wall_time_secs INTEGER,
+    cb_enabled                BOOLEAN NOT NULL DEFAULT true,
+    cb_open_after_failures    INTEGER NOT NULL DEFAULT 5,
+    cb_cooldown_seconds       INTEGER NOT NULL DEFAULT 30,
+    cb_half_open_max_calls    INTEGER NOT NULL DEFAULT 3,
+    created_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (project_id, agent_name)
+);
+```
+
+A row with `agent_name = NULL` is the project default. Rows with a non-null `agent_name` are agent overrides.
+
+---
+
+## API reference
+
+### Get agent config
+
+```bash
+GET /api/agents/{name}/prevention-config
+```
+
+Returns the effective config for the agent — agent override if one exists, otherwise the project default.
+
+```bash
+curl http://localhost:8000/api/agents/research-agent/prevention-config
+```
+
+```json
+{
+  "agent_name": "research-agent",
+  "is_agent_override": true,
+  "loop_detection": {
+    "enabled": true,
+    "threshold": 3,
+    "action": "terminate",
+    "max_steps": 50
+  },
+  "budget": {
+    "max_cost_usd": 0.50,
+    "soft_alert_threshold_usd": 0.40,
+    "max_wall_time_seconds": 120
+  },
+  "circuit_breaker": {
+    "enabled": true,
+    "open_after_failures": 5,
+    "cooldown_seconds": 30,
+    "half_open_max_calls": 3
+  }
+}
+```
+
+### Save agent config
+
+```bash
+PUT /api/agents/{name}/prevention-config
+```
+
+Creates or replaces the agent-specific override. Send the full config object — partial updates are not supported.
+
+```bash
+curl -X PUT http://localhost:8000/api/agents/research-agent/prevention-config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "loop_detection": {
+      "enabled": true,
+      "threshold": 3,
+      "action": "terminate",
+      "max_steps": 50
+    },
+    "budget": {
+      "max_cost_usd": 0.50,
+      "soft_alert_threshold_usd": 0.40,
+      "max_wall_time_seconds": 120
+    },
+    "circuit_breaker": {
+      "enabled": true,
+      "open_after_failures": 5,
+      "cooldown_seconds": 30,
+      "half_open_max_calls": 3
+    }
+  }'
+```
+
+### Reset to project default
+
+```bash
+DELETE /api/agents/{name}/prevention-config
+```
+
+Deletes the agent-specific override. The agent falls back to the project default on the next run.
+
+### Get project default
+
+```bash
+GET /api/projects/prevention-config
+```
+
+### Save project default
+
+```bash
+PUT /api/projects/prevention-config
+```
+
+Same request body as the agent config endpoint. Applies to all agents without an agent-specific override.
+
+---
+
+## Session health tags
+
+Prevention Config actions produce the following session health tags, which appear in the Agents → Sessions tab and the session detail page:
+
+| Health tag | Cause |
+|---|---|
+| `loop_detected` | Loop detection fired (`warn` or `terminate` action) |
+| `budget_warning` | Session cost reached `soft_alert_threshold_usd` |
+| `budget_exceeded` | Session cost or wall time reached the hard limit |
+| `circuit_breaker_open` | A call was blocked because the circuit is in the open state |
+
+For definitions of all health tags, see [Session Health](/session-health).
+
+---
+
+## Related
+
+- [Agents](/agents) — agent table, health scores, loop detection count column
+- [Session Health](/session-health) — full health tag reference
+- [Agent SLOs](/slos) — reliability targets for agents
+- [Costs](/costs-model-pricing) — session cost calculation and model pricing

@@ -4,14 +4,17 @@ import type {
   ApiKeyCreatedResponse,
   ApiKeyResponse,
   ApiStatus,
+  BlastRadius,
   CostsBreakdownResponse,
   DashboardUser,
+  DriftImpact,
   HealthResult,
   InviteResponse,
   LineageGraph,
   ModelPricingEntry,
   ProjectMember,
   ProjectResponse,
+  SchemaDriftEvent,
   SecurityScanResult,
   SessionTrace,
   SLOStatus,
@@ -107,6 +110,12 @@ export const getServerHealth = () => get<HealthResult[]>("/health/servers");
 export const getServerHistory = (name: string, limit = 20) =>
   get<HealthResult[]>(`/health/servers/${encodeURIComponent(name)}/history?limit=${limit}`);
 export const triggerHealthCheck = () => post<HealthResult[]>("/health/check");
+export const getBlastRadius = (serverName: string, hours = 24, projectId?: string | null) =>
+  get<BlastRadius>(`/health/servers/${encodeURIComponent(serverName)}/blast-radius?hours=${hours}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
+export const getDriftHistory = (serverName: string, limit = 50, projectId?: string | null) =>
+  get<SchemaDriftEvent[]>(`/health/servers/${encodeURIComponent(serverName)}/drift-history?limit=${limit}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
+export const getDriftImpact = (serverName: string, toolName: string, hours = 24, projectId?: string | null) =>
+  get<DriftImpact[]>(`/health/servers/${encodeURIComponent(serverName)}/drift-impact?tool_name=${encodeURIComponent(toolName)}&hours=${hours}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
 
 // ─── Costs ────────────────────────────────────────────────────────────────────
 export const getCostsBreakdown = (hours = 24, projectId?: string) =>
@@ -245,8 +254,13 @@ export const saveProjectPreventionConfig = (body: import("@/lib/types").Preventi
 // ── Monitoring ────────────────────────────────────────────────────────────────
 export interface MonitoringBucket {
   bucket: string; sessions: number; tool_calls: number; errors: number;
-  error_rate: number; avg_latency_ms: number; p99_latency_ms: number;
+  error_rate: number;        // MCP: errors / tool_calls
+  avg_latency_ms: number;    // MCP: avg tool call latency
+  p99_latency_ms: number;    // MCP: p99 tool call latency
   input_tokens: number; output_tokens: number; agents: number;
+  failed_sessions: number;       // Agent: sessions with ≥1 failed tool call
+  session_error_rate: number;    // Agent: failed_sessions / sessions
+  session_p99_ms: number;        // Agent: p99 of agent span duration
 }
 export interface MonitoringModel {
   model_id: string; calls: number; input_tokens: number; output_tokens: number;

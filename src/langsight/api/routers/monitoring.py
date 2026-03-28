@@ -28,12 +28,15 @@ class TimeseriesBucket(BaseModel):
     sessions: int = 0
     tool_calls: int = 0
     errors: int = 0
-    error_rate: float = 0.0
-    avg_latency_ms: float = 0.0
-    p99_latency_ms: float = 0.0
+    error_rate: float = 0.0       # MCP: errors / tool_calls
+    avg_latency_ms: float = 0.0   # MCP: avg tool call latency
+    p99_latency_ms: float = 0.0   # MCP: p99 tool call latency
     input_tokens: int = 0
     output_tokens: int = 0
     agents: int = 0
+    failed_sessions: int = 0              # Agent: sessions with ≥1 failed tool call
+    session_error_rate: float = 0.0       # Agent: failed_sessions / sessions
+    session_p99_ms: float = 0.0           # Agent: p99 of agent span duration
 
 
 class ModelMetrics(BaseModel):

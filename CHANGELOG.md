@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-03-27
+
+### Added
+- **Schema Drift Detection — dashboard UI** — the MCP Servers detail panel **Drift tab** now shows a full structural diff UI: summary chips (`N breaking · N warning · N compatible`), per-event cards with coloured left borders and BEFORE/AFTER value boxes, `change_kind` badges, and an **Affected Agents (24h)** section that auto-loads which agents called the changed tool. A **"View full schemas (before/after)"** toggle reveals syntax-highlighted JSON of the complete tool input schema. Docs: `docs-site/mcp/schema-drift.mdx` (Dashboard section added).
+- **Tool Schema Viewer** — new **Schema tab** in the MCP Servers detail panel showing every tool's full input schema: parameter names, types, required/optional badges, descriptions, enum value chips, and a raw JSON toggle. Schemas are captured automatically when any instrumented agent calls `list_tools()` — no manual registration. REST API: `GET /api/servers/{name}/tools`. Docs: `docs-site/mcp/tool-schemas.mdx`.
+- **Blast Radius** — new panel at the top of the MCP Servers **Health tab** showing outage impact in real time. Computes which agents and sessions are affected based on last 24h tool-call traffic. Classifies severity as `CRITICAL`, `HIGH`, `MEDIUM`, or `LOW`. Shows a red "Active Outage" banner for `DOWN`/`DEGRADED` servers and a grey pre-emptive view for `UP` servers. Python module: `src/langsight/rca/blast_radius.py`. REST API: `GET /api/health/servers/{name}/blast-radius`. Docs: `docs-site/mcp/blast-radius.mdx`.
+- **Prevention Config (Guards)** — new **Guards tab** in the agent detail panel for configuring per-agent safety controls: loop detection (threshold, `warn`/`terminate` action, `max_steps`), budget controls (hard cost cap, soft alert threshold, max wall time), and circuit breaker (failure threshold, cooldown, half-open max calls). Supports two-level config inheritance: project default + agent-level override. REST API: `GET/PUT/DELETE /api/agents/{name}/prevention-config`, `GET/PUT /api/projects/prevention-config`. Docs: `docs-site/agents/prevention-config.mdx`.
+- **Docs site navigation** — new "Agents" nav group added to `docs-site/mint.json`; `mcp/tool-schemas` and `mcp/blast-radius` added to the "MCP Monitoring" group.
+
 ## [0.9.0] - 2026-03-27
 
 ### Added

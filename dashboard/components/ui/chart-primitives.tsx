@@ -3,13 +3,19 @@
 /**
  * Shared chart primitives used across dashboard pages.
  *
- * StatCard   — single metric with icon + optional sub-text and trend badge
- * ChartCard  — titled wrapper around a Recharts chart
+ * StatCard    — single metric with icon + optional sub-text and trend badge
+ * ChartCard   — titled wrapper with maximize button + fullscreen modal
  * ChartTooltip — consistent Recharts tooltip
- * TrendBadge — week-over-week percentage badge
+ * TrendBadge  — week-over-week percentage badge
+ *
+ * ChartCard accepts children as either ReactNode or a render prop:
+ *   (isExpanded: boolean) => ReactNode
+ * Use the render prop to conditionally add <Brush> / <Legend> in expanded view.
  */
 
-import type { ElementType, ReactNode } from "react";
+import { useState, useEffect, useCallback, type ElementType, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { Maximize2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /* ── Chart tooltip ────────────────────────────────────────────── */
@@ -133,36 +139,153 @@ export function StatCard({
   );
 }
 
-/* ── Chart wrapper ────────────────────────────────────────────── */
+/* ── Time ranges for chart modal ─────────────────────────────── */
+const CHART_RANGES = [
+  { label: "1h",  hours: 1 },
+  { label: "6h",  hours: 6 },
+  { label: "24h", hours: 24 },
+  { label: "7d",  hours: 168 },
+] as const;
+
+/* ── Chart wrapper with maximize ─────────────────────────────── */
+type ChildrenFn = (isExpanded: boolean) => ReactNode;
+
 export function ChartCard({
   title,
   children,
   className,
   ariaLabel,
+  hours,
+  onHoursChange,
 }: {
   title: string;
-  children: ReactNode;
+  children: ReactNode | ChildrenFn;
   className?: string;
   ariaLabel?: string;
+  hours?: number;
+  onHoursChange?: (h: number) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  const close = useCallback(() => setExpanded(false), []);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [expanded, close]);
+
+  const render = (isExp: boolean): ReactNode =>
+    typeof children === "function" ? (children as ChildrenFn)(isExp) : children;
+
   return (
-    <div
-      className={cn("rounded-xl border p-4", className)}
-      style={{
-        background: "hsl(var(--card))",
-        borderColor: "hsl(var(--border))",
-      }}
-    >
-      <h3 className="text-[12px] font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
-        {title}
-      </h3>
+    <>
+      {/* ── Compact card ─────────────────────────────────────── */}
       <div
-        className="h-52"
-        role="img"
-        aria-label={ariaLabel ?? title}
+        className={cn("rounded-xl border p-4", className)}
+        style={{
+          background: "hsl(var(--card))",
+          borderColor: "hsl(var(--border))",
+        }}
       >
-        {children}
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">
+            {title}
+          </h3>
+          <button
+            onClick={() => setExpanded(true)}
+            className="p-1 rounded-md transition-colors text-muted-foreground hover:text-foreground hover:bg-accent"
+            title="Expand chart"
+            aria-label={`Expand ${title} chart`}
+          >
+            <Maximize2 size={11} />
+          </button>
+        </div>
+        <div className="h-52" role="img" aria-label={ariaLabel ?? title}>
+          {render(false)}
+        </div>
       </div>
-    </div>
+
+      {/* ── Fullscreen modal ─────────────────────────────────── */}
+      {mounted && expanded && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${title} — expanded`}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8"
+          style={{ background: "rgba(0,0,0,0.80)", backdropFilter: "blur(4px)" }}
+          onClick={close}
+        >
+          <div
+            className="w-full max-w-6xl rounded-2xl border shadow-2xl"
+            style={{
+              background: "hsl(var(--card))",
+              borderColor: "hsl(var(--border))",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div
+              className="flex items-center justify-between px-6 py-4 border-b"
+              style={{ borderColor: "hsl(var(--border))" }}
+            >
+              <h2
+                className="text-[13px] font-semibold text-foreground uppercase tracking-wider"
+                style={{ fontFamily: "var(--font-geist-mono)" }}
+              >
+                {title}
+              </h2>
+
+              <div className="flex items-center gap-3">
+                {/* Time range selector */}
+                {onHoursChange && (
+                  <div
+                    className="flex items-center gap-0.5 rounded-lg border overflow-hidden"
+                    style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--muted))" }}
+                  >
+                    {CHART_RANGES.map(r => (
+                      <button
+                        key={r.hours}
+                        onClick={() => onHoursChange(r.hours)}
+                        className={cn(
+                          "px-2.5 py-1 text-[11px] font-medium transition-colors",
+                          hours === r.hours
+                            ? "bg-background text-foreground shadow-sm rounded-md"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <span className="text-[10px] text-muted-foreground hidden md:block">
+                  Drag range bar to zoom · Esc to close
+                </span>
+
+                <button
+                  onClick={close}
+                  className="p-1.5 rounded-lg transition-colors text-muted-foreground hover:text-foreground hover:bg-accent"
+                  aria-label="Close"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+
+            {/* Chart area — explicit px height so ResponsiveContainer can measure */}
+            <div className="px-6 pb-6 pt-4" style={{ height: "500px" }}>
+              {render(true)}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }

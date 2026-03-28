@@ -227,9 +227,61 @@ TTL detected_at + INTERVAL 90 DAY;
 
 ## Dashboard
 
-In the **MCP Servers** detail panel, the **Health** tab shows a **Schema Drift** sub-section listing all historical drift events with their classifications. Click any event to expand the full structural diff.
+### Finding the Drift tab
 
-The **Consumers** tab (visible when a server has an active `BREAKING` drift) shows the consumer impact table — the same data as `langsight drift-impact`, updated in real time.
+Go to **MCP Servers** (`/servers`) and click any server name. Select the **Drift** tab in the detail panel.
+
+### Summary chips
+
+At the top of the Drift tab, three summary chips give an immediate status count:
+
+```
+3 breaking  ·  1 warning  ·  2 compatible
+```
+
+Chips are colour-coded — red for breaking, yellow for warning, green for compatible. If there are no events in any category, the chip is not shown.
+
+### Drift event cards
+
+Each drift event is rendered as a card with a coloured left border:
+
+| Border colour | Classification |
+|---|---|
+| Red | `BREAKING` |
+| Yellow | `WARNING` |
+| Green | `COMPATIBLE` |
+
+Breaking change cards show an `AlertTriangle` icon in the card header.
+
+**Card fields:**
+
+| Field | Description |
+|---|---|
+| `change_kind` badge | One of: `param_removed`, `param_added`, `param_type_changed`, `description_changed`, `required_param_added`, `required_param_removed`, `tool_added`, `tool_removed` |
+| Tool name | Which tool was affected |
+| Timestamp | When the drift was detected |
+| BEFORE / AFTER boxes | Side-by-side boxes — red background for the old value, green background for the new value |
+
+<Note>
+  `BEFORE / AFTER` boxes show the specific value that changed: a parameter type, a required flag, a description string — not the entire schema. Use the **"View full schemas (before/after)"** toggle at the bottom of the card to see the complete tool input schemas side by side with syntax highlighting.
+</Note>
+
+### Affected Agents (24h)
+
+Below the BEFORE/AFTER boxes, every drift card automatically loads the agents that have called the affected tool in the last 24 hours — no click required. Each agent appears as a row with:
+
+| Column | Description |
+|---|---|
+| Agent name | From `agent_name` span attribute |
+| Call count | Tool calls from this agent in the last 24h |
+| Error count | Failed calls |
+| Avg latency | Mean latency for this agent's calls to the tool |
+
+If no agents called the tool in the last 24 hours, the section shows "No recent callers — tool may be unused."
+
+### Full schema toggle
+
+At the bottom of each drift card, a **"View full schemas (before/after)"** link expands a two-column JSON viewer showing the complete tool input schema before and after the change. Keys are highlighted in indigo, string values in green, numbers in yellow, booleans in orange. This makes it easy to spot structural changes that are not obvious from the field-level diff.
 
 ---
 

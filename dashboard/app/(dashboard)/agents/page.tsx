@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -10,8 +10,9 @@ import {
   Bot, ChevronRight, Search, Network, X, Server, GitBranch,
   ChevronUp, ChevronDown, ChevronLast, AlertTriangle, Wrench,
 } from "lucide-react";
-import { fetcher, getCostsBreakdown, listAgentMetadata, upsertAgentMetadata, getAgentLoopCounts, getSLOStatus, createSLO, deleteSLO } from "@/lib/api";
-import type { SLOStatus } from "@/lib/types";
+import { fetcher, getCostsBreakdown, listAgentMetadata, upsertAgentMetadata, getAgentLoopCounts, getSLOStatus, createSLO, deleteSLO, getPreventionConfig, savePreventionConfig, deletePreventionConfig, getProjectPreventionConfig } from "@/lib/api";
+import type { SLOStatus, PreventionConfig, PreventionConfigUpdate } from "@/lib/types";
+import { toast } from "sonner";
 import { useProject } from "@/lib/project-context";
 import { cn, formatDuration, timeAgo, formatExact } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
@@ -32,7 +33,7 @@ type AgentSummary = {
   total_output_tokens: number;
   avg_tokens_per_session: number;
 };
-type DetailTab = "about" | "overview" | "servers" | "topology" | "sessions" | "slos";
+type DetailTab = "about" | "overview" | "servers" | "topology" | "sessions" | "slos" | "prevention";
 type SortCol = "name" | "healthScore" | "errorRate" | "cost" | "lastActive" | "sessions";
 
 /* ── Helpers ────────────────────────────────────────────────── */
@@ -707,6 +708,231 @@ function ServerToolsCard({ serverName, reliability, healthStatus, isMcpServer, p
   );
 }
 
+/* ── Prevention Config tab ──────────────────────────────────── */
+function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      onClick={() => onChange(!enabled)}
+      className="relative w-9 h-5 rounded-full transition-colors flex-shrink-0"
+      style={{ background: enabled ? "hsl(var(--primary))" : "hsl(var(--border))" }}
+    >
+      <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+        style={{ transform: enabled ? "translateX(18px)" : "translateX(2px)" }} />
+    </button>
+  );
+}
+
+function NumInput({ value, onChange, min, max, placeholder, unit }: { value: string; onChange: (v: string) => void; min?: number; max?: number; placeholder?: string; unit?: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <input type="number" value={value} onChange={(e) => onChange(e.target.value)} min={min} max={max}
+        placeholder={placeholder ?? "—"}
+        className="input-base w-24 text-right text-[12px]" style={{ fontFamily: "var(--font-geist-mono)" }} />
+      {unit && <span className="text-[11px] text-muted-foreground">{unit}</span>}
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid hsl(var(--border))" }}>
+      <div className="px-4 py-2.5 border-b" style={{ background: "hsl(var(--muted))", borderColor: "hsl(var(--border))" }}>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{title}</p>
+      </div>
+      <div className="px-4 py-3 space-y-3" style={{ background: "hsl(var(--card))" }}>{children}</div>
+    </div>
+  );
+}
+
+function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <p className="text-[12px] font-medium text-foreground">{label}</p>
+        {hint && <p className="text-[10px] text-muted-foreground mt-0.5">{hint}</p>}
+      </div>
+      <div className="flex-shrink-0">{children}</div>
+    </div>
+  );
+}
+
+function PreventionTab({ agentName, projectId }: { agentName: string; projectId: string | null }) {
+  const [config, setConfig] = useState<PreventionConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isDefault, setIsDefault] = useState(false);
+
+  const [loopEnabled, setLoopEnabled] = useState(true);
+  const [loopThreshold, setLoopThreshold] = useState("5");
+  const [loopAction, setLoopAction] = useState<"warn" | "terminate">("warn");
+  const [maxSteps, setMaxSteps] = useState("");
+  const [maxCost, setMaxCost] = useState("");
+  const [budgetSoftAlert, setBudgetSoftAlert] = useState("");
+  const [maxWallTime, setMaxWallTime] = useState("");
+  const [cbEnabled, setCbEnabled] = useState(true);
+  const [cbFailureThreshold, setCbFailureThreshold] = useState("5");
+  const [cbCooldown, setCbCooldown] = useState("30");
+  const [cbHalfOpen, setCbHalfOpen] = useState("3");
+
+  function applyConfig(cfg: PreventionConfig) {
+    setLoopEnabled(cfg.loop_enabled);
+    setLoopThreshold(String(cfg.loop_threshold));
+    setLoopAction(cfg.loop_action);
+    setMaxSteps(cfg.max_steps != null ? String(cfg.max_steps) : "");
+    setMaxCost(cfg.max_cost_usd != null ? String(cfg.max_cost_usd) : "");
+    setBudgetSoftAlert(cfg.budget_soft_alert > 0 ? String(cfg.budget_soft_alert) : "");
+    setMaxWallTime(cfg.max_wall_time_s != null ? String(cfg.max_wall_time_s) : "");
+    setCbEnabled(cfg.cb_enabled);
+    setCbFailureThreshold(String(cfg.cb_failure_threshold));
+    setCbCooldown(String(cfg.cb_cooldown_seconds));
+    setCbHalfOpen(String(cfg.cb_half_open_max_calls));
+    setIsDefault(cfg.is_default);
+    setConfig(cfg);
+  }
+
+  async function load() {
+    setLoading(true);
+    try {
+      const cfg = await getPreventionConfig(agentName, projectId);
+      applyConfig(cfg);
+    } catch {
+      try {
+        const def = await getProjectPreventionConfig(projectId);
+        applyConfig({ ...def, agent_name: agentName, is_default: true, updated_at: def.updated_at });
+      } catch {
+        setConfig(null);
+        setIsDefault(true);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, [agentName, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const body: PreventionConfigUpdate = {
+        loop_enabled: loopEnabled,
+        loop_threshold: parseInt(loopThreshold) || 5,
+        loop_action: loopAction,
+        max_steps: maxSteps ? parseInt(maxSteps) : null,
+        max_cost_usd: maxCost ? parseFloat(maxCost) : null,
+        budget_soft_alert: budgetSoftAlert ? parseFloat(budgetSoftAlert) : 0,
+        max_wall_time_s: maxWallTime ? parseInt(maxWallTime) : null,
+        cb_enabled: cbEnabled,
+        cb_failure_threshold: parseInt(cbFailureThreshold) || 5,
+        cb_cooldown_seconds: parseInt(cbCooldown) || 30,
+        cb_half_open_max_calls: parseInt(cbHalfOpen) || 3,
+      };
+      const saved = await savePreventionConfig(agentName, body, projectId);
+      applyConfig(saved);
+      toast.success("Prevention config saved");
+    } catch {
+      toast.error("Failed to save config");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleReset() {
+    try {
+      await deletePreventionConfig(agentName, projectId);
+      await load();
+      toast.success("Reset to project default");
+    } catch {
+      toast.error("Failed to reset");
+    }
+  }
+
+  if (loading) return <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="skeleton h-20 rounded-xl" />)}</div>;
+
+  return (
+    <div className="space-y-4">
+      {/* Status banner */}
+      <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: isDefault ? "hsl(var(--muted))" : "hsl(var(--primary) / 0.06)", border: isDefault ? "1px solid hsl(var(--border))" : "1px solid hsl(var(--primary) / 0.2)" }}>
+        <div>
+          <p className="text-[12px] font-semibold text-foreground">{isDefault ? "Using project default" : "Agent-specific config"}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">{isDefault ? "No override set — inheriting project-level prevention settings" : `Last updated ${config?.updated_at ? new Date(config.updated_at).toLocaleDateString() : "recently"}`}</p>
+        </div>
+        {!isDefault && (
+          <button onClick={handleReset} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2">
+            Reset to default
+          </button>
+        )}
+      </div>
+
+      {/* Loop Detection */}
+      <Section title="Loop Detection">
+        <Row label="Enabled" hint="Detect repeated tool calls in a single session">
+          <Toggle enabled={loopEnabled} onChange={setLoopEnabled} />
+        </Row>
+        {loopEnabled && (
+          <>
+            <Row label="Threshold" hint="Fire after N consecutive repeat calls">
+              <NumInput value={loopThreshold} onChange={setLoopThreshold} min={1} max={100} unit="calls" />
+            </Row>
+            <Row label="Action" hint="What to do when threshold is reached">
+              <div className="flex items-center gap-3">
+                {(["warn", "terminate"] as const).map((a) => (
+                  <label key={a} className="flex items-center gap-1.5 cursor-pointer text-[11px]">
+                    <input type="radio" checked={loopAction === a} onChange={() => setLoopAction(a)} className="w-3 h-3 accent-primary" />
+                    <span className={cn("capitalize", loopAction === a ? "text-foreground font-medium" : "text-muted-foreground")}>{a}</span>
+                  </label>
+                ))}
+              </div>
+            </Row>
+            <Row label="Max steps" hint="Hard cap on total tool calls per session (optional)">
+              <NumInput value={maxSteps} onChange={setMaxSteps} min={1} placeholder="no limit" unit="steps" />
+            </Row>
+          </>
+        )}
+      </Section>
+
+      {/* Budget Controls */}
+      <Section title="Budget Controls">
+        <Row label="Max cost per session" hint="Terminate session if cost exceeds this (USD)">
+          <NumInput value={maxCost} onChange={setMaxCost} min={0} placeholder="no limit" unit="USD" />
+        </Row>
+        <Row label="Soft alert threshold" hint="Warn when cost reaches this before hard limit (USD)">
+          <NumInput value={budgetSoftAlert} onChange={setBudgetSoftAlert} min={0} placeholder="no alert" unit="USD" />
+        </Row>
+        <Row label="Max wall time" hint="Terminate session after this duration (optional)">
+          <NumInput value={maxWallTime} onChange={setMaxWallTime} min={1} placeholder="no limit" unit="sec" />
+        </Row>
+      </Section>
+
+      {/* Circuit Breaker */}
+      <Section title="Circuit Breaker">
+        <Row label="Enabled" hint="Open circuit after repeated failures, preventing cascading errors">
+          <Toggle enabled={cbEnabled} onChange={setCbEnabled} />
+        </Row>
+        {cbEnabled && (
+          <>
+            <Row label="Open after" hint="Trip the breaker after N failures">
+              <NumInput value={cbFailureThreshold} onChange={setCbFailureThreshold} min={1} unit="failures" />
+            </Row>
+            <Row label="Cooldown" hint="How long to keep circuit open before trying again">
+              <NumInput value={cbCooldown} onChange={setCbCooldown} min={1} unit="sec" />
+            </Row>
+            <Row label="Half-open probe calls" hint="Max calls allowed in half-open state to test recovery">
+              <NumInput value={cbHalfOpen} onChange={setCbHalfOpen} min={1} unit="calls" />
+            </Row>
+          </>
+        )}
+      </Section>
+
+      {/* Save button */}
+      <div className="flex justify-end pt-1">
+        <button onClick={handleSave} disabled={saving} className="btn btn-primary px-5 py-2 text-[12px] font-semibold">
+          {saving ? "Saving…" : "Save config"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ── Page ───────────────────────────────────────────────────── */
 export default function AgentsPage() {
   const { activeProject } = useProject();
@@ -866,13 +1092,14 @@ export default function AgentsPage() {
                     </button>
                   </div>
                   {/* Tabs */}
-                  <div className="flex mt-3 -mb-3">
-                    {(["about", "overview", "servers", "topology", "sessions", "slos"] as DetailTab[]).map((tab) => {
+                  <div className="flex mt-3 -mb-3 overflow-x-auto scrollbar-none">
+                    {(["about", "overview", "servers", "topology", "sessions", "slos", "prevention"] as DetailTab[]).map((tab) => {
                       const badge = tab === "servers" ? (selected.servers_used.length) : 0;
+                      const label: Record<string, string> = { prevention: "Guards" };
                       return (
                         <button key={tab} onClick={() => { setActiveTab(tab); if (tab !== "topology") setRailExpanded(false); }}
-                          className={cn("px-3 py-2 text-[12px] font-medium border-b-2 -mb-px transition-colors capitalize", activeTab === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
-                          {tab}{badge > 0 && <span className="ml-1 text-[9px] text-muted-foreground">{badge}</span>}
+                          className={cn("px-3 py-2 text-[12px] font-medium border-b-2 -mb-px transition-colors capitalize flex-shrink-0", activeTab === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
+                          {label[tab] ?? tab}{badge > 0 && <span className="ml-1 text-[9px] text-muted-foreground">{badge}</span>}
                         </button>
                       );
                     })}
@@ -1039,6 +1266,10 @@ export default function AgentsPage() {
                       const agentSlos = (sloStatuses ?? []).filter(s => s.agent_name === selected.agent_name);
                       return <SLOTab agentName={selected.agent_name} slos={agentSlos} projectId={pid} onRefresh={() => mutateSlos()} />;
                     })()}
+
+                    {activeTab === "prevention" && (
+                      <PreventionTab agentName={selected.agent_name} projectId={pid} />
+                    )}
                   </div>
                 )}
               </div>

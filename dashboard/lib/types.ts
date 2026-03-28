@@ -358,3 +358,51 @@ export interface PreventionConfigUpdate {
   cb_cooldown_seconds: number;
   cb_half_open_max_calls: number;
 }
+
+// ─── Blast Radius ─────────────────────────────────────────────────────────────
+
+export interface BlastRadiusAgent {
+  agent_name: string;
+  call_count: number;
+  session_count: number;
+  error_count: number;
+  error_rate_pct: number;
+  avg_latency_ms: number | null;
+  last_called_at: string | null;
+}
+
+export interface BlastRadius {
+  server_name: string;
+  server_status: string;
+  hours: number;
+  severity: "critical" | "high" | "medium" | "low";
+  total_sessions_at_risk: number;
+  total_agents_affected: number;
+  total_calls: number;
+  affected_agents: BlastRadiusAgent[];
+}
+
+// ─── Schema Drift ─────────────────────────────────────────────────────────────
+
+export interface SchemaDriftEvent {
+  server_name: string;
+  tool_name: string;
+  drift_type: "breaking" | "compatible" | "warning";
+  change_kind: string;
+  param_name: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  previous_hash: string;
+  current_hash: string;
+  has_breaking: boolean;
+  detected_at: string;
+}
+
+export interface DriftImpact {
+  agent_name: string;
+  session_id: string;
+  call_count: number;
+  error_count: number;
+  avg_latency_ms: number;
+  last_called_at: string;
+}

@@ -9,13 +9,13 @@ import {
   ChevronUp, ChevronLast, AlertTriangle, X, Bot,
 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
-import { fetcher, triggerHealthCheck, getServerHistory, listServerMetadata, upsertServerMetadata, discoverServers } from "@/lib/api";
+import { fetcher, triggerHealthCheck, getServerHistory, listServerMetadata, upsertServerMetadata, discoverServers, getDriftHistory, getDriftImpact, getBlastRadius } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatLatency, STATUS_BG, formatExact } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
 import { toast } from "sonner";
 import { EditableTextarea, EditableText, EditableTags, EditableUrl } from "@/components/editable-field";
-import type { HealthResult, ServerMetadata, LineageGraph, ToolReliability } from "@/lib/types";
+import type { HealthResult, ServerMetadata, LineageGraph, ToolReliability, SchemaDriftEvent, DriftImpact, BlastRadius, BlastRadiusAgent } from "@/lib/types";
 
 /* ── Helpers ────────────────────────────────────────────────── */
 const STATUS_COLOR: Record<string, string> = { up: "#22c55e", degraded: "#eab308", down: "#ef4444", stale: "#6b7280" };
@@ -299,6 +299,110 @@ function GroupedSidebar({ servers, metaByName, selectedServer, onSelect, search,
   );
 }
 
+/* ── Blast Radius panel ─────────────────────────────────────── */
+const SEVERITY_CONFIG = {
+  critical: { color: "#ef4444", bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.25)", label: "CRITICAL" },
+  high:     { color: "#f97316", bg: "rgba(249,115,22,0.08)", border: "rgba(249,115,22,0.25)", label: "HIGH" },
+  medium:   { color: "#eab308", bg: "rgba(234,179,8,0.08)",  border: "rgba(234,179,8,0.25)",  label: "MEDIUM" },
+  low:      { color: "#22c55e", bg: "rgba(34,197,94,0.08)",  border: "rgba(34,197,94,0.25)",  label: "LOW" },
+};
+
+function BlastRadiusPanel({ serverName, serverStatus, projectId }: { serverName: string; serverStatus: string; projectId: string | null }) {
+  const [data, setData] = useState<BlastRadius | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    getBlastRadius(serverName, 24, projectId)
+      .then(setData)
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, [serverName, projectId]);
+
+  const isActive = serverStatus === "down" || serverStatus === "degraded";
+  const sev = data ? SEVERITY_CONFIG[data.severity] ?? SEVERITY_CONFIG.low : null;
+  const mono = { fontFamily: "var(--font-geist-mono)" };
+
+  return (
+    <div className="mb-5">
+      {/* Header banner */}
+      <div className="rounded-xl px-4 py-3.5 mb-3" style={{
+        background: isActive ? "rgba(239,68,68,0.06)" : "hsl(var(--muted))",
+        border: isActive ? "1px solid rgba(239,68,68,0.2)" : "1px solid hsl(var(--border))",
+        borderLeft: isActive ? "3px solid #ef4444" : "3px solid hsl(var(--border))",
+      }}>
+        <div className="flex items-center gap-2 mb-1">
+          <AlertTriangle size={14} style={{ color: isActive ? "#ef4444" : "hsl(var(--muted-foreground))" }} />
+          <span className="text-[13px] font-bold" style={{ color: isActive ? "#ef4444" : "hsl(var(--foreground))" }}>
+            {isActive ? "Active Outage — Blast Radius" : "Blast Radius (if this server went down)"}
+          </span>
+          {sev && !loading && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto" style={{ background: sev.bg, color: sev.color, border: `1px solid ${sev.border}` }}>
+              {sev.label}
+            </span>
+          )}
+        </div>
+        <p className="text-[11px] text-muted-foreground">Based on tool-call traffic in the last 24h</p>
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">{[1, 2, 3].map((i) => <div key={i} className="skeleton h-8 rounded-lg" />)}</div>
+      ) : !data || data.total_agents_affected === 0 ? (
+        <div className="rounded-xl px-4 py-5 text-center" style={{ background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
+          <p className="text-[13px] font-semibold text-foreground mb-1">No recent traffic</p>
+          <p className="text-[11px] text-muted-foreground">No agents called this server in the last 24h — blast radius is zero.</p>
+        </div>
+      ) : (
+        <>
+          {/* Summary metrics */}
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            {[
+              { label: "Agents at risk",   value: data.total_agents_affected.toString(),   color: sev?.color },
+              { label: "Sessions at risk", value: data.total_sessions_at_risk.toLocaleString(), color: sev?.color },
+              { label: "Calls (24h)",      value: data.total_calls.toLocaleString(),       color: undefined },
+            ].map((m) => (
+              <div key={m.label} className="rounded-xl p-3" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">{m.label}</p>
+                <p className="text-[20px] font-bold leading-none" style={{ ...mono, color: m.color ?? "hsl(var(--foreground))" }}>{m.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Per-agent breakdown */}
+          <div className="space-y-2">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Affected Agents</p>
+            {data.affected_agents.map((agent: BlastRadiusAgent) => {
+              const hasErrors = agent.error_rate_pct > 0;
+              return (
+                <div key={agent.agent_name} className="rounded-xl px-4 py-3" style={{ background: "hsl(var(--card))", border: `1px solid ${hasErrors ? "rgba(239,68,68,0.2)" : "hsl(var(--border))"}` }}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <Bot size={12} style={{ color: "hsl(var(--primary))" }} />
+                      <span className="text-[13px] font-bold text-foreground" style={mono}>{agent.agent_name}</span>
+                    </div>
+                    {hasErrors && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.2)" }}>
+                        {agent.error_rate_pct.toFixed(0)}% error rate
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">
+                    <span style={mono}><span className="text-foreground font-semibold">{agent.call_count}</span> calls</span>
+                    <span style={mono}><span className="text-foreground font-semibold">{agent.session_count}</span> sessions</span>
+                    {agent.error_count > 0 && <span style={{ ...mono, color: "#f87171" }}><span className="font-semibold">{agent.error_count}</span> errors</span>}
+                    {agent.avg_latency_ms && <span style={mono}>{Math.round(agent.avg_latency_ms)}ms avg</span>}
+                    {agent.last_called_at && <span className="ml-auto"><Timestamp iso={agent.last_called_at} compact /></span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ── History detail inside right panel ─────────────────────── */
 function HealthHistoryPanel({ serverName }: { serverName: string }) {
   const [history, setHistory] = useState<HealthResult[] | null>(null);
@@ -342,8 +446,348 @@ function HealthHistoryPanel({ serverName }: { serverName: string }) {
   );
 }
 
+/* ── Schema Drift panel ─────────────────────────────────────── */
+function SchemaDriftPanel({ serverName, projectId, schemaByTool }: { serverName: string; projectId: string | null; schemaByTool?: Map<string, Record<string, unknown> | null> }) {
+  const [events, setEvents] = useState<SchemaDriftEvent[] | null>(null);
+  const [impact, setImpact] = useState<Map<string, DriftImpact[] | null>>(new Map());
+  const [showSchemas, setShowSchemas] = useState<Set<number>>(new Set());
+
+  function reconstructBeforeSchema(evt: SchemaDriftEvent, current: Record<string, unknown> | null): Record<string, unknown> | null {
+    if (!current) return null;
+    const schema = JSON.parse(JSON.stringify(current)) as { properties?: Record<string, Record<string, unknown>>; required?: string[]; [k: string]: unknown };
+    const props = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
+    const req: string[] = (schema.required ?? []) as string[];
+    switch (evt.change_kind) {
+      case "optional_param_added":
+      case "param_added":
+        if (evt.param_name) delete props[evt.param_name]; break;
+      case "param_removed":
+        if (evt.param_name) props[evt.param_name] = { type: evt.old_value ?? "string" }; break;
+      case "required_param_added": {
+        const idx = req.indexOf(evt.param_name ?? ""); if (idx > -1) req.splice(idx, 1); break;
+      }
+      case "required_param_removed":
+        if (evt.param_name && !req.includes(evt.param_name)) req.push(evt.param_name); break;
+      case "param_type_changed":
+        if (evt.param_name && evt.old_value) props[evt.param_name] = { ...(props[evt.param_name] ?? {}), type: evt.old_value }; break;
+    }
+    return { ...schema, properties: props, ...(req.length > 0 ? { required: req } : {}) };
+  }
+
+  useEffect(() => {
+    getDriftHistory(serverName, 50, projectId).then(setEvents).catch(() => setEvents([]));
+  }, [serverName, projectId]);
+
+  // Auto-load impact for all unique tools once events arrive
+  useEffect(() => {
+    if (!events?.length) return;
+    const uniqueTools = [...new Set(events.map((e) => e.tool_name))];
+    uniqueTools.forEach((toolName) => {
+      setImpact((prev) => new Map(prev).set(toolName, null));
+      getDriftImpact(serverName, toolName, 24, projectId)
+        .then((data) => setImpact((prev) => new Map(prev).set(toolName, data)))
+        .catch(() => setImpact((prev) => new Map(prev).set(toolName, [])));
+    });
+  }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!events) return <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="skeleton h-32 rounded-xl" />)}</div>;
+
+  if (events.length === 0) return (
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+      <p className="text-[14px] font-semibold text-foreground mb-1">No drift detected</p>
+      <p className="text-[12px] text-muted-foreground">Schema drift events appear here when tool signatures change between health checks.</p>
+    </div>
+  );
+
+  const breaking = events.filter((e) => e.drift_type === "breaking").length;
+  const compatible = events.filter((e) => e.drift_type === "compatible").length;
+  const warning = events.filter((e) => e.drift_type === "warning").length;
+  const DRIFT_COLOR: Record<string, string> = { breaking: "#ef4444", compatible: "#22c55e", warning: "#eab308" };
+  const mono = { fontFamily: "var(--font-geist-mono)" };
+
+  function renderBeforeAfter(evt: SchemaDriftEvent) {
+    const beforeBox = (content: React.ReactNode) => (
+      <div className="flex-1 rounded-lg p-2.5 min-w-0" style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)" }}>
+        <p className="text-[9px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#f87171" }}>Before</p>
+        {content}
+      </div>
+    );
+    const afterBox = (content: React.ReactNode) => (
+      <div className="flex-1 rounded-lg p-2.5 min-w-0" style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.25)" }}>
+        <p className="text-[9px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#4ade80" }}>After</p>
+        {content}
+      </div>
+    );
+    const arrow = <div className="flex items-center px-1 text-muted-foreground text-lg font-thin self-center">→</div>;
+
+    if (evt.change_kind === "param_removed") {
+      return (
+        <div className="flex items-stretch gap-2">
+          {beforeBox(<p className="text-[12px] font-semibold text-foreground" style={mono}>{evt.param_name}<span className="font-normal text-muted-foreground ml-2">{evt.old_value}</span></p>)}
+          {arrow}
+          {afterBox(<p className="text-[11px] italic" style={{ color: "#f87171" }}>parameter removed</p>)}
+        </div>
+      );
+    }
+    if (evt.change_kind === "param_added") {
+      return (
+        <div className="flex items-stretch gap-2">
+          {beforeBox(<p className="text-[11px] italic text-muted-foreground">not present</p>)}
+          {arrow}
+          {afterBox(<p className="text-[12px] font-semibold text-foreground" style={mono}>{evt.param_name}<span className="font-normal text-muted-foreground ml-2">{evt.new_value}</span></p>)}
+        </div>
+      );
+    }
+    if (evt.param_name && (evt.old_value || evt.new_value)) {
+      return (
+        <div className="flex items-stretch gap-2">
+          {beforeBox(
+            <p className="text-[12px]" style={mono}>
+              <span className="font-semibold text-foreground">{evt.param_name}</span>
+              {evt.old_value && <span className="ml-2 text-muted-foreground">{evt.old_value}</span>}
+            </p>
+          )}
+          {arrow}
+          {afterBox(
+            <p className="text-[12px]" style={mono}>
+              <span className="font-semibold text-foreground">{evt.param_name}</span>
+              {evt.new_value && <span className="ml-2" style={{ color: "#4ade80" }}>{evt.new_value}</span>}
+            </p>
+          )}
+        </div>
+      );
+    }
+    return null;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {breaking > 0 && <span className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1 rounded-full" style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }}><AlertTriangle size={11} />{breaking} breaking</span>}
+        {warning > 0 && <span className="text-[12px] font-semibold px-3 py-1 rounded-full" style={{ background: "rgba(234,179,8,0.1)", color: "#fbbf24", border: "1px solid rgba(234,179,8,0.3)" }}>{warning} warning</span>}
+        {compatible > 0 && <span className="text-[12px] font-semibold px-3 py-1 rounded-full" style={{ background: "rgba(34,197,94,0.1)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)" }}>{compatible} compatible</span>}
+      </div>
+
+      {/* Event cards */}
+      <div className="space-y-3">
+        {events.map((evt, i) => {
+          const color = DRIFT_COLOR[evt.drift_type] ?? "#6b7280";
+          const impactData = impact.get(evt.tool_name);
+          const totalCalls = impactData?.reduce((s, d) => s + d.call_count, 0) ?? 0;
+          const totalErrors = impactData?.reduce((s, d) => s + d.error_count, 0) ?? 0;
+
+          return (
+            <div key={i} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${color}30`, borderLeft: `3px solid ${color}`, background: "hsl(var(--card))" }}>
+              {/* Card header */}
+              <div className="px-4 pt-3.5 pb-2.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[14px] font-bold text-foreground" style={mono}>{evt.tool_name}</span>
+                  <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: `${color}18`, color, border: `1px solid ${color}40` }}>
+                    {evt.drift_type === "breaking" && <AlertTriangle size={9} />}
+                    {evt.drift_type}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "rgba(113,113,122,0.15)", color: "#a1a1aa", border: "1px solid rgba(113,113,122,0.2)" }}>{evt.change_kind.replace(/_/g, " ")}</span>
+                  <span className="text-[10px] text-muted-foreground ml-auto"><Timestamp iso={evt.detected_at} compact /></span>
+                </div>
+              </div>
+
+              {/* Before / After */}
+              <div className="px-4 pb-3.5">
+                {renderBeforeAfter(evt) ?? <p className="text-[11px] text-muted-foreground">{evt.change_kind.replace(/_/g, " ")}</p>}
+              </div>
+
+              {/* Impact section */}
+              <div className="border-t px-4 py-3" style={{ borderColor: `${color}20`, background: "hsl(var(--muted) / 0.5)" }}>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                  Affected Agents (24h)
+                  {impactData && impactData.length > 0 && (
+                    <span className="ml-2 normal-case font-normal" style={{ color: totalErrors > 0 ? "#f87171" : "#a1a1aa" }}>
+                      — {impactData.length} agent{impactData.length !== 1 ? "s" : ""} · {totalCalls} calls{totalErrors > 0 ? ` · ${totalErrors} errors` : ""}
+                    </span>
+                  )}
+                </p>
+                {!impactData ? (
+                  <div className="skeleton h-5 rounded w-1/3" />
+                ) : impactData.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground">No calls in last 24h</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {impactData.map((imp, j) => (
+                      <div key={j} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: "hsl(var(--card))", border: "0.5px solid hsl(var(--border))" }}>
+                        <div className="flex items-center gap-2">
+                          <Bot size={11} style={{ color: "hsl(var(--primary))" }} />
+                          <span className="text-[12px] font-semibold text-foreground" style={mono}>{imp.agent_name}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px]">
+                          <span className="text-muted-foreground" style={mono}>{imp.call_count} calls</span>
+                          {imp.error_count > 0 && <span style={{ color: "#f87171" }} className="font-semibold">{imp.error_count} err</span>}
+                          <span className="text-muted-foreground" style={mono}>{Math.round(imp.avg_latency_ms)}ms avg</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Full schema toggle */}
+              {schemaByTool && (
+                <div className="border-t px-4 py-2.5" style={{ borderColor: `${color}15` }}>
+                  <button
+                    className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setShowSchemas((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; })}
+                  >
+                    <ChevronDown size={11} className={cn("transition-transform", showSchemas.has(i) && "rotate-180")} />
+                    View full schemas (before / after)
+                  </button>
+                  {showSchemas.has(i) && (() => {
+                    const afterSchema = schemaByTool.get(evt.tool_name) ?? null;
+                    const beforeSchema = reconstructBeforeSchema(evt, afterSchema);
+                    return (
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-[9px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#f87171" }}>Before</p>
+                          <JsonHighlight value={beforeSchema ?? {}} />
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#4ade80" }}>After</p>
+                          <JsonHighlight value={afterSchema ?? {}} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── JSON syntax highlighter ────────────────────────────────── */
+function JsonHighlight({ value }: { value: unknown }) {
+  const json = JSON.stringify(value, null, 2);
+  const escaped = json.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const highlighted = escaped.replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
+    (match) => {
+      let color: string;
+      if (/^"/.test(match)) {
+        color = /:$/.test(match) ? "hsl(var(--primary))" : "#86efac";
+      } else if (/true|false/.test(match)) {
+        color = "#fb923c";
+      } else if (/null/.test(match)) {
+        color = "#6b7280";
+      } else {
+        color = "#fbbf24";
+      }
+      return `<span style="color:${color}">${match}</span>`;
+    },
+  );
+  return (
+    <pre
+      className="overflow-x-auto rounded-lg p-3 leading-relaxed"
+      style={{ background: "#0d0d10", border: "1px solid hsl(var(--border))", fontFamily: "var(--font-geist-mono)", fontSize: "12px", color: "#a1a1aa" }}
+      dangerouslySetInnerHTML={{ __html: highlighted }}
+    />
+  );
+}
+
+/* ── Schema panel ───────────────────────────────────────────── */
+function SchemaPanel({ tools }: { tools: { name: string; description: string; inputSchema: Record<string, unknown> | null; declared: boolean }[] }) {
+  const [expandedTool, setExpandedTool] = useState<string | null>(null);
+  const [showJson, setShowJson] = useState<Set<string>>(new Set());
+
+  const declared = tools.filter((t) => t.declared && t.inputSchema);
+
+  if (declared.length === 0) return (
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+      <p className="text-[14px] font-semibold text-foreground mb-1">No schemas captured</p>
+      <p className="text-[12px] text-muted-foreground">Schemas are captured when your agent calls <code className="mono-pill-primary">list_tools()</code> via the LangSight SDK.</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-2">
+      {declared.map((tool) => {
+        const schema = tool.inputSchema as { properties?: Record<string, { type?: string; description?: string; enum?: unknown[] }>; required?: string[] } | null;
+        const params = schema?.properties ? Object.entries(schema.properties) : [];
+        const required = schema?.required ?? [];
+        const isExpanded = expandedTool === tool.name;
+        const jsonVisible = showJson.has(tool.name);
+        return (
+          <div key={tool.name} className="rounded-xl overflow-hidden" style={{ background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
+            {/* Tool header row */}
+            <button
+              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent/20 transition-colors"
+              onClick={() => setExpandedTool(isExpanded ? null : tool.name)}
+            >
+              <span className="flex-1 min-w-0">
+                <span className="text-[13px] font-bold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{tool.name}</span>
+                {tool.description && <span className="block text-[12px] mt-0.5" style={{ color: "#a1a1aa" }}>{tool.description}</span>}
+              </span>
+              <span className="text-[11px] text-muted-foreground flex-shrink-0">{params.length} param{params.length !== 1 ? "s" : ""}</span>
+              <ChevronDown size={14} className={cn("text-muted-foreground flex-shrink-0 transition-transform", isExpanded && "rotate-180")} />
+            </button>
+
+            {isExpanded && (
+              <div className="border-t px-4 py-3 space-y-3" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card))" }}>
+                {/* Parameter table */}
+                {params.length === 0 ? (
+                  <p className="text-[12px] text-muted-foreground">No parameters</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {params.map(([param, def]) => {
+                      const isRequired = required.includes(param);
+                      return (
+                        <div key={param} className="rounded-lg px-3 py-2.5" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="text-[13px] font-bold" style={{ fontFamily: "var(--font-geist-mono)", color: "hsl(var(--primary))" }}>{param}</span>
+                            <span className="text-[11px] font-medium" style={{ color: "#a1a1aa" }}>{def.type ?? "any"}</span>
+                            {isRequired
+                              ? <span className="text-[10px] px-1.5 py-px rounded font-semibold" style={{ background: "rgba(239,68,68,0.12)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }}>required</span>
+                              : <span className="text-[10px] px-1.5 py-px rounded font-medium" style={{ background: "rgba(113,113,122,0.15)", color: "#a1a1aa", border: "1px solid rgba(113,113,122,0.3)" }}>optional</span>
+                            }
+                          </div>
+                          {def.description && <p className="text-[12px]" style={{ color: "#d4d4d8" }}>{def.description}</p>}
+                          {def.enum && (
+                            <div className="flex items-center gap-1 flex-wrap mt-1">
+                              <span className="text-[10px] text-muted-foreground">enum:</span>
+                              {(def.enum as unknown[]).map(String).map((v) => (
+                                <span key={v} className="text-[10px] px-1.5 py-px rounded" style={{ background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", fontFamily: "var(--font-geist-mono)" }}>{v}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* JSON toggle */}
+                <div>
+                  <button
+                    className="text-[11px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                    onClick={() => setShowJson((prev) => { const n = new Set(prev); n.has(tool.name) ? n.delete(tool.name) : n.add(tool.name); return n; })}
+                  >
+                    <ChevronDown size={11} className={cn("transition-transform", jsonVisible && "rotate-180")} />
+                    raw JSON
+                  </button>
+                  {jsonVisible && <div className="mt-2"><JsonHighlight value={tool.inputSchema} /></div>}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── Page ───────────────────────────────────────────────────── */
-type DetailTab = "about" | "tools" | "health" | "consumers";
+type DetailTab = "about" | "tools" | "health" | "consumers" | "drift" | "schema";
 
 export default function ServersPage() {
   const { activeProject } = useProject();
@@ -493,9 +937,10 @@ export default function ServersPage() {
                     <button onClick={() => setSelectedServer(null)} className="p-1.5 rounded hover:bg-accent/60 text-muted-foreground hover:text-foreground transition-colors"><X size={14} /></button>
                   </div>
                   <div className="flex">
-                    {(["about", "tools", "health", "consumers"] as DetailTab[]).map((tab) => {
+                    {(["about", "tools", "health", "consumers", "drift", "schema"] as DetailTab[]).map((tab) => {
                       const serverTools = (toolReliability ?? []).filter((t) => t.server_name === selected.server_name);
-                      const badge = tab === "consumers" ? consumers.length : tab === "tools" ? serverTools.length : 0;
+                      const schemaBadge = (declaredTools ?? []).filter((t) => t.input_schema).length;
+                      const badge = tab === "consumers" ? consumers.length : tab === "tools" ? serverTools.length : tab === "schema" ? schemaBadge : 0;
                       return (
                       <button key={tab} onClick={() => setActiveTab(tab)}
                         className={cn("px-3 py-2 text-[12px] font-medium border-b-2 -mb-px transition-colors capitalize", activeTab === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
@@ -640,7 +1085,12 @@ export default function ServersPage() {
                   })()}
 
                   {/* HEALTH */}
-                  {activeTab === "health" && <HealthHistoryPanel serverName={selected.server_name} />}
+                  {activeTab === "health" && (
+                    <>
+                      <BlastRadiusPanel serverName={selected.server_name} serverStatus={selected.status} projectId={pid} />
+                      <HealthHistoryPanel serverName={selected.server_name} />
+                    </>
+                  )}
 
                   {/* CONSUMERS */}
                   {activeTab === "consumers" && (
@@ -673,6 +1123,22 @@ export default function ServersPage() {
                       )}
                     </div>
                   )}
+
+                  {/* DRIFT */}
+                  {activeTab === "drift" && <SchemaDriftPanel serverName={selected.server_name} projectId={pid} schemaByTool={new Map((declaredTools ?? []).map((t) => [t.tool_name, t.input_schema ?? null]))} />}
+
+                  {/* SCHEMA */}
+                  {activeTab === "schema" && (() => {
+                    const declared = declaredTools ?? [];
+                    const allNames = new Set([...declared.map((t) => t.tool_name), ...(toolReliability ?? []).filter((t) => t.server_name === selected.server_name).map((t) => t.tool_name)]);
+                    const toolList = Array.from(allNames).sort().map((name) => ({
+                      name,
+                      description: declared.find((d) => d.tool_name === name)?.description ?? "",
+                      inputSchema: declared.find((d) => d.tool_name === name)?.input_schema ?? null,
+                      declared: declared.some((d) => d.tool_name === name),
+                    }));
+                    return <SchemaPanel tools={toolList} />;
+                  })()}
                 </div>
               </div>
             </div>

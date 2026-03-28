@@ -1,0 +1,184 @@
+---
+title: "Tool Schema Viewer"
+description: "Browse the full JSON input schema of every tool on every MCP server — parameter names, types, required flags, descriptions, and enum values — directly in the dashboard."
+---
+
+## What it is
+
+Every MCP server declares its tools via `tools/list`. When an instrumented agent calls `list_tools()`, LangSight captures the full input schema for every tool and stores it. The **Schema tab** in the MCP Servers detail panel lets you browse these schemas without writing any code or running any CLI commands.
+
+This is the canonical source of truth for what a tool actually accepts — not what documentation says, not what the agent assumes. What the server declared.
+
+<Note>
+  Only tools where LangSight has captured a `list_tools()` response appear in the Schema tab. Tools observed in traces but never via `list_tools()` appear in the **Tools tab** instead (call counts and latencies only, no schema).
+</Note>
+
+---
+
+## Where to find it
+
+**MCP Servers** (`/servers`) → click any server name → **Schema tab**
+
+---
+
+## What the UI shows
+
+### Tool list
+
+Tools are listed alphabetically. Each row shows:
+
+| Field | Description |
+|---|---|
+| Tool name | Declared tool identifier |
+| Description | The tool's description string as declared by the server |
+| Parameter count | Number of declared input parameters |
+
+Click any tool row to expand the parameter detail.
+
+### Parameter detail (expanded)
+
+Each parameter is displayed as a card with:
+
+| Field | Display |
+|---|---|
+| Parameter name | Indigo monospace label |
+| Type | `string`, `integer`, `boolean`, `object`, `array`, etc. |
+| Required / Optional | Badge — red for required, grey for optional |
+| Description | Human-readable description from the schema |
+| Enum values | Shown as chips when the parameter has a fixed value set (e.g., `markdown`, `adf`, `plain_text`) |
+
+### Raw JSON toggle
+
+At the bottom of each expanded tool, a **"raw JSON"** link reveals the full `inputSchema` object as syntax-highlighted JSON:
+
+- Keys — indigo
+- String values — green
+- Numbers — yellow
+- Booleans — orange
+- `null` — grey
+
+This is the verbatim JSON that the MCP server returned. It can be copied directly into SDK code or used to verify that an agent is calling the tool with the correct arguments.
+
+---
+
+## How schemas are captured
+
+No manual registration is required. Schemas are captured automatically when an instrumented agent calls `list_tools()`.
+
+<Steps>
+  <Step title="Agent calls list_tools()">
+    Your agent (instrumented with the LangSight SDK) calls `list_tools()` on an MCP server as part of its normal operation.
+  </Step>
+  <Step title="SDK intercepts and ships schemas">
+    The LangSight SDK intercepts the response and fire-and-forgets the tool list to `PUT /api/servers/{name}/tools`. This happens asynchronously — the agent's call is not blocked or slowed.
+  </Step>
+  <Step title="Schema appears in the dashboard">
+    The Schema tab is populated immediately. Subsequent health checks compute a hash of the tool list and compare it against this baseline for drift detection.
+  </Step>
+</Steps>
+
+<Tip>
+  If a server has been health-checked but no schemas appear in the Schema tab, it means no instrumented agent has called `list_tools()` on that server yet. Run an agent session that uses the server and schemas will populate automatically.
+</Tip>
+
+---
+
+## API reference
+
+### List declared tools for a server
+
+```bash
+GET /api/servers/{name}/tools
+```
+
+Returns all tools captured for the given server, with their full `inputSchema`.
+
+```bash
+curl http://localhost:8000/api/servers/postgres-mcp/tools
+```
+
+```json
+[
+  {
+    "server_name": "postgres-mcp",
+    "tool_name": "query",
+    "description": "Execute a read-only SQL query against the connected PostgreSQL database.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "sql": {
+          "type": "string",
+          "description": "The SQL SELECT statement to execute"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of rows to return",
+          "default": 100
+        }
+      },
+      "required": ["sql"]
+    },
+    "captured_at": "2026-03-27T09:00:00Z"
+  },
+  {
+    "server_name": "postgres-mcp",
+    "tool_name": "list_tables",
+    "description": "List all tables in the connected database.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "description": "PostgreSQL schema name",
+          "default": "public"
+        }
+      },
+      "required": []
+    },
+    "captured_at": "2026-03-27T09:00:00Z"
+  }
+]
+```
+
+### Response fields
+
+<ResponseField name="server_name" type="string">
+  The MCP server identifier as registered in LangSight.
+</ResponseField>
+
+<ResponseField name="tool_name" type="string">
+  The tool's declared name — what agents pass as the tool identifier.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  The tool's description string as declared by the server. This is what LLMs read to decide whether to call the tool.
+</ResponseField>
+
+<ResponseField name="input_schema" type="object">
+  The full JSON Schema object for the tool's input parameters. Standard JSON Schema draft-07 format.
+</ResponseField>
+
+<ResponseField name="captured_at" type="string (ISO 8601)">
+  When LangSight last captured a `list_tools()` response for this server that included this tool.
+</ResponseField>
+
+---
+
+## Relationship with Schema Drift
+
+The Schema tab and the Drift tab use the same underlying data. The Schema tab shows the **current** tool schemas — what the server is declaring right now. The Drift tab shows **changes** — what was different at a previous point in time and how it was classified.
+
+When a drift event occurs, you can:
+
+1. Go to the **Drift tab** to see what changed (BEFORE / AFTER values, classification, affected agents)
+2. Go to the **Schema tab** to see the current full schema for the affected tool
+
+Together they give you the complete picture: what changed, and what the tool looks like now.
+
+---
+
+## Related
+
+- [Schema Drift Detection](/mcp/schema-drift) — how LangSight detects and classifies tool schema changes
+- [MCP Servers Dashboard](/mcp/mcp-servers-dashboard) — overview of all four detail panel tabs
+- [Health Monitoring](/mcp/health-monitoring) — how schema hashes feed into the health check cycle

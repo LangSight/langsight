@@ -291,3 +291,39 @@ async def get_drift_impact(
     return await fn(server_name=server_name, tool_name=tool_name, hours=hours)
 
 
+@router.get(
+    "/servers/{server_name}/blast-radius",
+    summary="Blast radius — which agents and sessions are affected when this server is down",
+)
+async def get_blast_radius(
+    server_name: str,
+    hours: int = Query(default=24, ge=1, le=168),
+    storage: StorageBackend = Depends(get_storage),
+    project_id: str | None = Depends(get_active_project_id),
+) -> dict:
+    """Compute blast radius for a server outage.
+
+    Returns which agents depend on this server and how many sessions
+    are at risk, based on real tool-call traffic from the last N hours.
+    Severity is classified as: critical / high / medium / low.
+    """
+    from langsight.rca.blast_radius import compute_blast_radius
+
+    # Resolve current server status from latest health result
+    server_status = "unknown"
+    history_fn = getattr(storage, "get_health_history", None)
+    if history_fn is not None:
+        history = await history_fn(server_name=server_name, limit=1, project_id=project_id)
+        if history:
+            server_status = history[0].status
+
+    result = await compute_blast_radius(
+        server_name=server_name,
+        storage=storage,
+        hours=hours,
+        project_id=project_id,
+        server_status=server_status,
+    )
+    return result.model_dump()
+
+
