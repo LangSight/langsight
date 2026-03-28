@@ -1,0 +1,61 @@
+# LangSight MCP Security Scan — example workflow
+#
+# Copy this file to your own repo at .github/workflows/mcp-scan.yml
+# and adjust the inputs to match your setup.
+#
+# What it does:
+#   - Installs LangSight (no Docker required)
+#   - Auto-discovers MCP servers from .langsight.yaml or IDE configs
+#   - Runs health checks + security scan in parallel
+#   - Fails the build on CRITICAL/HIGH findings
+#   - Uploads the JSON report as a workflow artifact
+
+name: MCP Security Scan
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  schedule:
+    - cron: "0 8 * * 1"   # Every Monday at 08:00 UTC
+
+jobs:
+  mcp-scan:
+    name: Scan MCP servers
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read        # read .langsight.yaml
+      security-events: write  # upload SARIF (optional, for GitHub Advanced Security)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: LangSight MCP Scan
+        id: scan
+        uses: LangSight/langsight@v1
+        with:
+          config: .langsight.yaml   # remove this line to use auto-discovery
+          fail-on: high             # fail on HIGH or CRITICAL findings
+          # version: "0.9.2"        # pin to a specific version
+
+      # ── Summary comment on PRs ────────────────────────────────────────────
+      - name: Scan summary
+        if: always()
+        run: |
+          echo "### LangSight MCP Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Total findings | ${{ steps.scan.outputs.findings }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Critical | ${{ steps.scan.outputs.critical }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| High | ${{ steps.scan.outputs.high }} |" >> $GITHUB_STEP_SUMMARY
+
+      # ── Upload JSON report as artifact ────────────────────────────────────
+      - name: Upload scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: langsight-scan-report
+          path: ${{ steps.scan.outputs.report-path }}
+          retention-days: 30

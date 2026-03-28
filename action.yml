@@ -1,0 +1,161 @@
+name: LangSight MCP Security Scan
+description: >
+  Scan MCP servers for CVEs, auth gaps, and misconfigurations.
+  Zero Docker required — auto-discovers servers from IDE configs or .langsight.yaml.
+author: LangSight
+
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  config:
+    description: >
+      Path to .langsight.yaml config file.
+      If omitted, servers are auto-discovered from Claude Desktop, Cursor, and VS Code configs.
+    required: false
+    default: ""
+
+  fail-on:
+    description: >
+      Minimum severity level that causes the action to fail.
+      Options: critical, high (default), medium, low.
+    required: false
+    default: "high"
+
+  version:
+    description: >
+      LangSight version to install (e.g. "0.9.2"). Defaults to the latest release.
+    required: false
+    default: "latest"
+
+  python-version:
+    description: Python version used to install and run LangSight.
+    required: false
+    default: "3.11"
+
+  extra-args:
+    description: Additional CLI arguments passed to `langsight scan` (e.g. "--fix").
+    required: false
+    default: ""
+
+outputs:
+  findings:
+    description: Total number of security findings across all servers.
+    value: ${{ steps.parse.outputs.findings }}
+
+  critical:
+    description: Number of CRITICAL severity findings.
+    value: ${{ steps.parse.outputs.critical }}
+
+  high:
+    description: Number of HIGH severity findings.
+    value: ${{ steps.parse.outputs.high }}
+
+  report-path:
+    description: Absolute path to the JSON scan report written to the runner.
+    value: ${{ steps.scan.outputs.report_path }}
+
+runs:
+  using: composite
+  steps:
+    # ── Python ────────────────────────────────────────────────────────────────
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+
+    # ── Install ───────────────────────────────────────────────────────────────
+    - name: Install LangSight
+      shell: bash
+      run: |
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          pip install --quiet langsight
+        else
+          pip install --quiet "langsight==${{ inputs.version }}"
+        fi
+
+    # ── Scan (JSON capture + human display) ───────────────────────────────────
+    - name: Scan MCP servers
+      id: scan
+      shell: bash
+      run: |
+        REPORT_PATH="${RUNNER_TEMP}/langsight-report.json"
+        echo "report_path=${REPORT_PATH}" >> "$GITHUB_OUTPUT"
+
+        CONFIG_ARG=""
+        if [ -n "${{ inputs.config }}" ]; then
+          CONFIG_ARG="--config ${{ inputs.config }}"
+        fi
+
+        # Capture JSON to file; show human-readable output in the log
+        langsight scan ${CONFIG_ARG} ${{ inputs.extra-args }} --json \
+          > "${REPORT_PATH}" 2>&1 || true
+
+        echo "--- Human-readable summary ---"
+        langsight scan ${CONFIG_ARG} ${{ inputs.extra-args }} 2>&1 || true
+
+    # ── Parse counts from JSON ────────────────────────────────────────────────
+    - name: Parse results
+      id: parse
+      shell: python
+      run: |
+        import json, os, sys
+
+        report_path = os.environ.get("REPORT_PATH", "")
+        try:
+            with open(report_path) as f:
+                data = json.load(f)
+        except Exception:
+            data = []
+
+        total = critical = high = 0
+        for entry in data:
+            sec = entry.get("security") or {}
+            total    += len(sec.get("findings", []))
+            critical += sec.get("critical_count", 0)
+            high     += sec.get("high_count", 0)
+
+        with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+            out.write(f"findings={total}\n")
+            out.write(f"critical={critical}\n")
+            out.write(f"high={high}\n")
+
+        print(f"LangSight: {total} finding(s) — {critical} critical, {high} high")
+      env:
+        REPORT_PATH: ${{ steps.scan.outputs.report_path }}
+
+    # ── Enforce threshold ─────────────────────────────────────────────────────
+    - name: Enforce severity threshold
+      shell: bash
+      run: |
+        FAIL_ON="${{ inputs.fail-on }}"
+        CRITICAL="${{ steps.parse.outputs.critical }}"
+        HIGH="${{ steps.parse.outputs.high }}"
+
+        fail() {
+          echo "::error title=LangSight MCP Scan::$1"
+          echo "::notice::Run 'langsight scan --fix' locally for remediation steps."
+          exit 1
+        }
+
+        case "${FAIL_ON}" in
+          critical)
+            [ "${CRITICAL:-0}" -gt 0 ] && \
+              fail "${CRITICAL} CRITICAL finding(s). See report above."
+            ;;
+          medium|low)
+            # For medium/low use --ci flag directly
+            CONFIG_ARG=""
+            [ -n "${{ inputs.config }}" ] && CONFIG_ARG="--config ${{ inputs.config }}"
+            langsight scan ${CONFIG_ARG} --ci ${{ inputs.extra-args }} || \
+              fail "Findings at or above '${FAIL_ON}' severity detected."
+            ;;
+          *)
+            # Default: fail on high+
+            if [ "${CRITICAL:-0}" -gt 0 ] || [ "${HIGH:-0}" -gt 0 ]; then
+              fail "${CRITICAL} CRITICAL + ${HIGH} HIGH finding(s). See report above."
+            fi
+            ;;
+        esac
