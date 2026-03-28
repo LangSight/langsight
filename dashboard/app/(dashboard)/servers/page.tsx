@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import {
   Server, ChevronRight, Search, RefreshCw, ChevronDown,
-  ChevronUp, ChevronLast, AlertTriangle, X, Bot,
+  ChevronUp, ChevronLast, AlertTriangle, X, Bot, Cpu, Loader2,
 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { fetcher, triggerHealthCheck, getServerHistory, listServerMetadata, upsertServerMetadata, discoverServers, getDriftHistory, getDriftImpact, getBlastRadius, getServerLogs } from "@/lib/api";
@@ -918,6 +918,126 @@ function SchemaPanel({ tools }: { tools: { name: string; description: string; in
   );
 }
 
+/* ── Investigate Panel ──────────────────────────────────────── */
+function InvestigatePanel({ serverName, projectId }: { serverName: string; projectId: string | null }) {
+  const [loading, setLoading] = useState(false);
+  const [report, setReport] = useState<string | null>(null);
+  const [providerUsed, setProviderUsed] = useState<string>("");
+  const [window, setWindow] = useState<"1" | "6" | "24">("1");
+  const [provider, setProvider] = useState<"anthropic" | "openai" | "ollama">("anthropic");
+  const [error, setError] = useState<string | null>(null);
+
+  async function runInvestigation() {
+    setLoading(true);
+    setReport(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/proxy/investigate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          server_names: [serverName],
+          window_hours: parseFloat(window),
+          provider,
+          project_id: projectId,
+        }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt);
+      }
+      const data = await res.json();
+      setReport(data.report);
+      setProviderUsed(data.provider_used);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Investigation failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 space-y-3">
+      {/* controls */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Look-back</span>
+        {(["1", "6", "24"] as const).map(w => (
+          <button
+            key={w}
+            onClick={() => setWindow(w)}
+            className={cn(
+              "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+              window === w ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-accent/40",
+            )}
+          >{w}h</button>
+        ))}
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide ml-3">Provider</span>
+        {(["anthropic", "openai", "ollama"] as const).map(p => (
+          <button
+            key={p}
+            onClick={() => setProvider(p)}
+            className={cn(
+              "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+              provider === p ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-accent/40",
+            )}
+          >{p}</button>
+        ))}
+        <button
+          onClick={runInvestigation}
+          disabled={loading}
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60"
+        >
+          {loading ? <Loader2 size={11} className="animate-spin" /> : <Cpu size={11} />}
+          {loading ? "Investigating…" : "Run Investigation"}
+        </button>
+      </div>
+
+      {/* result */}
+      {error && (
+        <div className="rounded-lg p-3 text-[11px] text-red-400 bg-red-500/10 border border-red-500/20">
+          {error}
+        </div>
+      )}
+      {report && (
+        <div
+          className="rounded-lg border p-4"
+          style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Cpu size={12} className="text-primary" />
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+              Root Cause Analysis · {providerUsed}
+            </span>
+          </div>
+          <div
+            className="prose prose-sm max-w-none text-foreground"
+            style={{ fontSize: 12, lineHeight: 1.7 }}
+            dangerouslySetInnerHTML={{
+              __html: report
+                // basic markdown rendering: headers, bold, bullets, code
+                .replace(/^### (.+)$/gm, '<h3 class="text-[12px] font-semibold mt-3 mb-1">$1</h3>')
+                .replace(/^## (.+)$/gm, '<h2 class="text-[13px] font-bold mt-4 mb-1">$2</h2>'.replace('$2', '$1'))
+                .replace(/^# (.+)$/gm, '<h1 class="text-[14px] font-bold mt-4 mb-2">$1</h1>')
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/`([^`]+)`/g, '<code class="bg-muted px-1 rounded text-[10px] font-mono">$1</code>')
+                .replace(/^[\*\-] (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
+                .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal">$1</li>')
+                .replace(/\n\n/g, '<br/>')
+                .replace(/---/g, '<hr class="border-border my-2"/>')
+            }}
+          />
+        </div>
+      )}
+      {!report && !loading && !error && (
+        <p className="text-[11px] text-muted-foreground">
+          Click <strong>Run Investigation</strong> to analyse health history and get an AI-generated root cause report.
+          {" "}Configure <code className="bg-muted px-1 rounded text-[10px]">ANTHROPIC_API_KEY</code> for Claude-powered analysis.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ── Page ───────────────────────────────────────────────────── */
 type DetailTab = "about" | "tools" | "health" | "consumers" | "drift" | "schema" | "logs";
 
@@ -1221,6 +1341,13 @@ export default function ServersPage() {
                     <>
                       <BlastRadiusPanel serverName={selected.server_name} serverStatus={selected.status} projectId={pid} />
                       <HealthHistoryPanel serverName={selected.server_name} />
+                      <div className="mt-4 pt-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Cpu size={12} className="text-primary" />
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">AI Root Cause Investigation</p>
+                        </div>
+                        <InvestigatePanel serverName={selected.server_name} projectId={pid} />
+                      </div>
                     </>
                   )}
 

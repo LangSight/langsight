@@ -134,6 +134,20 @@ export const updateModelPricing = (id: string, body: Omit<ModelPricingEntry, "id
 export const deactivateModelPricing = (id: string) =>
   del(`/costs/models/${encodeURIComponent(id)}`);
 
+// ─── Investigate (AI RCA) ─────────────────────────────────────────────────────
+export const runInvestigation = (body: {
+  server_names: string[];
+  window_hours: number;
+  provider: string;
+  model?: string;
+  project_id?: string | null;
+}) => post<{
+  report: string;
+  provider_used: string;
+  evidence: unknown[];
+  generated_at: string;
+}>("/investigate", body);
+
 // ─── Security ─────────────────────────────────────────────────────────────────
 export const triggerSecurityScan = (projectId?: string | null) =>
   post<SecurityScanResult[]>(projectId ? `/security/scan?project_id=${encodeURIComponent(projectId)}` : "/security/scan");

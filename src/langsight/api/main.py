@@ -29,6 +29,7 @@ from langsight.api.routers import (
     auth,
     costs,
     health,
+    investigate,
     lineage,
     live,
     monitoring,
@@ -481,6 +482,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     app.include_router(auth.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(alerts_config.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(alerts_feed.router, prefix="/api", dependencies=_auth_dep)
+    app.include_router(investigate.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(agents.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(servers.router, prefix="/api", dependencies=_auth_dep)
     app.include_router(lineage.router, prefix="/api", dependencies=_auth_dep)
