@@ -9,13 +9,13 @@ import {
   ChevronUp, ChevronLast, AlertTriangle, X, Bot,
 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
-import { fetcher, triggerHealthCheck, getServerHistory, listServerMetadata, upsertServerMetadata, discoverServers, getDriftHistory, getDriftImpact, getBlastRadius } from "@/lib/api";
+import { fetcher, triggerHealthCheck, getServerHistory, listServerMetadata, upsertServerMetadata, discoverServers, getDriftHistory, getDriftImpact, getBlastRadius, getServerLogs } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatLatency, STATUS_BG, formatExact } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
 import { toast } from "sonner";
 import { EditableTextarea, EditableText, EditableTags, EditableUrl } from "@/components/editable-field";
-import type { HealthResult, ServerMetadata, LineageGraph, ToolReliability, SchemaDriftEvent, DriftImpact, BlastRadius, BlastRadiusAgent } from "@/lib/types";
+import type { HealthResult, ServerMetadata, LineageGraph, ToolReliability, SchemaDriftEvent, DriftImpact, BlastRadius, BlastRadiusAgent, ServerLogEntry } from "@/lib/types";
 
 /* ── Helpers ────────────────────────────────────────────────── */
 const STATUS_COLOR: Record<string, string> = { up: "#22c55e", degraded: "#eab308", down: "#ef4444", stale: "#6b7280" };
@@ -294,6 +294,138 @@ function GroupedSidebar({ servers, metaByName, selectedServer, onSelect, search,
         <Group name="degraded" items={groups.degraded} label="Degraded" />
         <Group name="up" items={groups.up} label="Healthy" />
         {groups.down.length + groups.degraded.length + groups.up.length === 0 && <p className="text-center text-[11px] text-muted-foreground py-8">No servers match</p>}
+      </div>
+    </div>
+  );
+}
+
+/* ── Logs panel ─────────────────────────────────────────────── */
+const LOG_STATUS_COLOR: Record<string, string> = {
+  success: "#22c55e", error: "#ef4444", timeout: "#f97316", prevented: "#a855f7",
+};
+
+function LogsPanel({ serverName, projectId }: { serverName: string; projectId: string | null }) {
+  const [hours, setHours] = useState(24);
+  const [paused, setPaused] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | "success" | "error">("all");
+  const [agentFilter, setAgentFilter] = useState<string>("all");
+
+  const swrKey = paused ? null : `/api/health/servers/${encodeURIComponent(serverName)}/logs?hours=${hours}&limit=200${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`;
+  const { data: logs, isLoading } = useSWR<ServerLogEntry[]>(swrKey, () => getServerLogs(serverName, hours, 200, projectId), { refreshInterval: 10_000 });
+
+  const agents = useMemo(() => ["all", ...Array.from(new Set((logs ?? []).map((l) => l.agent_name).filter(Boolean)))], [logs]);
+
+  const filtered = useMemo(() => {
+    if (!logs) return [];
+    return logs.filter((l) => {
+      if (statusFilter !== "all" && l.status !== statusFilter) return false;
+      if (agentFilter !== "all" && l.agent_name !== agentFilter) return false;
+      return true;
+    });
+  }, [logs, statusFilter, agentFilter]);
+
+  const mono = { fontFamily: "var(--font-geist-mono)" };
+
+  return (
+    <div className="flex flex-col gap-3 h-full">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+        {/* Live indicator */}
+        <div className="flex items-center gap-1.5">
+          {!paused && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping absolute" />}
+          <span className="relative w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: paused ? "#6b7280" : "#22c55e" }} />
+          <button onClick={() => setPaused((p) => !p)} className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors">
+            {paused ? "Paused" : "Live"}
+          </button>
+        </div>
+
+        <div className="w-px h-4 bg-border" />
+
+        {/* Time window */}
+        <div className="flex items-center rounded-lg overflow-hidden" style={{ border: "1px solid hsl(var(--border))" }}>
+          {[{ v: 1, l: "1h" }, { v: 6, l: "6h" }, { v: 24, l: "24h" }, { v: 168, l: "7d" }].map(({ v, l }) => (
+            <button key={v} onClick={() => setHours(v)} className={cn("px-2.5 py-1 text-[11px] font-medium transition-colors", hours === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-accent/40")}>{l}</button>
+          ))}
+        </div>
+
+        {/* Status filter */}
+        <div className="flex items-center gap-1">
+          {(["all", "success", "error"] as const).map((f) => (
+            <button key={f} onClick={() => setStatusFilter(f)}
+              className={cn("px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all capitalize", statusFilter === f ? "text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-accent/40")}
+              style={{ background: statusFilter === f ? "hsl(var(--card))" : undefined, border: statusFilter === f ? "1px solid hsl(var(--border))" : "1px solid transparent" }}>
+              {f !== "all" && <span className="inline-block w-1.5 h-1.5 rounded-full mr-1" style={{ background: LOG_STATUS_COLOR[f] }} />}
+              {f}
+            </button>
+          ))}
+        </div>
+
+        {/* Agent filter */}
+        {agents.length > 2 && (
+          <select value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)}
+            className="input-base text-[11px] h-[28px] px-2 pr-6 rounded-lg" style={{ appearance: "auto" }}>
+            {agents.map((a) => <option key={a} value={a}>{a === "all" ? "All agents" : a}</option>)}
+          </select>
+        )}
+
+        <span className="text-[11px] text-muted-foreground ml-auto">{filtered.length} entries</span>
+      </div>
+
+      {/* Log stream */}
+      <div className="flex-1 rounded-xl overflow-auto" style={{ border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        {isLoading ? (
+          <div className="p-4 space-y-1.5">{[...Array(8)].map((_, i) => <div key={i} className="skeleton h-5 rounded" style={{ width: `${60 + Math.random() * 35}%` }} />)}</div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <p className="text-[13px] font-semibold text-foreground">No log entries</p>
+            <p className="text-[11px] mt-1 text-muted-foreground">No tool calls matching filters in the last {hours}h</p>
+          </div>
+        ) : (
+          <table className="w-full border-collapse">
+            <thead className="sticky top-0" style={{ background: "hsl(var(--card-raised))", borderBottom: "1px solid hsl(var(--border))" }}>
+              <tr>
+                {["Time", "Agent", "Tool", "Status", "Latency", "Error"].map((h) => (
+                  <th key={h} className="px-3 py-2 text-left text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((entry, i) => {
+                const color = LOG_STATUS_COLOR[entry.status] ?? "#6b7280";
+                return (
+                  <tr key={`${entry.span_id}-${i}`}
+                    className="border-b hover:bg-accent/20 transition-colors"
+                    style={{ borderColor: "hsl(var(--border))" }}>
+                    <td className="px-3 py-1.5 text-[10px] whitespace-nowrap text-muted-foreground" style={mono}>
+                      <span title={entry.started_at}>
+                        {new Date(entry.started_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        <span className="ml-1 opacity-50">{new Date(entry.started_at).toLocaleDateString([], { month: "short", day: "numeric" })}</span>
+                      </span>
+                    </td>
+                    <td className="px-3 py-1.5 text-[11px] font-medium whitespace-nowrap text-muted-foreground" style={mono}>
+                      {entry.agent_name || "—"}
+                    </td>
+                    <td className="px-3 py-1.5 text-[11px] font-semibold whitespace-nowrap text-foreground" style={mono}>
+                      {entry.tool_name}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <span className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color }}>
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: color }} />
+                        {entry.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-1.5 text-[11px] whitespace-nowrap" style={{ color: entry.latency_ms && entry.latency_ms > 2000 ? "#f97316" : "hsl(var(--muted-foreground))", ...mono }}>
+                      {entry.latency_ms != null ? `${Math.round(entry.latency_ms)}ms` : "—"}
+                    </td>
+                    <td className="px-3 py-1.5 text-[10px] max-w-[200px] truncate" style={{ color: "#ef4444", ...mono }} title={entry.error ?? ""}>
+                      {entry.error || ""}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
@@ -787,7 +919,7 @@ function SchemaPanel({ tools }: { tools: { name: string; description: string; in
 }
 
 /* ── Page ───────────────────────────────────────────────────── */
-type DetailTab = "about" | "tools" | "health" | "consumers" | "drift" | "schema";
+type DetailTab = "about" | "tools" | "health" | "consumers" | "drift" | "schema" | "logs";
 
 export default function ServersPage() {
   const { activeProject } = useProject();
@@ -937,7 +1069,7 @@ export default function ServersPage() {
                     <button onClick={() => setSelectedServer(null)} className="p-1.5 rounded hover:bg-accent/60 text-muted-foreground hover:text-foreground transition-colors"><X size={14} /></button>
                   </div>
                   <div className="flex">
-                    {(["about", "tools", "health", "consumers", "drift", "schema"] as DetailTab[]).map((tab) => {
+                    {(["about", "tools", "health", "consumers", "drift", "schema", "logs"] as DetailTab[]).map((tab) => {
                       const serverTools = (toolReliability ?? []).filter((t) => t.server_name === selected.server_name);
                       const schemaBadge = (declaredTools ?? []).filter((t) => t.input_schema).length;
                       const badge = tab === "consumers" ? consumers.length : tab === "tools" ? serverTools.length : tab === "schema" ? schemaBadge : 0;
@@ -952,7 +1084,7 @@ export default function ServersPage() {
                 </div>
 
                 {/* Tab content */}
-                <div className="flex-1 overflow-y-auto p-5">
+                <div className={cn("flex-1 min-h-0", activeTab === "logs" ? "flex flex-col p-5 overflow-hidden" : "overflow-y-auto p-5")}>
                   {/* ABOUT */}
                   {activeTab === "about" && (() => {
                     const meta = metaByName.get(selected.server_name);
@@ -1123,6 +1255,9 @@ export default function ServersPage() {
                       )}
                     </div>
                   )}
+
+                  {/* LOGS */}
+                  {activeTab === "logs" && <LogsPanel serverName={selected.server_name} projectId={pid} />}
 
                   {/* DRIFT */}
                   {activeTab === "drift" && <SchemaDriftPanel serverName={selected.server_name} projectId={pid} schemaByTool={new Map((declaredTools ?? []).map((t) => [t.tool_name, t.input_schema ?? null]))} />}

@@ -54,6 +54,7 @@
     {
       "group": "CLI Reference",
       "pages": [
+        "cli/scan",
         "cli/init",
         "cli/mcp-health",
         "cli/security-scan",

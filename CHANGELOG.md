@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-03-27
+
+### Added
+- **`langsight scan` command** — zero-Docker MCP health + security audit in a single command. Auto-discovers MCP server configs from Claude Desktop, Cursor, VS Code, and Windsurf IDE config files (or reads `.langsight.yaml` if present). Runs health checks and security scans in parallel and renders a combined Rich table: server name, status, latency, tools count, and security findings count. A second findings table lists severity, server, category, and finding text. Pass `--fix` to show remediation steps inline. Pass `--ci` to exit `1` on any CRITICAL or HIGH finding for use as a CI/CD gate. No Postgres, ClickHouse, or Docker required — all results are persisted to SQLite.
+- **SQLite storage backend** (`src/langsight/storage/sqlite.py`) — local SQLite backend used exclusively by `langsight scan`. Stores health check results (`health_results`), tool list snapshots (`schema_snapshots`), and schema drift events (`schema_drift_events`). Default path: `~/.langsight/scan.db`; override with `--db`. Schema drift is detected automatically across consecutive scans.
+- **Docs: `docs-site/cli/scan.mdx`** — full reference page for `langsight scan` covering auto-discovery IDE config table, example terminal output, all flags with `<ParamField>` docs, CI/CD integration with GitHub Actions example, SQLite history section, JSON output schema, and comparison table vs `mcp-health` / `security-scan`.
+- **Docs: `docs-site/mint.json`** — `cli/scan` added as the first entry in the CLI Reference navigation group, reflecting its role as the zero-friction entry point.
+
 ## [0.9.1] - 2026-03-27
 
 ### Added

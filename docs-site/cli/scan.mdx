@@ -1,0 +1,244 @@
+---
+title: "langsight scan"
+description: "Zero-Docker MCP health + security audit in a single command. No Postgres, ClickHouse, or Docker required."
+---
+
+`langsight scan` is the fastest way to audit your MCP servers. It auto-discovers every IDE config on the machine, runs health checks and security scans in parallel, and stores results locally in SQLite — all with no infrastructure dependencies.
+
+<Note>
+  `langsight scan` is designed for zero-friction use: `pip install langsight && langsight scan` is the entire setup. All results are saved to `~/.langsight/scan.db` (SQLite) — no Docker, no Postgres, no ClickHouse required.
+</Note>
+
+## Quick start
+
+<Steps>
+  <Step title="Install LangSight">
+    ```bash
+    pip install langsight
+    ```
+  </Step>
+  <Step title="Run the scan">
+    ```bash
+    langsight scan
+    ```
+    LangSight auto-discovers MCP servers from all supported IDE configs on your machine and runs health + security checks immediately.
+  </Step>
+  <Step title="Review results">
+    The combined output shows server health, latency, tool counts, and any security findings. Results are saved to `~/.langsight/scan.db` for history.
+  </Step>
+</Steps>
+
+## Usage
+
+```bash
+langsight scan [OPTIONS]
+```
+
+## Options
+
+<ParamField query="--config" type="path">
+  Path to a `.langsight.yaml` config file. If not set, LangSight auto-discovers IDE configs (see [Auto-discovery](#auto-discovery) below). When a `.langsight.yaml` is found in the current directory it is used automatically.
+</ParamField>
+
+<ParamField query="--db" type="path" default="~/.langsight/scan.db">
+  SQLite database path for storing scan history. Override when running multiple isolated projects on the same machine.
+</ParamField>
+
+<ParamField query="--json" type="boolean" default="false">
+  Output results as machine-readable JSON instead of the Rich table. Useful for piping into `jq` or saving to a file.
+</ParamField>
+
+<ParamField query="--ci" type="boolean" default="false">
+  Exit with code `1` if any CRITICAL or HIGH findings are present. Use as a CI/CD gate to block deployments when MCP servers are unhealthy or vulnerable.
+</ParamField>
+
+<ParamField query="--fix" type="boolean" default="false">
+  Show a remediation step below each finding. Without this flag only the finding is shown; `--fix` adds the concrete action needed to resolve it.
+</ParamField>
+
+## Auto-discovery
+
+When no `--config` is provided, `langsight scan` reads MCP server definitions directly from IDE configuration files on your machine.
+
+| IDE / Client | Config path scanned |
+|---|---|
+| Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Claude Desktop (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Cursor | `.cursor/mcp.json` (project) + `~/.cursor/mcp.json` (global) |
+| VS Code | `.vscode/mcp.json` (project) + `~/.config/Code/User/mcp.json` (global) |
+| Windsurf | `~/.windsurf/mcp.json` |
+| `.langsight.yaml` | Current directory (if present, takes precedence over IDE configs) |
+
+All discovered servers are merged and deduplicated before scanning. If a server appears in multiple configs, it is scanned once.
+
+<Tip>
+  Run `langsight scan --json | jq '.[].server_name'` to see exactly which servers were discovered before reviewing the full output.
+</Tip>
+
+## Example output
+
+```
+Scanning 6 MCP servers...
+
+MCP Scan Results
+──────────────────────────────────────────────────────────────────────────────
+Server            Status      Latency   Tools   Security Issues
+snowflake-mcp     ✓ up        142ms     8       0
+github-mcp        ✓ up        89ms      12      0
+slack-mcp         ⚠ degraded  1,240ms   4       1 HIGH
+jira-mcp          ✗ down      —         —       1 CRITICAL
+postgres-mcp      ✓ up        31ms      5       0
+filesystem-mcp    ✓ up        12ms      6       1 MEDIUM
+
+Security Findings
+──────────────────────────────────────────────────────────────────────────────
+Severity   Server         Category       Finding
+CRITICAL   jira-mcp       CVE            CVE-2025-6514 in mcp-remote
+HIGH       slack-mcp      OWASP-MCP-01   No authentication configured
+MEDIUM     filesystem-mcp OWASP-MCP-05   Tool 'read_file' has no input schema
+
+4/6 servers up · 1 critical · 1 high · 1 medium
+Results saved to ~/.langsight/scan.db
+```
+
+With `--fix`:
+
+```
+Security Findings
+──────────────────────────────────────────────────────────────────────────────
+Severity   Server         Category       Finding
+CRITICAL   jira-mcp       CVE            CVE-2025-6514 in mcp-remote
+           Fix: Update 'mcp-remote' to >= 1.2.3. Run: pip install --upgrade mcp-remote
+
+HIGH       slack-mcp      OWASP-MCP-01   No authentication configured
+           Fix: Add a Bearer token to the server config in claude_desktop_config.json
+               under mcpServers.slack-mcp.env.SLACK_MCP_API_KEY
+
+MEDIUM     filesystem-mcp OWASP-MCP-05   Tool 'read_file' has no input schema
+           Fix: Contact the server maintainer — input schemas prevent unvalidated calls
+```
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | All servers healthy, no CRITICAL or HIGH findings |
+| `1` | One or more servers DOWN, or CRITICAL/HIGH findings present when `--ci` is set |
+
+<Note>
+  Without `--ci`, `langsight scan` always exits `0` regardless of findings. The `--ci` flag is what enables non-zero exit on security findings, so you can use the command interactively without breaking shell scripts.
+</Note>
+
+## CI/CD integration
+
+Use `--ci` to gate deployments on a clean MCP audit.
+
+<CodeGroup>
+```yaml GitHub Actions
+- name: Scan MCP servers
+  run: |
+    pip install langsight
+    langsight scan --ci --config .langsight.yaml
+```
+
+```yaml GitLab CI
+scan-mcp:
+  stage: test
+  script:
+    - pip install langsight
+    - langsight scan --ci --config .langsight.yaml
+```
+
+```bash Local pre-commit hook
+#!/bin/sh
+langsight scan --ci --config .langsight.yaml
+```
+</CodeGroup>
+
+If `--config` is omitted in CI, LangSight will find no IDE configs (CI machines have no Claude Desktop or Cursor installed) and scan zero servers, exiting `0`. Always pass `--config .langsight.yaml` in CI.
+
+<Tip>
+  Commit a `.langsight.yaml` to your repo with the MCP servers used by your agent. `langsight scan --ci` in CI will then audit exactly those servers on every push.
+</Tip>
+
+## SQLite scan history
+
+Every scan writes results to `~/.langsight/scan.db` (or the path set by `--db`). The database contains three tables:
+
+| Table | Contents |
+|---|---|
+| `health_results` | Timestamp, server name, status, latency, tools count, error message |
+| `schema_snapshots` | Tool list hash per server, captured at scan time |
+| `schema_drift_events` | Recorded when a server's tool list changes between scans |
+
+Use `--db` to maintain separate history per project:
+
+```bash
+langsight scan --db ./my-project.db
+langsight scan --db ./other-project.db
+```
+
+Schema drift is detected automatically across scans. If `github-mcp` had 12 tools yesterday and has 11 today, the missing tool is flagged in the findings table.
+
+## JSON output
+
+```bash
+langsight scan --json
+```
+
+```json
+{
+  "scanned_at": "2026-03-27T10:00:00Z",
+  "servers": [
+    {
+      "server_name": "postgres-mcp",
+      "status": "up",
+      "latency_ms": 31.4,
+      "tools_count": 5,
+      "schema_hash": "f4a2b1c9...",
+      "security_findings": []
+    },
+    {
+      "server_name": "jira-mcp",
+      "status": "down",
+      "latency_ms": null,
+      "tools_count": null,
+      "schema_hash": null,
+      "security_findings": [
+        {
+          "severity": "critical",
+          "category": "CVE",
+          "title": "CVE-2025-6514 in mcp-remote",
+          "remediation": "Update 'mcp-remote' to a patched version."
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total": 6,
+    "up": 4,
+    "degraded": 1,
+    "down": 1,
+    "critical": 1,
+    "high": 1,
+    "medium": 1
+  }
+}
+```
+
+## Difference from `mcp-health` and `security-scan`
+
+| Command | Infrastructure required | What it does |
+|---|---|---|
+| `langsight scan` | None (SQLite only) | Health + security in one pass, auto-discovers IDE configs |
+| `langsight mcp-health` | Postgres or dual backend | Health checks only, stores results in Postgres/ClickHouse |
+| `langsight security-scan` | Postgres or dual backend | Security scan only, reads config from `.langsight.yaml` |
+
+`langsight scan` is the recommended starting point. Migrate to `mcp-health` + `security-scan` + `langsight monitor` when you need continuous monitoring, alerting, and a web dashboard.
+
+## Related
+
+- [Auto-discovery guide](/guides/auto-discovery) — how server discovery works
+- [`langsight mcp-health`](/cli/mcp-health) — continuous health checks with Postgres backend
+- [`langsight security-scan`](/cli/security-scan) — standalone security scanner
+- [Storage backends](/self-hosting/storage) — when to upgrade from SQLite to the full stack

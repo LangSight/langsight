@@ -110,6 +110,8 @@ export const getServerHealth = () => get<HealthResult[]>("/health/servers");
 export const getServerHistory = (name: string, limit = 20) =>
   get<HealthResult[]>(`/health/servers/${encodeURIComponent(name)}/history?limit=${limit}`);
 export const triggerHealthCheck = () => post<HealthResult[]>("/health/check");
+export const getServerLogs = (serverName: string, hours = 24, limit = 200, projectId?: string | null) =>
+  get<import("@/lib/types").ServerLogEntry[]>(`/health/servers/${encodeURIComponent(serverName)}/logs?hours=${hours}&limit=${limit}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
 export const getBlastRadius = (serverName: string, hours = 24, projectId?: string | null) =>
   get<BlastRadius>(`/health/servers/${encodeURIComponent(serverName)}/blast-radius?hours=${hours}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
 export const getDriftHistory = (serverName: string, limit = 50, projectId?: string | null) =>

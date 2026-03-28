@@ -622,6 +622,55 @@ class ClickHouseBackend:
 
         return {"agents": agents, "total_sessions": total_sessions}
 
+    async def get_server_logs(
+        self,
+        server_name: str,
+        hours: int = 24,
+        limit: int = 200,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return recent tool call log entries for a server, newest first."""
+        project_filter = ""
+        params: dict[str, Any] = {"server_name": server_name, "hours": hours, "limit": limit}
+        if project_id:
+            project_filter = "AND (project_id = {project_id:String} OR project_id = '')"
+            params["project_id"] = project_id
+
+        result = await self._client.query(
+            f"""
+            SELECT
+                started_at,
+                agent_name,
+                tool_name,
+                status,
+                latency_ms,
+                error,
+                session_id,
+                span_id
+            FROM mcp_tool_calls
+            WHERE
+                server_name = {{server_name:String}}
+                AND started_at >= now() - INTERVAL {{hours:UInt32}} HOUR
+                {project_filter}
+            ORDER BY started_at DESC
+            LIMIT {{limit:UInt32}}
+            """,
+            parameters=params,
+        )
+        return [
+            {
+                "started_at": row[0],
+                "agent_name": row[1],
+                "tool_name": row[2],
+                "status": row[3],
+                "latency_ms": float(row[4]) if row[4] is not None else None,
+                "error": row[5],
+                "session_id": row[6],
+                "span_id": row[7],
+            }
+            for row in result.result_rows
+        ]
+
     async def close(self) -> None:
         """Close the ClickHouse connection."""
         await self._client.close()

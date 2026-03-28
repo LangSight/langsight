@@ -317,6 +317,33 @@ async def get_blast_radius(
         if history:
             server_status = history[0].status
 
+@router.get(
+    "/servers/{server_name}/logs",
+    summary="Recent tool call log entries for a server",
+)
+async def get_server_logs(
+    server_name: str,
+    hours: int = Query(default=24, ge=1, le=168),
+    limit: int = Query(default=200, ge=1, le=1000),
+    storage: StorageBackend = Depends(get_storage),
+    project_id: str | None = Depends(get_active_project_id),
+) -> list[dict]:
+    """Return recent tool call activity for a server as a chronological log.
+
+    Entries are ordered newest-first. Each entry includes the agent that made
+    the call, tool name, status, latency, error message, and session ID.
+    """
+    fn = getattr(storage, "get_server_logs", None)
+    if fn is None:
+        return []
+    return await fn(
+        server_name=server_name,
+        hours=hours,
+        limit=limit,
+        project_id=project_id,
+    )
+
+
     result = await compute_blast_radius(
         server_name=server_name,
         storage=storage,

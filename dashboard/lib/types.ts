@@ -359,6 +359,19 @@ export interface PreventionConfigUpdate {
   cb_half_open_max_calls: number;
 }
 
+// ─── Server Logs ──────────────────────────────────────────────────────────────
+
+export interface ServerLogEntry {
+  started_at: string;
+  agent_name: string;
+  tool_name: string;
+  status: "success" | "error" | "timeout" | "prevented";
+  latency_ms: number | null;
+  error: string | null;
+  session_id: string;
+  span_id: string;
+}
+
 // ─── Blast Radius ─────────────────────────────────────────────────────────────
 
 export interface BlastRadiusAgent {

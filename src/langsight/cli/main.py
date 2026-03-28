@@ -9,6 +9,7 @@ from langsight.cli.init import init
 from langsight.cli.investigate import investigate
 from langsight.cli.mcp_health import mcp_health
 from langsight.cli.monitor import monitor
+from langsight.cli.scan import scan
 from langsight.cli.security_scan import security_scan
 from langsight.cli.serve import serve
 from langsight.cli.sessions import sessions
@@ -25,6 +26,7 @@ def cli() -> None:
     """
 
 
+cli.add_command(scan)           # zero-Docker: auto-discover + health + security
 cli.add_command(add)
 cli.add_command(api_key)
 cli.add_command(costs)

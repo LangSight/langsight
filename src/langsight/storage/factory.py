@@ -76,9 +76,15 @@ async def open_storage(config: StorageConfig) -> StorageBackend:
         )
         return DualStorage(metadata, analytics)
 
+    if mode == "sqlite":
+        from pathlib import Path
+
+        from langsight.storage.sqlite import DEFAULT_DB_PATH, SQLiteBackend
+
+        db_path = Path(config.sqlite_path) if getattr(config, "sqlite_path", None) else DEFAULT_DB_PATH
+        return await SQLiteBackend.open(db_path)
+
     raise ConfigError(
         f"Unknown storage mode '{config.mode}'. "
-        "Valid values: 'postgres', 'clickhouse', 'dual'. "
-        "SQLite has been removed — use 'dual' (Postgres + ClickHouse) for production "
-        "or 'postgres' for metadata-only deployments."
+        "Valid values: 'postgres', 'clickhouse', 'dual', 'sqlite'."
     )
