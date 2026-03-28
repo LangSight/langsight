@@ -12,11 +12,12 @@ Falls back to rule-based heuristics when no LLM API key is configured.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from langsight.api.dependencies import verify_api_key
@@ -235,8 +236,6 @@ async def run_investigation(
     storage: StorageBackend = request.app.state.storage
 
     # Gather evidence in parallel
-    import asyncio
-
     tasks = [
         _gather_evidence(name, storage, body.window_hours, body.project_id)
         for name in body.server_names
