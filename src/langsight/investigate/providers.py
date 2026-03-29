@@ -5,7 +5,7 @@ Each provider implements the LLMProvider Protocol:
     async def analyse(evidence: str, system: str) -> str
 
 Supported providers:
-    anthropic  — Claude (claude-sonnet-4-6, adaptive thinking)
+    anthropic  — Claude (claude-sonnet-4-6)
     openai     — OpenAI GPT (gpt-4o, gpt-4o-mini, o1-mini, ...)
     gemini     — Google Gemini via OpenAI-compatible endpoint
     ollama     — Local models via Ollama (llama3.2, mistral, ...)
@@ -72,7 +72,6 @@ class LLMProvider(Protocol):
 class AnthropicProvider:
     """Claude via the Anthropic SDK.
 
-    Uses adaptive thinking for deeper RCA analysis.
     Requires: ANTHROPIC_API_KEY environment variable.
     Get a key: https://console.anthropic.com
     """
@@ -98,7 +97,6 @@ class AnthropicProvider:
         response = await client.messages.create(
             model=self._model,
             max_tokens=2048,
-            thinking={"type": "adaptive"},
             system=system,
             messages=[{"role": "user", "content": evidence}],
         )
