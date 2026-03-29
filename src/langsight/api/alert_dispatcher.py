@@ -172,7 +172,11 @@ async def fire_alert(
     if dashboard_url:
         if session_id:
             context_url = f"{dashboard_url}/sessions/{session_id}"
-        elif alert_type in (AlertType.SERVER_DOWN, AlertType.SERVER_RECOVERED, AlertType.SCHEMA_DRIFT):
+        elif alert_type in (
+            AlertType.SERVER_DOWN,
+            AlertType.SERVER_RECOVERED,
+            AlertType.SCHEMA_DRIFT,
+        ):
             context_url = f"{dashboard_url}/health"
         elif alert_type in (AlertType.SECURITY_FINDING,):
             context_url = f"{dashboard_url}/security"

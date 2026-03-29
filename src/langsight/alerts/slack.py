@@ -132,7 +132,11 @@ def _build_payload(alert: Alert) -> dict[str, Any]:
                         "elements": [
                             {
                                 "type": "button",
-                                "text": {"type": "plain_text", "text": "View in Dashboard →", "emoji": True},
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "View in Dashboard →",
+                                    "emoji": True,
+                                },
                                 "url": alert.context_url,
                                 "style": "primary",
                             }
