@@ -1,0 +1,347 @@
+---
+title: "Alerts & Notifications"
+description: "Configure Slack alerts, manage the alert inbox, and understand what fires and when"
+---
+
+## Overview
+
+LangSight fires alerts through two independent pipelines: the **CLI monitor** (for MCP server health) and the **API/Dashboard** (for agent failures, anomalies, and security findings). Both pipelines write every fired alert to the **Alert Inbox** in the dashboard, where you can acknowledge, snooze, or resolve them.
+
+Every alert type can be toggled independently. Slack delivery is optional — the inbox always receives alerts regardless of whether Slack is configured.
+
+---
+
+## Step 1 — Create a Slack Incoming Webhook
+
+You need a Slack Incoming Webhook URL before LangSight can deliver alerts. If you already have one, skip to [Step 1b](#step-1b-configure-the-webhook-in-langsight).
+
+<Steps>
+  <Step title="Create or open a Slack App">
+    Go to [api.slack.com/apps](https://api.slack.com/apps) and click **Create New App → From scratch**.
+    Give it a name (e.g. `LangSight Alerts`) and select the workspace where alerts should appear.
+
+    If you already have an existing Slack app you want to reuse, open it from the same page.
+
+    <Tip>
+      Slack's full guide: [Sending messages using Incoming Webhooks](https://api.slack.com/messaging/webhooks)
+    </Tip>
+  </Step>
+  <Step title="Enable Incoming Webhooks">
+    In your app settings, click **Incoming Webhooks** in the left sidebar, then toggle **Activate Incoming Webhooks** to **On**.
+  </Step>
+  <Step title="Add a webhook to your workspace">
+    Scroll to the bottom of the Incoming Webhooks page and click **Add New Webhook to Workspace**.
+    Select the channel where LangSight alerts should be posted (e.g. `#alerts` or `#langsight`), then click **Allow**.
+  </Step>
+  <Step title="Copy the webhook URL">
+    Slack generates a URL in the form:
+
+    ```
+    https://hooks.slack.com/services/T.../B.../...
+    ```
+
+    Copy it — you'll paste it into LangSight in the next step.
+
+    <Warning>
+      Treat this URL as a secret. Anyone with it can post messages to your channel.
+      Never commit it to git — use the dashboard UI or an environment variable instead.
+    </Warning>
+  </Step>
+</Steps>
+
+<CardGroup cols={2}>
+  <Card title="Incoming Webhooks guide" icon="slack" href="https://api.slack.com/messaging/webhooks">
+    Official Slack guide to creating and managing incoming webhooks
+  </Card>
+  <Card title="Slack App management" icon="gear" href="https://api.slack.com/apps">
+    Manage your Slack apps and webhook URLs
+  </Card>
+  <Card title="Block Kit message format" icon="layout" href="https://api.slack.com/block-kit">
+    How LangSight formats rich alert messages in Slack
+  </Card>
+  <Card title="Slack help: Incoming Webhooks" icon="book" href="https://slack.com/help/articles/115005265063-Incoming-webhooks-for-Slack">
+    Step-by-step help article for non-developers
+  </Card>
+</CardGroup>
+
+---
+
+## Step 1b — Configure the webhook in LangSight
+
+### Option A: Dashboard (recommended)
+
+1. Open the dashboard and navigate to **Settings → Notifications**
+2. Paste your Slack Incoming Webhook URL into the **Slack Webhook URL** field
+3. Click **Save**, then click **Test** to send a test message
+
+Settings saved this way are stored in the database and apply immediately to both the CLI monitor and the API alert dispatcher. No restart required.
+
+### Option B: `.langsight.yaml`
+
+```yaml
+alerts:
+  slack_webhook: "https://hooks.slack.com/services/T.../B.../..."
+```
+
+### Option C: Environment variable
+
+```bash
+export LANGSIGHT_SLACK_WEBHOOK="https://hooks.slack.com/services/T.../B.../..."
+```
+
+### Priority order
+
+When all three are set, the webhook URL is resolved in this order:
+
+1. Database (set via Settings → Notifications) — **highest priority**
+2. `.langsight.yaml` `alerts.slack_webhook`
+3. `LANGSIGHT_SLACK_WEBHOOK` environment variable
+
+---
+
+## Step 2 — Enable the alert types you want
+
+Navigate to **Dashboard → Alerts** and use the toggles to enable or disable each alert type. Changes take effect immediately.
+
+| Toggle label | Config key | Default | Fired by |
+|---|---|---|---|
+| Agent Failure | `agent_failure` | ON | API — span ingestion with unhealthy health tag |
+| SLO Breached | `slo_breached` | ON | API — SLO evaluator |
+| Anomaly (Critical) | `anomaly_critical` | ON | API — anomaly detector |
+| Anomaly (Warning) | `anomaly_warning` | OFF | API — anomaly detector |
+| Security Critical | `security_critical` | ON | API — security scan |
+| Security High | `security_high` | OFF | API — security scan |
+| MCP Server Down | `mcp_down` | ON | CLI monitor |
+| MCP Recovered | `mcp_recovered` | ON | CLI monitor |
+
+<Note>
+  Alert type toggles apply to Slack delivery only. All fired alerts are always written to the Alert Inbox regardless of toggle state.
+</Note>
+
+---
+
+## Alert types — what fires and when
+
+### Agent Failure
+
+Fires when a span batch is ingested via the API and any span carries an unhealthy health tag.
+
+Health tags that trigger this alert:
+
+| Tag | Meaning |
+|---|---|
+| `tool_failure` | A tool call returned an error |
+| `loop_detected` | Agent exceeded the loop detection threshold |
+| `budget_exceeded` | Agent exceeded its configured cost or token budget |
+| `circuit_breaker_open` | Circuit breaker tripped — server in cooldown |
+| `timeout` | A tool call or LLM call exceeded the timeout |
+| `schema_drift` | Tool schema changed during an active session |
+
+**Deduplication:** One Slack message per session ID. If a session has 10 failed spans, one alert fires when the first failing batch arrives.
+
+### SLO Breached
+
+Fires when the SLO evaluator determines that an agent has fallen below its success rate target or exceeded its p99 latency target. See [Agent SLOs](/slos) for how to define SLOs.
+
+### Anomaly (Critical / Warning)
+
+Fires when the anomaly detector identifies a statistically significant deviation from baseline for a tool's error rate or latency. See [Anomaly Detection](/anomaly-detection) for the z-score thresholds.
+
+- **Critical**: |z| >= 3.0
+- **Warning**: |z| >= 2.0
+
+**Deduplication:** One Slack message per server + tool + metric combination per process restart. Repeated anomalies on the same signal do not flood Slack.
+
+### Security Critical / Security High
+
+Fires immediately after a security scan when findings at the corresponding severity are found. Security scans are manually triggered from the **Alerts** page or via `langsight security-scan`. One alert fires per scan run — not per individual finding.
+
+### MCP Server Down
+
+Fires from the CLI monitor (`langsight monitor`) when a server has failed health checks consecutively for the configured threshold (default: 3 consecutive failures). The alert fires once on the transition — not on every subsequent failed check.
+
+### MCP Recovered
+
+Fires from the CLI monitor when a previously DOWN server passes a health check. Closes the incident automatically in the Alert Inbox.
+
+---
+
+## CLI monitor alerts
+
+The `langsight monitor` daemon polls MCP servers continuously and fires alerts on state transitions.
+
+```bash
+langsight monitor --interval 30
+```
+
+```
+Cycle #1 — next in 30s
+──────────────────────────────────────────────
+Server           Status      Latency   Tools
+postgres-mcp     ✓ up        142ms     5
+s3-mcp           ✓ up        890ms     7
+
+[Alert] CRITICAL — MCP server 'jira-mcp' is DOWN
+  Server has been unreachable for 3 consecutive checks.
+  Slack notification sent.
+```
+
+### Configurable thresholds
+
+```yaml
+# .langsight.yaml
+alerts:
+  slack_webhook: "https://hooks.slack.com/services/..."  # optional if set in UI
+  consecutive_failures: 3     # failures before DOWN fires (default: 3)
+  latency_spike_multiplier: 3.0  # N× baseline = HIGH_LATENCY (default: 3.0)
+  error_rate_threshold: 0.05  # 5% error rate threshold (default: 0.05)
+```
+
+### Alert types from the monitor
+
+| Alert | Trigger |
+|---|---|
+| `MCP_DOWN` | N consecutive failed health checks (N = `consecutive_failures`) |
+| `MCP_RECOVERED` | First passing check after a DOWN state |
+| `SCHEMA_DRIFT` | Tool schema changed between two consecutive checks |
+| `HIGH_LATENCY` | Latency exceeds `latency_spike_multiplier` × baseline |
+
+### Deduplication
+
+The monitor tracks state per server. `MCP_DOWN` fires exactly once when the server transitions DOWN — not once per polling cycle. `MCP_RECOVERED` fires exactly once on the first passing check.
+
+---
+
+## Alert Inbox
+
+Every fired alert — from both the CLI monitor and the API — is written to the Alert Inbox. Access it at **Dashboard → Alerts**.
+
+### Alert lifecycle
+
+```
+firing  →  acknowledged  →  resolved
+              ↓
+            snoozed (returns to firing after snooze period)
+```
+
+### Actions
+
+| Action | What it does |
+|---|---|
+| **Ack** | Marks the alert as reviewed. Stops it from appearing in the "Needs attention" count. |
+| **Snooze** | Suppresses the alert for a fixed duration: 15 min, 1 hour, 4 hours, or 1 day. After the period, it returns to `firing`. |
+| **Resolve** | Closes the alert. Resolved alerts are kept for audit purposes but removed from the active view. |
+
+### Inbox API
+
+The inbox is also available via the REST API:
+
+```bash
+# List active alerts
+curl http://localhost:8000/api/alerts/inbox \
+  -H "X-API-Key: <your-key>"
+
+# Acknowledge an alert
+curl -X POST http://localhost:8000/api/alerts/abc123/ack \
+  -H "X-API-Key: <your-key>"
+
+# Resolve an alert
+curl -X POST http://localhost:8000/api/alerts/abc123/resolve \
+  -H "X-API-Key: <your-key>"
+
+# Snooze an alert (duration in minutes)
+curl -X POST http://localhost:8000/api/alerts/abc123/snooze \
+  -H "X-API-Key: <your-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"minutes": 60}'
+```
+
+---
+
+## Debugging — why didn't my alert fire?
+
+Check the structured logs on the API process. All alert activity is logged with `structlog`:
+
+| Log event | Meaning |
+|---|---|
+| `alert_dispatcher.skipped` | Alert type is disabled in the dashboard toggle |
+| `alert_dispatcher.save_failed` | DB write failed — check storage connectivity |
+| `alert_dispatcher.slack_sent` | Slack delivery succeeded |
+| `monitor.slack_sent` | CLI monitor delivered to Slack |
+
+### Quick diagnostic checklist
+
+1. **Is the alert type toggled on?** — Dashboard → Alerts → check the toggle for the relevant type
+2. **Is the webhook valid?** — Settings → Notifications → click **Test**
+3. **Check logs for `alert_dispatcher.skipped`** — the toggle is off
+4. **Check logs for `alert_dispatcher.save_failed`** — the Postgres `fired_alerts` table may be unreachable
+5. **For MCP Down alerts** — is `langsight monitor` running? Slack alerts for MCP servers require the monitor daemon, not just the API server
+
+---
+
+## Testing alerts end-to-end
+
+### Test the Slack webhook
+
+Settings → Notifications → **Test** button sends a test message immediately.
+
+### Test MCP Down
+
+Start `langsight monitor` with a server that is deliberately unreachable:
+
+```bash
+# .langsight.yaml: add a server pointing at a dead address
+# Then run one check cycle
+langsight monitor --once
+```
+
+After `consecutive_failures` cycles (default 3), the DOWN alert fires and a Slack message is delivered.
+
+### Test agent_failure
+
+Send a failing span via the SDK with an unhealthy tag:
+
+```python
+from langsight import LangSightClient
+
+client = LangSightClient(project_id="my-project")
+
+with client.session("test-session") as session:
+    session.record_span(
+        tool="my-tool",
+        server="my-server",
+        status="error",
+        health_tag="tool_failure",
+        latency_ms=50,
+    )
+```
+
+Check the Alert Inbox — an `agent_failure` alert should appear within seconds.
+
+### Test security alerts
+
+Trigger a security scan from the **Alerts** page (or run `langsight security-scan`). If any CRITICAL or HIGH findings are present, a `security_critical` or `security_high` alert fires immediately after the scan completes.
+
+---
+
+## Architecture
+
+```
+  CLI monitor                  API / Dashboard
+  ───────────                  ───────────────
+  langsight monitor            POST /api/traces/spans  →  agent_failure
+       │                       anomaly detector        →  anomaly_critical/warning
+       │  state transitions    SLO evaluator           →  slo_breached
+       │  (DOWN/RECOVERED/     security scan           →  security_critical/high
+       │   SCHEMA_DRIFT/
+       │   HIGH_LATENCY)
+       │
+       ▼
+  AlertDispatcher
+       │
+       ├── Postgres fired_alerts table  (Alert Inbox — always)
+       │
+       └── Slack webhook  (if enabled + alert type toggled ON)
+```
+
+Both pipelines share the same `AlertDispatcher`. The inbox is the single source of truth for all alert history.
