@@ -6,6 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-03-29
+
+### Added
+- **`langsight scorecard` CLI command** (`src/langsight/cli/scorecard.py`) — A-F composite health grades for MCP servers. Aggregates uptime, latency percentiles, error rate, and security findings into a single grade per server. Was referenced in docs but never shipped; now implemented and registered in the CLI.
+- **`POST /api/investigate` endpoint** — AI-powered root-cause analysis (RCA) for MCP server incidents. Accepts a server name and optional time window; returns a structured RCA report including probable causes, blast radius, and recommended remediation steps. Backed by the Claude Agent SDK.
+- **Persistent Alert Inbox** (`fired_alerts` Postgres table) — alerts now persist beyond process lifetime with a full lifecycle: `firing` → `acknowledged` → `resolved` or `snoozed`. New REST API: `GET /api/alerts/inbox`, `POST /api/alerts/{id}/ack`, `POST /api/alerts/{id}/resolve`, `POST /api/alerts/{id}/snooze`. Dashboard: new `/alerts` page with inbox view.
+- **GitHub Actions marketplace action** (`.github/actions/langsight-scan/`) — zero-config action that runs `langsight scan --ci` as a pre-deploy gate. Fails the workflow on CRITICAL or HIGH security findings. Published to the GitHub Actions marketplace.
+
+### Fixed
+- **SQLite WAL mode + busy_timeout in `SQLiteBackend.open()`** — concurrent writes from `langsight scan` no longer raise `OperationalError: database is locked`. WAL journal mode and a 5-second busy timeout are now set on every new SQLite connection.
+
+### Tests
+- 57 new unit tests for the `POST /api/investigate` router — 100% line coverage on the investigate module.
+- Scorecard CLI tests covering grade computation, `--json` output, and empty-history edge cases.
+- SQLite WAL concurrency tests validating that parallel writes complete without lock contention.
+
 ## [0.9.2] - 2026-03-27
 
 ### Added

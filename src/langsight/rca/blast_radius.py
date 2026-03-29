@@ -10,7 +10,7 @@ Data source: ClickHouse mcp_tool_calls (last N hours of real traffic).
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 import structlog
 from pydantic import BaseModel
@@ -20,7 +20,7 @@ from langsight.storage.base import StorageBackend
 logger = structlog.get_logger()
 
 
-class BlastRadiusSeverity(str, Enum):
+class BlastRadiusSeverity(StrEnum):
     CRITICAL = "critical"   # > 5 agents or > 100 sessions at risk
     HIGH = "high"           # > 2 agents or > 20 sessions
     MEDIUM = "medium"       # any recent traffic

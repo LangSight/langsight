@@ -158,6 +158,55 @@ class TestOpen:
         b2 = await SQLiteBackend.open(db_path)
         await b2.close()
 
+    async def test_wal_journal_mode_enabled(self, tmp_path: Path) -> None:
+        """open() must configure WAL journal mode for concurrent-write safety."""
+        import aiosqlite
+        db_path = tmp_path / "wal.db"
+        b = await SQLiteBackend.open(db_path)
+        await b.close()
+        async with aiosqlite.connect(str(db_path)) as db:
+            async with db.execute("PRAGMA journal_mode") as cursor:
+                row = await cursor.fetchone()
+        assert row is not None
+        assert row[0].lower() == "wal"
+
+    async def test_busy_timeout_set(self, tmp_path: Path) -> None:
+        """open() must set a non-zero busy_timeout to allow write retries."""
+        import aiosqlite
+        db_path = tmp_path / "busy.db"
+        b = await SQLiteBackend.open(db_path)
+        # Verify via the live connection — busy_timeout is a session pragma
+        async with b._db.execute("PRAGMA busy_timeout") as cursor:
+            row = await cursor.fetchone()
+        await b.close()
+        assert row is not None
+        assert int(row[0]) >= 1000  # at least 1 second
+
+    async def test_concurrent_writes_do_not_raise(self, tmp_path: Path) -> None:
+        """Multiple concurrent coroutines writing health results must not raise 'database is locked'."""
+        import asyncio
+        from datetime import UTC, datetime
+        db_path = tmp_path / "concurrent.db"
+        b = await SQLiteBackend.open(db_path)
+        try:
+            results = [
+                HealthCheckResult(
+                    server_name=f"srv-{i}",
+                    status=ServerStatus.UP,
+                    latency_ms=float(i * 10),
+                    checked_at=datetime.now(UTC),
+                )
+                for i in range(10)
+            ]
+            # Fire all 10 writes concurrently — must not deadlock or raise "database is locked"
+            await asyncio.gather(*[b.save_health_result(r) for r in results])
+
+            # Verify all writes landed
+            all_names = await b.get_distinct_health_server_names()
+            assert len(all_names) == 10
+        finally:
+            await b.close()
+
 
 # ---------------------------------------------------------------------------
 # save_health_result / get_health_history

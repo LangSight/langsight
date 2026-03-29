@@ -310,12 +310,22 @@ async def get_blast_radius(
     from langsight.rca.blast_radius import compute_blast_radius
 
     # Resolve current server status from latest health result
-    server_status = "unknown"
+    server_status: str = "unknown"
     history_fn = getattr(storage, "get_health_history", None)
     if history_fn is not None:
         history = await history_fn(server_name=server_name, limit=1, project_id=project_id)
         if history:
             server_status = history[0].status
+
+    result = await compute_blast_radius(
+        server_name=server_name,
+        storage=storage,
+        hours=hours,
+        project_id=project_id,
+        server_status=server_status,
+    )
+    return result.model_dump()
+
 
 @router.get(
     "/servers/{server_name}/logs",
@@ -342,15 +352,5 @@ async def get_server_logs(
         limit=limit,
         project_id=project_id,
     )
-
-
-    result = await compute_blast_radius(
-        server_name=server_name,
-        storage=storage,
-        hours=hours,
-        project_id=project_id,
-        server_status=server_status,
-    )
-    return result.model_dump()
 
 

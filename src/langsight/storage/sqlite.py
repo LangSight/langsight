@@ -12,7 +12,6 @@ The default database lives at ``~/.langsight/scan.db``.
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -81,6 +80,10 @@ class SQLiteBackend(StorageBackend):
         """Open (or create) the SQLite database at *path*."""
         path.parent.mkdir(parents=True, exist_ok=True)
         db = await aiosqlite.connect(str(path))
+        # WAL mode allows concurrent reads + a single writer without blocking.
+        # busy_timeout gives retrying writers up to 5 s before raising "locked".
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA busy_timeout=5000")
         await db.executescript(_SCHEMA)
         await db.commit()
         logger.debug("storage.sqlite.opened", path=str(path))

@@ -1010,8 +1010,6 @@ class PostgresBackend:
 
     async def get_alert_counts(self, project_id: str = "") -> dict[str, int]:
         """Return count of active alerts per severity."""
-        from datetime import UTC, datetime
-
         rows = await self._pool.fetch(
             """
             SELECT severity, COUNT(*) AS n

@@ -24,9 +24,9 @@ from pathlib import Path
 from typing import Any
 
 import click
+from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich import box
 
 from langsight.health.checker import HealthChecker
 from langsight.models import HealthCheckResult, MCPServer, ServerStatus
@@ -280,7 +280,6 @@ async def _run_scan(
 
     # ── Summary line ──────────────────────────────────────────────────────────
     n_up = sum(1 for r in health_results if r.status == ServerStatus.UP)
-    n_down = sum(1 for r in health_results if r.status == ServerStatus.DOWN)
     n_crit = sum(r.critical_count for r in scan_results)
     n_high = sum(r.high_count for r in scan_results)
     n_medium = sum(
