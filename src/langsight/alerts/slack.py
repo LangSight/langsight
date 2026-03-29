@@ -125,5 +125,22 @@ def _build_payload(alert: Alert) -> dict[str, Any]:
                 ],
             },
             {"type": "divider"},
+            *(
+                [
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "View in Dashboard →", "emoji": True},
+                                "url": alert.context_url,
+                                "style": "primary",
+                            }
+                        ],
+                    }
+                ]
+                if alert.context_url
+                else []
+            ),
         ],
     }

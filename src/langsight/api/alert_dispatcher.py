@@ -101,9 +101,10 @@ async def fire_alert(
     session_id: str | None = None,
     project_id: str = "",
     config: Any | None = None,
-) -> None:
+) -> bool:
     """Persist an alert to the DB and deliver it to Slack if enabled.
 
+    Returns True if the alert was accepted (toggle on), False if skipped.
     Always fail-open — never raises, never blocks the caller.
 
     Args:
@@ -127,7 +128,7 @@ async def fire_alert(
             severity=severity,
             server=server_name,
         )
-        return
+        return False
 
     # 1. Persist to DB
     alert_id = uuid.uuid4().hex
@@ -153,7 +154,7 @@ async def fire_alert(
     # 2. Deliver to Slack
     webhook_url = _resolve_webhook(db_cfg, config)
     if not webhook_url:
-        return
+        return True  # accepted (toggle on, DB saved), just no Slack delivery
 
     try:
         sev_enum = AlertSeverity(severity)
@@ -165,12 +166,26 @@ async def fire_alert(
     except ValueError:
         alert_type_enum = AlertType.AGENT_FAILURE
 
+    # Build deep-link into the dashboard (LANGSIGHT_DASHBOARD_URL env var)
+    dashboard_url = os.environ.get("LANGSIGHT_DASHBOARD_URL", "").rstrip("/")
+    context_url: str | None = None
+    if dashboard_url:
+        if session_id:
+            context_url = f"{dashboard_url}/sessions/{session_id}"
+        elif alert_type in (AlertType.SERVER_DOWN, AlertType.SERVER_RECOVERED, AlertType.SCHEMA_DRIFT):
+            context_url = f"{dashboard_url}/health"
+        elif alert_type in (AlertType.SECURITY_FINDING,):
+            context_url = f"{dashboard_url}/security"
+        elif alert_type in (AlertType.ANOMALY_DETECTED,):
+            context_url = f"{dashboard_url}/alerts"
+
     alert_obj = Alert(
         server_name=server_name,
         alert_type=alert_type_enum,
         severity=sev_enum,
         title=title,
         message=message,
+        context_url=context_url,
     )
 
     sent = await slack_module.send_alert(webhook_url, alert_obj)
@@ -181,3 +196,4 @@ async def fire_alert(
             severity=severity,
             server=server_name,
         )
+    return True

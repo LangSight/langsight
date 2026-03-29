@@ -159,7 +159,6 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                     str(tag) not in ("success", "success_with_fallback")
                     and session_id not in _alerted_sessions
                 ):
-                    _alerted_sessions.add(session_id)
                     from langsight.api.alert_dispatcher import fire_alert as _fire_alert
 
                     agent_name = next(
@@ -175,7 +174,7 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                         for s in spans
                         if s.session_id == session_id and s.status != ToolCallStatus.SUCCESS
                     )
-                    await _fire_alert(
+                    fired = await _fire_alert(
                         storage=storage,
                         alert_type="agent_failure",
                         severity="critical",
@@ -189,6 +188,11 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                         project_id=_batch_project_id or "",
                         config=getattr(request.app.state, "config", None),
                     )
+                    # Only dedup when the alert was accepted (toggle on).
+                    # If skipped (toggle off), allow retry on the next batch
+                    # so toggling on mid-session still fires.
+                    if fired:
+                        _alerted_sessions.add(session_id)
             except Exception:  # noqa: BLE001
                 pass  # fail-open — tagging must never block ingestion
 

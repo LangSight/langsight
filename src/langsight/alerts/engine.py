@@ -62,6 +62,7 @@ class Alert:
     title: str
     message: str
     fired_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    context_url: str | None = None  # deep-link into the dashboard (session, server, etc.)
 
 
 @dataclass
