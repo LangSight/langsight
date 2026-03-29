@@ -8,6 +8,9 @@ import yaml
 from click.testing import CliRunner
 
 from langsight.cli.main import cli
+from langsight.cli.monitor import _deliver_alerts
+from langsight.alerts.engine import Alert, AlertSeverity, AlertType
+from langsight.config import LangSightConfig, AlertConfig, Settings
 from langsight.models import HealthCheckResult, ServerStatus
 
 
@@ -97,3 +100,94 @@ class TestMonitorCommand:
                 )
 
         assert result.exit_code == 0
+
+
+def _make_alert() -> Alert:
+    return Alert(
+        server_name="pg",
+        alert_type=AlertType.SERVER_DOWN,
+        severity=AlertSeverity.CRITICAL,
+        title="MCP server 'pg' is DOWN",
+        message="Server 'pg' has been unreachable for 2 consecutive checks.",
+    )
+
+
+def _config_with_slack(url: str | None) -> LangSightConfig:
+    return LangSightConfig(
+        servers=[],
+        alerts=AlertConfig(slack_webhook=url),
+    )
+
+
+class TestDeliverAlerts:
+    """Unit tests for _deliver_alerts webhook priority: DB > YAML > env var."""
+
+    @pytest.mark.asyncio
+    async def test_db_webhook_takes_priority_over_yaml(self) -> None:
+        storage = MagicMock()
+        storage.get_alert_config = AsyncMock(return_value={"slack_webhook": "https://hooks.slack.com/db"})
+        config = _config_with_slack("https://hooks.slack.com/yaml")
+        settings = Settings(slack_webhook=None)
+
+        with patch("langsight.cli.monitor.slack_module.send_alerts", new_callable=AsyncMock, return_value=1) as mock_send:
+            await _deliver_alerts([_make_alert()], config, settings, storage)
+            mock_send.assert_awaited_once()
+            assert mock_send.call_args[0][0] == "https://hooks.slack.com/db"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_yaml_when_db_empty(self) -> None:
+        storage = MagicMock()
+        storage.get_alert_config = AsyncMock(return_value={"slack_webhook": None})
+        config = _config_with_slack("https://hooks.slack.com/yaml")
+        settings = Settings(slack_webhook=None)
+
+        with patch("langsight.cli.monitor.slack_module.send_alerts", new_callable=AsyncMock, return_value=1) as mock_send:
+            await _deliver_alerts([_make_alert()], config, settings, storage)
+            mock_send.assert_awaited_once()
+            assert mock_send.call_args[0][0] == "https://hooks.slack.com/yaml"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_env_when_db_and_yaml_empty(self) -> None:
+        storage = MagicMock()
+        storage.get_alert_config = AsyncMock(return_value=None)
+        config = _config_with_slack(None)
+        settings = Settings(slack_webhook="https://hooks.slack.com/env")
+
+        with patch("langsight.cli.monitor.slack_module.send_alerts", new_callable=AsyncMock, return_value=1) as mock_send:
+            await _deliver_alerts([_make_alert()], config, settings, storage)
+            mock_send.assert_awaited_once()
+            assert mock_send.call_args[0][0] == "https://hooks.slack.com/env"
+
+    @pytest.mark.asyncio
+    async def test_no_slack_sent_when_no_webhook_anywhere(self) -> None:
+        storage = MagicMock()
+        storage.get_alert_config = AsyncMock(return_value=None)
+        config = _config_with_slack(None)
+        settings = Settings(slack_webhook=None)
+
+        with patch("langsight.cli.monitor.slack_module.send_alerts", new_callable=AsyncMock) as mock_send:
+            await _deliver_alerts([_make_alert()], config, settings, storage)
+            mock_send.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_db_failure_fails_open_uses_yaml(self) -> None:
+        """If DB raises, fall through to YAML without blocking alert delivery."""
+        storage = MagicMock()
+        storage.get_alert_config = AsyncMock(side_effect=RuntimeError("db down"))
+        config = _config_with_slack("https://hooks.slack.com/yaml")
+        settings = Settings(slack_webhook=None)
+
+        with patch("langsight.cli.monitor.slack_module.send_alerts", new_callable=AsyncMock, return_value=1) as mock_send:
+            await _deliver_alerts([_make_alert()], config, settings, storage)
+            mock_send.assert_awaited_once()
+            assert mock_send.call_args[0][0] == "https://hooks.slack.com/yaml"
+
+    @pytest.mark.asyncio
+    async def test_no_storage_uses_yaml(self) -> None:
+        config = _config_with_slack("https://hooks.slack.com/yaml")
+        settings = Settings(slack_webhook=None)
+
+        with patch("langsight.cli.monitor.slack_module.send_alerts", new_callable=AsyncMock, return_value=1) as mock_send:
+            await _deliver_alerts([_make_alert()], config, settings, storage=None)
+            mock_send.assert_awaited_once()
+            assert mock_send.call_args[0][0] == "https://hooks.slack.com/yaml"
