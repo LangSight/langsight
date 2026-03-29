@@ -21,10 +21,10 @@ logger = structlog.get_logger()
 
 
 class BlastRadiusSeverity(StrEnum):
-    CRITICAL = "critical"   # > 5 agents or > 100 sessions at risk
-    HIGH = "high"           # > 2 agents or > 20 sessions
-    MEDIUM = "medium"       # any recent traffic
-    LOW = "low"             # no recent traffic
+    CRITICAL = "critical"  # > 5 agents or > 100 sessions at risk
+    HIGH = "high"  # > 2 agents or > 20 sessions
+    MEDIUM = "medium"  # any recent traffic
+    LOW = "low"  # no recent traffic
 
 
 class AffectedAgent(BaseModel):
@@ -96,7 +96,9 @@ async def compute_blast_radius(
                 session_count=session_count,
                 error_count=error_count,
                 error_rate_pct=round(error_count / call_count * 100, 1) if call_count else 0.0,
-                avg_latency_ms=float(row["avg_latency_ms"]) if row.get("avg_latency_ms") is not None else None,
+                avg_latency_ms=float(row["avg_latency_ms"])
+                if row.get("avg_latency_ms") is not None
+                else None,
                 last_called_at=str(row["last_called_at"]) if row.get("last_called_at") else None,
             )
         )

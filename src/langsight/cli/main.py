@@ -27,7 +27,7 @@ def cli() -> None:
     """
 
 
-cli.add_command(scan)           # zero-Docker: auto-discover + health + security
+cli.add_command(scan)  # zero-Docker: auto-discover + health + security
 cli.add_command(add)
 cli.add_command(api_key)
 cli.add_command(costs)

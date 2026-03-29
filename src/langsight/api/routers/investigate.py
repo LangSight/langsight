@@ -163,7 +163,9 @@ def _format_evidence(evidence_map: dict[str, dict[str, Any]]) -> str:
 
 
 def _rule_based_report(evidence_map: dict[str, dict[str, Any]]) -> str:
-    lines: list[str] = ["# Root Cause Analysis\n*(rule-based — configure ANTHROPIC_API_KEY for AI analysis)*\n"]
+    lines: list[str] = [
+        "# Root Cause Analysis\n*(rule-based — configure ANTHROPIC_API_KEY for AI analysis)*\n"
+    ]
     all_healthy = True
 
     for server_name, ev in evidence_map.items():
@@ -241,9 +243,7 @@ async def run_investigation(
         for name in body.server_names
     ]
     evidence_list = await asyncio.gather(*tasks)
-    evidence_map: dict[str, dict[str, Any]] = {
-        ev["server_name"]: ev for ev in evidence_list
-    }
+    evidence_map: dict[str, dict[str, Any]] = {ev["server_name"]: ev for ev in evidence_list}
 
     # Try LLM provider
     report = ""

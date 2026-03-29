@@ -99,7 +99,8 @@ class HealthChecker:
                         {
                             "name": t.name,
                             "description": t.description or "",
-                            "input_schema": t.input_schema or {},  # dict — upsert_server_tools encodes
+                            "input_schema": t.input_schema
+                            or {},  # dict — upsert_server_tools encodes
                         }
                         for t in tools
                     ]

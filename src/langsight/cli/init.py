@@ -146,9 +146,7 @@ def _parse_mcp_config(
 
     # Continue.dev stores servers as an array — normalise to dict
     if isinstance(servers_raw, list):
-        servers_raw = {
-            s["name"]: s for s in servers_raw if isinstance(s, dict) and "name" in s
-        }
+        servers_raw = {s["name"]: s for s in servers_raw if isinstance(s, dict) and "name" in s}
 
     if not isinstance(servers_raw, dict):
         return []
@@ -197,11 +195,7 @@ def _discover_servers() -> list[dict[str, Any]]:
     seen: set[str] = set()
 
     for source_name, raw_path, key_name in _get_config_sources():
-        path = (
-            raw_path.expanduser()
-            if str(raw_path).startswith("~")
-            else raw_path.resolve()
-        )
+        path = raw_path.expanduser() if str(raw_path).startswith("~") else raw_path.resolve()
         if not path.exists():
             continue
 
@@ -222,8 +216,7 @@ def _discover_servers() -> list[dict[str, Any]]:
 
         if new_count:
             console.print(
-                f"  [green]✓[/green]  {source_name} "
-                f"([dim]{path}[/dim]) — {new_count} server(s)"
+                f"  [green]✓[/green]  {source_name} ([dim]{path}[/dim]) — {new_count} server(s)"
             )
 
     return servers
@@ -336,8 +329,7 @@ def _build_config(
 ) -> dict[str, Any]:
     config: dict[str, Any] = {
         "servers": [
-            {k: v for k, v in srv.items() if k != "source" and v is not None}
-            for srv in servers
+            {k: v for k, v in srv.items() if k != "source" and v is not None} for srv in servers
         ]
     }
     if slack_webhook:
@@ -356,7 +348,8 @@ def _write_config(config: dict[str, Any], path: Path) -> None:
 
 @click.command("init")
 @click.option(
-    "--output", "-o",
+    "--output",
+    "-o",
     type=click.Path(path_type=Path),
     default=None,
     help=f"Output path for config file (default: {_OUTPUT_PATH}).",
@@ -367,7 +360,8 @@ def _write_config(config: dict[str, Any], path: Path) -> None:
     help="Slack webhook URL for alerts.",
 )
 @click.option(
-    "--yes", "-y",
+    "--yes",
+    "-y",
     is_flag=True,
     help="Skip confirmation prompts.",
 )
@@ -402,9 +396,7 @@ def init(
     _display_discovered(discovered)
 
     if not yes:
-        include_all = click.confirm(
-            f"\nInclude all {len(discovered)} server(s)?", default=True
-        )
+        include_all = click.confirm(f"\nInclude all {len(discovered)} server(s)?", default=True)
         if not include_all:
             console.print("[dim]Aborted.[/dim]")
             sys.exit(0)

@@ -24,11 +24,11 @@ err_console = Console(stderr=True)
 
 _GRADE_STYLE = {
     "A+": "bold bright_green",
-    "A":  "bold green",
-    "B":  "bold cyan",
-    "C":  "bold yellow",
-    "D":  "bold red",
-    "F":  "bold bright_red",
+    "A": "bold green",
+    "B": "bold cyan",
+    "C": "bold yellow",
+    "D": "bold red",
+    "F": "bold bright_red",
 }
 
 _LOOKBACK_DAYS = 7
@@ -194,10 +194,9 @@ def scorecard(
             checker = HealthChecker(storage=storage, project_id=config.project_id)
             health_results = await checker.check_many(servers)
 
-            states = await asyncio.gather(*[
-                _build_state(r.server_name, r, storage)
-                for r in health_results
-            ])
+            states = await asyncio.gather(
+                *[_build_state(r.server_name, r, storage) for r in health_results]
+            )
             return [ScorecardEngine.compute(s) for s in states]
         finally:
             if storage:

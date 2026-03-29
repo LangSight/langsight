@@ -222,9 +222,9 @@ class SLOEvaluation(BaseModel):
 
 
 class DriftType(StrEnum):
-    BREAKING = "breaking"      # agents using this tool will break
+    BREAKING = "breaking"  # agents using this tool will break
     COMPATIBLE = "compatible"  # agents still work, new optional capability
-    WARNING = "warning"        # description changed — potential poisoning vector
+    WARNING = "warning"  # description changed — potential poisoning vector
 
 
 class SchemaChange(BaseModel):
@@ -232,8 +232,8 @@ class SchemaChange(BaseModel):
 
     drift_type: DriftType
     kind: str  # tool_removed | tool_added | required_param_removed |
-               # required_param_added | param_type_changed |
-               # optional_param_added | description_changed
+    # required_param_added | param_type_changed |
+    # optional_param_added | description_changed
     tool_name: str
     param_name: str | None = None
     old_value: str | None = None
@@ -256,8 +256,6 @@ class ApiKeyRole(StrEnum):
     VIEWER = "viewer"  # read-only — GET endpoints only
 
 
-
-
 class ApiKeyRecord(BaseModel):
     """A stored API key (the raw key is never persisted — only the hash)."""
 
@@ -266,9 +264,9 @@ class ApiKeyRecord(BaseModel):
     key_prefix: str  # first 8 chars of raw key — shown in UI for identification
     key_hash: str  # sha256(raw_key) — used for lookup
     role: ApiKeyRole = ApiKeyRole.ADMIN  # default admin for backwards compatibility
-    user_id: str | None = None   # owning user — used for project membership checks
+    user_id: str | None = None  # owning user — used for project membership checks
     project_id: str | None = None  # when set, all CLI health checks using this key
-                                   # are scoped to this project automatically
+    # are scoped to this project automatically
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_used_at: datetime | None = None
     revoked_at: datetime | None = None

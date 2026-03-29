@@ -32,7 +32,7 @@ class CreateApiKeyRequest(BaseModel):
     name: str  # user-given label, e.g. "LibreChat production"
     role: ApiKeyRole = ApiKeyRole.ADMIN  # "admin" or "viewer"
     project_id: str | None = None  # when set, this key scopes ALL CLI/API calls
-                                   # to this project automatically (API key = project)
+    # to this project automatically (API key = project)
 
 
 class ApiKeyCreatedResponse(BaseModel):

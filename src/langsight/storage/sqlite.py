@@ -217,8 +217,17 @@ class SQLiteBackend(StorageBackend):
             rows = await cursor.fetchall()
 
         cols = [
-            "server_name", "tool_name", "drift_type", "change_kind", "param_name",
-            "old_value", "new_value", "previous_hash", "current_hash", "has_breaking", "detected_at",
+            "server_name",
+            "tool_name",
+            "drift_type",
+            "change_kind",
+            "param_name",
+            "old_value",
+            "new_value",
+            "previous_hash",
+            "current_hash",
+            "has_breaking",
+            "detected_at",
         ]
         return [dict(zip(cols, row, strict=False)) for row in rows]
 
@@ -242,78 +251,262 @@ class SQLiteBackend(StorageBackend):
             rows = await c.fetchall()
         return {row[0] for row in rows}
 
-    async def upsert_server_tools(self, server_name: str, tools: list[dict[str, object]], project_id: str | None = None) -> None:
+    async def upsert_server_tools(
+        self, server_name: str, tools: list[dict[str, object]], project_id: str | None = None
+    ) -> None:
         pass
 
-    async def get_server_tools(self, server_name: str, project_id: str | None = None) -> list[dict[str, object]]:
+    async def get_server_tools(
+        self, server_name: str, project_id: str | None = None
+    ) -> list[dict[str, object]]:
         return []
 
-    async def get_drift_impact(self, server_name: str, tool_name: str, hours: int = 24) -> list[dict[str, Any]]:
+    async def get_drift_impact(
+        self, server_name: str, tool_name: str, hours: int = 24
+    ) -> list[dict[str, Any]]:
         return []
 
-    async def create_api_key(self, record: Any) -> None: pass  # type: ignore[override]
-    async def list_api_keys(self) -> list[Any]: return []
-    async def get_api_key_by_hash(self, key_hash: str) -> None: return None  # type: ignore[return-value]
-    async def revoke_api_key(self, key_id: str) -> bool: return False
-    async def touch_api_key(self, key_id: str) -> None: pass
-    async def list_model_pricing(self) -> list[Any]: return []
-    async def get_active_model_pricing(self, model_id: str) -> None: return None  # type: ignore[return-value]
-    async def create_model_pricing(self, entry: Any) -> None: pass  # type: ignore[override]
-    async def deactivate_model_pricing(self, entry_id: str) -> bool: return False
-    async def create_project(self, project: Any) -> None: pass  # type: ignore[override]
-    async def get_project(self, project_id: str) -> None: return None  # type: ignore[return-value]
-    async def get_project_by_slug(self, slug: str) -> None: return None  # type: ignore[return-value]
-    async def list_projects(self) -> list[Any]: return []
-    async def list_projects_for_user(self, user_id: str) -> list[Any]: return []
-    async def update_project(self, project_id: str, name: str, slug: str) -> bool: return False
-    async def delete_project(self, project_id: str) -> bool: return False
-    async def add_member(self, member: Any) -> None: pass  # type: ignore[override]
-    async def get_member(self, project_id: str, user_id: str) -> None: return None  # type: ignore[return-value]
-    async def list_members(self, project_id: str) -> list[Any]: return []
-    async def update_member_role(self, project_id: str, user_id: str, role: str) -> bool: return False
-    async def remove_member(self, project_id: str, user_id: str) -> bool: return False
-    async def create_user(self, user: Any) -> None: pass  # type: ignore[override]
-    async def get_user_by_email(self, email: str) -> None: return None  # type: ignore[return-value]
-    async def get_user_by_id(self, user_id: str) -> None: return None  # type: ignore[return-value]
-    async def list_users(self) -> list[Any]: return []
-    async def update_user_role(self, user_id: str, role: str) -> bool: return False
-    async def deactivate_user(self, user_id: str) -> bool: return False
-    async def touch_user_login(self, user_id: str) -> None: pass
-    async def count_users(self) -> int: return 0
-    async def create_invite(self, invite: Any) -> None: pass  # type: ignore[override]
-    async def get_invite(self, token: str) -> None: return None  # type: ignore[return-value]
-    async def mark_invite_used(self, token: str) -> None: pass
-    async def accept_invite(self, token: str, user: Any) -> bool: return False  # type: ignore[override]
-    async def create_slo(self, slo: Any) -> None: pass  # type: ignore[override]
-    async def list_slos(self, project_id: str | None = None) -> list[Any]: return []
-    async def get_slo(self, slo_id: str) -> None: return None  # type: ignore[return-value]
-    async def delete_slo(self, slo_id: str, project_id: str | None = None) -> bool: return False
-    async def get_alert_config(self) -> dict[str, Any] | None: return None
-    async def save_alert_config(self, slack_webhook: str | None, alert_types: dict[str, bool]) -> None: pass
-    async def append_audit_log(self, event: str, user_id: str, ip: str, details: dict[str, Any]) -> None: pass
-    async def list_audit_logs(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]: return []
-    async def count_audit_logs(self) -> int: return 0
-    async def get_all_agent_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]: return []
-    async def get_agent_metadata(self, agent_name: str, project_id: str | None = None) -> dict[str, Any] | None: return None
-    async def upsert_agent_metadata(self, agent_name: str, description: str, owner: str, tags: list[str], status: str, runbook_url: str, project_id: str | None = None) -> dict[str, Any]: return {}
-    async def delete_agent_metadata(self, agent_name: str, project_id: str | None = None) -> bool: return False
-    async def get_all_server_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]: return []
-    async def get_server_metadata(self, server_name: str, project_id: str | None = None) -> dict[str, Any] | None: return None
-    async def upsert_server_metadata(self, *, server_name: str, description: str = "", owner: str = "", tags: list[str] | None = None, transport: str = "", runbook_url: str = "", project_id: str | None = None) -> dict[str, Any]: return {}
-    async def delete_server_metadata(self, server_name: str, project_id: str | None = None) -> bool: return False
-    async def list_prevention_configs(self, project_id: str) -> list[Any]: return []
-    async def get_prevention_config(self, agent_name: str, project_id: str) -> None: return None  # type: ignore[return-value]
-    async def get_effective_prevention_config(self, agent_name: str, project_id: str) -> None: return None  # type: ignore[return-value]
-    async def upsert_prevention_config(self, config: Any) -> Any: return config  # type: ignore[override]
-    async def delete_prevention_config(self, agent_name: str, project_id: str) -> bool: return False
-    async def save_session_health_tag(self, session_id: str, health_tag: str, details: str | None = None, project_id: str | None = None) -> None: pass
-    async def get_session_health_tag(self, session_id: str, project_id: str | None = None) -> str | None: return None
-    async def get_untagged_sessions(self, inactive_seconds: int = 30, limit: int = 100, project_id: str | None = None) -> list[str]: return []
+    async def create_api_key(self, record: Any) -> None:
+        pass  # type: ignore[override]
+
+    async def list_api_keys(self) -> list[Any]:
+        return []
+
+    async def get_api_key_by_hash(self, key_hash: str) -> None:
+        return None  # type: ignore[return-value]
+
+    async def revoke_api_key(self, key_id: str) -> bool:
+        return False
+
+    async def touch_api_key(self, key_id: str) -> None:
+        pass
+
+    async def list_model_pricing(self) -> list[Any]:
+        return []
+
+    async def get_active_model_pricing(self, model_id: str) -> None:
+        return None  # type: ignore[return-value]
+
+    async def create_model_pricing(self, entry: Any) -> None:
+        pass  # type: ignore[override]
+
+    async def deactivate_model_pricing(self, entry_id: str) -> bool:
+        return False
+
+    async def create_project(self, project: Any) -> None:
+        pass  # type: ignore[override]
+
+    async def get_project(self, project_id: str) -> None:
+        return None  # type: ignore[return-value]
+
+    async def get_project_by_slug(self, slug: str) -> None:
+        return None  # type: ignore[return-value]
+
+    async def list_projects(self) -> list[Any]:
+        return []
+
+    async def list_projects_for_user(self, user_id: str) -> list[Any]:
+        return []
+
+    async def update_project(self, project_id: str, name: str, slug: str) -> bool:
+        return False
+
+    async def delete_project(self, project_id: str) -> bool:
+        return False
+
+    async def add_member(self, member: Any) -> None:
+        pass  # type: ignore[override]
+
+    async def get_member(self, project_id: str, user_id: str) -> None:
+        return None  # type: ignore[return-value]
+
+    async def list_members(self, project_id: str) -> list[Any]:
+        return []
+
+    async def update_member_role(self, project_id: str, user_id: str, role: str) -> bool:
+        return False
+
+    async def remove_member(self, project_id: str, user_id: str) -> bool:
+        return False
+
+    async def create_user(self, user: Any) -> None:
+        pass  # type: ignore[override]
+
+    async def get_user_by_email(self, email: str) -> None:
+        return None  # type: ignore[return-value]
+
+    async def get_user_by_id(self, user_id: str) -> None:
+        return None  # type: ignore[return-value]
+
+    async def list_users(self) -> list[Any]:
+        return []
+
+    async def update_user_role(self, user_id: str, role: str) -> bool:
+        return False
+
+    async def deactivate_user(self, user_id: str) -> bool:
+        return False
+
+    async def touch_user_login(self, user_id: str) -> None:
+        pass
+
+    async def count_users(self) -> int:
+        return 0
+
+    async def create_invite(self, invite: Any) -> None:
+        pass  # type: ignore[override]
+
+    async def get_invite(self, token: str) -> None:
+        return None  # type: ignore[return-value]
+
+    async def mark_invite_used(self, token: str) -> None:
+        pass
+
+    async def accept_invite(self, token: str, user: Any) -> bool:
+        return False  # type: ignore[override]
+
+    async def create_slo(self, slo: Any) -> None:
+        pass  # type: ignore[override]
+
+    async def list_slos(self, project_id: str | None = None) -> list[Any]:
+        return []
+
+    async def get_slo(self, slo_id: str) -> None:
+        return None  # type: ignore[return-value]
+
+    async def delete_slo(self, slo_id: str, project_id: str | None = None) -> bool:
+        return False
+
+    async def get_alert_config(self) -> dict[str, Any] | None:
+        return None
+
+    async def save_alert_config(
+        self, slack_webhook: str | None, alert_types: dict[str, bool]
+    ) -> None:
+        pass
+
+    async def append_audit_log(
+        self, event: str, user_id: str, ip: str, details: dict[str, Any]
+    ) -> None:
+        pass
+
+    async def list_audit_logs(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        return []
+
+    async def count_audit_logs(self) -> int:
+        return 0
+
+    async def get_all_agent_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]:
+        return []
+
+    async def get_agent_metadata(
+        self, agent_name: str, project_id: str | None = None
+    ) -> dict[str, Any] | None:
+        return None
+
+    async def upsert_agent_metadata(
+        self,
+        agent_name: str,
+        description: str,
+        owner: str,
+        tags: list[str],
+        status: str,
+        runbook_url: str,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        return {}
+
+    async def delete_agent_metadata(self, agent_name: str, project_id: str | None = None) -> bool:
+        return False
+
+    async def get_all_server_metadata(self, project_id: str | None = None) -> list[dict[str, Any]]:
+        return []
+
+    async def get_server_metadata(
+        self, server_name: str, project_id: str | None = None
+    ) -> dict[str, Any] | None:
+        return None
+
+    async def upsert_server_metadata(
+        self,
+        *,
+        server_name: str,
+        description: str = "",
+        owner: str = "",
+        tags: list[str] | None = None,
+        transport: str = "",
+        runbook_url: str = "",
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        return {}
+
+    async def delete_server_metadata(self, server_name: str, project_id: str | None = None) -> bool:
+        return False
+
+    async def list_prevention_configs(self, project_id: str) -> list[Any]:
+        return []
+
+    async def get_prevention_config(self, agent_name: str, project_id: str) -> None:
+        return None  # type: ignore[return-value]
+
+    async def get_effective_prevention_config(self, agent_name: str, project_id: str) -> None:
+        return None  # type: ignore[return-value]
+
+    async def upsert_prevention_config(self, config: Any) -> Any:
+        return config  # type: ignore[override]
+
+    async def delete_prevention_config(self, agent_name: str, project_id: str) -> bool:
+        return False
+
+    async def save_session_health_tag(
+        self,
+        session_id: str,
+        health_tag: str,
+        details: str | None = None,
+        project_id: str | None = None,
+    ) -> None:
+        pass
+
+    async def get_session_health_tag(
+        self, session_id: str, project_id: str | None = None
+    ) -> str | None:
+        return None
+
+    async def get_untagged_sessions(
+        self, inactive_seconds: int = 30, limit: int = 100, project_id: str | None = None
+    ) -> list[str]:
+        return []
+
     # Fired alerts — no-ops for local scan-only mode
-    async def save_fired_alert(self, alert_id: str, alert_type: str, severity: str, server_name: str, title: str, message: str, session_id: str | None = None, project_id: str = "") -> None: pass
-    async def get_fired_alerts(self, project_id: str = "", status: str | None = None, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]: return []
-    async def count_fired_alerts(self, project_id: str = "", status: str | None = None) -> int: return 0
-    async def ack_alert(self, alert_id: str, acked_by: str = "user") -> bool: return False
-    async def resolve_alert(self, alert_id: str) -> bool: return False
-    async def snooze_alert(self, alert_id: str, snooze_minutes: int) -> bool: return False
-    async def get_alert_counts(self, project_id: str = "") -> dict[str, int]: return {"critical": 0, "warning": 0, "info": 0, "total": 0}
+    async def save_fired_alert(
+        self,
+        alert_id: str,
+        alert_type: str,
+        severity: str,
+        server_name: str,
+        title: str,
+        message: str,
+        session_id: str | None = None,
+        project_id: str = "",
+    ) -> None:
+        pass
+
+    async def get_fired_alerts(
+        self, project_id: str = "", status: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[dict[str, Any]]:
+        return []
+
+    async def count_fired_alerts(self, project_id: str = "", status: str | None = None) -> int:
+        return 0
+
+    async def ack_alert(self, alert_id: str, acked_by: str = "user") -> bool:
+        return False
+
+    async def resolve_alert(self, alert_id: str) -> bool:
+        return False
+
+    async def snooze_alert(self, alert_id: str, snooze_minutes: int) -> bool:
+        return False
+
+    async def get_alert_counts(self, project_id: str = "") -> dict[str, int]:
+        return {"critical": 0, "warning": 0, "info": 0, "total": 0}

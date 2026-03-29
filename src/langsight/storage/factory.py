@@ -81,7 +81,9 @@ async def open_storage(config: StorageConfig) -> StorageBackend:
 
         from langsight.storage.sqlite import DEFAULT_DB_PATH, SQLiteBackend
 
-        db_path = Path(config.sqlite_path) if getattr(config, "sqlite_path", None) else DEFAULT_DB_PATH
+        db_path = (
+            Path(config.sqlite_path) if getattr(config, "sqlite_path", None) else DEFAULT_DB_PATH
+        )
         return await SQLiteBackend.open(db_path)
 
     raise ConfigError(

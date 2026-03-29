@@ -78,8 +78,10 @@ async def list_servers_health(
         return []
 
     histories = await asyncio.gather(
-        *(storage.get_health_history(name, limit=1, project_id=project_id)
-          for name in sorted(all_names))
+        *(
+            storage.get_health_history(name, limit=1, project_id=project_id)
+            for name in sorted(all_names)
+        )
     )
     return [h[0] for h in histories if h]
 
@@ -352,5 +354,3 @@ async def get_server_logs(
         limit=limit,
         project_id=project_id,
     )
-
-

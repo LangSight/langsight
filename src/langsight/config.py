@@ -80,8 +80,8 @@ class LangSightConfig(BaseModel):
     # Example .langsight.yaml:
     #   project: production          # human-readable slug
     #   project_id: "abc123"         # UUID from the dashboard (preferred)
-    project: str = ""      # project slug (display only — resolved to id at query time)
-    project_id: str = ""   # project UUID — used directly for storage scoping
+    project: str = ""  # project slug (display only — resolved to id at query time)
+    project_id: str = ""  # project UUID — used directly for storage scoping
 
 
 # ---------------------------------------------------------------------------

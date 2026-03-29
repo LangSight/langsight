@@ -129,7 +129,8 @@ def _append_server(config: dict[str, Any], server: dict[str, Any]) -> None:
     help="HTTP headers for remote server auth (repeatable).",
 )
 @click.option(
-    "--config", "-c",
+    "--config",
+    "-c",
     "config_path",
     type=click.Path(path_type=Path),
     default=None,
@@ -163,6 +164,7 @@ def add(
     # ── Detect transport ──────────────────────────────────────────────────
     if url:
         import urllib.parse
+
         last = urllib.parse.urlparse(url).path.rstrip("/").split("/")[-1].lower()
         transport = "sse" if last == "sse" else "streamable_http"
     else:
@@ -216,7 +218,9 @@ def add(
         if ok:
             console.print(f"  [green]✓[/green] Connected in {latency_ms}ms")
             if tool_names:
-                console.print(f"  [green]✓[/green] {len(tool_names)} tool(s): {', '.join(tool_names[:8])}")
+                console.print(
+                    f"  [green]✓[/green] {len(tool_names)} tool(s): {', '.join(tool_names[:8])}"
+                )
                 if len(tool_names) > 8:
                     console.print(f"    … and {len(tool_names) - 8} more")
         else:

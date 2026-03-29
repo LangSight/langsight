@@ -34,18 +34,18 @@ from typing import Any
 @dataclass(frozen=True)
 class DimensionScore:
     name: str
-    score: float          # 0–100
-    weight: float         # fraction that contributes to overall
+    score: float  # 0–100
+    weight: float  # fraction that contributes to overall
     notes: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class ScorecardResult:
     server_name: str
-    grade: str            # A+ | A | B | C | D | F
-    score: float          # 0–100 weighted composite
+    grade: str  # A+ | A | B | C | D | F
+    score: float  # 0–100 weighted composite
     dimensions: list[DimensionScore]
-    cap_applied: str | None   # which cap forced the grade down, if any
+    cap_applied: str | None  # which cap forced the grade down, if any
     computed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
@@ -93,13 +93,13 @@ class ServerHealthState:
     has_authentication: bool = True  # assume true unless scan says otherwise
 
     # Reliability (from mcp_tool_calls, last 24 h)
-    error_rate_pct: float = 0.0      # 0–100
-    latency_cv: float = 0.0          # coefficient of variation = stddev/mean
+    error_rate_pct: float = 0.0  # 0–100
+    latency_cv: float = 0.0  # coefficient of variation = stddev/mean
 
     # Schema Stability (from schema_drift_events, last 7 d)
     breaking_drifts_7d: int = 0
     compatible_drifts_7d: int = 0
-    untracked_drifts: int = 0        # drifts with no consumer impact data
+    untracked_drifts: int = 0  # drifts with no consumer impact data
 
     # Performance (p99 latency vs 30-day baseline)
     current_p99_ms: float | None = None
@@ -139,9 +139,9 @@ def _security_score(state: ServerHealthState) -> tuple[float, list[str]]:
 
     deductions = [
         (state.critical_findings, 40, "critical finding(s)"),
-        (state.high_findings,     20, "high finding(s)"),
-        (state.medium_findings,   10, "medium finding(s)"),
-        (state.low_findings,       5, "low finding(s)"),
+        (state.high_findings, 20, "high finding(s)"),
+        (state.medium_findings, 10, "medium finding(s)"),
+        (state.low_findings, 5, "low finding(s)"),
     ]
     for count, penalty, label in deductions:
         if count:
@@ -297,8 +297,7 @@ def _apply_caps(grade: str, state: ServerHealthState) -> tuple[str, str | None]:
     # ── A+ eligibility ────────────────────────────────────────────────────
     if grade == "A":
         uptime = (
-            state.successful_checks_7d / state.total_checks_7d
-            if state.total_checks_7d > 0 else 0.0
+            state.successful_checks_7d / state.total_checks_7d if state.total_checks_7d > 0 else 0.0
         )
         if (
             uptime >= 0.999
@@ -327,28 +326,30 @@ class ScorecardEngine:
     """
 
     WEIGHTS = {
-        "availability":     0.30,
-        "security":         0.25,
-        "reliability":      0.20,
+        "availability": 0.30,
+        "security": 0.25,
+        "reliability": 0.20,
         "schema_stability": 0.15,
-        "performance":      0.10,
+        "performance": 0.10,
     }
 
     @classmethod
     def compute(cls, state: ServerHealthState) -> ScorecardResult:
         """Compute the full scorecard for a server state snapshot."""
-        avail_score,  avail_notes  = _availability_score(state)
-        sec_score,    sec_notes    = _security_score(state)
-        rel_score,    rel_notes    = _reliability_score(state)
+        avail_score, avail_notes = _availability_score(state)
+        sec_score, sec_notes = _security_score(state)
+        rel_score, rel_notes = _reliability_score(state)
         schema_score, schema_notes = _schema_stability_score(state)
-        perf_score,   perf_notes   = _performance_score(state)
+        perf_score, perf_notes = _performance_score(state)
 
         dimensions = [
-            DimensionScore("availability",     avail_score,  cls.WEIGHTS["availability"],     avail_notes),
-            DimensionScore("security",         sec_score,    cls.WEIGHTS["security"],         sec_notes),
-            DimensionScore("reliability",      rel_score,    cls.WEIGHTS["reliability"],      rel_notes),
-            DimensionScore("schema_stability", schema_score, cls.WEIGHTS["schema_stability"], schema_notes),
-            DimensionScore("performance",      perf_score,   cls.WEIGHTS["performance"],      perf_notes),
+            DimensionScore("availability", avail_score, cls.WEIGHTS["availability"], avail_notes),
+            DimensionScore("security", sec_score, cls.WEIGHTS["security"], sec_notes),
+            DimensionScore("reliability", rel_score, cls.WEIGHTS["reliability"], rel_notes),
+            DimensionScore(
+                "schema_stability", schema_score, cls.WEIGHTS["schema_stability"], schema_notes
+            ),
+            DimensionScore("performance", perf_score, cls.WEIGHTS["performance"], perf_notes),
         ]
 
         weighted = sum(d.score * d.weight for d in dimensions)

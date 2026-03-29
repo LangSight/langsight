@@ -110,7 +110,9 @@ def _storage(request: Request) -> StorageBackend:
 async def get_alert_feed(
     request: Request,
     project_id: str | None = Query(default=None),
-    status: str | None = Query(default=None, description="active | acked | snoozed | resolved | all"),
+    status: str | None = Query(
+        default=None, description="active | acked | snoozed | resolved | all"
+    ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _: None = Depends(verify_api_key),
@@ -122,9 +124,7 @@ async def get_alert_feed(
     if not hasattr(storage, "get_fired_alerts"):
         return AlertFeedResponse(total=0, limit=limit, offset=offset, alerts=[])
 
-    rows = await storage.get_fired_alerts(
-        project_id=pid, status=status, limit=limit, offset=offset
-    )
+    rows = await storage.get_fired_alerts(project_id=pid, status=status, limit=limit, offset=offset)
     total = await storage.count_fired_alerts(project_id=pid, status=status)
     return AlertFeedResponse(
         total=total,

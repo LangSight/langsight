@@ -121,7 +121,7 @@ async def _monitor_loop(
             _display_cycle(results, cycle, interval)
 
             if alerts:
-                await _deliver_alerts(alerts, config, settings)
+                await _deliver_alerts(alerts, config, settings, storage)
 
             if once:
                 break
@@ -132,9 +132,31 @@ async def _monitor_loop(
             await storage.close()
 
 
-async def _deliver_alerts(alerts, config, settings: Settings) -> None:  # type: ignore[no-untyped-def]
-    """Deliver fired alerts via configured channels."""
-    slack_url = settings.slack_webhook or config.alerts.slack_webhook
+async def _deliver_alerts(alerts, config, settings: Settings, storage=None) -> None:  # type: ignore[no-untyped-def]
+    """Deliver fired alerts via configured channels.
+
+    Webhook URL priority (mirrors the API's _load_alert_config):
+      1. DB value saved via the dashboard Settings → Notifications UI
+      2. .langsight.yaml alerts.slack_webhook
+      3. LANGSIGHT_SLACK_WEBHOOK env var
+    """
+    # 1. DB — set via dashboard UI (POST /api/alerts/config)
+    slack_url: str | None = None
+    if storage and hasattr(storage, "get_alert_config"):
+        try:
+            db_cfg = await storage.get_alert_config()
+            slack_url = (db_cfg or {}).get("slack_webhook") or None
+        except Exception:  # noqa: BLE001
+            pass  # fail-open — don't block alerting if DB is unreachable
+
+    # 2. YAML
+    if not slack_url:
+        slack_url = config.alerts.slack_webhook or None
+
+    # 3. Env var (settings.slack_webhook == LANGSIGHT_SLACK_WEBHOOK)
+    if not slack_url:
+        slack_url = settings.slack_webhook or None
+
     webhook_url = None  # future: config.alerts.webhook_url
 
     for alert in alerts:

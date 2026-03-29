@@ -478,7 +478,9 @@ class DualStorage:
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        return await self._meta.get_fired_alerts(project_id=project_id, status=status, limit=limit, offset=offset)
+        return await self._meta.get_fired_alerts(
+            project_id=project_id, status=status, limit=limit, offset=offset
+        )
 
     async def count_fired_alerts(self, project_id: str = "", status: str | None = None) -> int:
         return await self._meta.count_fired_alerts(project_id=project_id, status=status)

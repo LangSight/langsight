@@ -422,23 +422,33 @@ class ClickHouseBackend:
             # No individual changes to store — store a single summary row
             await self._client.insert(
                 "schema_drift_events",
-                [[
-                    event.server_name,
-                    "",
-                    "unknown",
-                    "hash_changed",
-                    None,
-                    None,
-                    None,
-                    event.previous_hash,
-                    event.current_hash,
-                    int(event.has_breaking),
-                    event.detected_at,
-                ]],
+                [
+                    [
+                        event.server_name,
+                        "",
+                        "unknown",
+                        "hash_changed",
+                        None,
+                        None,
+                        None,
+                        event.previous_hash,
+                        event.current_hash,
+                        int(event.has_breaking),
+                        event.detected_at,
+                    ]
+                ],
                 column_names=[
-                    "server_name", "tool_name", "drift_type", "change_kind",
-                    "param_name", "old_value", "new_value",
-                    "previous_hash", "current_hash", "has_breaking", "detected_at",
+                    "server_name",
+                    "tool_name",
+                    "drift_type",
+                    "change_kind",
+                    "param_name",
+                    "old_value",
+                    "new_value",
+                    "previous_hash",
+                    "current_hash",
+                    "has_breaking",
+                    "detected_at",
                 ],
             )
             return
@@ -463,9 +473,17 @@ class ClickHouseBackend:
             "schema_drift_events",
             rows,
             column_names=[
-                "server_name", "tool_name", "drift_type", "change_kind",
-                "param_name", "old_value", "new_value",
-                "previous_hash", "current_hash", "has_breaking", "detected_at",
+                "server_name",
+                "tool_name",
+                "drift_type",
+                "change_kind",
+                "param_name",
+                "old_value",
+                "new_value",
+                "previous_hash",
+                "current_hash",
+                "has_breaking",
+                "detected_at",
             ],
         )
         logger.info(
@@ -503,9 +521,17 @@ class ClickHouseBackend:
             parameters={"server_name": server_name, "limit": limit},
         )
         cols = [
-            "server_name", "tool_name", "drift_type", "change_kind",
-            "param_name", "old_value", "new_value",
-            "previous_hash", "current_hash", "has_breaking", "detected_at",
+            "server_name",
+            "tool_name",
+            "drift_type",
+            "change_kind",
+            "param_name",
+            "old_value",
+            "new_value",
+            "previous_hash",
+            "current_hash",
+            "has_breaking",
+            "detected_at",
         ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
@@ -601,6 +627,7 @@ class ClickHouseBackend:
         """
 
         import asyncio
+
         agent_res, session_res = await asyncio.gather(
             self._client.query(agent_query, parameters=params),
             self._client.query(sessions_query, parameters=params),
@@ -897,10 +924,10 @@ class ClickHouseBackend:
                     "p95_latency_ms": float(row[9]),
                     "p99_latency_ms": float(row[10]),
                     "error_breakdown": {
-                        "timeout":    int(row[11]),
+                        "timeout": int(row[11]),
                         "connection": int(row[12]),
-                        "params":     int(row[13]),
-                        "server":     int(row[14]),
+                        "params": int(row[13]),
+                        "server": int(row[14]),
                     },
                 }
             )

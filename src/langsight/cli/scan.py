@@ -38,19 +38,19 @@ console = Console()
 err_console = Console(stderr=True)
 
 _STATUS_ICON: dict[ServerStatus, str] = {
-    ServerStatus.UP:       "[green]✓ up[/green]",
+    ServerStatus.UP: "[green]✓ up[/green]",
     ServerStatus.DEGRADED: "[yellow]⚠ degraded[/yellow]",
-    ServerStatus.DOWN:     "[red]✗ down[/red]",
-    ServerStatus.STALE:    "[dim]~ stale[/dim]",
-    ServerStatus.UNKNOWN:  "[dim]? unknown[/dim]",
+    ServerStatus.DOWN: "[red]✗ down[/red]",
+    ServerStatus.STALE: "[dim]~ stale[/dim]",
+    ServerStatus.UNKNOWN: "[dim]? unknown[/dim]",
 }
 
 _SEV_ICON: dict[Severity, str] = {
     Severity.CRITICAL: "[bold red]● CRITICAL[/bold red]",
-    Severity.HIGH:     "[red]● HIGH[/red]",
-    Severity.MEDIUM:   "[yellow]● MEDIUM[/yellow]",
-    Severity.LOW:      "[dim]● LOW[/dim]",
-    Severity.INFO:     "[dim]  INFO[/dim]",
+    Severity.HIGH: "[red]● HIGH[/red]",
+    Severity.MEDIUM: "[yellow]● MEDIUM[/yellow]",
+    Severity.LOW: "[dim]● LOW[/dim]",
+    Severity.INFO: "[dim]  INFO[/dim]",
 }
 
 
@@ -147,6 +147,7 @@ async def _run_scan(
     if config_path or _langsight_yaml_exists():
         # Use existing .langsight.yaml
         from langsight.config import load_config
+
         try:
             cfg = load_config(config_path)
             servers = cfg.servers
@@ -157,6 +158,7 @@ async def _run_scan(
     else:
         # Auto-discover from IDE configs
         from langsight.cli.init import _discover_servers  # internal reuse
+
         discovered = _discover_servers()
         if not discovered:
             console.print(
@@ -218,7 +220,9 @@ async def _run_scan(
         output = [
             {
                 "server": s.name,
-                "health": health_by_name[s.name].model_dump(mode="json") if s.name in health_by_name else None,
+                "health": health_by_name[s.name].model_dump(mode="json")
+                if s.name in health_by_name
+                else None,
                 "security": _scan_to_dict(scan_by_name[s.name]) if s.name in scan_by_name else None,
             }
             for s in servers
@@ -247,11 +251,7 @@ async def _run_scan(
     console.print(table)
 
     # ── Findings detail ───────────────────────────────────────────────────────
-    all_findings = [
-        (r.server_name, f)
-        for r in scan_results
-        for f in r.findings_by_severity()
-    ]
+    all_findings = [(r.server_name, f) for r in scan_results for f in r.findings_by_severity()]
 
     if all_findings:
         console.print()
@@ -311,9 +311,7 @@ def _maybe_exit_ci(ci: bool, scan_results: list[ScanResult]) -> None:
     if not ci:
         return
     has_high = any(
-        f.severity in (Severity.CRITICAL, Severity.HIGH)
-        for r in scan_results
-        for f in r.findings
+        f.severity in (Severity.CRITICAL, Severity.HIGH) for r in scan_results for f in r.findings
     )
     if has_high:
         sys.exit(1)
