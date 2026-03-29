@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import sys
+
 import click
+import structlog
 
 from langsight.cli.add import add
 from langsight.cli.api_key import api_key
@@ -14,6 +17,9 @@ from langsight.cli.scorecard import scorecard
 from langsight.cli.security_scan import security_scan
 from langsight.cli.serve import serve
 from langsight.cli.sessions import sessions
+
+# Route all structlog output to stderr so --json flags produce clean stdout.
+structlog.configure(logger_factory=structlog.PrintLoggerFactory(sys.stderr))
 
 
 @click.group()
