@@ -6,7 +6,6 @@ from pathlib import Path
 import click
 from rich.console import Console
 
-from langsight.api.main import create_app
 from langsight.config import load_config
 from langsight.exceptions import ConfigError
 
@@ -53,6 +52,10 @@ def serve(
     import asyncio
 
     import uvicorn
+
+    # Deferred import — keeps api.main (and api.metrics) out of the module-level
+    # import graph so the metrics warning never fires on plain CLI invocations.
+    from langsight.api.main import create_app
 
     # Validate storage config before starting uvicorn to give a clear error
     # instead of a deep stack trace from inside the FastAPI lifespan.

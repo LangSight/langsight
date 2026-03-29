@@ -95,7 +95,7 @@ services:
       LANGSIGHT_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD env var is required}
       LANGSIGHT_POSTGRES_URL: postgresql://langsight:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}@postgres:5432/langsight
       LANGSIGHT_LOG_LEVEL: INFO
-      # At least one API key is required — generate with: langsight api-key create <name>
+      # At least one API key is required — generate with: langsight api-key generate
       LANGSIGHT_API_KEYS: ${LANGSIGHT_API_KEYS:?LANGSIGHT_API_KEYS env var is required}
       # Restrict CORS to the dashboard origin
       LANGSIGHT_CORS_ORIGINS: ${LANGSIGHT_CORS_ORIGINS:-http://localhost:3003}

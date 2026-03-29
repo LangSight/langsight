@@ -381,7 +381,7 @@ export default function SessionsPage() {
               <p className="text-xs text-muted-foreground">
                 {sessions && sessions.length > 0
                   ? "Try adjusting the search or filter criteria"
-                  : "Instrument your agents with the LangSight SDK to capture traces"}
+                  : "Sessions require ClickHouse + SDK instrumentation. Run docker compose up, then instrument your agents."}
               </p>
             </div>
           ) : (

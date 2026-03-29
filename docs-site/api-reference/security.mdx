@@ -5,7 +5,7 @@ description: "Trigger security scans and retrieve findings"
 
 ## POST /api/security/scan
 
-Runs a security scan (5 of 10 OWASP MCP checks + CVEs via OSV + poisoning detection) on all configured servers. Each scan triggers a health check first to get the live tools list.
+Runs a security scan (7 of 10 OWASP MCP checks + CVEs via OSV + poisoning detection) on all configured servers. Covers checks 1–5 + CVE scanning + tool poisoning detection; checks 7–9 are planned. Each scan triggers a health check first to get the live tools list.
 
 ```bash
 curl -X POST http://localhost:8000/api/security/scan

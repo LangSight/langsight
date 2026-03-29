@@ -541,7 +541,8 @@ export default function AlertsPage() {
         {!anomalies || anomalies.length === 0 ? (
           <div className="px-5 py-8 text-center">
             <CheckCircle size={20} className="mx-auto text-emerald-400 mb-2" />
-            <p className="text-xs text-muted-foreground">No anomalies detected — all tools within baseline</p>
+            <p className="text-xs text-muted-foreground">No anomalies detected</p>
+            <p className="text-xs text-muted-foreground mt-1" style={{ opacity: 0.6 }}>Anomaly detection requires ClickHouse + active SDK instrumentation</p>
           </div>
         ) : (
           <div className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>

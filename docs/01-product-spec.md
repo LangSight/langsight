@@ -467,7 +467,7 @@ Summary:
   Servers scanned:    35
   Critical findings:   2  (was 1 last scan)
   High findings:       5  (was 5 last scan)
-  OWASP coverage:   8/10 rules checked
+  OWASP coverage:   7/10 rules checked (checks 1–5 + CVE + poisoning; checks 7–9 planned)
   Auth coverage:    23/35 servers have auth (65.7%)
 
 Next scan scheduled: 2026-03-16T02:00:00Z

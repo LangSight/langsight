@@ -92,6 +92,19 @@ async def _build_state(
     except Exception:  # noqa: BLE001
         pass  # storage unavailable — fall back to single-check defaults
 
+    # Populate security findings from the latest scan if storage supports it.
+    if hasattr(storage, "get_latest_security_scan"):
+        try:
+            scan = await storage.get_latest_security_scan(server_name)
+            if scan is not None:
+                state.critical_findings = scan.get("critical", 0)
+                state.high_findings = scan.get("high", 0)
+                state.medium_findings = scan.get("medium", 0)
+                state.low_findings = scan.get("low", 0)
+                state.security_scanned = True
+        except Exception:  # noqa: BLE001
+            pass  # scan data unavailable — leave security_scanned=False
+
     return state
 
 
@@ -124,6 +137,16 @@ def _display_table(results: list[ScorecardResult]) -> None:
 
     for r in results:
         grade_style = _GRADE_STYLE.get(r.grade, "bold")
+
+        # Determine Cap/Notes cell content.
+        # Show "unscanned" when the security dimension has no scan data and
+        # no other cap message is already set.
+        cap_notes = r.cap_applied or ""
+        if not cap_notes:
+            sec_dim = next((d for d in r.dimensions if d.name == "security"), None)
+            if sec_dim and any("No scan data" in note for note in sec_dim.notes):
+                cap_notes = "[yellow]unscanned[/yellow]"
+
         table.add_row(
             r.server_name,
             f"[{grade_style}]{r.grade}[/{grade_style}]",
@@ -133,7 +156,7 @@ def _display_table(results: list[ScorecardResult]) -> None:
             _dimension_pts(r, "reliability"),
             _dimension_pts(r, "schema_stability"),
             _dimension_pts(r, "performance"),
-            r.cap_applied or "",
+            cap_notes,
         )
 
     console.print(table)

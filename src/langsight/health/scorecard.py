@@ -105,6 +105,10 @@ class ServerHealthState:
     current_p99_ms: float | None = None
     baseline_p99_ms: float | None = None
 
+    # Whether a security scan has been run for this server.
+    # When False the security dimension score is treated as unknown.
+    security_scanned: bool = field(default=False)
+
 
 # ---------------------------------------------------------------------------
 # Scoring functions
@@ -136,6 +140,10 @@ def _availability_score(state: ServerHealthState) -> tuple[float, list[str]]:
 def _security_score(state: ServerHealthState) -> tuple[float, list[str]]:
     notes: list[str] = []
     score = 100.0
+
+    if not state.security_scanned:
+        notes.append("No scan data — run langsight security-scan")
+        return score, notes
 
     deductions = [
         (state.critical_findings, 40, "critical finding(s)"),
@@ -295,7 +303,8 @@ def _apply_caps(grade: str, state: ServerHealthState) -> tuple[str, str | None]:
             grade, cap_reason = new, f"p99 latency {state.current_p99_ms:.0f}ms > 5 s"
 
     # ── A+ eligibility ────────────────────────────────────────────────────
-    if grade == "A":
+    # Security dimension must be known (scan has run) to qualify for A+.
+    if grade == "A" and state.security_scanned:
         uptime = (
             state.successful_checks_7d / state.total_checks_7d if state.total_checks_7d > 0 else 0.0
         )

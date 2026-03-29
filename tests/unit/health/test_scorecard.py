@@ -42,6 +42,7 @@ def _perfect_state(name: str = "postgres-mcp") -> ServerHealthState:
         untracked_drifts=0,
         current_p99_ms=100.0,
         baseline_p99_ms=100.0,
+        security_scanned=True,
     )
 
 
@@ -551,3 +552,76 @@ class TestPerformanceDimension:
         result = ScorecardEngine.compute(state)
         perf = next(d for d in result.dimensions if d.name == "performance")
         assert perf.score == 0.0
+
+
+# ---------------------------------------------------------------------------
+# security_scanned field
+# ---------------------------------------------------------------------------
+
+
+class TestSecurityScanned:
+    def test_unscanned_server_security_score_is_100(self) -> None:
+        """When security_scanned=False, security score defaults to 100 (no penalty)."""
+        state = ServerHealthState(
+            server_name="unscanned",
+            security_scanned=False,
+        )
+        result = ScorecardEngine.compute(state)
+        sec = next(d for d in result.dimensions if d.name == "security")
+        assert sec.score == 100.0
+
+    def test_unscanned_server_security_note_present(self) -> None:
+        """When security_scanned=False, security dimension notes mention 'No scan data'."""
+        state = ServerHealthState(
+            server_name="unscanned",
+            security_scanned=False,
+        )
+        result = ScorecardEngine.compute(state)
+        sec = next(d for d in result.dimensions if d.name == "security")
+        assert any("No scan data" in note for note in sec.notes)
+
+    def test_unscanned_server_cannot_achieve_a_plus(self) -> None:
+        """A perfect server that hasn't been scanned cannot achieve A+."""
+        state = ServerHealthState(
+            server_name="postgres-mcp",
+            total_checks_7d=1000,
+            successful_checks_7d=1000,
+            consecutive_failures=0,
+            has_active_critical_cve=False,
+            is_confirmed_poisoned=False,
+            has_authentication=True,
+            breaking_drifts_7d=0,
+            compatible_drifts_7d=0,
+            security_scanned=False,  # not scanned — cannot be A+
+        )
+        result = ScorecardEngine.compute(state)
+        assert result.grade != "A+"
+
+    def test_scanned_server_with_no_findings_can_achieve_a_plus(self) -> None:
+        """A server that has been scanned with zero findings can achieve A+."""
+        state = _perfect_state()  # security_scanned=True via fixture
+        result = ScorecardEngine.compute(state)
+        assert result.grade == "A+"
+
+    def test_scanned_server_with_critical_finding_deducts_security_score(self) -> None:
+        """When security_scanned=True, critical findings reduce the security score."""
+        state = ServerHealthState(
+            server_name="vulnerable",
+            security_scanned=True,
+            critical_findings=1,
+        )
+        result = ScorecardEngine.compute(state)
+        sec = next(d for d in result.dimensions if d.name == "security")
+        assert sec.score < 100.0
+
+    def test_unscanned_server_critical_findings_do_not_affect_security_score(self) -> None:
+        """When security_scanned=False, critical_findings are not applied to security score."""
+        state = ServerHealthState(
+            server_name="vulnerable-unscanned",
+            security_scanned=False,
+            critical_findings=5,
+        )
+        result = ScorecardEngine.compute(state)
+        sec = next(d for d in result.dimensions if d.name == "security")
+        # Score stays at 100 — findings are ignored when unscanned
+        assert sec.score == 100.0

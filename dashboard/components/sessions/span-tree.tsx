@@ -296,10 +296,16 @@ export function SpanTree({ trace, loading, error, onViewPayload }: SpanTreeProps
   }
 
   if (error) {
+    const isClickHouse = error.toLowerCase().includes("clickhouse");
     return (
-      <div className="p-8 text-center text-sm" style={{ color: "hsl(var(--danger))" }}>
-        <AlertCircle size={20} className="mx-auto mb-2" />
-        {error}
+      <div className="p-8 text-center text-sm" style={{ color: isClickHouse ? "hsl(var(--muted-foreground))" : "hsl(var(--danger))" }}>
+        <AlertCircle size={20} className="mx-auto mb-2" style={{ color: isClickHouse ? "hsl(var(--muted-foreground))" : undefined }} />
+        {isClickHouse ? (
+          <>
+            <p className="font-semibold mb-1">Session traces require ClickHouse</p>
+            <p className="text-xs">Start the full stack with <code className="font-mono">docker compose up</code> to enable trace replay.</p>
+          </>
+        ) : error}
       </div>
     );
   }

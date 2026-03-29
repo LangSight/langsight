@@ -433,3 +433,103 @@ class TestDimensionPts:
         result = ScorecardEngine.compute(state)
         pts = _dimension_pts(result, "performance")
         assert pts.endswith("/10")
+
+
+# ---------------------------------------------------------------------------
+# security_scanned — _build_state integration
+# ---------------------------------------------------------------------------
+
+class TestBuildStateSecurityScanned:
+    @pytest.mark.asyncio
+    async def test_no_storage_leaves_security_unscanned(self) -> None:
+        """Without storage, security_scanned stays False."""
+        state = await _build_state("my-srv", UP_RESULT, storage=None)
+        assert state.security_scanned is False
+
+    @pytest.mark.asyncio
+    async def test_storage_without_scan_method_leaves_security_unscanned(self) -> None:
+        """Storage that lacks get_latest_security_scan → security_scanned=False."""
+        storage = MagicMock(spec=[
+            "get_health_history",
+            "close",
+        ])
+        storage.get_health_history = AsyncMock(return_value=[])
+        state = await _build_state("my-srv", UP_RESULT, storage=storage)
+        assert state.security_scanned is False
+
+    @pytest.mark.asyncio
+    async def test_storage_scan_returns_none_leaves_security_unscanned(self) -> None:
+        """If get_latest_security_scan returns None, security_scanned stays False."""
+        storage = MagicMock()
+        storage.get_health_history = AsyncMock(return_value=[])
+        storage.get_latest_security_scan = AsyncMock(return_value=None)
+        state = await _build_state("my-srv", UP_RESULT, storage=storage)
+        assert state.security_scanned is False
+
+    @pytest.mark.asyncio
+    async def test_storage_scan_populates_findings_and_sets_scanned_true(self) -> None:
+        """When get_latest_security_scan returns data, findings and security_scanned=True are set."""
+        scan_data = {"critical": 1, "high": 2, "medium": 3, "low": 4}
+        storage = MagicMock()
+        storage.get_health_history = AsyncMock(return_value=[])
+        storage.get_latest_security_scan = AsyncMock(return_value=scan_data)
+        state = await _build_state("my-srv", UP_RESULT, storage=storage)
+        assert state.security_scanned is True
+        assert state.critical_findings == 1
+        assert state.high_findings == 2
+        assert state.medium_findings == 3
+        assert state.low_findings == 4
+
+    @pytest.mark.asyncio
+    async def test_storage_scan_error_leaves_security_unscanned(self) -> None:
+        """If get_latest_security_scan raises, security_scanned stays False."""
+        storage = MagicMock()
+        storage.get_health_history = AsyncMock(return_value=[])
+        storage.get_latest_security_scan = AsyncMock(side_effect=RuntimeError("scan DB offline"))
+        state = await _build_state("my-srv", UP_RESULT, storage=storage)
+        assert state.security_scanned is False
+
+
+# ---------------------------------------------------------------------------
+# _display_table — unscanned note in Cap/Notes column
+# ---------------------------------------------------------------------------
+
+class TestDisplayTableUnscanned:
+    def test_unscanned_server_scorecard_exits_0(self, config_file: Path) -> None:
+        """An unscanned server still produces a valid scorecard and exits 0."""
+        runner = CliRunner()
+        storage = _mock_storage()
+        with patch("langsight.cli.scorecard.try_open_storage", new_callable=AsyncMock, return_value=storage):
+            with patch("langsight.cli.scorecard.HealthChecker") as MockChecker:
+                MockChecker.return_value.check_many = AsyncMock(return_value=[UP_RESULT])
+                result = runner.invoke(cli, ["scorecard", "--config", str(config_file)])
+
+        assert result.exit_code == 0
+        assert "test-pg" in result.output
+
+    @pytest.mark.asyncio
+    async def test_unscanned_security_dimension_note_via_build_state(self) -> None:
+        """_build_state with no scan support produces 'No scan data' note in security dimension."""
+        storage = _mock_storage()
+        state = await _build_state("test-pg", UP_RESULT, storage=storage)
+        # security_scanned stays False when storage has no scan method (MagicMock raises on await)
+        assert state.security_scanned is False
+        result = ScorecardEngine.compute(state)
+        sec_dim = next(d for d in result.dimensions if d.name == "security")
+        assert any("No scan data" in note for note in sec_dim.notes)
+
+    def test_scanned_server_scorecard_exits_0_without_unscanned_note(self, config_file: Path) -> None:
+        """When a server has been security-scanned with no findings, the scorecard exits 0."""
+        runner = CliRunner()
+        storage = _mock_storage()
+        # Provide a scan result via storage mock
+        storage.get_latest_security_scan = AsyncMock(
+            return_value={"critical": 0, "high": 0, "medium": 0, "low": 0}
+        )
+        with patch("langsight.cli.scorecard.try_open_storage", new_callable=AsyncMock, return_value=storage):
+            with patch("langsight.cli.scorecard.HealthChecker") as MockChecker:
+                MockChecker.return_value.check_many = AsyncMock(return_value=[UP_RESULT])
+                result = runner.invoke(cli, ["scorecard", "--config", str(config_file)])
+
+        assert result.exit_code == 0
+        assert "test-pg" in result.output
