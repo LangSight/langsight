@@ -18,9 +18,9 @@ fi
 # Install pre-push hook
 cp "$HOOKS_SRC/pre-push" "$HOOKS_DST/pre-push"
 chmod +x "$HOOKS_DST/pre-push"
-echo "✓ pre-push hook installed (unit tests + coverage + tsc)"
+echo "✓ pre-push hook installed (ruff lint+format, unit tests, coverage ≥ 70%, tsc)"
 
 echo ""
 echo "Hooks active:"
 echo "  pre-commit  →  ruff, mypy, secret detection, no print()"
-echo "  pre-push    →  pytest unit, coverage ≥ 70%, integration tests, tsc"
+echo "  pre-push    →  ruff lint, ruff format, pytest unit, coverage ≥ 70%, integration tests, tsc"
