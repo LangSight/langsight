@@ -65,6 +65,73 @@ _seen_agents: _LRUSet = _LRUSet(_LRU_MAX)
 _seen_servers: _LRUSet = _LRUSet(_LRU_MAX)
 _alerted_sessions: _LRUSet = _LRUSet(_LRU_MAX)  # dedup: one alert per session
 
+# ---------------------------------------------------------------------------
+# Session health tagging — cumulative, priority-preserving
+# ---------------------------------------------------------------------------
+# Problem: spans arrive in multiple batches. Tagging each batch independently
+# means a later all-success batch can overwrite an earlier "tool_failure" tag.
+#
+# Solution:
+#   1. Accumulate ALL spans seen per session in a bounded LRU cache.
+#   2. Retag from the full accumulated span list on every batch — so the tag
+#      always reflects the worst outcome seen across the entire session lifetime.
+#   3. On cache miss (restart / new process instance), read the existing tag
+#      from storage and never downgrade it (priority-preserving DB upsert).
+#
+# This handles: multi-batch sessions, process restarts, multi-instance deploys.
+
+# Lower number = more severe. Used to compare old vs new tag priority.
+_TAG_PRIORITY: dict[str, int] = {
+    "loop_detected": 0,
+    "budget_exceeded": 1,
+    "circuit_breaker_open": 2,
+    "schema_drift": 3,
+    "timeout": 4,
+    "tool_failure": 5,
+    "success_with_fallback": 6,
+    "success": 7,
+}
+
+# Bounded LRU: session_id → accumulated span dicts (all batches, this process)
+_SESSION_SPANS_MAX = 500  # max concurrent active sessions tracked in memory
+_session_accumulated_spans: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+
+
+def _accumulate(session_id: str, new_spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Append new_spans to the session's span accumulator, return all spans seen."""
+    if session_id in _session_accumulated_spans:
+        _session_accumulated_spans.move_to_end(session_id)
+    else:
+        if len(_session_accumulated_spans) >= _SESSION_SPANS_MAX:
+            _session_accumulated_spans.popitem(last=False)  # evict LRU session
+        _session_accumulated_spans[session_id] = []
+    _session_accumulated_spans[session_id].extend(new_spans)
+    return _session_accumulated_spans[session_id]
+
+
+async def _resolve_tag(
+    storage: Any,
+    session_id: str,
+    new_tag: str,
+    cache_hit: bool,
+) -> str:
+    """Return the tag to persist, never downgrading from what's already stored.
+
+    Fast path (cache_hit=True): compare against in-memory accumulated tag.
+    Slow path (cache_hit=False, e.g. after restart): read from DB once and
+    compare — prevents restarts from downgrading durable tags.
+    """
+    if not cache_hit and hasattr(storage, "get_session_health_tag"):
+        try:
+            existing = await storage.get_session_health_tag(session_id)
+            if existing:
+                existing_p = _TAG_PRIORITY.get(existing, 99)
+                new_p = _TAG_PRIORITY.get(new_tag, 99)
+                return new_tag if new_p < existing_p else existing
+        except Exception:  # noqa: BLE001
+            pass  # fail-open — use new_tag if DB read fails
+    return new_tag
+
 
 # ---------------------------------------------------------------------------
 # SDK endpoint
@@ -136,11 +203,11 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
     if storage is not None and hasattr(storage, "save_session_health_tag"):
         from langsight.tagging.engine import tag_from_spans as _tag
 
-        # Compute health tags for each unique session in this batch
-        session_spans: dict[str, list[dict[str, Any]]] = {}
+        # Group incoming spans by session
+        batch_by_session: dict[str, list[dict[str, Any]]] = {}
         for span in spans:
             if span.session_id:
-                session_spans.setdefault(span.session_id, []).append(
+                batch_by_session.setdefault(span.session_id, []).append(
                     {
                         "status": span.status,
                         "error": span.error or "",
@@ -148,15 +215,31 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                         "span_type": span.span_type,
                     }
                 )
-        for session_id, batch_spans in session_spans.items():
+
+        for session_id, new_batch in batch_by_session.items():
             try:
-                tag = _tag(batch_spans)
+                # 1. Accumulate — merge new batch into the full span history for
+                #    this session. Tagging from cumulative spans is always correct:
+                #    no single batch can mask an error from an earlier batch.
+                cache_hit = session_id in _session_accumulated_spans
+                all_spans = _accumulate(session_id, new_batch)
+
+                # 2. Tag from ALL spans seen so far (not just this batch)
+                tag_str = str(_tag(all_spans))
+
+                # 3. Priority-preserving DB upsert:
+                #    - Fast path (cache_hit): cumulative spans already produce the
+                #      correct worst-case tag — just save it.
+                #    - Slow path (cache miss = restart / new instance): read the
+                #      existing DB tag and never downgrade it.
+                final_tag = await _resolve_tag(storage, session_id, tag_str, cache_hit)
                 await storage.save_session_health_tag(
-                    session_id, str(tag), project_id=_batch_project_id
+                    session_id, final_tag, project_id=_batch_project_id
                 )
-                # Fire agent_failure alert for sessions with unhealthy tags (fail-open)
+
+                # 4. Fire agent_failure alert for unhealthy sessions
                 if (
-                    str(tag) not in ("success", "success_with_fallback")
+                    final_tag not in ("success", "success_with_fallback")
                     and session_id not in _alerted_sessions
                 ):
                     from langsight.api.alert_dispatcher import fire_alert as _fire_alert
@@ -179,18 +262,17 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                         alert_type="agent_failure",
                         severity="critical",
                         server_name=agent_name,
-                        title=f"Agent session failed: {str(tag).replace('_', ' ')}",
+                        title=f"Agent session failed: {final_tag.replace('_', ' ')}",
                         message=(
-                            f"Session `{session_id}` ended with health tag **{tag}**. "
+                            f"Session `{session_id}` ended with health tag **{final_tag}**. "
                             f"Agent: {agent_name}, failed tool calls: {failed}."
                         ),
                         session_id=session_id,
                         project_id=_batch_project_id or "",
                         config=getattr(request.app.state, "config", None),
                     )
-                    # Only dedup when the alert was accepted (toggle on).
-                    # If skipped (toggle off), allow retry on the next batch
-                    # so toggling on mid-session still fires.
+                    # Only dedup when alert was accepted (toggle on).
+                    # Skipped alerts stay eligible so toggling on mid-session fires.
                     if fired:
                         _alerted_sessions.add(session_id)
             except Exception:  # noqa: BLE001
