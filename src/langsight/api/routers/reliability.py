@@ -11,13 +11,17 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from langsight.api.dependencies import get_active_project_id, get_storage
 from langsight.reliability.engine import AnomalyDetector, ReliabilityEngine
 from langsight.storage.base import StorageBackend
 
 router = APIRouter(prefix="/reliability", tags=["reliability"])
+
+# Dedup: fire Slack once per unique anomaly key per process restart.
+# Key: "{project_id}:{server_name}:{tool_name}:{metric}"
+_alerted_anomalies: set[str] = set()
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +44,7 @@ def _anomaly_to_dict(a: Any) -> dict[str, Any]:
     response_model=list[dict[str, Any]],
 )
 async def get_anomalies(
+    request: Request,
     current_hours: int = Query(
         default=1,
         ge=1,
@@ -81,6 +86,40 @@ async def get_anomalies(
         baseline_hours=baseline_hours,
         project_id=project_id,
     )
+
+    # Fire Slack alerts for new anomalies (deduped per process by server+tool+metric)
+    from langsight.api.alert_dispatcher import fire_alert as _fire_alert
+
+    pid = project_id or ""
+    for a in anomalies:
+        d = _anomaly_to_dict(a)
+        dedup_key = f"{pid}:{d.get('server_name')}:{d.get('tool_name')}:{d.get('metric')}"
+        if dedup_key not in _alerted_anomalies:
+            _alerted_anomalies.add(dedup_key)
+            sev = d.get("severity", "warning")
+            alert_type = "anomaly_critical" if sev == "critical" else "anomaly_warning"
+            server = d.get("server_name", "unknown")
+            tool = d.get("tool_name", "unknown")
+            metric = d.get("metric", "unknown")
+            z = d.get("z_score", 0.0)
+            try:
+                await _fire_alert(
+                    storage=storage,
+                    alert_type=alert_type,
+                    severity=sev,
+                    server_name=server,
+                    title=f"Anomaly detected: {tool} on {server}",
+                    message=(
+                        f"Tool `{tool}` on `{server}` shows anomalous `{metric}` "
+                        f"(z-score: {z:.1f}). This deviates significantly from the "
+                        f"{baseline_hours}h baseline."
+                    ),
+                    project_id=pid,
+                    config=getattr(request.app.state, "config", None),
+                )
+            except Exception:  # noqa: BLE001
+                pass  # fail-open — never block the response
+
     return [_anomaly_to_dict(a) for a in anomalies]
 
 

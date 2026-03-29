@@ -63,6 +63,7 @@ class _LRUSet:
 
 _seen_agents: _LRUSet = _LRUSet(_LRU_MAX)
 _seen_servers: _LRUSet = _LRUSet(_LRU_MAX)
+_alerted_sessions: _LRUSet = _LRUSet(_LRU_MAX)  # dedup: one alert per session
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +154,41 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                 await storage.save_session_health_tag(
                     session_id, str(tag), project_id=_batch_project_id
                 )
+                # Fire agent_failure alert for sessions with unhealthy tags (fail-open)
+                if (
+                    str(tag) not in ("success", "success_with_fallback")
+                    and session_id not in _alerted_sessions
+                ):
+                    _alerted_sessions.add(session_id)
+                    from langsight.api.alert_dispatcher import fire_alert as _fire_alert
+
+                    agent_name = next(
+                        (
+                            s.agent_name
+                            for s in spans
+                            if s.session_id == session_id and s.agent_name
+                        ),
+                        "unknown",
+                    )
+                    failed = sum(
+                        1
+                        for s in spans
+                        if s.session_id == session_id and s.status != ToolCallStatus.SUCCESS
+                    )
+                    await _fire_alert(
+                        storage=storage,
+                        alert_type="agent_failure",
+                        severity="critical",
+                        server_name=agent_name,
+                        title=f"Agent session failed: {str(tag).replace('_', ' ')}",
+                        message=(
+                            f"Session `{session_id}` ended with health tag **{tag}**. "
+                            f"Agent: {agent_name}, failed tool calls: {failed}."
+                        ),
+                        session_id=session_id,
+                        project_id=_batch_project_id,
+                        config=getattr(request.app.state, "config", None),
+                    )
             except Exception:  # noqa: BLE001
                 pass  # fail-open — tagging must never block ingestion
 

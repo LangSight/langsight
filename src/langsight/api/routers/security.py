@@ -98,4 +98,45 @@ async def trigger_security_scan(
         server_count=len(scans),
         critical_total=sum(s.critical_count for s in scans),
     )
+
+    # Fire Slack alerts for servers with critical or high findings
+    from langsight.api.alert_dispatcher import fire_alert as _fire_alert
+
+    pid = project_id or ""
+    for scan in scans:
+        if scan.critical_count > 0:
+            top_findings = ", ".join(
+                f.title for f in scan.findings_by_severity()[:3] if f.severity.value == "critical"
+            )
+            await _fire_alert(
+                storage=storage,
+                alert_type="security_critical",
+                severity="critical",
+                server_name=scan.server_name,
+                title=f"Critical security findings on '{scan.server_name}'",
+                message=(
+                    f"Security scan found {scan.critical_count} critical finding(s) "
+                    f"on `{scan.server_name}`: {top_findings or 'see dashboard for details'}."
+                ),
+                project_id=pid,
+                config=config,
+            )
+        elif scan.high_count > 0:
+            top_findings = ", ".join(
+                f.title for f in scan.findings_by_severity()[:3] if f.severity.value == "high"
+            )
+            await _fire_alert(
+                storage=storage,
+                alert_type="security_high",
+                severity="warning",
+                server_name=scan.server_name,
+                title=f"High severity findings on '{scan.server_name}'",
+                message=(
+                    f"Security scan found {scan.high_count} high severity finding(s) "
+                    f"on `{scan.server_name}`: {top_findings or 'see dashboard for details'}."
+                ),
+                project_id=pid,
+                config=config,
+            )
+
     return [_scan_to_response(s) for s in scans]

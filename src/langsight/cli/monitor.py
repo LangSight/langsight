@@ -142,10 +142,12 @@ async def _deliver_alerts(alerts, config, settings: Settings, storage=None) -> N
     """
     # 1. DB — set via dashboard UI (POST /api/alerts/config)
     slack_url: str | None = None
+    alert_types: dict[str, bool] = {}
     if storage and hasattr(storage, "get_alert_config"):
         try:
             db_cfg = await storage.get_alert_config()
             slack_url = (db_cfg or {}).get("slack_webhook") or None
+            alert_types = (db_cfg or {}).get("alert_types") or {}
         except Exception:  # noqa: BLE001
             pass  # fail-open — don't block alerting if DB is unreachable
 
@@ -157,18 +159,33 @@ async def _deliver_alerts(alerts, config, settings: Settings, storage=None) -> N
     if not slack_url:
         slack_url = settings.slack_webhook or None
 
+    # Filter alerts by the toggles configured in the dashboard.
+    # Types without a toggle key are always delivered.
+    _TOGGLE_KEY: dict[str, str] = {
+        "server_down": "mcp_down",
+        "server_recovered": "mcp_recovered",
+        "agent_failure": "agent_failure",
+        "slo_breached": "slo_breached",
+    }
+    if alert_types:
+        filtered = [
+            a for a in alerts if alert_types.get(_TOGGLE_KEY.get(a.alert_type.value, ""), True)
+        ]
+    else:
+        filtered = alerts  # no DB config → send all (safe default)
+
     webhook_url = None  # future: config.alerts.webhook_url
 
-    for alert in alerts:
+    for alert in filtered:
         console.print(f"[bold]Alert:[/bold] {alert.severity.value.upper()} — {alert.title}")
 
-    if slack_url:
-        sent = await slack_module.send_alerts(slack_url, alerts)
-        logger.info("monitor.slack_sent", count=sent, total=len(alerts))
+    if slack_url and filtered:
+        sent = await slack_module.send_alerts(slack_url, filtered)
+        logger.info("monitor.slack_sent", count=sent, total=len(filtered))
 
-    if webhook_url:
-        sent = await webhook_module.send_alerts(webhook_url, alerts)
-        logger.info("monitor.webhook_sent", count=sent, total=len(alerts))
+    if webhook_url and filtered:
+        sent = await webhook_module.send_alerts(webhook_url, filtered)
+        logger.info("monitor.webhook_sent", count=sent, total=len(filtered))
 
 
 def _display_cycle(
