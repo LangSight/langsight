@@ -23,6 +23,8 @@ jobs:
   mcp-scan:
     name: Scan MCP servers
     runs-on: ubuntu-latest
+    # This file is an example for users to copy — skip in the source repo itself
+    if: github.repository != 'LangSight/langsight'
     permissions:
       contents: read        # read .langsight.yaml
       security-events: write  # upload SARIF (optional, for GitHub Advanced Security)
