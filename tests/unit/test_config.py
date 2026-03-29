@@ -13,6 +13,7 @@ from langsight.models import TransportType
 class TestLoadConfig:
     def test_returns_defaults_when_no_file_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("HOME", str(tmp_path))  # prevent ~/.langsight.yaml from being found
         config = load_config()
         assert config.servers == []
         assert isinstance(config.alerts, AlertConfig)
