@@ -98,7 +98,9 @@ def _row_to_response(row: dict[str, Any]) -> FiredAlertResponse:
 
 
 def _storage(request: Request) -> StorageBackend:
-    return request.app.state.storage
+    from typing import cast
+
+    return cast(StorageBackend, request.app.state.storage)
 
 
 # ---------------------------------------------------------------------------

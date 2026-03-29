@@ -444,7 +444,7 @@ async def get_active_project_id(
             key_hash = hashlib.sha256(api_key.encode()).hexdigest()
             record = await get_fn(key_hash)
             if record and record.project_id:
-                return record.project_id
+                return str(record.project_id)
 
     # ── Priority 2: .langsight.yaml project_id field ─────────────────────────
     config = getattr(getattr(request, "app", None), "state", None)

@@ -11,6 +11,7 @@ Data source: ClickHouse mcp_tool_calls (last N hours of real traffic).
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Any
 
 import structlog
 from pydantic import BaseModel
@@ -74,7 +75,7 @@ async def compute_blast_radius(
             affected_agents=[],
         )
 
-    data: dict = await fn(
+    data: dict[str, Any] = await fn(
         server_name=server_name,
         hours=hours,
         project_id=project_id,

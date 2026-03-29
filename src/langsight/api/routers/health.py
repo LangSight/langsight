@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
@@ -36,7 +37,7 @@ async def _health_server_names(
     """
     fn = getattr(storage, "get_distinct_health_server_names", None)
     if fn and asyncio.iscoroutinefunction(fn):
-        return await fn(project_id=project_id)
+        return set(await fn(project_id=project_id))
     return set()
 
 
@@ -91,7 +92,7 @@ async def get_server_invocations(
     hours: int = Query(default=168, ge=1, le=720, description="Look-back window in hours"),
     storage: StorageBackend = Depends(get_storage),
     project_id: str | None = Depends(get_active_project_id),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Per-server last-invocation stats: last_called_at, last_call_ok, total_calls.
 
     Must be declared BEFORE /servers/{server_name} to avoid route shadowing.
@@ -100,7 +101,7 @@ async def get_server_invocations(
     fn = getattr(storage, "get_server_invocation_stats", None)
     if fn is None or not inspect.iscoroutinefunction(fn):
         return []
-    return await fn(project_id=project_id, hours=hours)
+    return list(await fn(project_id=project_id, hours=hours))
 
 
 @router.get(
@@ -180,7 +181,7 @@ async def get_server_scorecard(
     server_name: str,
     storage: StorageBackend = Depends(get_storage),
     project_id: str | None = Depends(get_active_project_id),
-) -> dict:
+) -> dict[str, Any]:
     """Compute and return a composite A-F health grade for an MCP server.
 
     Combines availability (30%), security (25%), reliability (20%),
@@ -258,7 +259,7 @@ async def get_drift_history(
     limit: int = Query(default=20, ge=1, le=100),
     storage: StorageBackend = Depends(get_storage),
     project_id: str | None = Depends(get_active_project_id),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return recent schema drift events for a server, newest first.
 
     Each entry represents one atomic tool schema change (tool removed,
@@ -268,7 +269,7 @@ async def get_drift_history(
     fn = getattr(storage, "get_schema_drift_history", None)
     if fn is None:
         return []
-    return await fn(server_name=server_name, limit=limit)
+    return list(await fn(server_name=server_name, limit=limit))
 
 
 @router.get(
@@ -281,7 +282,7 @@ async def get_drift_impact(
     hours: int = Query(default=24, ge=1, le=168),
     storage: StorageBackend = Depends(get_storage),
     project_id: str | None = Depends(get_active_project_id),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return agents and sessions that called a tool recently.
 
     Use this to answer: 'Tool X changed — which agents will break?'
@@ -290,7 +291,7 @@ async def get_drift_impact(
     fn = getattr(storage, "get_drift_impact", None)
     if fn is None:
         return []
-    return await fn(server_name=server_name, tool_name=tool_name, hours=hours)
+    return list(await fn(server_name=server_name, tool_name=tool_name, hours=hours))
 
 
 @router.get(
@@ -302,7 +303,7 @@ async def get_blast_radius(
     hours: int = Query(default=24, ge=1, le=168),
     storage: StorageBackend = Depends(get_storage),
     project_id: str | None = Depends(get_active_project_id),
-) -> dict:
+) -> dict[str, Any]:
     """Compute blast radius for a server outage.
 
     Returns which agents depend on this server and how many sessions
@@ -339,7 +340,7 @@ async def get_server_logs(
     limit: int = Query(default=200, ge=1, le=1000),
     storage: StorageBackend = Depends(get_storage),
     project_id: str | None = Depends(get_active_project_id),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return recent tool call activity for a server as a chronological log.
 
     Entries are ordered newest-first. Each entry includes the agent that made
@@ -348,9 +349,11 @@ async def get_server_logs(
     fn = getattr(storage, "get_server_logs", None)
     if fn is None:
         return []
-    return await fn(
-        server_name=server_name,
-        hours=hours,
-        limit=limit,
-        project_id=project_id,
+    return list(
+        await fn(
+            server_name=server_name,
+            hours=hours,
+            limit=limit,
+            project_id=project_id,
+        )
     )

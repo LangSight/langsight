@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 
@@ -112,8 +113,8 @@ def classify_drift(
 
         old_required: set[str] = set(old_schema.get("required", []))
         new_required: set[str] = set(new_schema.get("required", []))
-        old_props: dict = old_schema.get("properties", {})
-        new_props: dict = new_schema.get("properties", {})
+        old_props: dict[str, Any] = old_schema.get("properties", {})
+        new_props: dict[str, Any] = new_schema.get("properties", {})
 
         # Required param removed → BREAKING
         for param in old_required - new_required:
@@ -314,7 +315,7 @@ class SchemaTracker:
 # ---------------------------------------------------------------------------
 
 
-def _tool_to_dict(tool: ToolInfo) -> dict:
+def _tool_to_dict(tool: ToolInfo) -> dict[str, Any]:
     return {
         "name": tool.name,
         "description": tool.description,
@@ -322,7 +323,7 @@ def _tool_to_dict(tool: ToolInfo) -> dict:
     }
 
 
-def _dict_to_tool(d: dict) -> ToolInfo:
+def _dict_to_tool(d: dict[str, Any]) -> ToolInfo:
     schema = d.get("input_schema", {})
     if isinstance(schema, str):
         try:

@@ -367,7 +367,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         # config file and credentials as the CLI `langsight monitor`.
         # Disable by setting LANGSIGHT_MONITOR_ENABLED=false (e.g. if you
         # are running a separate `langsight monitor` daemon instead).
-        monitor_task: asyncio.Task | None = None
+        monitor_task: asyncio.Task[Any] | None = None
         if settings.monitor_enabled and app.state.config.servers:
             from langsight.health.checker import HealthChecker
 

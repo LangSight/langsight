@@ -186,7 +186,7 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                             f"Agent: {agent_name}, failed tool calls: {failed}."
                         ),
                         session_id=session_id,
-                        project_id=_batch_project_id,
+                        project_id=_batch_project_id or "",
                         config=getattr(request.app.state, "config", None),
                     )
             except Exception:  # noqa: BLE001

@@ -267,13 +267,13 @@ class SQLiteBackend(StorageBackend):
         return []
 
     async def create_api_key(self, record: Any) -> None:
-        pass  # type: ignore[override]
+        pass
 
     async def list_api_keys(self) -> list[Any]:
         return []
 
     async def get_api_key_by_hash(self, key_hash: str) -> None:
-        return None  # type: ignore[return-value]
+        return None
 
     async def revoke_api_key(self, key_id: str) -> bool:
         return False
@@ -285,22 +285,22 @@ class SQLiteBackend(StorageBackend):
         return []
 
     async def get_active_model_pricing(self, model_id: str) -> None:
-        return None  # type: ignore[return-value]
+        return None
 
     async def create_model_pricing(self, entry: Any) -> None:
-        pass  # type: ignore[override]
+        pass
 
     async def deactivate_model_pricing(self, entry_id: str) -> bool:
         return False
 
     async def create_project(self, project: Any) -> None:
-        pass  # type: ignore[override]
+        pass
 
     async def get_project(self, project_id: str) -> None:
-        return None  # type: ignore[return-value]
+        return None
 
     async def get_project_by_slug(self, slug: str) -> None:
-        return None  # type: ignore[return-value]
+        return None
 
     async def list_projects(self) -> list[Any]:
         return []
@@ -315,10 +315,10 @@ class SQLiteBackend(StorageBackend):
         return False
 
     async def add_member(self, member: Any) -> None:
-        pass  # type: ignore[override]
+        pass
 
     async def get_member(self, project_id: str, user_id: str) -> None:
-        return None  # type: ignore[return-value]
+        return None
 
     async def list_members(self, project_id: str) -> list[Any]:
         return []
@@ -330,13 +330,13 @@ class SQLiteBackend(StorageBackend):
         return False
 
     async def create_user(self, user: Any) -> None:
-        pass  # type: ignore[override]
+        pass
 
     async def get_user_by_email(self, email: str) -> None:
-        return None  # type: ignore[return-value]
+        return None
 
     async def get_user_by_id(self, user_id: str) -> None:
-        return None  # type: ignore[return-value]
+        return None
 
     async def list_users(self) -> list[Any]:
         return []
@@ -354,25 +354,25 @@ class SQLiteBackend(StorageBackend):
         return 0
 
     async def create_invite(self, invite: Any) -> None:
-        pass  # type: ignore[override]
+        pass
 
     async def get_invite(self, token: str) -> None:
-        return None  # type: ignore[return-value]
+        return None
 
     async def mark_invite_used(self, token: str) -> None:
         pass
 
     async def accept_invite(self, token: str, user: Any) -> bool:
-        return False  # type: ignore[override]
+        return False
 
     async def create_slo(self, slo: Any) -> None:
-        pass  # type: ignore[override]
+        pass
 
     async def list_slos(self, project_id: str | None = None) -> list[Any]:
         return []
 
     async def get_slo(self, slo_id: str) -> None:
-        return None  # type: ignore[return-value]
+        return None
 
     async def delete_slo(self, slo_id: str, project_id: str | None = None) -> bool:
         return False
@@ -447,13 +447,13 @@ class SQLiteBackend(StorageBackend):
         return []
 
     async def get_prevention_config(self, agent_name: str, project_id: str) -> None:
-        return None  # type: ignore[return-value]
+        return None
 
     async def get_effective_prevention_config(self, agent_name: str, project_id: str) -> None:
-        return None  # type: ignore[return-value]
+        return None
 
     async def upsert_prevention_config(self, config: Any) -> Any:
-        return config  # type: ignore[override]
+        return config
 
     async def delete_prevention_config(self, agent_name: str, project_id: str) -> bool:
         return False

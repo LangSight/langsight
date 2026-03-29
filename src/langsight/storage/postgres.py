@@ -975,7 +975,7 @@ class PostgresBackend:
             acked_by,
             alert_id,
         )
-        return result.endswith("1")
+        return bool(result.endswith("1"))
 
     async def resolve_alert(self, alert_id: str) -> bool:
         """Mark an alert as resolved. Returns True if updated."""
@@ -990,7 +990,7 @@ class PostgresBackend:
             datetime.now(UTC),
             alert_id,
         )
-        return result.endswith("1")
+        return bool(result.endswith("1"))
 
     async def snooze_alert(self, alert_id: str, snooze_minutes: int) -> bool:
         """Snooze an alert for N minutes. Returns True if updated."""
@@ -1006,7 +1006,7 @@ class PostgresBackend:
             until,
             alert_id,
         )
-        return result.endswith("1")
+        return bool(result.endswith("1"))
 
     async def get_alert_counts(self, project_id: str = "") -> dict[str, int]:
         """Return count of active alerts per severity."""

@@ -195,7 +195,7 @@ class DualStorage:
         self,
         server_name: str,
         limit: int = 20,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         return await self._analytics.get_schema_drift_history(server_name, limit)
 
     async def get_drift_impact(
@@ -203,7 +203,7 @@ class DualStorage:
         server_name: str,
         tool_name: str,
         hours: int = 24,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         return await self._analytics.get_drift_impact(server_name, tool_name, hours)
 
     # ── Metadata → Postgres ───────────────────────────────────────────────────
