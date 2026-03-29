@@ -6,6 +6,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Docs: `docs-site/alerts.mdx`** — new "Alerts & Notifications" reference page covering both alert pipelines (CLI monitor and API/Dashboard), all eight alert types with their toggle keys and deduplication rules, Slack webhook configuration priority order (Dashboard > YAML > env var), Alert Inbox lifecycle (firing → acknowledged → snoozed → resolved), inbox REST API (`GET /api/alerts/inbox`, `POST /api/alerts/{id}/ack`, `POST /api/alerts/{id}/resolve`, `POST /api/alerts/{id}/snooze`), structured log events for debugging, and end-to-end test instructions.
+- **Docs: `docs-site/mint.json`** — `alerts` added to the "Reliability Features" navigation group.
+
+### Changed
+- **Docs: `docs-site/self-hosting/configuration.mdx`** — "Slack alert configuration" section updated to reflect that the webhook URL and alert toggles are now persisted to Postgres (not in-memory), the full alert type table updated to include `anomaly_warning` and `security_high` types added in v0.10.0, and a cross-reference to the new `/alerts` page added.
+- **Docs: `docs-site/cli/monitor.mdx`** — added `<Note>` cross-referencing the new Alerts & Notifications page for alert type details and deduplication behaviour.
+
+## [0.10.1] - 2026-03-29
+
+### Fixed
+- `--json` flags (`mcp-health`, `scorecard`, `scan`) now produce clean stdout — structlog routed to stderr
+- All mypy type errors resolved: bool casts on storage returns, `dict[str, Any]` type params, stale `# type: ignore` comments removed
+- `factory.py`: removed reference to non-existent `StorageConfig.sqlite_path` attribute
+
+### Changed
+- Pre-push hook now mandatorily checks mypy and ruff format — type errors and formatting issues can no longer reach CI
+
 ## [0.10.0] - 2026-03-29
 
 ### Added
