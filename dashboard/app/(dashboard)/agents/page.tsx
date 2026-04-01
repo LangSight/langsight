@@ -956,7 +956,7 @@ export default function AgentsPage() {
   const { data: lineage, isLoading: lineageLoading } = useSWR<LineageGraph>(`/api/agents/lineage?hours=${hours}${p}`, fetcher, { refreshInterval: 120_000 });
   const pid = activeProject?.id ?? null;
   const { data: metadata, mutate: mutateMetadata } = useSWR<AgentMetadata[]>(`/api/agents/metadata${p}`, () => listAgentMetadata(pid), { refreshInterval: 300_000 });
-  const { data: healthServers } = useSWR<HealthResult[]>("/api/health/servers", fetcher, { refreshInterval: 30_000 });
+  const { data: healthServers } = useSWR<HealthResult[]>(`/api/health/servers${pid ? `?project_id=${encodeURIComponent(pid)}` : ""}`, fetcher, { refreshInterval: 30_000 });
   const { data: toolReliability } = useSWR<ToolReliability[]>(`/api/reliability/tools?hours=${hours}${p}`, fetcher, { refreshInterval: 60_000 });
   const { data: loopCounts } = useSWR<{ agent_name: string; loop_count: number }[]>(
     `/api/agents/loop-counts?hours=${hours}${p}`,

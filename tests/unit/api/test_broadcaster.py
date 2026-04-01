@@ -161,37 +161,45 @@ class TestAdminSubscriberReceivesAll:
 
 
 # ---------------------------------------------------------------------------
-# Global events (no project_id) reach all subscribers
+# Unscoped events (no project_id) must NOT reach project-scoped subscribers
+# Security fix: previously unscoped events leaked to all project subscribers.
+# Admin subscribers (project_id=None) still receive everything.
 # ---------------------------------------------------------------------------
 
 
 class TestGlobalEventsReachAll:
-    async def test_event_with_no_project_id_reaches_project_subscriber(self) -> None:
-        """Events without project_id are global and must reach project-scoped subscribers."""
+    async def _assert_no_event(self, gen, timeout: float = 0.05) -> None:
+        """Assert the generator yields no event within the timeout window."""
+        try:
+            await _next(gen, timeout=timeout)
+            raise AssertionError("Expected no event but generator yielded one")
+        except (asyncio.TimeoutError, StopAsyncIteration):
+            pass  # correct — no event delivered
+
+    async def test_event_with_no_project_id_does_not_reach_project_subscriber(self) -> None:
+        """Unscoped events must NOT reach project-scoped subscribers — only admins."""
         b = SSEBroadcaster()
         gen = b.subscribe(project_id="project-a")
         await _next(gen)  # connection comment
 
         b.publish("system:reload", {"message": "config changed"})  # no project_id
 
-        msg = await _next(gen)
-        assert "system:reload" in msg
+        await self._assert_no_event(gen)
         await gen.aclose()
 
-    async def test_event_with_empty_string_project_id_reaches_project_subscriber(self) -> None:
-        """Events with project_id='' are equivalent to no project_id — global broadcast."""
+    async def test_event_with_empty_string_project_id_does_not_reach_project_subscriber(self) -> None:
+        """Events with project_id='' are unscoped — must not reach project subscribers."""
         b = SSEBroadcaster()
         gen = b.subscribe(project_id="project-a")
         await _next(gen)  # connection comment
 
         b.publish("system:reload", {"project_id": "", "message": "ping"})
 
-        msg = await _next(gen)
-        assert "system:reload" in msg
+        await self._assert_no_event(gen)
         await gen.aclose()
 
-    async def test_event_with_no_project_id_reaches_multiple_project_subscribers(self) -> None:
-        """Global events reach ALL project-scoped subscribers, not just one."""
+    async def test_event_with_no_project_id_does_not_reach_multiple_project_subscribers(self) -> None:
+        """Unscoped events do not reach any project-scoped subscriber."""
         b = SSEBroadcaster()
         gen_a = b.subscribe(project_id="project-a")
         gen_b = b.subscribe(project_id="project-b")
@@ -200,13 +208,23 @@ class TestGlobalEventsReachAll:
 
         b.publish("system:shutdown", {"message": "maintenance"})  # no project_id
 
-        msg_a = await _next(gen_a)
-        msg_b = await _next(gen_b)
-        assert "system:shutdown" in msg_a
-        assert "system:shutdown" in msg_b
+        await self._assert_no_event(gen_a)
+        await self._assert_no_event(gen_b)
 
         await gen_a.aclose()
         await gen_b.aclose()
+
+    async def test_unscoped_event_reaches_admin_subscriber(self) -> None:
+        """Unscoped events must still reach admin (project_id=None) subscribers."""
+        b = SSEBroadcaster()
+        gen = b.subscribe(project_id=None)  # admin
+        await _next(gen)  # connection comment
+
+        b.publish("system:reload", {"message": "config changed"})
+
+        msg = await _next(gen)
+        assert "system:reload" in msg
+        await gen.aclose()
 
 
 # ---------------------------------------------------------------------------

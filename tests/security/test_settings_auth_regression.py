@@ -486,13 +486,12 @@ class TestSSEProjectIsolation:
             f"Event body does not contain project-a: {project_a_received[0]}"
         )
 
-    async def test_no_project_id_in_payload_reaches_project_scoped_subscriber(self) -> None:
-        """When event has no project_id, project-scoped subscriber receives it.
+    async def test_no_project_id_in_payload_does_not_reach_project_scoped_subscriber(self) -> None:
+        """Unscoped events (no project_id in payload) must NOT reach project-scoped subscribers.
 
-        This documents the current filter behaviour: event_project="" causes the
-        condition ``event_project and sub_project != event_project`` to be False
-        (short-circuit), so the event passes through to ALL subscribers. This is
-        intentional for legacy events that predate project_id in the payload.
+        Security fix: previously the filter short-circuited when event_project=""
+        and leaked unscoped events to all project subscribers. Now only admin
+        (project_id=None) subscribers receive unscoped events.
         """
         from langsight.api.broadcast import SSEBroadcaster
 
@@ -520,10 +519,10 @@ class TestSSEProjectIsolation:
         except asyncio.CancelledError:
             pass
 
-        # This documents the permissive path — unscoped events reach all subscribers
-        assert len(received) >= 1, (
-            "Unscoped event (no project_id) was not delivered to project-scoped subscriber. "
-            "This documents intentional permissive behaviour for legacy events."
+        # Project-scoped subscriber must NOT receive unscoped events
+        assert len(received) == 0, (
+            "Unscoped event (no project_id) leaked to project-scoped subscriber — "
+            "cross-project SSE event isolation is broken."
         )
 
     async def test_admin_subscriber_receives_all_project_events(self) -> None:

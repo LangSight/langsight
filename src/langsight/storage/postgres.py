@@ -526,6 +526,21 @@ class PostgresBackend:
             logger.info("storage.postgres.api_key_revoked", id=key_id)
         return found
 
+    async def revoke_all_user_keys(self, user_id: str) -> int:
+        """Revoke all active API keys owned by a user. Returns count revoked.
+
+        Called automatically on password change so an attacker who briefly had
+        access cannot retain long-lived SDK keys after the password is rotated.
+        """
+        result: str = await self._pool.execute(
+            "UPDATE api_keys SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
+            user_id,
+        )
+        count = int(result.split()[-1]) if result else 0
+        if count:
+            logger.info("storage.postgres.user_keys_revoked", user_id=user_id, count=count)
+        return count
+
     async def touch_api_key(self, key_id: str) -> None:
         await self._pool.execute(
             "UPDATE api_keys SET last_used_at = NOW() WHERE id = $1",
@@ -740,6 +755,15 @@ class PostgresBackend:
 
     async def touch_user_login(self, user_id: str) -> None:
         await self._pool.execute("UPDATE users SET last_login_at = NOW() WHERE id = $1", user_id)
+
+    async def update_user_password(self, user_id: str, new_password_hash: str) -> bool:
+        """Update a user's password hash. Returns True if the user was found."""
+        result: str = await self._pool.execute(
+            "UPDATE users SET password_hash = $1 WHERE id = $2 AND active = TRUE",
+            new_password_hash,
+            user_id,
+        )
+        return result != "UPDATE 0"
 
     async def count_users(self) -> int:
         row = await self._pool.fetchrow("SELECT COUNT(*) AS n FROM users WHERE active = TRUE")
@@ -976,8 +1000,12 @@ class PostgresBackend:
         )
         return int(row["n"]) if row else 0
 
-    async def ack_alert(self, alert_id: str, acked_by: str = "user") -> bool:
-        """Mark an alert as acknowledged. Returns True if updated."""
+    async def ack_alert(self, alert_id: str, acked_by: str = "user", project_id: str = "") -> bool:
+        """Mark an alert as acknowledged. Returns True if updated.
+
+        project_id is required to prevent cross-tenant mutation — the UPDATE
+        only succeeds if the alert belongs to this project (or is unscoped).
+        """
         from datetime import UTC, datetime
 
         result = await self._pool.execute(
@@ -985,15 +1013,20 @@ class PostgresBackend:
             UPDATE fired_alerts
             SET status = 'acked', acked_at = $1, acked_by = $2
             WHERE id = $3 AND status = 'active'
+              AND (project_id = $4 OR project_id = '')
             """,
             datetime.now(UTC),
             acked_by,
             alert_id,
+            project_id,
         )
         return bool(result.endswith("1"))
 
-    async def resolve_alert(self, alert_id: str) -> bool:
-        """Mark an alert as resolved. Returns True if updated."""
+    async def resolve_alert(self, alert_id: str, project_id: str = "") -> bool:
+        """Mark an alert as resolved. Returns True if updated.
+
+        project_id is required to prevent cross-tenant mutation.
+        """
         from datetime import UTC, datetime
 
         result = await self._pool.execute(
@@ -1001,14 +1034,19 @@ class PostgresBackend:
             UPDATE fired_alerts
             SET status = 'resolved', resolved_at = $1
             WHERE id = $2 AND status NOT IN ('resolved')
+              AND (project_id = $3 OR project_id = '')
             """,
             datetime.now(UTC),
             alert_id,
+            project_id,
         )
         return bool(result.endswith("1"))
 
-    async def snooze_alert(self, alert_id: str, snooze_minutes: int) -> bool:
-        """Snooze an alert for N minutes. Returns True if updated."""
+    async def snooze_alert(self, alert_id: str, snooze_minutes: int, project_id: str = "") -> bool:
+        """Snooze an alert for N minutes. Returns True if updated.
+
+        project_id is required to prevent cross-tenant mutation.
+        """
         from datetime import UTC, datetime, timedelta
 
         until = datetime.now(UTC) + timedelta(minutes=snooze_minutes)
@@ -1017,9 +1055,11 @@ class PostgresBackend:
             UPDATE fired_alerts
             SET status = 'snoozed', snoozed_until = $1
             WHERE id = $2 AND status NOT IN ('resolved')
+              AND (project_id = $3 OR project_id = '')
             """,
             until,
             alert_id,
+            project_id,
         )
         return bool(result.endswith("1"))
 

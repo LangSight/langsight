@@ -1061,8 +1061,14 @@ class ClickHouseBackend:
                 anyIf(t.model_id, t.model_id != '')                  AS model_id,
                 arrayFilter(x -> x != '', groupUniqArray(t.agent_name)) AS agents_used
             FROM mcp_tool_calls t
-            LEFT JOIN (SELECT session_id, project_id, health_tag FROM session_health_tags FINAL) sht
-                ON t.session_id = sht.session_id AND t.project_id = sht.project_id
+            LEFT JOIN (
+                -- Coalesce project_id to '' so spans with no project_id
+                -- match health tags saved with the batch's project_id.
+                -- Without this, sessions where spans arrive without project_id
+                -- but the health tag is saved with one show no health status.
+                SELECT session_id, health_tag
+                FROM session_health_tags FINAL
+            ) sht ON t.session_id = sht.session_id
             {where}
             GROUP BY t.project_id, t.session_id
             {having}

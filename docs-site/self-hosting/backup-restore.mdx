@@ -1,0 +1,174 @@
+---
+title: "Backup & Restore"
+description: "Backup and restore procedures for LangSight's PostgreSQL and ClickHouse databases"
+---
+
+## What data lives where
+
+| Data | Storage | Examples |
+|------|---------|---------|
+| Users, API keys, invites | **PostgreSQL** | Accounts, roles, invite tokens |
+| Project config, MCP server config | **PostgreSQL** | Project metadata, server registry |
+| Prevention configs, SLO definitions | **PostgreSQL** | Guard thresholds, SLO targets |
+| Alert configs, fired alerts | **PostgreSQL** | Alert rules, Alert Inbox history |
+| Health check history | **ClickHouse** | UP/DOWN/DEGRADED events per server |
+| Agent sessions and tool call spans | **ClickHouse** | Trace data, cost records |
+| Schema drift snapshots | **ClickHouse** | Tool description versions over time |
+
+Back up **both** databases. Losing PostgreSQL means losing users, API keys, and configuration. Losing ClickHouse means losing all historical trace and health data.
+
+---
+
+## PostgreSQL backup
+
+### Backup (Docker Compose)
+
+```bash
+# Dump the langsight database to a compressed file
+docker compose exec postgres pg_dump \
+  -U langsight \
+  --format=custom \
+  --compress=9 \
+  langsight \
+  > backup-postgres-$(date +%Y%m%d-%H%M%S).dump
+```
+
+The `--format=custom` flag creates a binary format file that is smaller than plain SQL and supports parallel restore.
+
+### Restore (Docker Compose)
+
+```bash
+# Stop the API and dashboard first to prevent writes during restore
+docker compose stop api dashboard
+
+# Drop and recreate the database (destructive — use with care)
+docker compose exec postgres psql -U langsight -c "DROP DATABASE IF EXISTS langsight;"
+docker compose exec postgres psql -U langsight -c "CREATE DATABASE langsight;"
+
+# Restore from backup file
+# Note: pg_restore reads from the host, so pipe it in
+docker compose exec -T postgres pg_restore \
+  -U langsight \
+  --dbname=langsight \
+  --no-owner \
+  --no-privileges \
+  < backup-postgres-20260401-120000.dump
+
+# Run migrations to apply any schema changes newer than the backup
+docker compose start api
+docker compose exec api uv run alembic upgrade head
+```
+
+<Warning>
+  `pg_restore` with `--no-owner` ignores ownership. All restored objects are owned by the `langsight` user. This is correct for the default Docker Compose setup.
+</Warning>
+
+---
+
+## ClickHouse backup
+
+### Backup using clickhouse-backup (recommended)
+
+[clickhouse-backup](https://github.com/Altinity/clickhouse-backup) is an open-source tool for ClickHouse backups. For Docker Compose:
+
+```bash
+# Install clickhouse-backup inside the ClickHouse container
+docker compose exec clickhouse bash -c \
+  "curl -fsSL https://github.com/Altinity/clickhouse-backup/releases/latest/download/clickhouse-backup-linux-amd64.tar.gz | tar xz -C /usr/local/bin/"
+
+# Create a local backup
+docker compose exec clickhouse clickhouse-backup create langsight-$(date +%Y%m%d-%H%M%S)
+
+# List backups
+docker compose exec clickhouse clickhouse-backup list
+```
+
+Backups are stored inside the container at `/var/lib/clickhouse/backup/`. Copy them to a persistent location:
+
+```bash
+docker compose cp clickhouse:/var/lib/clickhouse/backup ./clickhouse-backups/
+```
+
+### Backup using clickhouse-client (simple)
+
+For smaller datasets, use `clickhouse-client` to export each table to a native format file:
+
+```bash
+TABLES=(health_checks tool_call_spans agent_sessions mcp_schema_snapshots)
+
+for TABLE in "${TABLES[@]}"; do
+  docker compose exec clickhouse clickhouse-client \
+    --database=langsight \
+    --query="SELECT * FROM ${TABLE} FORMAT Native" \
+    > "backup-ch-${TABLE}-$(date +%Y%m%d).bin"
+done
+```
+
+### Restore using clickhouse-backup
+
+```bash
+# Copy backup files back into the container
+docker compose cp ./clickhouse-backups/ clickhouse:/var/lib/clickhouse/backup/
+
+# Restore (replaces existing data)
+docker compose exec clickhouse clickhouse-backup restore langsight-20260401-120000
+```
+
+### Restore using clickhouse-client
+
+```bash
+# For each table, insert from the exported Native format file
+for TABLE in health_checks tool_call_spans agent_sessions mcp_schema_snapshots; do
+  docker compose exec -T clickhouse clickhouse-client \
+    --database=langsight \
+    --query="INSERT INTO ${TABLE} FORMAT Native" \
+    < "backup-ch-${TABLE}-20260401.bin"
+done
+```
+
+---
+
+## Recommended backup schedule
+
+| Database | Frequency | Retention |
+|----------|-----------|-----------|
+| PostgreSQL | Daily | 30 days |
+| ClickHouse | Weekly | 12 weeks |
+
+Adjust frequency based on how much trace data you generate. If sessions are your primary audit trail, back up ClickHouse daily as well.
+
+For automated backups, add a cron job on the host:
+
+```bash
+# /etc/cron.d/langsight-backup
+# Daily Postgres backup at 02:00
+0 2 * * * root docker compose -f /opt/langsight/docker-compose.yml exec -T postgres \
+  pg_dump -U langsight --format=custom --compress=9 langsight \
+  > /opt/langsight/backups/postgres-$(date +\%Y\%m\%d).dump 2>/var/log/langsight-backup.log
+
+# Weekly ClickHouse backup on Sunday at 03:00
+0 3 * * 0 root docker compose -f /opt/langsight/docker-compose.yml exec -T clickhouse \
+  clickhouse-backup create langsight-weekly-$(date +\%Y\%m\%d) >> /var/log/langsight-backup.log 2>&1
+```
+
+<Note>
+  Store backups on a separate host or cloud storage (S3, GCS). Backups on the same host as the database are not a recovery strategy for hardware failure.
+</Note>
+
+---
+
+## What is not in the backup
+
+The following data does not need backup:
+
+- **Model pricing seed data** — re-seeded automatically on startup from built-in values.
+- **Demo / Sample Project data** — re-seeded on first run; only matters if you rely on it for demos.
+- **Prometheus metrics** — ephemeral counters, not stored in either database.
+
+---
+
+## Related
+
+- [Storage Backends](/self-hosting/storage) — Postgres and ClickHouse schema overview
+- [Docker Compose](/self-hosting/docker-compose) — container names and volume locations
+- [Troubleshooting](/self-hosting/troubleshooting) — restore errors and common issues

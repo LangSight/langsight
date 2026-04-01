@@ -1,0 +1,215 @@
+---
+title: "Production Hardening"
+description: "Nginx reverse proxy, TLS, firewall rules, and security configuration for production LangSight deployments"
+---
+
+## Overview
+
+The standard `docker compose up -d` setup binds all services to `localhost` and is suitable for development. Before exposing LangSight to a team or the internet, apply the hardening steps on this page.
+
+---
+
+## LANGSIGHT_WORKERS must stay at 1
+
+**Do not set `LANGSIGHT_WORKERS` above `1`.** The API enforces this at startup:
+
+```
+RuntimeError: LANGSIGHT_WORKERS=4 is not safe with the current in-memory rate
+limiter. Each worker gets its own independent counter, so the effective rate
+limit becomes limit×4. Set LANGSIGHT_WORKERS=1 (the default), or replace
+slowapi with a Redis-backed limiter before enabling multi-worker mode.
+```
+
+The in-memory rate limiter (slowapi), SSE live-feed broadcaster, and auth token cache are all in-process state. Running N workers multiplies the effective rate limit by N, which breaks brute-force protection on the login endpoint and allows SSE events to be missed by clients connected to a different worker.
+
+Horizontal scaling requires a Redis-backed rate limiter. Until that is shipped, keep `LANGSIGHT_WORKERS=1` and scale vertically (increase CPU/memory) if needed.
+
+---
+
+## Nginx reverse proxy with TLS
+
+Only the dashboard (port 3003 in Docker Compose) should be internet-accessible. The API (port 8000) should be internal only.
+
+### Full nginx.conf example
+
+```nginx
+# /etc/nginx/sites-available/langsight
+
+# Redirect HTTP → HTTPS
+server {
+    listen 80;
+    server_name langsight.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name langsight.example.com;
+
+    # TLS certificates (use certbot or your own PKI)
+    ssl_certificate     /etc/letsencrypt/live/langsight.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/langsight.example.com/privkey.pem;
+
+    # TLS hardening
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # Pass real client IP to the dashboard and API
+    # Required for per-IP rate limiting on the login endpoint
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Host $host;
+
+    # Proxy to Next.js dashboard
+    location / {
+        proxy_pass http://127.0.0.1:3003;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # SSE live feed — disable buffering so events arrive in real time
+    location /api/live/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 600s;
+    }
+}
+```
+
+<Note>
+  The Next.js dashboard already proxies `/api/*` calls to FastAPI internally. Nginx only needs to proxy to port 3003 — do not create a separate Nginx `location /api/` block that points to port 8000, or you will bypass the dashboard's auth proxy layer.
+</Note>
+
+Enable and reload:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/langsight /etc/nginx/sites-enabled/langsight
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### LANGSIGHT_TRUSTED_PROXY_CIDRS
+
+When requests reach FastAPI through Nginx or any reverse proxy, FastAPI needs to know which proxy IPs are trusted before reading `X-Forwarded-For` for rate limiting. Set this to the CIDR of your proxy:
+
+```bash
+# Single proxy on the same host
+LANGSIGHT_TRUSTED_PROXY_CIDRS=127.0.0.1/32,::1/128
+
+# Docker Compose default bridge network (proxy container to API container)
+LANGSIGHT_TRUSTED_PROXY_CIDRS=172.16.0.0/12
+
+# Cloud load balancer (check your provider's documentation for the exact range)
+LANGSIGHT_TRUSTED_PROXY_CIDRS=10.0.0.0/8
+```
+
+Without this setting, per-IP rate limiting on the login endpoint uses the proxy IP instead of the real client IP, which means all users share one rate-limit bucket.
+
+---
+
+## LANGSIGHT_METRICS_TOKEN
+
+The `/metrics` endpoint returns `503` when `LANGSIGHT_METRICS_TOKEN` is not set. Set the token before configuring Prometheus scraping:
+
+```bash
+# Generate a 32-byte hex token
+python -c "import secrets; print(secrets.token_hex(32))"
+
+# Add to your .env or docker-compose.yml environment
+LANGSIGHT_METRICS_TOKEN=a3f8d2e1...
+```
+
+Prometheus scrape config:
+
+```yaml
+scrape_configs:
+  - job_name: langsight
+    scrape_interval: 15s
+    bearer_token: a3f8d2e1...
+    static_configs:
+      - targets: ["localhost:8000"]   # internal — do not expose 8000 externally
+    metrics_path: /metrics
+```
+
+---
+
+## Firewall rules
+
+Only port 443 (HTTPS via Nginx) should be internet-accessible. All other ports must be restricted to your internal network:
+
+| Port | Service | Accessible from |
+|------|---------|-----------------|
+| `443` | Nginx → dashboard | Internet (your team) |
+| `80` | Nginx HTTP redirect | Internet (redirects to 443) |
+| `3003` | Next.js dashboard | `127.0.0.1` only (Nginx proxies to it) |
+| `8000` | FastAPI | `127.0.0.1` only (Next.js proxy + internal tools) |
+| `5432` | PostgreSQL | `127.0.0.1` only |
+| `8123` | ClickHouse HTTP | `127.0.0.1` only |
+| `9000` | ClickHouse native | `127.0.0.1` only |
+
+Example with `ufw`:
+
+```bash
+sudo ufw default deny incoming
+sudo ufw allow ssh
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw enable
+```
+
+Docker Compose binds all services to `127.0.0.1` by default. Do not add `0.0.0.0:8000:8000` port mappings for the API in production.
+
+---
+
+## Basic health endpoint monitoring
+
+Use `/api/liveness` and `/api/readiness` for external uptime monitoring. These endpoints require no authentication:
+
+| Endpoint | What it checks | Use for |
+|----------|---------------|---------|
+| `GET /api/liveness` | Process is alive | Container restart policy |
+| `GET /api/readiness` | Storage reachable | Load balancer routing |
+
+Example with an uptime monitor (e.g. UptimeRobot, Grafana):
+
+```bash
+# Liveness — always returns 200 if the process is running
+curl https://langsight.example.com/api/liveness
+
+# Readiness — returns 503 if Postgres or ClickHouse is unreachable
+curl https://langsight.example.com/api/readiness
+```
+
+For Docker Compose, add a healthcheck:
+
+```yaml
+services:
+  api:
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/readiness"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+```
+
+---
+
+## Related
+
+- [Configuration Reference](/self-hosting/configuration) — all environment variables
+- [Backup & Restore](/self-hosting/backup-restore) — backup Postgres and ClickHouse data
+- [Troubleshooting](/self-hosting/troubleshooting) — common startup and runtime errors
+- [Docker Compose](/self-hosting/docker-compose) — full stack setup

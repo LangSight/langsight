@@ -60,26 +60,43 @@ class TestMetricsEndpoint:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             yield c
 
-    async def test_metrics_returns_200(self, client: AsyncClient) -> None:
+    async def test_metrics_returns_503_when_token_not_set(self, client: AsyncClient) -> None:
+        """Without LANGSIGHT_METRICS_TOKEN the endpoint returns 503, not open metrics."""
         r = await client.get("/metrics")
+        assert r.status_code == 503
+
+    async def test_metrics_returns_401_with_wrong_token(self, client: AsyncClient, monkeypatch) -> None:
+        monkeypatch.setattr("langsight.api.metrics._METRICS_TOKEN", "correct-token")
+        r = await client.get("/metrics", headers={"Authorization": "Bearer wrong-token"})
+        assert r.status_code == 401
+
+    async def test_metrics_returns_401_with_no_token_header(self, client: AsyncClient, monkeypatch) -> None:
+        monkeypatch.setattr("langsight.api.metrics._METRICS_TOKEN", "correct-token")
+        r = await client.get("/metrics")
+        assert r.status_code == 401
+
+    async def test_metrics_content_type_with_valid_token(self, client: AsyncClient, monkeypatch) -> None:
+        monkeypatch.setattr("langsight.api.metrics._METRICS_TOKEN", "valid-token")
+        r = await client.get("/metrics", headers={"Authorization": "Bearer valid-token"})
         assert r.status_code == 200
+        assert "text/plain" in r.headers.get("content-type", "")
 
-    async def test_metrics_content_type(self, client: AsyncClient) -> None:
-        r = await client.get("/metrics")
-        assert "text/plain" in r.headers["content-type"] or "text/plain" in r.headers.get("content-type", "")
-
-    async def test_metrics_contains_http_counter(self, client: AsyncClient) -> None:
-        # Make a request first to generate metrics
+    async def test_metrics_contains_http_counter_with_valid_token(self, client: AsyncClient, monkeypatch) -> None:
+        monkeypatch.setattr("langsight.api.metrics._METRICS_TOKEN", "valid-token")
         await client.get("/api/status")
-        r = await client.get("/metrics")
+        r = await client.get("/metrics", headers={"Authorization": "Bearer valid-token"})
+        assert r.status_code == 200
         assert "langsight_http_requests_total" in r.text
 
-    async def test_metrics_contains_duration_histogram(self, client: AsyncClient) -> None:
+    async def test_metrics_contains_duration_histogram_with_valid_token(self, client: AsyncClient, monkeypatch) -> None:
+        monkeypatch.setattr("langsight.api.metrics._METRICS_TOKEN", "valid-token")
         await client.get("/api/status")
-        r = await client.get("/metrics")
+        r = await client.get("/metrics", headers={"Authorization": "Bearer valid-token"})
+        assert r.status_code == 200
         assert "langsight_http_request_duration_seconds" in r.text
 
-    async def test_metrics_no_auth_required(self, client: AsyncClient) -> None:
-        """Metrics endpoint should be accessible without API key."""
-        r = await client.get("/metrics")
-        assert r.status_code == 200  # Not 401 or 403
+    async def test_metrics_query_string_token_rejected(self, client: AsyncClient, monkeypatch) -> None:
+        """Query-string token auth must not work — Bearer header only."""
+        monkeypatch.setattr("langsight.api.metrics._METRICS_TOKEN", "valid-token")
+        r = await client.get("/metrics?token=valid-token")
+        assert r.status_code == 401

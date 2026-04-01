@@ -63,8 +63,10 @@ describe("Sidebar — navigation", () => {
 
   it("renders infrastructure nav items", () => {
     renderSidebar();
-    expect(screen.getByText("Tool Health")).toBeInTheDocument();
+    expect(screen.getByText("MCP Servers")).toBeInTheDocument();
+    expect(screen.getByText("Live")).toBeInTheDocument();
     expect(screen.getByText("MCP Security")).toBeInTheDocument();
+    expect(screen.getByText("Alerts")).toBeInTheDocument();
   });
 
   it("renders Settings link", () => {
@@ -95,14 +97,24 @@ describe("Sidebar — navigation", () => {
     expect(screen.getByRole("link", { name: /costs/i })).toHaveAttribute("href", "/costs");
   });
 
-  it("Tool Health link points to /health", () => {
+  it("MCP Servers link points to /servers", () => {
     renderSidebar();
-    expect(screen.getByRole("link", { name: /tool health/i })).toHaveAttribute("href", "/health");
+    expect(screen.getByRole("link", { name: /mcp servers/i })).toHaveAttribute("href", "/servers");
+  });
+
+  it("Live link points to /live", () => {
+    renderSidebar();
+    expect(screen.getByRole("link", { name: /^live$/i })).toHaveAttribute("href", "/live");
   });
 
   it("MCP Security link points to /security", () => {
     renderSidebar();
     expect(screen.getByRole("link", { name: /mcp security/i })).toHaveAttribute("href", "/security");
+  });
+
+  it("Alerts link points to /alerts", () => {
+    renderSidebar();
+    expect(screen.getByRole("link", { name: /^alerts$/i })).toHaveAttribute("href", "/alerts");
   });
 });
 

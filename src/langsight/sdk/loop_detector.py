@@ -56,12 +56,37 @@ class _CallRecord:
     error_hash: str | None
 
 
+def _normalize_for_loop_detection(obj: Any) -> Any:
+    """Normalize values before hashing to prevent trivial loop-bypass via micro-variations.
+
+    LLMs naturally produce floats like 1.0 vs 1 or 0.999999 vs 1.0 for the
+    same logical value. Without normalization, {"price": 1.0} and {"price": 1}
+    produce different JSON strings and different hashes, so the loop detector
+    never fires even when the agent calls the same tool with the same effective
+    arguments repeatedly.
+
+    Rules:
+    - float → round to 6 decimal places (preserves meaningful precision)
+    - int/bool/str/None → unchanged
+    - dict → recurse over values (keys are already strings in JSON)
+    - list/tuple → recurse over elements
+    """
+    if isinstance(obj, float):
+        return round(obj, 6)
+    if isinstance(obj, dict):
+        return {k: _normalize_for_loop_detection(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_normalize_for_loop_detection(v) for v in obj]
+    return obj
+
+
 def _hash_args(arguments: dict[str, Any] | None) -> str:
     """Deterministic hash of tool arguments for comparison."""
     if not arguments:
         return "empty"
     try:
-        canonical = json.dumps(arguments, sort_keys=True, default=str)
+        normalized = _normalize_for_loop_detection(arguments)
+        canonical = json.dumps(normalized, sort_keys=True, default=str)
         return hashlib.sha256(canonical.encode()).hexdigest()[:16]
     except (RecursionError, TypeError, ValueError):
         return _hash_args_iterative(arguments)

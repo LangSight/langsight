@@ -1,0 +1,214 @@
+---
+title: "Troubleshooting"
+description: "Common LangSight startup and runtime errors and how to fix them"
+---
+
+## ClickHouse unreachable
+
+**Symptom:** `langsight serve` or the API returns errors like `ClickHouse connection refused` or the readiness probe at `/api/readiness` shows `{"status": "not_ready", "storage": {"clickhouse": "error: ..."}}`
+
+**Causes and fixes:**
+
+| Cause | Fix |
+|-------|-----|
+| ClickHouse container not running | `docker compose up -d clickhouse` — wait 10 seconds then retry |
+| Wrong `LANGSIGHT_CLICKHOUSE_URL` | Default is `http://clickhouse:8123` inside Docker Compose; `http://localhost:8123` outside |
+| Wrong credentials | Check `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` match `clickhouse-users.xml` |
+| Port 8123 not exposed | Check `docker compose ps` — the clickhouse service must map port 8123 |
+| ClickHouse starting up slowly | Wait 30 seconds after `docker compose up` before calling the API |
+
+Check ClickHouse logs:
+
+```bash
+docker compose logs clickhouse --tail=50
+```
+
+---
+
+## PostgreSQL connection failed
+
+**Symptom:** API exits at startup with `asyncpg.InvalidCatalogNameError` or `Connection refused on port 5432`.
+
+**Causes and fixes:**
+
+| Cause | Fix |
+|-------|-----|
+| Postgres container not running | `docker compose up -d postgres` |
+| Wrong `LANGSIGHT_POSTGRES_URL` | Default: `postgresql://langsight:langsight@postgres:5432/langsight` inside Docker Compose |
+| Database not created | Run `docker compose exec postgres createdb -U langsight langsight` |
+| Migrations not run | `docker compose exec api uv run alembic upgrade head` |
+
+Check Postgres logs:
+
+```bash
+docker compose logs postgres --tail=50
+```
+
+---
+
+## Dashboard shows "Auth error" or NextAuth error page
+
+**Symptom:** After login, the dashboard redirects to an error page or shows "Configuration" or "Authentication" errors.
+
+**Cause:** `NEXTAUTH_SECRET` (or `LANGSIGHT_AUTH_SECRET`) is not set or does not match between the Next.js dashboard and the FastAPI API.
+
+**Fix:**
+
+1. Generate a secret:
+   ```bash
+   python -c "import secrets; print(secrets.token_hex(32))"
+   ```
+2. Set it in your `.env` file for **both** services:
+   ```bash
+   NEXTAUTH_SECRET=<generated-value>
+   LANGSIGHT_AUTH_SECRET=<same-generated-value>
+   ```
+3. Restart both containers:
+   ```bash
+   docker compose restart api dashboard
+   ```
+
+The secret must be identical on both sides — the Next.js proxy validates the session signature using the same key that signed it.
+
+---
+
+## API returns 401 on all requests
+
+**Symptom:** Every API call returns `{"detail": "Not authenticated"}` or `{"detail": "Invalid API key"}`.
+
+**Causes and fixes:**
+
+| Cause | Fix |
+|-------|-----|
+| `LANGSIGHT_API_KEYS` not set | Add your key: `LANGSIGHT_API_KEYS=lsk_yourkey` |
+| Wrong header name | Use `X-API-Key: lsk_yourkey`, not `Authorization: Bearer ...` |
+| Key was revoked | User changed password — generate a new key in Settings → API Keys |
+| Key belongs to deactivated user | Re-activate the user in Settings → Users |
+
+---
+
+## Spans not appearing in the dashboard
+
+**Symptom:** Agent code is running but no sessions or spans appear in the dashboard.
+
+**Causes and fixes:**
+
+| Cause | Fix |
+|-------|-----|
+| `LANGSIGHT_URL` not set or wrong | SDK reads this env var; default is `http://localhost:8000` |
+| `LANGSIGHT_TEST_MODE=1` is set | Remove this env var — test mode silently drops all spans |
+| `LANGSIGHT_PROJECT_ID` wrong | Spans are stored under the project ID — check the dashboard project selector |
+| API key missing | Set `LANGSIGHT_API_KEY` if the API requires authentication |
+| Wrong API key | The key must match one of the values in `LANGSIGHT_API_KEYS` |
+| Firewall blocking outbound to port 8000 | Agent must be able to reach the API; check network policies |
+
+Quick check — send a test span manually:
+
+```bash
+curl -s http://localhost:8000/api/liveness
+# Should return: {"status": "alive"}
+```
+
+---
+
+## /metrics returns 503
+
+**Symptom:** Prometheus targets show `DOWN` and scraping returns HTTP 503.
+
+**Cause:** `LANGSIGHT_METRICS_TOKEN` is not set. When the token is not configured, the `/metrics` endpoint intentionally returns 503 rather than exposing metrics to any caller.
+
+**Fix:**
+
+```bash
+# Generate a token
+python -c "import secrets; print(secrets.token_hex(32))"
+
+# Add to your environment
+LANGSIGHT_METRICS_TOKEN=<generated-value>
+
+# Restart the API
+docker compose restart api
+```
+
+Update your Prometheus scrape config to include the token:
+
+```yaml
+scrape_configs:
+  - job_name: langsight
+    bearer_token: <generated-value>
+    static_configs:
+      - targets: ["localhost:8000"]
+    metrics_path: /metrics
+```
+
+If the token is correct but scraping still fails, verify the token does not contain trailing whitespace.
+
+---
+
+## CORS errors in the browser
+
+**Symptom:** Browser console shows `CORS policy: No 'Access-Control-Allow-Origin' header`.
+
+**Cause:** `LANGSIGHT_CORS_ORIGINS` does not include the dashboard origin.
+
+**Fix:**
+
+```bash
+# Allow the dashboard origin (adjust port/domain for your setup)
+LANGSIGHT_CORS_ORIGINS=https://langsight.example.com,http://localhost:3003
+```
+
+Set this to a comma-separated list of all origins that need to reach the API. The default is `http://localhost:3003`.
+
+<Warning>
+  Do not set `LANGSIGHT_CORS_ORIGINS=*` in production. This allows any website to make authenticated requests to your API using your users' sessions.
+</Warning>
+
+---
+
+## Workers > 1 startup error
+
+**Symptom:** API fails to start with:
+
+```
+RuntimeError: LANGSIGHT_WORKERS=4 is not safe with the current in-memory rate limiter.
+```
+
+**Cause:** `LANGSIGHT_WORKERS` is set to more than 1.
+
+**Fix:** Set `LANGSIGHT_WORKERS=1` (the default). The in-memory rate limiter gives each worker an independent counter. Under N workers, the effective rate limit becomes limit×N, which breaks brute-force protection. This is enforced at startup to prevent silent misconfiguration.
+
+See [Production Hardening](/self-hosting/production-hardening) for details on why multi-worker requires a Redis-backed limiter.
+
+---
+
+## Admin bootstrap does not run
+
+**Symptom:** First run completes but no admin user is created; cannot log in.
+
+**Causes and fixes:**
+
+| Cause | Fix |
+|-------|-----|
+| `LANGSIGHT_ADMIN_EMAIL` not set | Set both `LANGSIGHT_ADMIN_EMAIL` and `LANGSIGHT_ADMIN_PASSWORD` before the first run |
+| `LANGSIGHT_ADMIN_PASSWORD` too short | Must be at least 12 characters |
+| Admin already exists | Bootstrap only runs when the user table is empty; existing installs are not affected |
+| Migrations not run | Bootstrap runs after Alembic migrations; run `alembic upgrade head` first |
+
+If the user table already has data and you need to reset it:
+
+```bash
+# Remove all users (destructive)
+docker compose exec postgres psql -U langsight -c "TRUNCATE users, invite_tokens CASCADE;"
+# Restart to trigger bootstrap
+docker compose restart api
+```
+
+---
+
+## Related
+
+- [Configuration Reference](/self-hosting/configuration) — all environment variables
+- [Production Hardening](/self-hosting/production-hardening) — reverse proxy, firewall, TLS
+- [Backup & Restore](/self-hosting/backup-restore) — recover from data loss
+- [Docker Compose](/self-hosting/docker-compose) — full stack setup

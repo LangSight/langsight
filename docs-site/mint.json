@@ -147,8 +147,11 @@
       "pages": [
         "self-hosting/docker-compose",
         "self-hosting/production",
+        "self-hosting/production-hardening",
         "self-hosting/configuration",
         "self-hosting/storage",
+        "self-hosting/backup-restore",
+        "self-hosting/troubleshooting",
         "database-connections"
       ]
     },

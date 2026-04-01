@@ -107,9 +107,9 @@ All settings can be overridden with environment variables using the `LANGSIGHT_`
 | *(proxy trust)* | `LANGSIGHT_TRUSTED_PROXY_CIDRS` | Comma-separated CIDRs for trusted proxy headers (default: `127.0.0.1/32,::1/128`) |
 | *(ClickHouse auth)* | `CLICKHOUSE_USER` | ClickHouse username |
 | *(ClickHouse auth)* | `CLICKHOUSE_PASSWORD` | ClickHouse password |
-| *(API workers)* | `LANGSIGHT_WORKERS` | Number of Uvicorn worker processes (default: `1` — do not increase without a Redis-backed SSE broadcaster) |
+| *(API workers)* | `LANGSIGHT_WORKERS` | Number of Uvicorn worker processes (default: `1`). **Must stay at `1`.** See warning below. |
 | *(Postgres pool)* | `LANGSIGHT_PG_POOL_MAX` | Maximum Postgres connection pool size (default: `50`). Lower this on small instances where Postgres `max_connections` is constrained. |
-| *(Prometheus)* | `LANGSIGHT_METRICS_TOKEN` | Optional bearer token to protect the `GET /metrics` endpoint. When not set, the endpoint is unauthenticated and a warning is logged at startup. Set this in any internet-facing deployment. |
+| *(Prometheus)* | `LANGSIGHT_METRICS_TOKEN` | Bearer token required to scrape `GET /metrics`. When not set, `/metrics` returns **503** (not open). Generate with `python -c "import secrets; print(secrets.token_hex(32))"`. |
 
 <Note>
   `LANGSIGHT_ADMIN_EMAIL` and `LANGSIGHT_ADMIN_PASSWORD` are consumed once on first run to create the initial admin user. After that, manage users via Settings → Users in the dashboard.
@@ -120,7 +120,18 @@ All settings can be overridden with environment variables using the `LANGSIGHT_`
 </Note>
 
 <Warning>
-  Keep `LANGSIGHT_WORKERS=1` (the default). The SSE live feed broadcaster, rate limiter token buckets, and auth cache are all in-process Python state. Under multi-process Uvicorn (`LANGSIGHT_WORKERS > 1`), each worker holds an independent copy: SSE events published in worker A are not delivered to clients connected to worker B, rate-limit budgets are multiplied, and auth cache state diverges. Horizontal scaling requires a Redis-backed broadcaster, which is not yet shipped.
+  **`LANGSIGHT_WORKERS` must stay at `1`.** Setting it higher causes a startup `RuntimeError` that prevents the API from starting:
+
+  ```
+  RuntimeError: LANGSIGHT_WORKERS=4 is not safe with the current in-memory rate
+  limiter. Each worker gets its own independent counter, so the effective rate
+  limit becomes limit×4. Set LANGSIGHT_WORKERS=1 (the default), or replace
+  slowapi with a Redis-backed limiter before enabling multi-worker mode.
+  ```
+
+  The rate limiter (slowapi), SSE live-feed broadcaster, and auth cache are all in-process Python state. Under multi-process Uvicorn each worker holds an independent copy: brute-force protection on `/api/users/verify` becomes ineffective, SSE events published in one worker are not delivered to clients connected to another, and auth cache state diverges.
+
+  To safely run multiple workers you must replace slowapi with a Redis-backed limiter. Until that is shipped, `LANGSIGHT_WORKERS=1` is enforced at startup.
 </Warning>
 
 ## Global payload redaction (server-side)
@@ -198,46 +209,40 @@ All fired alerts are persisted to the Postgres `fired_alerts` table and accessib
 
 LangSight exposes a `GET /metrics` endpoint in Prometheus text exposition format.
 
-By default the endpoint is unauthenticated. LangSight logs a warning at startup if `LANGSIGHT_METRICS_TOKEN` is not set. For any internet-facing deployment, protect the endpoint:
+**`LANGSIGHT_METRICS_TOKEN` is required.** When the token is not set:
+
+- `/metrics` returns `503 Service Unavailable` (not open access).
+- LangSight logs a warning at startup.
+- Prometheus scrape targets will show as `DOWN` until the token is configured.
+
+Generate a token and set it before scraping:
 
 ```bash
-LANGSIGHT_METRICS_TOKEN=your-secret-scrape-token
+# Generate
+python -c "import secrets; print(secrets.token_hex(32))"
+
+# Set in your environment / docker-compose.yml
+LANGSIGHT_METRICS_TOKEN=<generated-value>
 ```
 
-When set, the endpoint requires `Authorization: Bearer your-secret-scrape-token`. Add the token to your Prometheus `bearer_token` config:
+When set, the endpoint requires `Authorization: Bearer <token>`. Requests without the header, or with the wrong token, receive `401 Unauthorized`.
 
-```yaml
-scrape_configs:
-  - job_name: langsight
-    scrape_interval: 15s
-    bearer_token: your-secret-scrape-token
-    static_configs:
-      - targets: ["localhost:8000"]
-    metrics_path: /metrics
-```
+| Request | Response |
+|---------|----------|
+| No `LANGSIGHT_METRICS_TOKEN` set | `503 Service Unavailable` |
+| `Authorization: Bearer <wrong-token>` | `401 Unauthorized` |
+| `Authorization: Bearer <correct-token>` | `200 OK` — Prometheus text format |
 
-For internal-only deployments (Prometheus runs on the same host or Docker network), omitting the token is acceptable since port 8000 is bound to `127.0.0.1` by default.
-
-Add the following job to your `prometheus.yml`:
+Configure Prometheus to pass the token as a bearer token:
 
 ```yaml
 # prometheus.yml
 scrape_configs:
   - job_name: langsight
     scrape_interval: 15s
+    bearer_token: your-secret-scrape-token
     static_configs:
-      - targets: ["localhost:8000"]  # or "api:8000" inside Docker Compose
-    metrics_path: /metrics
-```
-
-If you run LangSight inside Docker Compose, use the service name as the target:
-
-```yaml
-scrape_configs:
-  - job_name: langsight
-    scrape_interval: 15s
-    static_configs:
-      - targets: ["api:8000"]
+      - targets: ["localhost:8000"]   # or "api:8000" inside Docker Compose
     metrics_path: /metrics
 ```
 

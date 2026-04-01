@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import status as http_status
 from pydantic import BaseModel
 
-from langsight.api.dependencies import verify_api_key
+from langsight.api.dependencies import get_active_project_id, verify_api_key
 from langsight.storage.base import StorageBackend
 
 logger = structlog.get_logger()
@@ -111,13 +111,12 @@ def _storage(request: Request) -> StorageBackend:
 @router.get("/alerts/feed", response_model=AlertFeedResponse)
 async def get_alert_feed(
     request: Request,
-    project_id: str | None = Query(default=None),
     status: str | None = Query(
         default=None, description="active | acked | snoozed | resolved | all"
     ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    _: None = Depends(verify_api_key),
+    project_id: str | None = Depends(get_active_project_id),
 ) -> AlertFeedResponse:
     """Return the fired alert feed for this project."""
     storage = _storage(request)
@@ -139,8 +138,7 @@ async def get_alert_feed(
 @router.get("/alerts/counts", response_model=AlertCountsResponse)
 async def get_alert_counts(
     request: Request,
-    project_id: str | None = Query(default=None),
-    _: None = Depends(verify_api_key),
+    project_id: str | None = Depends(get_active_project_id),
 ) -> AlertCountsResponse:
     """Return active alert counts per severity."""
     storage = _storage(request)
@@ -163,13 +161,13 @@ async def ack_alert(
     alert_id: str,
     body: AckRequest,
     request: Request,
-    _: None = Depends(verify_api_key),
+    project_id: str | None = Depends(get_active_project_id),
 ) -> dict[str, Any]:
     """Acknowledge a fired alert."""
     storage = _storage(request)
     if not hasattr(storage, "ack_alert"):
         raise HTTPException(status_code=501, detail="Alert persistence not supported")
-    updated = await storage.ack_alert(alert_id=alert_id, acked_by=body.acked_by)
+    updated = await storage.ack_alert(alert_id=alert_id, acked_by=body.acked_by, project_id=project_id or "")
     if not updated:
         raise HTTPException(status_code=404, detail="Alert not found or already in final state")
     logger.info("alerts.acked", alert_id=alert_id, acked_by=body.acked_by)
@@ -180,13 +178,13 @@ async def ack_alert(
 async def resolve_alert(
     alert_id: str,
     request: Request,
-    _: None = Depends(verify_api_key),
+    project_id: str | None = Depends(get_active_project_id),
 ) -> dict[str, Any]:
     """Resolve a fired alert."""
     storage = _storage(request)
     if not hasattr(storage, "resolve_alert"):
         raise HTTPException(status_code=501, detail="Alert persistence not supported")
-    updated = await storage.resolve_alert(alert_id=alert_id)
+    updated = await storage.resolve_alert(alert_id=alert_id, project_id=project_id or "")
     if not updated:
         raise HTTPException(status_code=404, detail="Alert not found or already resolved")
     logger.info("alerts.resolved", alert_id=alert_id)
@@ -198,7 +196,7 @@ async def snooze_alert(
     alert_id: str,
     body: SnoozeRequest,
     request: Request,
-    _: None = Depends(verify_api_key),
+    project_id: str | None = Depends(get_active_project_id),
 ) -> dict[str, Any]:
     """Snooze a fired alert for N minutes (15, 60, 240, or 1440)."""
     if body.minutes not in (15, 60, 240, 1440):
@@ -209,7 +207,7 @@ async def snooze_alert(
     storage = _storage(request)
     if not hasattr(storage, "snooze_alert"):
         raise HTTPException(status_code=501, detail="Alert persistence not supported")
-    updated = await storage.snooze_alert(alert_id=alert_id, snooze_minutes=body.minutes)
+    updated = await storage.snooze_alert(alert_id=alert_id, snooze_minutes=body.minutes, project_id=project_id or "")
     if not updated:
         raise HTTPException(status_code=404, detail="Alert not found or already resolved")
     logger.info("alerts.snoozed", alert_id=alert_id, minutes=body.minutes)

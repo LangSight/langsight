@@ -87,8 +87,9 @@ if not _METRICS_TOKEN:
     import logging as _logging
 
     _logging.getLogger(__name__).warning(
-        "LANGSIGHT_METRICS_TOKEN is not set — /metrics endpoint is open. "
-        "Set LANGSIGHT_METRICS_TOKEN=<secret> to require authentication."
+        "LANGSIGHT_METRICS_TOKEN is not set — /metrics endpoint requires a token. "
+        "Set LANGSIGHT_METRICS_TOKEN=<secret> to enable Prometheus scraping. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
     )
 
 
@@ -96,20 +97,23 @@ if not _METRICS_TOKEN:
 async def prometheus_metrics(request: Request) -> Response:
     """Prometheus scrape endpoint.
 
-    Protected by LANGSIGHT_METRICS_TOKEN when set. Pass it as:
+    Requires LANGSIGHT_METRICS_TOKEN to be set. Pass it as:
       Authorization: Bearer <token>
-    or as a query param: ?token=<token>
 
-    If LANGSIGHT_METRICS_TOKEN is not set, the endpoint is open
-    (preserves backwards compatibility for single-host deployments).
+    Returns 401 if the token is missing or wrong.
+    Returns 503 if LANGSIGHT_METRICS_TOKEN is not configured.
     """
-    if _METRICS_TOKEN:
-        auth_header = request.headers.get("Authorization", "")
-        bearer = auth_header.removeprefix("Bearer ").strip()
-        query_token = request.query_params.get("token", "")
-        provided = bearer or query_token
-        if not provided or not hmac.compare_digest(provided, _METRICS_TOKEN):
-            return Response(status_code=401, content="Unauthorized")
+    if not _METRICS_TOKEN:
+        # Token not configured — refuse rather than expose metrics openly.
+        # Operators must explicitly set LANGSIGHT_METRICS_TOKEN to enable scraping.
+        return Response(
+            status_code=503,
+            content="LANGSIGHT_METRICS_TOKEN is not set. Configure it to enable /metrics.",
+        )
+    auth_header = request.headers.get("Authorization", "")
+    bearer = auth_header.removeprefix("Bearer ").strip()
+    if not bearer or not hmac.compare_digest(bearer, _METRICS_TOKEN):
+        return Response(status_code=401, content="Unauthorized")
     return Response(
         content=generate_latest(),
         media_type=CONTENT_TYPE_LATEST,

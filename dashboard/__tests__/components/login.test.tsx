@@ -27,6 +27,12 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
 }));
 
+afterEach(() => {
+  mockPush.mockReset();
+  mockRefresh.mockReset();
+  mockSignIn.mockReset();
+});
+
 /* ── Render helpers ─────────────────────────────────────────── */
 function renderLogin() {
   return render(<LoginPage />);
@@ -50,15 +56,15 @@ describe("LoginPage — layout", () => {
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
 
-  it("pre-fills email with demo credential", () => {
+  it("email input starts empty", () => {
     renderLogin();
     const emailInput = screen.getByLabelText("Email") as HTMLInputElement;
-    expect(emailInput.value).toBe("admin@admin.com");
+    expect(emailInput.value).toBe("");
   });
 
-  it("shows demo credentials hint", () => {
+  it("does not show demo credentials hint", () => {
     renderLogin();
-    expect(screen.getByText(/demo credentials/i)).toBeInTheDocument();
+    expect(screen.queryByText(/demo credentials/i)).not.toBeInTheDocument();
   });
 
   it("password input is type=password by default", () => {
@@ -103,11 +109,17 @@ describe("LoginPage — form interaction", () => {
 /* ── Sign-in success ────────────────────────────────────────── */
 describe("LoginPage — successful sign in", () => {
   beforeEach(() => {
+    mockPush.mockReset();
     mockSignIn.mockResolvedValue(makeSignInResponse());
   });
 
-  it("calls signIn with credentials provider and form values", async () => {
+  it("calls signIn with credentials provider and typed form values", async () => {
     renderLogin();
+    const emailInput = screen.getByLabelText("Email") as HTMLInputElement;
+    const pwInput    = screen.getByLabelText("Password") as HTMLInputElement;
+    await userEvent.type(emailInput, "user@example.com");
+    await userEvent.type(pwInput, "mysecretpassword");
+
     const submitBtn = screen.getByRole("button", { name: /sign in/i });
     await userEvent.click(submitBtn);
 
@@ -115,7 +127,7 @@ describe("LoginPage — successful sign in", () => {
       expect(mockSignIn).toHaveBeenCalledWith(
         "credentials",
         expect.objectContaining({
-          email: "admin@admin.com",
+          email: "user@example.com",
           redirect: false,
         })
       );
@@ -124,6 +136,8 @@ describe("LoginPage — successful sign in", () => {
 
   it("redirects to / on success", async () => {
     renderLogin();
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "validpassword");
     await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => {
@@ -132,16 +146,21 @@ describe("LoginPage — successful sign in", () => {
   });
 
   it("shows loading state while submitting", async () => {
-    // Make signIn take a moment
     mockSignIn.mockImplementationOnce(
       () => new Promise((res) => setTimeout(() => res(makeSignInResponse()), 50))
     );
 
     renderLogin();
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "validpassword");
     const submitBtn = screen.getByRole("button", { name: /sign in/i });
     await userEvent.click(submitBtn);
 
     expect(screen.getByText(/signing in/i)).toBeInTheDocument();
+
+    // Drain the pending promise so it doesn't leak into subsequent tests
+    await waitFor(() => expect(mockSignIn).toHaveBeenCalled());
+    await waitFor(() => expect(mockPush).toHaveBeenCalled());
   });
 });
 
@@ -156,6 +175,8 @@ describe("LoginPage — failed sign in", () => {
 
   it("does not redirect on error", async () => {
     renderLogin();
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "wrongpassword");
     await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => {

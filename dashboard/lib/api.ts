@@ -108,9 +108,10 @@ export const fetcher = (url: string) => {
 export const getStatus = () => get<ApiStatus>("/status");
 
 // ─── Health ───────────────────────────────────────────────────────────────────
-export const getServerHealth = () => get<HealthResult[]>("/health/servers");
-export const getServerHistory = (name: string, limit = 20) =>
-  get<HealthResult[]>(`/health/servers/${encodeURIComponent(name)}/history?limit=${limit}`);
+export const getServerHealth = (projectId?: string | null) =>
+  get<HealthResult[]>(`/health/servers${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""}`);
+export const getServerHistory = (name: string, limit = 20, projectId?: string | null) =>
+  get<HealthResult[]>(`/health/servers/${encodeURIComponent(name)}/history?limit=${limit}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);
 export const triggerHealthCheck = () => post<HealthResult[]>("/health/check");
 export const getServerLogs = (serverName: string, hours = 24, limit = 200, projectId?: string | null) =>
   get<import("@/lib/types").ServerLogEntry[]>(`/health/servers/${encodeURIComponent(serverName)}/logs?hours=${hours}&limit=${limit}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`);

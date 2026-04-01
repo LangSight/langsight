@@ -318,6 +318,26 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        # ── Multi-worker safety check ─────────────────────────────────────────
+        # The rate limiter (slowapi) is in-memory. Running N workers means each
+        # worker has an independent counter — effective limit becomes limit×N, not
+        # limit. This breaks brute-force protection on /verify and DoS protection
+        # on ingestion endpoints. Hard-fail at startup so operators don't
+        # accidentally deploy a misconfigured stack.
+        #
+        # To safely run multiple workers, replace slowapi with a Redis-backed
+        # limiter (e.g. slowapi + redis storage, or limits + redis). Until then,
+        # LANGSIGHT_WORKERS must stay at 1.
+        _workers = int(os.environ.get("LANGSIGHT_WORKERS", "1"))
+        if _workers > 1:
+            raise RuntimeError(
+                f"LANGSIGHT_WORKERS={_workers} is not safe with the current in-memory rate "
+                "limiter. Each worker gets its own independent counter, so the effective "
+                f"rate limit becomes limit×{_workers}. "
+                "Set LANGSIGHT_WORKERS=1 (the default), or replace slowapi with a "
+                "Redis-backed limiter before enabling multi-worker mode."
+            )
+
         config = load_config(config_path)
         # Apply env var overrides (LANGSIGHT_STORAGE_MODE etc.) — used in Docker
         settings = Settings()

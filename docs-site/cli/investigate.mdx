@@ -39,7 +39,24 @@ investigate:
   model: gemini-2.0-flash
 ```
 
-Falls back to rule-based analysis when no provider is configured. See [AI Providers](/providers/overview) for setup.
+Each provider requires the corresponding API key environment variable:
+
+| Provider | Required env var |
+|----------|-----------------|
+| `anthropic` | `ANTHROPIC_API_KEY` |
+| `openai` | `OPENAI_API_KEY` |
+| `gemini` | `GEMINI_API_KEY` |
+| `ollama` | None (local) — set `base_url` in config |
+
+```bash
+# Example: use Anthropic Claude for AI-powered analysis
+export ANTHROPIC_API_KEY=sk-ant-...
+langsight investigate --server jira-mcp --window 2h
+```
+
+**Fallback:** When no provider is configured, or when the required API key environment variable is not set, `langsight investigate` falls back to rule-based heuristic analysis automatically. The rule-based engine works offline with no API key and covers the most common failure patterns (connection failures, auth errors, schema drift). The output is less detailed than AI-powered analysis but always available.
+
+See [AI Providers](/providers/overview) for per-provider setup and model selection.
 
 ## Example (with AI)
 

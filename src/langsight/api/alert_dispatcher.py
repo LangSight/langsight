@@ -51,11 +51,11 @@ _SEVERITY_TOGGLE: dict[tuple[str, str], str] = {
 }
 
 
-async def _load_config(storage: StorageBackend) -> dict[str, Any]:
-    """Load alert config from DB (authoritative) with fail-open."""
+async def _load_config(storage: StorageBackend, project_id: str = "") -> dict[str, Any]:
+    """Load alert config from DB for the given project (authoritative) with fail-open."""
     if hasattr(storage, "get_alert_config"):
         try:
-            db_cfg = await storage.get_alert_config()
+            db_cfg = await storage.get_alert_config(project_id=project_id)
             if db_cfg:
                 return db_cfg
         except Exception:  # noqa: BLE001
@@ -118,7 +118,7 @@ async def fire_alert(
         project_id:   Project scope for the fired_alerts table.
         config:       LangSightConfig instance (for YAML webhook fallback).
     """
-    db_cfg = await _load_config(storage)
+    db_cfg = await _load_config(storage, project_id=project_id)
     alert_types: dict[str, bool] = db_cfg.get("alert_types", {})
 
     if not _is_enabled(alert_types, alert_type, severity):

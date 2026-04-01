@@ -195,11 +195,11 @@ class TestGatherEvidence:
         assert ev["window_hours"] == 3.5
 
     async def test_calls_storage_with_max_history_limit(self) -> None:
-        """Storage must be queried with the module-level _MAX_HISTORY limit (20)."""
+        """Storage must be queried with the module-level _MAX_HISTORY limit (20) and project_id."""
         storage = MagicMock()
         storage.get_health_history = AsyncMock(return_value=[])
         await _gather_evidence("pg", storage, window_hours=1.0)
-        storage.get_health_history.assert_called_once_with("pg", limit=20)
+        storage.get_health_history.assert_called_once_with("pg", limit=20, project_id=None)
 
 
 # ---------------------------------------------------------------------------
@@ -751,7 +751,11 @@ class TestRunInvestigation:
     # --- project_id forwarded ---
 
     async def test_project_id_passed_to_gather_evidence(self, client) -> None:
-        """project_id from the request body must be available in the evidence."""
+        """project_id from get_active_project_id dependency is forwarded to _gather_evidence.
+
+        After the security fix, project_id comes from the auth dependency, not the
+        request body. The test client has no auth, so get_active_project_id returns None.
+        """
         c, mock_storage = client
         mock_storage.get_health_history = AsyncMock(return_value=[
             _result(status=ServerStatus.UP, offset_minutes=5),
@@ -768,8 +772,10 @@ class TestRunInvestigation:
                     "server_names": ["pg"],
                     "window_hours": 1.0,
                     "provider": "anthropic",
-                    "project_id": "proj-abc",
+                    "project_id": "proj-abc",  # body field still accepted, but not used for scoping
                 })
-        # Verify project_id was forwarded in the gather call
-        _, kwargs = mock_gather.call_args
-        assert kwargs.get("project_id") == "proj-abc" or mock_gather.call_args[0][3] == "proj-abc"
+        # Verify the dependency-resolved project_id (None for unauthenticated test client)
+        # is forwarded to _gather_evidence, not the user-supplied body.project_id
+        mock_gather.assert_called_once()
+        call_project_id = mock_gather.call_args[1].get("project_id") or mock_gather.call_args[0][3]
+        assert call_project_id is None  # dependency returns None when no auth/project context

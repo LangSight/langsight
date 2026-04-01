@@ -1110,4 +1110,25 @@ def _post_call_update(
                     span.input_tokens / 1_000_000 * input_price
                     + span.output_tokens / 1_000_000 * output_price
                 )
+            else:
+                # Unknown model — use a conservative fallback cost so the budget
+                # is not silently bypassed. Without this, any unknown model name
+                # (custom endpoint, preview model, typo) makes cost enforcement
+                # a no-op: cost stays 0.0 and max_cost_usd never fires.
+                #
+                # Fallback: $0.01 per 1K input tokens + $0.03 per 1K output tokens
+                # (~GPT-4o pricing, conservative). Operators can override by
+                # populating their pricing_table for all models they use.
+                _FALLBACK_INPUT_PER_M = 10.0   # $0.010 / 1K tokens
+                _FALLBACK_OUTPUT_PER_M = 30.0  # $0.030 / 1K tokens
+                cost = (
+                    span.input_tokens / 1_000_000 * _FALLBACK_INPUT_PER_M
+                    + span.output_tokens / 1_000_000 * _FALLBACK_OUTPUT_PER_M
+                )
+                logger.warning(
+                    "budget.unknown_model_cost_estimated",
+                    model_id=span.model_id,
+                    estimated_cost_usd=round(cost, 6),
+                    hint="Add this model to pricing_table= to get accurate cost tracking",
+                )
         budget.record_step_and_cost(cost)

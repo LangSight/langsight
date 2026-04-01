@@ -56,9 +56,19 @@ class SSEBroadcaster:
         event_project = data.get("project_id") or ""
         payload = f"event: {event_type}\ndata: {json.dumps(data, default=str)}\n\n"
         for queue, sub_project in self._clients:
-            # Admin (None) sees all; project subscriber only sees their own events
-            if sub_project is not None and event_project and sub_project != event_project:
-                continue
+            # Admin subscriber (sub_project=None) sees all events.
+            # Project subscriber only sees events that either:
+            #   (a) belong to their project, or
+            #   (b) are explicitly unscoped (event_project="") AND they are admin.
+            # Previously, unscoped events (event_project="") were sent to every
+            # project subscriber because the filter only ran when event_project
+            # was truthy — leaking cross-project internal events.
+            if sub_project is None:
+                pass  # admin — receives everything
+            elif not event_project:
+                continue  # unscoped event — project subscribers must not see it
+            elif sub_project != event_project:
+                continue  # different project
             try:
                 queue.put_nowait(payload)
             except asyncio.QueueFull:

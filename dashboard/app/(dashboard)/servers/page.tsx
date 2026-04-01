@@ -1081,7 +1081,7 @@ export default function ServersPage() {
     if (!servers?.length) return;
     servers.forEach((s) => {
       if (historyCache.has(s.server_name)) return; // already loaded
-      getServerHistory(s.server_name, 20).then((h) => {
+      getServerHistory(s.server_name, 20, pid).then((h) => {
         setHistoryCache((prev) => new Map(prev).set(s.server_name, h));
       }).catch(() => {});
     });

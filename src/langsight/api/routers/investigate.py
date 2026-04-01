@@ -20,7 +20,7 @@ import structlog
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from langsight.api.dependencies import verify_api_key
+from langsight.api.dependencies import get_active_project_id
 from langsight.exceptions import ConfigError
 from langsight.models import ServerStatus
 from langsight.storage.base import StorageBackend
@@ -100,7 +100,7 @@ async def _gather_evidence(
     window_hours: float,
     project_id: str | None = None,
 ) -> dict[str, Any]:
-    history = await storage.get_health_history(server_name, limit=_MAX_HISTORY)
+    history = await storage.get_health_history(server_name, limit=_MAX_HISTORY, project_id=project_id)
     cutoff = datetime.now(UTC) - timedelta(hours=window_hours)
     recent = [r for r in history if r.checked_at >= cutoff]
 
@@ -227,7 +227,7 @@ def _rule_based_report(evidence_map: dict[str, dict[str, Any]]) -> str:
 async def run_investigation(
     body: InvestigateRequest,
     request: Request,
-    _: None = Depends(verify_api_key),
+    project_id: str | None = Depends(get_active_project_id),
 ) -> InvestigateResponse:
     """Run an AI-powered root cause investigation on MCP servers.
 
@@ -237,9 +237,13 @@ async def run_investigation(
     """
     storage: StorageBackend = request.app.state.storage
 
+    # Use the dependency-resolved project_id (enforced by auth), not the
+    # user-supplied body.project_id, to prevent cross-project evidence reads.
+    scoped_project_id = project_id  # from get_active_project_id dependency
+
     # Gather evidence in parallel
     tasks = [
-        _gather_evidence(name, storage, body.window_hours, body.project_id)
+        _gather_evidence(name, storage, body.window_hours, scoped_project_id)
         for name in body.server_names
     ]
     evidence_list = await asyncio.gather(*tasks)

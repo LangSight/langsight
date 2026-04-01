@@ -93,6 +93,11 @@ class AcceptInviteRequest(BaseModel):
     password: str = Field(..., min_length=12, max_length=128, description="12–128 characters")
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=12, max_length=128, description="12–128 characters")
+
+
 class UserResponse(BaseModel):
     id: str
     email: str
@@ -397,6 +402,72 @@ async def deactivate_user(
     client_ip = request.client.host if request.client else "unknown"
     logger.info("audit.user.deactivated", user_id=user_id, client_ip=client_ip)
     append_audit("user.deactivated", user_id, client_ip, storage=storage)
+
+
+@router.post(
+    "/me/change-password",
+    status_code=http_status.HTTP_204_NO_CONTENT,
+    summary="Change the current user's password and revoke all their API keys",
+)
+@limiter.limit("5/minute", key_func=_login_rate_key)
+async def change_password(
+    body: ChangePasswordRequest,
+    request: Request,
+    storage: StorageBackend = Depends(get_storage),
+    user_id: str | None = Depends(get_current_user_id),
+) -> None:
+    """Change the authenticated user's password.
+
+    On success, ALL of the user's API keys are immediately revoked so that
+    a compromised key cannot be retained after a password rotation.
+    Requires the current password to prevent CSRF/session-hijack escalation.
+    """
+    _require_user_storage(storage)
+
+    if not user_id:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required.",
+        )
+
+    user = await storage.get_user_by_id(user_id)
+    if not user or not await _verify_password(body.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect.",
+        )
+
+    _WEAK_PASSWORDS = {"admin", "password", "langsight", "changeme", "secret", "123456"}
+    if body.new_password.lower() in _WEAK_PASSWORDS:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="New password is too weak.",
+        )
+
+    new_hash = await _hash_password(body.new_password)
+
+    if not hasattr(storage, "update_user_password"):
+        raise HTTPException(status_code=501, detail="Storage backend does not support password updates.")
+
+    updated = await storage.update_user_password(user_id, new_hash)
+    if not updated:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    # Revoke all API keys — an attacker who briefly had access must lose
+    # long-lived SDK key access when the password is rotated.
+    revoked_count = 0
+    if hasattr(storage, "revoke_all_user_keys"):
+        revoked_count = await storage.revoke_all_user_keys(user_id)
+
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info("audit.user.password_changed", user_id=user_id, keys_revoked=revoked_count, client_ip=client_ip)
+    append_audit(
+        "user.password_changed",
+        user_id,
+        client_ip,
+        {"keys_revoked": revoked_count},
+        storage=storage,
+    )
 
 
 @public_router.post(

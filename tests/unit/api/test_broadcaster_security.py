@@ -245,51 +245,53 @@ class TestAdminSubscriberReceivesAllEvents:
 
 
 # ===========================================================================
-# 3. Global events (no project_id) delivered to all subscribers
+# 3. Unscoped events must NOT reach project-scoped subscribers (security fix)
+# Previously unscoped events leaked to all project subscribers. Now only admin
+# (project_id=None) subscribers receive them.
 # ===========================================================================
 
 class TestGlobalEventsDeliveredToAllSubscribers:
-    """Invariant: events with no project_id (empty string "" or key absent) are
-    global and must be delivered to ALL subscribers regardless of their project
-    scope.  This preserves backward compatibility with pre-tagging ingestion."""
+    """Security invariant: events with no project_id must NOT be delivered to
+    project-scoped subscribers. Only admin (project_id=None) subscribers receive
+    unscoped events. This prevents internal events leaking across tenants."""
 
-    async def test_event_with_empty_project_id_reaches_project_scoped_subscriber(
+    async def _assert_no_event(self, gen, timeout: float = 0.05) -> None:
+        try:
+            await _next_event(gen, timeout=timeout)
+            raise AssertionError("Expected no event but generator yielded one")
+        except (asyncio.TimeoutError, StopAsyncIteration):
+            pass
+
+    async def test_event_with_empty_project_id_does_not_reach_project_scoped_subscriber(
         self,
     ) -> None:
-        """project_id='' is global — must reach a project-scoped subscriber."""
+        """project_id='' is unscoped — must NOT reach a project-scoped subscriber."""
         b = SSEBroadcaster()
         gen_a = b.subscribe(project_id="project-a")
         await _consume_connection_comment(gen_a)
 
         b.publish("health:check", {"server": "global-mcp", "project_id": ""})
 
-        msg = await _next_event(gen_a)
-        assert "global-mcp" in msg, (
-            f"Global event (project_id='') not delivered to project-a subscriber: {msg!r}"
-        )
-
+        await self._assert_no_event(gen_a)
         await gen_a.aclose()
 
-    async def test_event_without_project_id_key_reaches_project_scoped_subscriber(
+    async def test_event_without_project_id_key_does_not_reach_project_scoped_subscriber(
         self,
     ) -> None:
-        """Event data without a 'project_id' key is treated as global."""
+        """Event data without a 'project_id' key is unscoped — must not leak."""
         b = SSEBroadcaster()
         gen_a = b.subscribe(project_id="project-a")
         await _consume_connection_comment(gen_a)
 
-        # No 'project_id' key in data at all
         b.publish("health:check", {"server": "legacy-mcp"})
 
-        msg = await _next_event(gen_a)
-        assert "legacy-mcp" in msg
-
+        await self._assert_no_event(gen_a)
         await gen_a.aclose()
 
     async def test_event_without_project_id_key_reaches_admin_subscriber(
         self,
     ) -> None:
-        """Global events must also reach admin (project_id=None) subscribers."""
+        """Unscoped events must still reach admin (project_id=None) subscribers."""
         b = SSEBroadcaster()
         gen_admin = b.subscribe(project_id=None)
         await _consume_connection_comment(gen_admin)

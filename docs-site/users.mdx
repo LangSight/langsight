@@ -71,3 +71,48 @@ X-API-Key: lsk_admin_key
 Each user can create API keys in **Settings → API Keys**. Keys inherit the user's role. API keys are passed as `X-API-Key` on all API requests.
 
 Service accounts (CI, agents) should have their own API key created by an admin under a dedicated service account user.
+
+## Changing your password
+
+Users change their own password at **Settings → Profile → Change Password**.
+
+Via API (authenticated user, any role):
+
+```bash
+POST /api/users/me/change-password
+Content-Type: application/json
+X-API-Key: lsk_your_key
+
+{
+  "current_password": "your-current-password",
+  "new_password": "your-new-password-min-12-chars"
+}
+```
+
+**Behaviour on success (HTTP 204):**
+
+- The password is updated immediately.
+- **All of the user's API keys are revoked.** Any SDK clients or CI pipelines using the old API key must generate a new key from **Settings → API Keys** and update their configuration.
+
+**Validation rules:**
+
+| Rule | Detail |
+|------|--------|
+| `current_password` | Must match the stored password — prevents CSRF and session-hijack escalation |
+| `new_password` min length | 12 characters |
+| `new_password` max length | 128 characters |
+| Common passwords rejected | `admin`, `password`, `langsight`, `changeme`, `secret`, `123456` |
+
+**Error responses:**
+
+| Status | Meaning |
+|--------|---------|
+| `401` | Authentication required, or `current_password` is incorrect |
+| `422` | `new_password` fails validation (too short, too weak) |
+| `503` | Storage backend does not support password updates |
+
+**Rate limit:** 5 requests per minute (per real client IP, proxy-aware).
+
+<Warning>
+  After a successful password change, all API keys belonging to the user are revoked immediately. SDK clients and CI pipelines will start receiving 401 errors until new keys are issued. This is intentional — it prevents a compromised API key from surviving a password rotation.
+</Warning>

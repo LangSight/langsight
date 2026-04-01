@@ -22,6 +22,17 @@ langsight security-scan [OPTIONS]
 ### CVE Scanning
 Reads `pyproject.toml` or `package.json` from each server's directory and queries the [OSV API](https://osv.dev) for known vulnerabilities. No API key required.
 
+The scanner is **version-aware**: it extracts the installed package version from the dependency file and passes it to the OSV batch API. OSV then returns only CVEs that affect the installed version, not all historical CVEs for the package name. This eliminates false positives from vulnerabilities that were fixed in older versions you are no longer running.
+
+| Dependency format | Version extracted from |
+|---|---|
+| `pyproject.toml` (`[project] dependencies`) | `mcp>=1.0,<2` → `1.0`; `fastmcp==2.0.0` → `2.0.0` |
+| `package.json` (`dependencies` / `devDependencies`) | `"^1.2.3"` → `1.2.3`; `"~2.0.0"` → `2.0.0` |
+
+When a version cannot be extracted (e.g. a bare package name with no version constraint), OSV is queried by package name only, which may return more results than strictly necessary. Pin your dependencies to reduce noise.
+
+CVE results are cached for 1 hour per dependency file to avoid hammering the OSV API when scanning multiple servers that share the same dependencies.
+
 ### OWASP MCP Top 10
 
 | Check | Category | Severity |

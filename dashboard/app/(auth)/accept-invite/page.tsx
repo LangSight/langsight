@@ -128,8 +128,8 @@ function AcceptInviteForm({ token }: { token: string }) {
       setError("Passwords do not match.");
       return;
     }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (password.length < 12) {
+      setError("Password must be at least 12 characters.");
       return;
     }
 
@@ -191,9 +191,9 @@ function AcceptInviteForm({ token }: { token: string }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={8}
+              minLength={12}
               className="input-base pr-10"
-              placeholder="Min. 8 characters"
+              placeholder="Min. 12 characters"
               autoComplete="new-password"
             />
             <button

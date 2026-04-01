@@ -52,11 +52,20 @@ def _parse_pyproject_deps(path: Path) -> list[dict[str, str]]:
     packages: list[dict[str, str]] = []
     for dep in raw_deps:
         if isinstance(dep, str):
-            # "fastmcp>=2.0.0" → name="fastmcp"
-            # Strip version specifiers and extras: "mcp[cli]>=1.0" → "mcp"
-            name = re.split(r"[><=\[!]", dep)[0].strip()
-            if name and name != "python":
-                packages.append({"name": name, "ecosystem": "PyPI"})
+            # Strip extras: "mcp[cli]>=1.0,<2" → "mcp>=1.0,<2"
+            dep_no_extras = re.sub(r"\[.*?\]", "", dep)
+            name = re.split(r"[><=!~\s]", dep_no_extras)[0].strip()
+            if not name or name == "python":
+                continue
+            pkg: dict[str, str] = {"name": name, "ecosystem": "PyPI"}
+            # Extract pinned version for accurate OSV matching.
+            # "fastmcp==2.0.0" → "2.0.0", "httpx>=0.27" → "0.27"
+            # Without a version OSV queries by name only, which returns all
+            # historical CVEs regardless of whether this install is affected.
+            version_match = re.search(r"[><=~!]+\s*([0-9][^\s,;]*)", dep_no_extras)
+            if version_match:
+                pkg["version"] = version_match.group(1).strip()
+            packages.append(pkg)
 
     return packages
 
@@ -71,8 +80,15 @@ def _parse_package_json_deps(path: Path) -> list[dict[str, str]]:
 
     packages: list[dict[str, str]] = []
     for section in ("dependencies", "devDependencies"):
-        for name in data.get(section, {}):
-            packages.append({"name": name, "ecosystem": "npm"})
+        for name, version_spec in data.get(section, {}).items():
+            pkg: dict[str, str] = {"name": name, "ecosystem": "npm"}
+            # Extract pinned version from npm version spec.
+            # "^1.2.3" → "1.2.3", "~2.0.0" → "2.0.0", "1.0.0" → "1.0.0"
+            if isinstance(version_spec, str):
+                version_match = re.match(r"[^\d]*([0-9][^\s]*)", version_spec.strip())
+                if version_match:
+                    pkg["version"] = version_match.group(1)
+            packages.append(pkg)
 
     return packages
 
@@ -139,7 +155,16 @@ async def check_cves(server: MCPServer) -> list[SecurityFinding]:
         ecosystem=dep_type,
     )
 
-    queries = [{"package": {"name": p["name"], "ecosystem": p["ecosystem"]}} for p in packages]
+    # When a version is known, query OSV with version so it returns only CVEs
+    # that affect the installed version. Without version, OSV returns all
+    # historical CVEs for the package name regardless of installed version.
+    queries = [
+        {
+            "package": {"name": p["name"], "ecosystem": p["ecosystem"]},
+            **({"version": p["version"]} if p.get("version") else {}),
+        }
+        for p in packages
+    ]
 
     try:
         async with httpx.AsyncClient(timeout=OSV_REQUEST_TIMEOUT) as client:

@@ -227,8 +227,8 @@ export default function DashboardPage() {
 
   // MCP server health — shown in overview tab summary card
   const { data: serverHealth } = useSWR(
-    !projectLoading && tab === "overview" ? "/health/servers" : null,
-    () => getServerHealth(),
+    !projectLoading && tab === "overview" ? `/health/servers/${pidKey}` : null,
+    () => getServerHealth(pid),
     { refreshInterval: 60_000, revalidateOnFocus: false },
   );
 

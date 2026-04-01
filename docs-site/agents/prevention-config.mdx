@@ -41,6 +41,8 @@ Loop detection fires before each tool call by checking three patterns in the cur
 
 When a pattern is detected, the call is blocked and a `loop_detected` health tag is applied to the session.
 
+**Float normalization:** Before hashing tool arguments, the loop detector rounds all float values to 6 decimal places. This prevents LLMs from bypassing loop detection through micro-variations in numeric arguments — for example, `{"price": 1.0}` and `{"price": 0.999999}` hash identically. Integer, boolean, string, and null values are unchanged. The normalization applies recursively to nested objects and arrays.
+
 ### Configuration fields
 
 <ParamField body="enabled" type="boolean" default="true">
@@ -87,6 +89,40 @@ Budget controls enforce cost and time limits per session. Limits are evaluated b
 <Warning>
   Cost estimates are computed from model pricing tables. Actual billed amounts may differ slightly depending on provider pricing changes and rounding. Use budget controls as a safety net, not a billing guarantee.
 </Warning>
+
+### Unknown model fallback pricing
+
+When a span's `model_id` is not found in the `pricing_table` passed to `LangSightClient`, the SDK uses a conservative fallback cost instead of treating the cost as $0:
+
+| | Rate |
+|---|---|
+| Input tokens | $10.00 / 1M tokens |
+| Output tokens | $30.00 / 1M tokens |
+
+This prevents unknown or custom model names (preview endpoints, fine-tuned deployments, typos) from silently bypassing budget enforcement — a `max_cost_usd` limit would never fire if unknown model costs were treated as zero.
+
+When the fallback is used, the SDK logs a warning:
+
+```
+budget.unknown_model_cost_estimated model_id=my-custom-model estimated_cost_usd=0.004200
+hint="Add this model to pricing_table= to get accurate cost tracking"
+```
+
+Add missing models to the `pricing_table` constructor parameter:
+
+```python
+client = LangSightClient(
+    url="http://localhost:8000",
+    max_cost_usd=1.00,
+    pricing_table={
+        "my-custom-model": (5.00, 20.00),   # (input_per_1m_usd, output_per_1m_usd)
+        "claude-sonnet-4-6": (3.00, 15.00),
+        "gpt-4o": (2.50, 10.00),
+    },
+)
+```
+
+Built-in models (Claude, GPT-4o, Gemini families) use pricing seeded from the dashboard's model pricing table and do not require manual entries.
 
 ---
 
