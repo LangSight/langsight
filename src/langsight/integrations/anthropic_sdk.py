@@ -187,6 +187,11 @@ class LangSightClaudeAgentHooks(BaseIntegration):
     Implements the hooks protocol for the Claude Agent SDK's agent runner.
     Each tool execution is traced as a span with timing, status, and payloads.
 
+    Lineage hardening (v1.0 protocol):
+    - Tracks active agent name so handoffs link to parent agent
+    - Stores handoff span_id so child tool calls link back to it
+    - Propagates agent_name through handoff context
+
     Usage::
 
         from langsight.integrations.anthropic_sdk import LangSightClaudeAgentHooks
@@ -214,6 +219,14 @@ class LangSightClaudeAgentHooks(BaseIntegration):
         self._trace_id = trace_id
         self._pending: dict[str, datetime] = {}
 
+        # --- Lineage tracking ---
+        # agent name → span_id of its active agent lifecycle span
+        self._active_agent_spans: dict[str, str] = {}
+        # Current handoff span_id (for linking child tool calls)
+        self._current_handoff_span_id: str | None = None
+        # Current delegated agent name (set after handoff)
+        self._current_agent_name: str | None = None
+
     async def on_tool_start(
         self, tool_name: str, tool_input: dict[str, Any] | None = None, **kwargs: Any
     ) -> None:
@@ -232,6 +245,8 @@ class LangSightClaudeAgentHooks(BaseIntegration):
                 started_at=started_at,
                 status=ToolCallStatus.SUCCESS,
                 trace_id=self._trace_id,
+                agent_name=self._current_agent_name or self._agent_name,
+                parent_span_id=self._current_handoff_span_id,
             )
         except Exception:  # noqa: BLE001
             logger.debug("claude_agent.on_tool_end_failed", tool=tool_name)
@@ -246,21 +261,34 @@ class LangSightClaudeAgentHooks(BaseIntegration):
                 status=ToolCallStatus.ERROR,
                 error=str(error) if error else None,
                 trace_id=self._trace_id,
+                agent_name=self._current_agent_name or self._agent_name,
+                parent_span_id=self._current_handoff_span_id,
             )
         except Exception:  # noqa: BLE001
             logger.debug("claude_agent.on_tool_error_failed", tool=tool_name)
 
     async def on_handoff(self, from_agent: str, to_agent: str, **kwargs: Any) -> None:
-        """Called when one agent delegates to another."""
+        """Called when one agent delegates to another.
+
+        Links handoff to the source agent's active span and stores
+        the handoff span_id so child tool calls link back to it.
+        """
         try:
+            parent_span_id = self._active_agent_spans.get(from_agent)
+
             handoff = ToolCallSpan.handoff_span(
                 from_agent=from_agent,
                 to_agent=to_agent,
                 started_at=datetime.now(UTC),
                 trace_id=self._trace_id,
                 session_id=self._session_id,
+                parent_span_id=parent_span_id,
             )
             self._client.buffer_span(handoff)
+
+            # Store for child tool calls to link to
+            self._current_handoff_span_id = handoff.span_id
+            self._current_agent_name = to_agent
         except Exception:  # noqa: BLE001
             logger.debug("claude_agent.on_handoff_failed")
 

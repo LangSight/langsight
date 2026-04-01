@@ -49,10 +49,16 @@ class LangSightOpenAIHooks(BaseIntegration):
     """OpenAI Agents SDK RunHooks that traces tool calls via LangSight.
 
     Implements the ``RunHooks`` protocol from ``agents``:
+    - ``on_agent_start(context, agent)`` — tracks active agent span
     - ``on_tool_start(context, agent, tool)`` — records start time
     - ``on_tool_end(context, agent, tool, result)`` — emits success span
     - ``on_tool_error(context, agent, tool, error)`` — emits error span
     - ``on_handoff(context, from_agent, to_agent)`` — emits handoff span
+
+    Lineage hardening (v1.0 protocol):
+    - Tracks active agent spans so handoffs can set parent_span_id
+    - Stores handoff span_id so child agent tool calls link to the handoff
+    - Propagates agent_name from the runtime agent object, not just constructor
 
     All methods are async and fail-open: exceptions in tracing never
     propagate to the agent runtime.
@@ -75,6 +81,12 @@ class LangSightOpenAIHooks(BaseIntegration):
         self._trace_id = trace_id
         self._pending: dict[str, datetime] = {}  # tool_key → started_at
 
+        # --- Lineage tracking ---
+        # agent object id → span_id of its active agent lifecycle span
+        self._active_agent_spans: dict[int, str] = {}
+        # agent object id → span_id of the handoff that created this agent
+        self._active_handoffs: dict[int, str] = {}
+
     def _tool_key(self, agent: Any, tool: Any) -> str:
         """Build a unique key for a tool invocation."""
         agent_name = getattr(agent, "name", None) or str(id(agent))
@@ -88,6 +100,37 @@ class LangSightOpenAIHooks(BaseIntegration):
         return getattr(agent, "name", None) or self._agent_name or "unknown"
 
     # -- RunHooks protocol methods --
+
+    async def on_agent_start(self, context: Any, agent: Any, **kwargs: Any) -> None:
+        """Called when an agent begins a run. Tracks the agent's lifecycle span."""
+        try:
+            agent_name = self._agent_label(agent)
+            # Determine parent: if this agent was handed-off to, link to handoff span
+            parent_span_id = self._active_handoffs.get(id(agent))
+
+            span = ToolCallSpan.agent_span(
+                agent_name=agent_name,
+                task="agent_run",
+                started_at=datetime.now(UTC),
+                trace_id=self._trace_id,
+                session_id=self._session_id,
+                parent_span_id=parent_span_id,
+            )
+            self._client.buffer_span(span)
+            # Track so on_handoff can link to this span
+            self._active_agent_spans[id(agent)] = span.span_id
+        except Exception:  # noqa: BLE001
+            pass  # fail-open
+
+    async def on_agent_end(
+        self, context: Any, agent: Any, output: Any = None, **kwargs: Any
+    ) -> None:
+        """Called when an agent completes a run."""
+        try:
+            self._active_agent_spans.pop(id(agent), None)
+            self._active_handoffs.pop(id(agent), None)
+        except Exception:  # noqa: BLE001
+            pass
 
     async def on_tool_start(self, context: Any, agent: Any, tool: Any, **kwargs: Any) -> None:
         """Called when the agent begins executing a tool."""
@@ -103,11 +146,17 @@ class LangSightOpenAIHooks(BaseIntegration):
         try:
             key = self._tool_key(agent, tool)
             started_at = self._pending.pop(key, datetime.now(UTC))
+            # Use runtime agent name, not just constructor default
+            agent_name = self._agent_label(agent)
+            # Link to handoff span if this agent was delegated to
+            parent_span_id = self._active_handoffs.get(id(agent))
             self._record(
                 tool_name=self._tool_name(tool),
                 started_at=started_at,
                 status=ToolCallStatus.SUCCESS,
                 trace_id=self._trace_id,
+                agent_name=agent_name,
+                parent_span_id=parent_span_id,
             )
         except Exception:  # noqa: BLE001
             logger.debug("openai_agents.on_tool_end_failed", tool=str(tool))
@@ -119,39 +168,45 @@ class LangSightOpenAIHooks(BaseIntegration):
         try:
             key = self._tool_key(agent, tool)
             started_at = self._pending.pop(key, datetime.now(UTC))
+            agent_name = self._agent_label(agent)
+            parent_span_id = self._active_handoffs.get(id(agent))
             self._record(
                 tool_name=self._tool_name(tool),
                 started_at=started_at,
                 status=ToolCallStatus.ERROR,
                 error=str(error) if error else None,
                 trace_id=self._trace_id,
+                agent_name=agent_name,
+                parent_span_id=parent_span_id,
             )
         except Exception:  # noqa: BLE001
             logger.debug("openai_agents.on_tool_error_failed", tool=str(tool))
 
     async def on_handoff(self, context: Any, from_agent: Any, to_agent: Any, **kwargs: Any) -> None:
-        """Called when one agent hands off to another."""
+        """Called when one agent hands off to another.
+
+        Creates a handoff span linked to the source agent's active task span.
+        Stores the handoff span_id so the child agent's tool calls
+        (and agent span) link back to it via parent_span_id.
+        """
         try:
+            # Link handoff to parent agent's active task
+            parent_span_id = self._active_agent_spans.get(id(from_agent))
+
             handoff = ToolCallSpan.handoff_span(
                 from_agent=self._agent_label(from_agent),
                 to_agent=self._agent_label(to_agent),
                 started_at=datetime.now(UTC),
                 trace_id=self._trace_id,
                 session_id=self._session_id,
+                parent_span_id=parent_span_id,
             )
             self._client.buffer_span(handoff)
+
+            # Store so child agent's on_agent_start + on_tool_* link to handoff
+            self._active_handoffs[id(to_agent)] = handoff.span_id
         except Exception:  # noqa: BLE001
             logger.debug("openai_agents.on_handoff_failed")
-
-    # -- Optional lifecycle hooks (no-ops unless needed) --
-
-    async def on_agent_start(self, context: Any, agent: Any, **kwargs: Any) -> None:
-        """Called when an agent begins a run."""
-
-    async def on_agent_end(
-        self, context: Any, agent: Any, output: Any = None, **kwargs: Any
-    ) -> None:
-        """Called when an agent completes a run."""
 
 
 def langsight_openai_tool(

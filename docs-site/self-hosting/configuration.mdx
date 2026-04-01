@@ -169,41 +169,30 @@ The server-side toggle is enforced in the `POST /api/traces/spans` handler befor
 
 ## Slack alert configuration
 
-Slack alerts can be configured in two ways.
+For a full guide on Slack setup, alert types, the Alert Inbox lifecycle, and debugging, see [Alerts & Notifications](/alerts).
 
-### Via the dashboard (recommended)
+### Webhook URL resolution order
 
-Go to **Settings → Notifications** in the dashboard:
-
-1. Paste your Slack webhook URL into the "Slack Webhook URL" field.
-2. Click **Test** to verify the webhook receives a Block Kit message.
-3. Toggle each alert type on or off as needed.
-4. Click **Save**.
-
-Alert preferences and the webhook URL are stored in-memory (in the API process). **If you restart the API container the configuration is lost unless you also set the env var** (see below).
-
-### Via environment variable
-
-```bash
-LANGSIGHT_SLACK_WEBHOOK=https://hooks.slack.com/services/T.../B.../xxx
-```
-
-When this env var is set it acts as the default webhook URL. Values saved through the dashboard UI override it at runtime but revert to the env var value on restart.
+| Priority | Source | How to set |
+|---|---|---|
+| 1 (highest) | Dashboard — Settings → Notifications | Saved to Postgres `fired_alerts` table — persists across restarts |
+| 2 | `.langsight.yaml` | `alerts.slack_webhook: https://hooks.slack.com/...` |
+| 3 | Environment variable | `LANGSIGHT_SLACK_WEBHOOK=https://hooks.slack.com/...` |
 
 ### Alert types
 
 | Alert type | Triggered by | Default |
 |---|---|---|
-| `mcp_down` | MCP server health check transitions to DOWN | On |
-| `mcp_recovered` | MCP server transitions from DOWN back to UP | On |
-| `agent_failure` | Agent session ends with `failed_calls > 0` | On |
-| `slo_breached` | SLO evaluator returns `breached` for any defined SLO | On |
-| `anomaly_critical` | Z-score anomaly crosses the critical threshold (|z| >= 3) | On |
-| `security_critical` | CVE or OWASP check returns a CRITICAL severity finding | On |
+| `mcp_down` | MCP server health check transitions to DOWN (CLI monitor) | On |
+| `mcp_recovered` | MCP server transitions from DOWN back to UP (CLI monitor) | On |
+| `agent_failure` | Span batch ingested with unhealthy health tag (API) | On |
+| `slo_breached` | SLO evaluator returns `breached` for any defined SLO (API) | On |
+| `anomaly_critical` | Z-score anomaly |z| >= 3.0 (API) | On |
+| `anomaly_warning` | Z-score anomaly |z| >= 2.0 (API) | Off |
+| `security_critical` | Security scan returns a CRITICAL severity finding (API) | On |
+| `security_high` | Security scan returns a HIGH severity finding (API) | Off |
 
-<Note>
-  For persistent alert configuration across restarts, set `LANGSIGHT_SLACK_WEBHOOK` in your environment and manage per-type toggles via the dashboard. The next release will add persistent storage for alert preferences.
-</Note>
+All fired alerts are persisted to the Postgres `fired_alerts` table and accessible in the Alert Inbox at **Dashboard → Alerts**, regardless of whether Slack is configured or alert type toggles are on.
 
 ## Prometheus scrape configuration
 

@@ -113,7 +113,7 @@ class TestOpenAIProxy:
         assert spans[0].input_tokens == 100
         assert spans[0].output_tokens == 50
         assert spans[1].tool_name == "search"
-        assert spans[1].span_type == "tool_call"
+        assert spans[1].span_type == "llm_intent"
         assert spans[1].parent_span_id == spans[0].span_id
 
     def test_no_tool_calls_still_emits_llm_span(self, client: LangSightClient) -> None:
@@ -301,7 +301,7 @@ class TestGenaiClientProxy:
         assert spans[0].input_tokens == 100
         assert spans[0].output_tokens == 50
         assert spans[1].tool_name == "list_products"
-        assert spans[1].span_type == "tool_call"
+        assert spans[1].span_type == "llm_intent"
         assert spans[1].parent_span_id == spans[0].span_id
 
     @pytest.mark.asyncio

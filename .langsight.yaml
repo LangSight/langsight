@@ -8,3 +8,32 @@ servers:
     DATAHUB_GMS_URL: https://datahub.prod.gotphoto.io/api/gms
     DATAHUB_GMS_TOKEN: eyJhbGciOiJIUzI1NiJ9.eyJhY3RvclR5cGUiOiJVU0VSIiwiYWN0b3JJZCI6InN1bWFuLnNhaG9vQGZvdG9ncmFmLmRlIiwidHlwZSI6IlBFUlNPTkFMIiwidmVyc2lvbiI6IjIiLCJqdGkiOiJlZmUxYzFmZS0xM2M1LTRkYjMtODc5Mi1kNzQyZTdmY2EzZTQiLCJzdWIiOiJzdW1hbi5zYWhvb0Bmb3RvZ3JhZi5kZSIsImlzcyI6ImRhdGFodWItbWV0YWRhdGEtc2VydmljZSJ9.nCmK2l_lB8IQr5N7ptXGHOj9sjO73O0zsidnw6eFMPM
     DATAHUB_SKIP_SSL_VERIFICATION: 'true'
+- name: atlassian-mcp
+  transport: stdio
+  command: /Users/sumansahoo/.nvm/versions/node/v22.22.0/bin/npx
+  args:
+  - -y
+  - mcp-remote
+  - https://mcp.atlassian.com/v1/mcp
+  env:
+    PATH: /Users/sumansahoo/.nvm/versions/node/v22.22.0/bin:/usr/local/bin:/usr/bin:/bin
+- name: gitlab
+  transport: stdio
+  command: /Users/sumansahoo/.nvm/versions/node/v22.22.0/bin/npx
+  args:
+  - -y
+  - '@modelcontextprotocol/server-gitlab'
+  env:
+    GITLAB_PERSONAL_ACCESS_TOKEN: glpat-KkilS1M8knqixOKEplE6e286MQp1OmoxaHoyCw.01.1214n22mj
+    PATH: /Users/sumansahoo/.nvm/versions/node/v22.22.0/bin:/usr/local/bin:/usr/bin:/bin
+- name: lean-ctx
+  transport: stdio
+  command: /Users/sumansahoo/.local/bin/lean-ctx
+- name: ruflo
+  transport: stdio
+  command: /opt/homebrew/opt/node@22/bin/npx
+  args:
+  - -y
+  - ruflo@latest
+  - mcp
+  - start
