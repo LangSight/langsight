@@ -80,6 +80,7 @@ __all__ = [
     "LangSightClient",
     "MCPClientProxy",
     "PreventionEvent",
+    "SessionContext",
     "ToolCallSpan",
     "ToolCallStatus",
     "auto_patch",

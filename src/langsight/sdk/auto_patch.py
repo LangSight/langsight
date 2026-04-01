@@ -855,9 +855,9 @@ class SessionContext(str):
         session_id: str,
         agent_name: str | None = None,
         trace_id: str | None = None,
-        started_at: "datetime | None" = None,
+        started_at: datetime | None = None,
         input_text: str | None = None,
-    ) -> "SessionContext":
+    ) -> SessionContext:
         return str.__new__(cls, session_id)
 
     def __init__(
@@ -865,7 +865,7 @@ class SessionContext(str):
         session_id: str,
         agent_name: str | None = None,
         trace_id: str | None = None,
-        started_at: "datetime | None" = None,
+        started_at: datetime | None = None,
         input_text: str | None = None,
     ) -> None:
         super().__init__()
