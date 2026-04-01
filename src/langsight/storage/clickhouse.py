@@ -1538,8 +1538,14 @@ class ClickHouseBackend:
             parameters=params,
         )
 
-        cols = ["from_agent", "to_agent", "handoff_count", "session_count",
-                "explicit_count", "inferred_count"]
+        cols = [
+            "from_agent",
+            "to_agent",
+            "handoff_count",
+            "session_count",
+            "explicit_count",
+            "inferred_count",
+        ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
     async def _lineage_delegation_edges(
