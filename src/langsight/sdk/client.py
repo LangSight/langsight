@@ -218,39 +218,54 @@ class LangSightClient:
     ) -> MCPClientProxy:
         """Wrap an MCP client to automatically trace all tool calls.
 
-        Args:
-            mcp_client: Any object with a `call_tool(name, arguments)` method.
-            server_name: MCP server or tool source name (e.g. "postgres-mcp").
-            agent_name: Name of the agent making the calls.
-            session_id: Groups all calls in one agent run/conversation.
-                If not provided, LangSight auto-generates one (uuid4 hex).
-                For multi-agent tracing, pass ``proxy.session_id`` from the
-                orchestrator to each sub-agent — never construct IDs manually.
-            trace_id: Groups all spans across a multi-agent task.
-            parent_span_id: For multi-agent tracing — the handoff span ID
-                that spawned this sub-agent. Enables tree reconstruction.
+        v0.12.0: ``agent_name``, ``session_id``, and ``trace_id`` are now
+        **optional** when using :func:`auto_patch` with :func:`session`. All
+        three parameters fall back to the active :data:`_agent_ctx`,
+        :data:`_session_ctx`, and :data:`_trace_ctx` contextvars when not
+        explicitly provided::
 
-        Multi-agent example:
+            # Before (verbose — explicit IDs required):
+            traced = ls.wrap(mcp, server_name="catalog",
+                             agent_name="analyst", session_id=session_id)
+
+            # After (inside a session() block — context inherited automatically):
+            langsight.auto_patch()
+            async with langsight.session(agent_name="analyst") as session_id:
+                traced = ls.wrap(mcp, server_name="catalog")  # context inherited
+
+            # Preferred v0.12.0 pattern — no wrap() at all:
+            async with langsight.session(agent_name="analyst") as session_id:
+                result = await mcp_session.call_tool(...)  # auto-traced by _patch_mcp
+
+        Args:
+            mcp_client: Any object with a ``call_tool(name, arguments)`` method.
+            server_name: MCP server or tool source name (e.g. ``"postgres-mcp"``).
+            agent_name: Name of the agent making the calls. Falls back to
+                ``_agent_ctx`` if not provided.
+            session_id: Groups all calls in one agent run/conversation. Falls
+                back to ``_session_ctx`` then auto-generates a UUID if neither
+                is set. For multi-agent tracing, pass ``proxy.session_id`` from
+                the orchestrator — never construct IDs manually.
+            trace_id: Groups all spans across a multi-agent task. Falls back to
+                ``_trace_ctx`` if not provided.
+            parent_span_id: For multi-agent tracing — the handoff span ID that
+                spawned this sub-agent. Enables full tree reconstruction.
+
+        Multi-agent example (explicit control)::
+
             # Orchestrator: session_id auto-generated, exposed via proxy
             orchestrator_mcp = client.wrap(mcp, server_name="jira-mcp",
                                            agent_name="orchestrator",
                                            trace_id=trace_id)
             session_id = orchestrator_mcp.session_id  # SDK-issued ID
 
-            # When handing off to a sub-agent, pass the handoff span ID
-            handoff = ToolCallSpan.handoff_span(
-                from_agent="orchestrator", to_agent="billing-agent",
-                started_at=datetime.now(UTC),
-                trace_id=trace_id, session_id=session_id,
-            )
-            client.buffer_span(handoff)
+            # Prefer create_handoff() over manual span construction:
+            handoff = client.create_handoff("orchestrator", "billing-agent",
+                                            trace_id=trace_id, session_id=session_id)
 
-            # Sub-agent forwards the orchestrator's session_id — never constructs its own
-            billing_mcp = client.wrap(mcp, server_name="crm-mcp",
-                                      agent_name="billing-agent",
-                                      session_id=session_id,
-                                      trace_id=trace_id,
-                                      parent_span_id=handoff.span_id)
+            # Sub-agent inherits session — never constructs its own
+            billing_mcp = client.wrap_child_agent(mcp, "crm-mcp",
+                                                  "billing-agent", handoff)
         """
         # Fall back to contextvars set by auto_patch() / session() if not explicit
         effective_agent = agent_name or _agent_ctx.get() or None
@@ -339,14 +354,35 @@ class LangSightClient:
         """Wrap an LLM SDK client to auto-trace tool calls from responses.
 
         Auto-detects the SDK (OpenAI, Anthropic, Gemini) and returns a
-        transparent proxy that intercepts generation calls. Every tool_use
-        block in the LLM response becomes a ToolCallSpan automatically.
+        transparent proxy that intercepts generation calls. Every ``tool_use``
+        block in the LLM response becomes a ``ToolCallSpan`` automatically.
+        Handoff auto-detection fires for any tool matching the handoff prefix
+        pattern (``call_*``, ``delegate_*``, etc.).
+
+        v0.12.0: ``agent_name``, ``session_id``, and ``trace_id`` are now
+        **optional** when using :func:`auto_patch` with :func:`session`. All
+        three fall back to the active contextvars when not explicitly provided::
+
+            # Before v0.12.0 (required explicit params):
+            client = ls.wrap_llm(OpenAI(), agent_name="analyst", session_id=sid)
+
+            # After v0.12.0 (inside a session() block):
+            langsight.auto_patch()
+            async with langsight.session(agent_name="analyst"):
+                client = OpenAI()  # auto_patch() already traced this — wrap_llm not needed
+
+            # wrap_llm() remains useful when you want explicit control or
+            # are not using auto_patch():
+            client = ls.wrap_llm(OpenAI(), agent_name="analyst", session_id=sid)
 
         Args:
             llm_client: An OpenAI, Anthropic, or Gemini client/model object.
-            agent_name: Name of the agent using this LLM.
-            session_id: Groups all calls in one agent run/conversation.
-            trace_id: Groups all spans across a multi-agent task.
+            agent_name: Name of the agent using this LLM. Falls back to
+                ``_agent_ctx`` (set by ``session()`` or ``set_context()``).
+            session_id: Groups all calls in one agent run/conversation. Falls
+                back to ``_session_ctx`` if not provided.
+            trace_id: Groups all spans across a multi-agent task. Falls back
+                to ``_trace_ctx`` if not provided.
 
         Returns:
             A wrapped client that auto-traces. If the SDK is not recognized,
@@ -356,15 +392,21 @@ class LangSightClient:
 
             # OpenAI
             from openai import OpenAI
-            client = ls.wrap_llm(OpenAI(), agent_name="my-agent")
+            client = ls.wrap_llm(OpenAI(), agent_name="my-agent", session_id="s1")
             response = client.chat.completions.create(model="gpt-4o", tools=[...], ...)
 
             # Anthropic
             from anthropic import Anthropic
-            client = ls.wrap_llm(Anthropic(), agent_name="my-agent")
+            client = ls.wrap_llm(Anthropic(), agent_name="my-agent", session_id="s1")
             response = client.messages.create(model="claude-sonnet-4-6", tools=[...], ...)
 
-            # Gemini
+            # Gemini (new SDK)
+            from google import genai
+            client = ls.wrap_llm(genai.Client(), agent_name="analyst", session_id="s1")
+            response = await client.aio.models.generate_content(
+                model="gemini-2.5-flash", contents=[...])
+
+            # Gemini (legacy SDK)
             import google.generativeai as genai
             model = ls.wrap_llm(genai.GenerativeModel("gemini-2.5-flash"), agent_name="analyst")
             response = model.generate_content(prompt, tools=[...])

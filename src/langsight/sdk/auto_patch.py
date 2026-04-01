@@ -1,36 +1,82 @@
 """
-Monkey-patch auto-instrumentation — patches LLM SDK classes at import time.
+Monkey-patch auto-instrumentation — patches LLM SDK classes and MCP at import time.
 
 After calling ``auto_patch()``, every LLM client you create is automatically
-traced — no explicit ``wrap_llm()`` call needed.
+traced, every MCP tool call is automatically traced, and agent handoffs are
+auto-detected — no ``wrap_llm()``, no ``wrap()``, no ``create_handoff()`` needed.
 
-Usage (minimal)::
-
-    import langsight
-    langsight.auto_patch()          # reads LANGSIGHT_* env vars
-
-    from openai import OpenAI
-    client = OpenAI()               # automatically traced — no wrap_llm() needed
-    response = client.chat.completions.create(model="gpt-4o", ...)
-
-Usage (with context)::
+The simplest multi-agent integration (v0.12.0)::
 
     import langsight
+    langsight.auto_patch()   # LLM + MCP + handoffs — all automatic
 
+    async with langsight.session(agent_name="orchestrator") as session_id:
+        client = OpenAI()                           # LLM calls: auto-traced
+        result = await mcp_session.call_tool(...)   # MCP calls: auto-traced
+        # When LLM calls "call_analyst" tool → handoff span auto-emitted
+
+Multi-agent without any boilerplate::
+
+    import langsight
     langsight.auto_patch()
 
-    async def run_agent(question: str) -> str:
-        async with langsight.session(agent_name="analyst") as session_id:
-            client = genai.Client()
-            response = await client.aio.models.generate_content(...)
-            # All LLM calls inside this block share the same session_id
-        return response.text
+    async def orchestrator(question: str):
+        async with langsight.session(agent_name="orchestrator"):
+            # All LLM + MCP calls auto-traced. When the LLM selects
+            # "call_analyst" as a tool, a handoff span is emitted automatically.
+            response = await llm.generate(question, tools=[call_analyst_tool])
+
+    async def analyst(question: str):
+        async with langsight.session(agent_name="analyst"):
+            # MCP call auto-traced — no wrap() needed
+            data = await mcp.call_tool("search_products", {"q": question})
+            return data
+
+Context inheritance via contextvars (v0.12.0):
+
+    ``wrap()`` and ``wrap_llm()`` now read ``_agent_ctx``, ``_session_ctx``, and
+    ``_trace_ctx`` as fallback when ``agent_name``, ``session_id``, or ``trace_id``
+    are not explicitly provided. Inside a ``langsight.session()`` block all wrap
+    calls inherit context automatically — no parameter threading needed.
+
+Handoff auto-detection (v0.12.0):
+
+    When an LLM selects a tool whose name matches the pattern::
+
+        call_*  |  delegate_*  |  invoke_*  |  transfer_to_*  |  run_*  |  dispatch_*
+
+    LangSight automatically emits an explicit handoff span to the target agent.
+    For example, ``call_analyst`` produces a handoff span from the current agent
+    to ``analyst``. The dashboard renders this as a solid edge instead of a
+    timing-inferred dashed edge. No ``create_handoff()`` call is required.
+
+MCP auto-patch (v0.12.0):
+
+    ``auto_patch()`` now also calls ``_patch_mcp()``, which monkey-patches
+    ``mcp.ClientSession.call_tool``. Every MCP tool call after ``auto_patch()``
+    is automatically traced with the correct ``agent_name``, ``session_id``,
+    and ``trace_id`` from the active ``session()`` context. No ``ls.wrap()``
+    call is needed.
+
+Coexistence with Langfuse::
+
+    from langfuse.decorators import observe
+    import langsight
+
+    langsight.auto_patch()   # MCP + handoffs + lineage (zero decorators)
+
+    @observe()               # LLM prompt/completion tracing (Langfuse)
+    async def my_agent(query):
+        response = await llm.generate(...)    # Both Langfuse + LangSight trace this
+        data = await mcp.call_tool(...)       # LangSight traces this (auto)
+        return response
 
 Supported SDKs (all optional — missing SDKs are skipped):
   - openai  (OpenAI, AsyncOpenAI)
   - anthropic  (Anthropic, AsyncAnthropic)
   - google.genai  (new SDK: google-genai)
   - google.generativeai  (legacy SDK: google-generativeai)
+  - mcp  (mcp.ClientSession.call_tool)
 """
 
 from __future__ import annotations
@@ -503,28 +549,48 @@ def auto_patch(
     agent_name: str | None = None,
     **kwargs: Any,
 ) -> Any | None:
-    """Monkey-patch all known LLM SDK classes for zero-code auto-tracing.
+    """Monkey-patch all known LLM SDKs and MCP for zero-code auto-tracing.
 
-    Patches ``openai``, ``anthropic``, ``google.genai``, and
-    ``google.generativeai`` at the class level.  Any LLM client you create
-    after calling this is automatically traced — no ``wrap_llm()`` needed.
+    v0.12.0 patches:
+    - ``openai``, ``anthropic``, ``google.genai``, ``google.generativeai``
+      (LLM generation calls — any client created after this is auto-traced)
+    - ``mcp.ClientSession.call_tool`` (every MCP tool call auto-traced)
+
+    After this call, inside a :func:`session` block you need zero additional
+    instrumentation — no ``wrap_llm()``, no ``wrap()``, no ``create_handoff()``::
+
+        import langsight
+        langsight.auto_patch()  # call once at startup
+
+        async with langsight.session(agent_name="orchestrator") as session_id:
+            client = OpenAI()                          # LLM: auto-traced
+            result = await mcp_session.call_tool(...)  # MCP: auto-traced
+            # LLM tool named "call_analyst" → handoff span: auto-emitted
+
+    **MCP auto-patch**: ``_patch_mcp()`` monkey-patches
+    ``mcp.ClientSession.call_tool``. Every tool call is attributed to the
+    agent, session, and trace from the active :func:`session` context. The
+    server name is read from the MCP session's ``_server_info.name`` attribute
+    when available, falling back to ``"mcp"``.
+
+    **Handoff auto-detection**: after each LLM generation, tool names matching
+    ``call_*``, ``delegate_*``, ``invoke_*``, ``transfer_to_*``, ``run_*``, or
+    ``dispatch_*`` trigger an automatic handoff span from the current agent to
+    the target. No ``create_handoff()`` call is needed.
 
     Reads ``LANGSIGHT_URL``, ``LANGSIGHT_API_KEY``, and
     ``LANGSIGHT_PROJECT_ID`` from the environment (explicit args take priority).
-    Returns ``None`` if ``LANGSIGHT_URL`` is not set.
-
-    Pass per-call context via :func:`set_context` or the :func:`session`
-    async context manager::
-
-        async with langsight.session(agent_name="analyst") as sid:
-            response = await client.aio.models.generate_content(...)
+    Returns ``None`` if ``LANGSIGHT_URL`` is not set — safe to call
+    unconditionally (observability optional by design).
 
     Args:
         url: LangSight server URL (or ``LANGSIGHT_URL`` env var).
         api_key: API key (or ``LANGSIGHT_API_KEY`` env var).
         project_id: Project ID (or ``LANGSIGHT_PROJECT_ID`` env var).
-        agent_name: Default agent name for all auto-patched spans.
-        **kwargs: Forwarded to :class:`LangSightClient` (e.g. ``loop_detection=True``).
+        agent_name: Default agent name for all auto-patched spans. Sets
+            ``_agent_ctx`` so wrap() / wrap_llm() inherit it automatically.
+        **kwargs: Forwarded to :class:`LangSightClient` (e.g.
+            ``loop_detection=True``, ``max_steps=25``).
 
     Returns:
         The :class:`LangSightClient` instance, or ``None`` if URL not set.
@@ -566,9 +632,24 @@ def auto_patch(
 def _patch_mcp() -> None:
     """Patch mcp.ClientSession.call_tool for zero-config MCP tracing.
 
-    After auto_patch(), every MCP tool call is automatically traced with
-    the correct agent_name, session_id, and trace_id from contextvars.
-    No explicit ls.wrap() call needed.
+    Called automatically by :func:`auto_patch` (v0.12.0). After patching,
+    every ``await mcp_session.call_tool(name, args)`` is automatically traced
+    with the ``agent_name``, ``session_id``, and ``trace_id`` from the active
+    :func:`session` context — no ``ls.wrap()`` required.
+
+    Server name resolution order:
+    1. ``session._server_info.name`` (set by MCP handshake)
+    2. ``session._server_name`` (manually set attribute)
+    3. Falls back to ``"mcp"``
+
+    If an ``llm_intent`` span is pending for this tool name (i.e. the LLM
+    just decided to call this tool), the MCP span claims it as its parent,
+    creating a complete intent → execution link in the trace.
+
+    The original method is stored in ``_originals["mcp_call_tool"]`` and
+    restored by :func:`unpatch`. Safe to call multiple times — no-op if
+    ``mcp`` is already in ``_patched_sdks``. Returns immediately if the
+    ``mcp`` package is not installed.
     """
     try:
         from mcp import ClientSession

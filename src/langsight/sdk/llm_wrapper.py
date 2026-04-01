@@ -52,8 +52,21 @@ from langsight.sdk.models import ToolCallSpan, ToolCallStatus
 # Handoff auto-detection
 # ---------------------------------------------------------------------------
 
-# Tool names matching these patterns signal agent delegation.
-# e.g. "call_analyst" → handoff to "analyst"
+# Tool names matching these patterns signal agent delegation (v0.12.0).
+# The captured group becomes the target agent name.
+#
+# Examples:
+#   call_analyst       → handoff to "analyst"
+#   delegate_billing   → handoff to "billing"
+#   invoke_researcher  → handoff to "researcher"
+#   transfer_to_ops    → handoff to "ops"
+#   run_summarizer     → handoff to "summarizer"
+#   dispatch_validator → handoff to "validator"
+#
+# The pattern is intentionally broad — any verb prefix followed by an
+# underscore separator is sufficient to trigger handoff detection. False
+# positives (e.g. "run_sql" is not a handoff) are suppressed by the
+# source == target guard in _maybe_emit_handoffs.
 _HANDOFF_TOOL_RE = re.compile(
     r"^(?:call|delegate|invoke|transfer_to|run|dispatch)_(.+)$",
     re.IGNORECASE,
@@ -66,13 +79,27 @@ def _maybe_emit_handoffs(
 ) -> None:
     """Emit explicit handoff spans for tool calls that signal agent delegation.
 
-    When the LLM selects a tool named call_analyst / delegate_procurement /
-    transfer_to_billing etc., we treat that as an agent handoff and emit a
-    handoff span so session-graph.ts renders a solid edge instead of a
-    timing-inferred dashed edge.
+    v0.12.0 auto-detection: when the LLM selects a tool whose name matches
+    ``_HANDOFF_TOOL_RE`` (``call_*``, ``delegate_*``, ``invoke_*``,
+    ``transfer_to_*``, ``run_*``, ``dispatch_*``), LangSight automatically
+    emits a handoff span from the current agent to the target. No
+    ``create_handoff()`` call is required.
+
+    This produces a solid edge in the session topology graph instead of a
+    timing-inferred dashed edge. The ``gemini-sdk-ai-e2e`` pattern of
+    ``call_analyst`` / ``call_procurement`` tools is the primary use case —
+    these tool names now produce explicit lineage without any code change.
+
+    The source agent is resolved from (in order):
+    1. ``span.agent_name`` on the intent span
+    2. ``_agent_ctx`` contextvar (set by ``session()`` or ``set_context()``)
+
+    Self-handoffs (target == source) are suppressed. Spans with no resolved
+    source agent are silently skipped.
 
     Called after intent spans are registered — so the handoff span appears
-    in the right position in the timeline.
+    in the correct position in the timeline and can be claimed by downstream
+    spans as a parent.
     """
     from langsight.sdk.auto_patch import _agent_ctx, _session_ctx, _trace_ctx
 

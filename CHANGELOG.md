@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-04-01
+
+**Auto-instrumentation v2** — zero-boilerplate multi-agent tracing. MCP calls, LLM calls, and agent handoffs are all captured with 2 lines of code.
+
+### Added
+- **MCP auto-instrumentation**: `auto_patch()` now calls `_patch_mcp()`, which monkey-patches `mcp.ClientSession.call_tool`. Every MCP tool call after `auto_patch()` is automatically traced with the correct `agent_name`, `session_id`, and `trace_id` from the active `session()` context. No `ls.wrap()` call is required. `mcp` is now included in the `patched` list in the `auto_patch.complete` log event.
+- **Handoff auto-detection**: When an LLM selects a tool whose name matches the pattern `call_*`, `delegate_*`, `invoke_*`, `transfer_to_*`, `run_*`, or `dispatch_*`, LangSight automatically emits an explicit handoff span to the target agent. The `call_analyst`/`call_procurement` tool-naming convention now produces solid edges in the session topology graph without any `create_handoff()` call. Implemented via `_HANDOFF_TOOL_RE` in `llm_wrapper.py` and `_maybe_emit_handoffs()`.
+- **Contextvar fallback in `wrap()` and `wrap_llm()`**: `agent_name`, `session_id`, and `trace_id` are now optional when inside a `langsight.session()` block. Both methods read `_agent_ctx`, `_session_ctx`, and `_trace_ctx` as fallback when params are not explicitly provided. This eliminates parameter threading in multi-function agent code.
+
+### Changed
+- `auto_patch()` now includes `mcp` in the patched SDK list. The `skipped_missing` list also checks for `mcp`. Existing callers without `mcp` installed see no change — the patch is silently skipped.
+- Integration boilerplate reduced: the pattern that previously required 15+ lines (manual session ID, explicit wrap calls, manual handoff spans) now requires 2 lines: `langsight.auto_patch()` + `async with langsight.session(agent_name="..."):`.
+
 ## [0.11.0] - 2026-04-01
 
 **Lineage Protocol v1.0** -- authoritative agent lineage with explicit delegation semantics.
