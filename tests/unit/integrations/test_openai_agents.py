@@ -152,7 +152,7 @@ class TestLangSightOpenAIHooksOnToolEnd:
         assert span.tool_name == "search"
         assert span.status == ToolCallStatus.SUCCESS
         assert span.server_name == "test-openai"
-        assert span.agent_name == "test-agent"
+        assert span.agent_name == "my-agent"  # from runtime agent object, not constructor
 
     async def test_on_tool_end_without_start_still_sends(
         self, hooks: LangSightOpenAIHooks, client: LangSightClient
