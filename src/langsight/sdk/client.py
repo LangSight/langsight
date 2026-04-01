@@ -837,6 +837,11 @@ class MCPClientProxy:
         error: str | None = None
         output_result: str | None = None
 
+        # Suppress MCP auto_patch for the inner call — MCPClientProxy is
+        # already tracing this, so auto_patch must not emit a second span.
+        from langsight.sdk.auto_patch import _mcp_proxy_active
+
+        _proxy_token = _mcp_proxy_active.set(True)
         try:
             result = await client.call_tool(name, arguments)
             # Detect silent MCP errors — MCP SDK returns errors as JSON-RPC
@@ -878,6 +883,7 @@ class MCPClientProxy:
             error = str(exc)
             raise
         finally:
+            _mcp_proxy_active.reset(_proxy_token)  # restore flag for outer context
             span = ToolCallSpan.record(
                 server_name=server_name,
                 tool_name=name,

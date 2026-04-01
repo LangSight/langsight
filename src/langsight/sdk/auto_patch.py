@@ -108,6 +108,12 @@ _agent_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 _trace_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "langsight_trace_id", default=None
 )
+# Set to True by MCPClientProxy.call_tool() to suppress auto_patch for the
+# inner ClientSession.call_tool() call — prevents double-tracing when both
+# explicit wrap() and auto_patch() are active for the same MCP session.
+_mcp_proxy_active: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "langsight_mcp_proxy_active", default=False
+)
 
 # ---------------------------------------------------------------------------
 # Module-level state — patched SDK originals + global client
@@ -666,6 +672,11 @@ def _patch_mcp() -> None:
         self_sdk: Any, name: str, arguments: dict[str, Any] | None = None
     ) -> Any:
         if _global_client is None:
+            return await orig_call_tool(self_sdk, name, arguments)
+
+        # MCPClientProxy already traced this call — skip auto_patch to prevent
+        # double-tracing when explicit ls.wrap() and auto_patch() are both active.
+        if _mcp_proxy_active.get():
             return await orig_call_tool(self_sdk, name, arguments)
 
         from langsight.sdk.context import claim_pending_tool
