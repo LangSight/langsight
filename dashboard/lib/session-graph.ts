@@ -138,23 +138,10 @@ export function buildSessionGraph(
     }
   }
 
-  // Infer delegation from parent_span_id: when a child span has a different
-  // agent_name than its parent span, the parent agent delegated to the child.
-  for (const span of trace.spans_flat) {
-    if (span.parent_span_id && span.agent_name) {
-      const parent = spanById.get(span.parent_span_id);
-      if (parent?.agent_name && parent.agent_name !== span.agent_name) {
-        agents.add(parent.agent_name);
-        agents.add(span.agent_name);
-        const hKey = `${parent.agent_name}→${span.agent_name}`;
-        handoffMap.set(hKey, (handoffMap.get(hKey) ?? 0) + 1);
-        // Remember the parent tool span so we can draw tool→agent edge
-        if (parent.span_type === "tool_call" && !delegationToolSpan.has(hKey)) {
-          delegationToolSpan.set(hKey, parent.span_id);
-        }
-      }
-    }
-  }
+  // NOTE: cross-agent parent→child inference removed — it inflated handoff counts
+  // when a shared bridge/proxy emits tool_call spans with agent_name=orchestrator
+  // but parent=analyst's llm_intent span.  Only explicit handoff spans (above)
+  // and llm_intent tool-name patterns (below) should create handoff edges.
 
   // Infer delegation from tool name patterns: if an LLM intent span is named
   // "call_X" or "delegate_X" and an agent named "X" exists in this session,

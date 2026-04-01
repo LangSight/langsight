@@ -9,6 +9,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 - **Docs cleanup**: Removed all stale v0.11.x patterns from public-facing docs. Primary examples in `quickstart.mdx`, `sdk/python.mdx`, `sdk/integrations/langchain.mdx`, `sdk/integrations/langgraph.mdx`, and `sdk/integrations/gemini-sdk.mdx` now consistently use the v0.12.0 `session()` context manager pattern. Manual uuid4 generation, explicit `session_id=` threading, and `set_context`/`clear_context` boilerplate are moved to clearly labeled "Before 0.12.0" migration sections or "Advanced: manual pattern" sections only. The "Combining with MCP tracing" example in gemini-sdk.mdx now shows context-inherited `wrap_llm()` and `wrap()` calls (no explicit `session_id` threading).
 
+## [0.13.1] - 2026-04-01
+
+**Shared-proxy attribution fix + session graph Input/Output panel.**
+
+### Fixed
+- **`MCPClientProxy.call_tool()` reads context at call time** (`src/langsight/sdk/client.py`): `agent_name`, `session_id`, and `trace_id` are now read from the active `session()` contextvar at the moment `call_tool()` is invoked, not from the values that were current when the proxy was created. Previously, a shared proxy or bridge object passed to a sub-agent would retain the orchestrator's attribution for the lifetime of the object, causing all MCP spans from the sub-agent to be attributed to the wrong agent. The fix ensures that whichever `session()` block is active when `call_tool()` fires determines the attribution.
+- **Session graph cross-agent parent→child edge inflation removed** (`dashboard/lib/session-graph.ts`): The cross-agent parent→child inference heuristic that synthesised handoff edges from `agent_name` mismatches has been removed. This heuristic over-counted handoff edges when shared proxies caused mismatched `agent_name` values on otherwise unrelated spans. Handoff edges are now created exclusively from spans where `span_type === "handoff"`. Sessions using the `call_<agent>` naming convention (which emit explicit `handoff` spans) are unaffected; only sessions that relied on the inferred edges see a reduction in edge count.
+
+### Added
+- **Session graph right-panel Input/Output section** (`dashboard/app/(dashboard)/sessions/[id]/page.tsx`): Clicking an agent node in the session graph now shows an "Input / Output" section in the right-side inspector panel when that agent's session was started with `input=` and/or `sess.set_output()`. The section displays the human question (`llm_input` from the root agent span) and the final answer (`llm_output` from the same span). If neither field is set the section is hidden.
+
+### Tests
+- Added regression tests for shared-proxy agent attribution in `tests/unit/sdk/test_contextvar_fallback.py`. Covers: proxy created under orchestrator session then called inside sub-agent session, shared bridge passed across two concurrent sub-agents, and fallback when no session is active.
+
 ## [0.13.0] - 2026-04-01
 
 **Session I/O capture + HITL support** — capture the human prompt that started a session, the final agent response, and mid-session human input events; plus eliminates an MCP ghost node for users combining `ls.wrap()` with `auto_patch()`.

@@ -248,6 +248,40 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
         </div>
       )}
 
+      {/* Session Input / Output — shown when clicking an agent node that has a
+          root session span (emitted by session(input=...) / sess.set_output()) */}
+      {isAgent && (() => {
+        const rootSpan = trace.spans_flat.find(
+          (s: SpanNode) => s.span_type === "agent" && s.tool_name === "session" && s.agent_name === name
+        );
+        if (!rootSpan?.llm_input && !rootSpan?.llm_output) return null;
+        return (
+          <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+            <SectionLabel>Input / Output</SectionLabel>
+            {rootSpan.llm_input && (
+              <div className="mb-3">
+                <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5 text-muted-foreground">Question</p>
+                <p className="text-[12px] text-foreground rounded-lg px-3 py-2.5 leading-relaxed" style={{ background: "hsl(var(--muted))" }}>{rootSpan.llm_input}</p>
+              </div>
+            )}
+            {rootSpan.llm_output && (
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5 text-muted-foreground">Answer</p>
+                <p className="text-[12px] text-foreground rounded-lg px-3 py-2.5 leading-relaxed line-clamp-6" style={{ background: "hsl(var(--muted))" }}>{rootSpan.llm_output}</p>
+                {rootSpan.llm_output.length > 300 && (
+                  <button
+                    onClick={() => onViewPayload?.(`Answer — ${name}`, [{ label: "Text", json: rootSpan.llm_output ?? null }])}
+                    className="mt-2 text-[11px] font-medium hover:underline" style={{ color: "hsl(var(--primary))" }}
+                  >
+                    View full answer →
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Per-call detail: show input/output prominently */}
       {isPerCall && spans[0] && (
         <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>

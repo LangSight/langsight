@@ -18,6 +18,7 @@ Covers:
 from __future__ import annotations
 
 import pytest
+from unittest.mock import AsyncMock, patch
 
 from langsight.sdk.auto_patch import (
     _agent_ctx,
@@ -327,3 +328,55 @@ async def test_contextvar_isolated_between_concurrent_wraps(client, fake_mcp):
     assert results["a_session"] == "sess-a"
     assert results["b_agent"] == "agent-b"
     assert results["b_session"] == "sess-b"
+
+
+# ---------------------------------------------------------------------------
+# Shared proxy — call_tool() uses active contextvar, not stored value
+# Regression: before fix, a bridge created in orchestrator context would
+# attribute ALL sub-agent tool calls to "orchestrator" even when called
+# from inside analyst's session() block.
+# ---------------------------------------------------------------------------
+
+
+async def test_proxy_call_tool_uses_active_agent_ctx_over_stored(client, fake_mcp):
+    """MCPClientProxy.call_tool() emits span with active session's agent_name,
+    not the agent_name locked in at proxy creation time.
+
+    Simulates: orchestrator creates bridge → analyst uses it inside own session().
+    """
+    # Create proxy inside orchestrator context (locked in as "orchestrator")
+    async with session(agent_name="orchestrator", session_id="sess-orch"):
+        proxy = client.wrap(fake_mcp, server_name="catalog-mcp")
+
+    assert object.__getattribute__(proxy, "_agent_name") == "orchestrator"
+
+    # Now call it from inside analyst's session — span must use "analyst"
+    with patch.object(client, "_post_spans", new_callable=AsyncMock) as mock_post:
+        async with session(agent_name="analyst", session_id="sess-orch"):
+            await proxy.call_tool("get_product", {"id": 1})
+        await client.flush()
+
+    mock_post.assert_called_once()
+    emitted = mock_post.call_args[0][0]
+    assert len(emitted) == 1
+    assert emitted[0].agent_name == "analyst", (
+        f"Expected agent_name='analyst', got '{emitted[0].agent_name}'. "
+        "Shared proxy must adopt the active session's agent_name at call time."
+    )
+    assert emitted[0].session_id == "sess-orch"
+
+
+async def test_proxy_call_tool_falls_back_to_stored_agent_when_no_active_ctx(client, fake_mcp):
+    """When no session() is active, call_tool() falls back to the stored agent_name."""
+    async with session(agent_name="orchestrator", session_id="sess-x"):
+        proxy = client.wrap(fake_mcp, server_name="catalog-mcp")
+
+    # Call outside any session context — stored values should be used
+    with patch.object(client, "_post_spans", new_callable=AsyncMock) as mock_post:
+        await proxy.call_tool("list_products", {})
+        await client.flush()
+
+    mock_post.assert_called_once()
+    emitted = mock_post.call_args[0][0]
+    assert len(emitted) == 1
+    assert emitted[0].agent_name == "orchestrator"

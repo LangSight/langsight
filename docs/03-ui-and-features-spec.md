@@ -679,6 +679,7 @@ The Details tab is the visual debugging surface. It has three sub-regions stacke
 - Shows call counts, error rate, avg/p99 latency, tool list, and token usage for the selected element
 - MetricTile sub-component: each metric is a rounded tile with a primary or danger accent border on the left side
 - "View in Catalog" link appears for agent and server nodes
+- **Input / Output section** (added v0.13.1): when an agent node is selected, the panel shows a collapsible "Input / Output" section beneath the metric tiles. It renders `llm_input` (the human question passed as `input=` to `session()`) and `llm_output` (the value passed to `sess.set_output()`). The section is hidden when neither field is present on the root agent span — no empty state is shown.
 
 **Graph builder extraction** (2026-03-23):
 - Session graph construction logic extracted from the session detail page into `dashboard/lib/session-graph.ts`

@@ -788,12 +788,16 @@ class MCPClientProxy:
         client = object.__getattribute__(self, "_client")
         langsight: LangSightClient = object.__getattribute__(self, "_langsight")
         server_name = object.__getattribute__(self, "_server_name")
-        agent_name = object.__getattribute__(self, "_agent_name")
-        session_id = object.__getattribute__(self, "_session_id")
-        trace_id = object.__getattribute__(self, "_trace_id")
         parent_span_id = object.__getattribute__(self, "_parent_span_id")
         redact = object.__getattribute__(self, "_redact_payloads")
         project_id = object.__getattribute__(self, "_project_id")
+        # Prefer active session() context over stored values — this handles shared
+        # proxies/bridges that are passed to sub-agents with their own session().
+        # Without this, all tool calls on a shared bridge are attributed to the
+        # agent that created it (usually the orchestrator), not the calling agent.
+        agent_name = _agent_ctx.get() or object.__getattribute__(self, "_agent_name")
+        session_id = _session_ctx.get() or object.__getattribute__(self, "_session_id")
+        trace_id = _trace_ctx.get() or object.__getattribute__(self, "_trace_id")
 
         # Auto-link: if no explicit parent, check if wrap_llm() registered this tool
         if not parent_span_id:

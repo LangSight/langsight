@@ -147,4 +147,6 @@ The `langsight sessions` CLI shows a summary. For full session debugging, open t
 
 - **Session detail page** — click any row in the Sessions table to open `/sessions/<id>`
 - **Details tab** — timeline + interactive lineage graph + node/edge inspector
+- **Input / Output panel** (v0.13.1) — clicking an agent node in the session graph shows the human question and final answer in the right-side inspector panel, when `input=` and `sess.set_output()` were used. See [Capturing user input and agent output](/sdk/python#capturing-user-input-and-agent-output).
 - **Trace tab** — nested span tree with inline payloads and LLM prompt/completion panels
+- **Handoff edges** (v0.13.1) — handoff edges in the session graph are now derived exclusively from explicit `handoff` spans. The previous cross-agent inference heuristic that could inflate edge counts with shared proxies has been removed.

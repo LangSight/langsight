@@ -108,6 +108,27 @@ async with langsight.session(agent_name="analyst") as session_id:
     # Or skip wrap() entirely — auto_patch() covers mcp.call_tool directly
 ```
 
+### Shared proxies and bridges (v0.13.1 fix)
+
+`MCPClientProxy.call_tool()` reads the active `session()` context **at call time**, not at proxy creation time. This means a single proxy or bridge object can be safely passed to multiple sub-agents — each sub-agent's `call_tool()` invocations are attributed to whichever `session()` block is active when the call fires, not to the agent that created the proxy.
+
+```python
+langsight.auto_patch()
+
+# A shared bridge created once in the orchestrator
+shared_bridge = ls.wrap(mcp_session, server_name="shared-mcp")
+
+async def orchestrator():
+    async with langsight.session(agent_name="orchestrator"):
+        await shared_bridge.call_tool("tool_a", {})   # attributed to "orchestrator"
+
+async def analyst():
+    async with langsight.session(agent_name="analyst"):
+        await shared_bridge.call_tool("tool_b", {})   # attributed to "analyst"
+```
+
+Before v0.13.1, both calls above would be attributed to whichever agent ran first (the agent in whose context the proxy was created). This produced incorrect attribution in the session graph when shared proxies were used.
+
 ## Capturing user input and agent output
 
 `session()` accepts `input=` to record the initial human prompt and returns a `SessionContext` object with methods to capture the agent's final response and any mid-session human messages. These map directly to Langfuse's trace `input`/`output` concepts — if you're familiar with Langfuse, the mental model is the same.
