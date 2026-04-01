@@ -447,7 +447,9 @@ async def change_password(
     new_hash = await _hash_password(body.new_password)
 
     if not hasattr(storage, "update_user_password"):
-        raise HTTPException(status_code=501, detail="Storage backend does not support password updates.")
+        raise HTTPException(
+            status_code=501, detail="Storage backend does not support password updates."
+        )
 
     updated = await storage.update_user_password(user_id, new_hash)
     if not updated:
@@ -460,7 +462,12 @@ async def change_password(
         revoked_count = await storage.revoke_all_user_keys(user_id)
 
     client_ip = request.client.host if request.client else "unknown"
-    logger.info("audit.user.password_changed", user_id=user_id, keys_revoked=revoked_count, client_ip=client_ip)
+    logger.info(
+        "audit.user.password_changed",
+        user_id=user_id,
+        keys_revoked=revoked_count,
+        client_ip=client_ip,
+    )
     append_audit(
         "user.password_changed",
         user_id,

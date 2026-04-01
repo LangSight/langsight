@@ -89,7 +89,7 @@ if not _METRICS_TOKEN:
     _logging.getLogger(__name__).warning(
         "LANGSIGHT_METRICS_TOKEN is not set — /metrics endpoint requires a token. "
         "Set LANGSIGHT_METRICS_TOKEN=<secret> to enable Prometheus scraping. "
-        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+        'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
     )
 
 

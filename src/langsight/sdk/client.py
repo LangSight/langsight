@@ -1119,7 +1119,7 @@ def _post_call_update(
                 # Fallback: $0.01 per 1K input tokens + $0.03 per 1K output tokens
                 # (~GPT-4o pricing, conservative). Operators can override by
                 # populating their pricing_table for all models they use.
-                _FALLBACK_INPUT_PER_M = 10.0   # $0.010 / 1K tokens
+                _FALLBACK_INPUT_PER_M = 10.0  # $0.010 / 1K tokens
                 _FALLBACK_OUTPUT_PER_M = 30.0  # $0.030 / 1K tokens
                 cost = (
                     span.input_tokens / 1_000_000 * _FALLBACK_INPUT_PER_M

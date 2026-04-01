@@ -100,7 +100,9 @@ async def _gather_evidence(
     window_hours: float,
     project_id: str | None = None,
 ) -> dict[str, Any]:
-    history = await storage.get_health_history(server_name, limit=_MAX_HISTORY, project_id=project_id)
+    history = await storage.get_health_history(
+        server_name, limit=_MAX_HISTORY, project_id=project_id
+    )
     cutoff = datetime.now(UTC) - timedelta(hours=window_hours)
     recent = [r for r in history if r.checked_at >= cutoff]
 

@@ -167,7 +167,9 @@ async def ack_alert(
     storage = _storage(request)
     if not hasattr(storage, "ack_alert"):
         raise HTTPException(status_code=501, detail="Alert persistence not supported")
-    updated = await storage.ack_alert(alert_id=alert_id, acked_by=body.acked_by, project_id=project_id or "")
+    updated = await storage.ack_alert(
+        alert_id=alert_id, acked_by=body.acked_by, project_id=project_id or ""
+    )
     if not updated:
         raise HTTPException(status_code=404, detail="Alert not found or already in final state")
     logger.info("alerts.acked", alert_id=alert_id, acked_by=body.acked_by)
@@ -207,7 +209,9 @@ async def snooze_alert(
     storage = _storage(request)
     if not hasattr(storage, "snooze_alert"):
         raise HTTPException(status_code=501, detail="Alert persistence not supported")
-    updated = await storage.snooze_alert(alert_id=alert_id, snooze_minutes=body.minutes, project_id=project_id or "")
+    updated = await storage.snooze_alert(
+        alert_id=alert_id, snooze_minutes=body.minutes, project_id=project_id or ""
+    )
     if not updated:
         raise HTTPException(status_code=404, detail="Alert not found or already resolved")
     logger.info("alerts.snoozed", alert_id=alert_id, minutes=body.minutes)
