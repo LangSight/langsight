@@ -1,8 +1,8 @@
 # LangSight: UI & Features Specification
 
-> **Version**: 1.8.0
-> **Date**: 2026-03-27
-> **Status**: Active — updated with `langsight add` command, `langsight scorecard` command, `langsight init` expanded to 10+ IDE clients with correct macOS paths, schema drift structural diff display (v0.8.0, 2026-03-26); health_tool backend probe, inputSchema string fix (v0.8.4–v0.8.5, 2026-03-27); MCP Servers page merged with Tool Health, Last Used / Last OK columns, Agents Servers tab, costs source filter rename (v0.8.6, 2026-03-27); embedded monitor loop in `langsight serve`, `LANGSIGHT_MONITOR_ENABLED`, `LANGSIGHT_MONITOR_INTERVAL_SECONDS` (v0.9.0, 2026-03-27)
+> **Version**: 1.9.0
+> **Date**: 2026-04-01
+> **Status**: Active — Lineage protocol v1.0: `llm_intent` span type added to trace tree display (2026-04-01). Updated with `langsight add` command, `langsight scorecard` command, `langsight init` expanded to 10+ IDE clients with correct macOS paths, schema drift structural diff display (v0.8.0, 2026-03-26); health_tool backend probe, inputSchema string fix (v0.8.4–v0.8.5, 2026-03-27); MCP Servers page merged with Tool Health, Last Used / Last OK columns, Agents Servers tab, costs source filter rename (v0.8.6, 2026-03-27); embedded monitor loop in `langsight serve`, `LANGSIGHT_MONITOR_ENABLED`, `LANGSIGHT_MONITOR_INTERVAL_SECONDS` (v0.9.0, 2026-03-27)
 
 ---
 
@@ -695,7 +695,7 @@ The Details tab is the visual debugging surface. It has three sub-regions stacke
 
 #### 4.3.2 Trace tab
 
-Tree of `agent`, `handoff`, and `tool_call` spans. Clicking a span row expands inline payload/error content. Payload visibility requires P5.1 payload capture to be active (`redact_payloads: false`, default).
+Tree of `agent`, `handoff`, `tool_call`, and `llm_intent` spans. `llm_intent` spans represent LLM tool-call decisions (not actual executions) and are shown with a distinct icon/label. Clicking a span row expands inline payload/error content. Payload visibility requires P5.1 payload capture to be active (`redact_payloads: false`, default).
 
 #### 4.3.3 Session comparison
 

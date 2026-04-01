@@ -210,6 +210,11 @@ _DDL = [
     "ALTER TABLE mcp_tool_calls MATERIALIZE INDEX idx_bf_agent_name",
     "ALTER TABLE session_health_tags ADD INDEX IF NOT EXISTS idx_bf_project_id project_id TYPE bloom_filter GRANULARITY 1",
     "ALTER TABLE session_health_tags MATERIALIZE INDEX idx_bf_project_id",
+    # --- Lineage protocol v1.0 columns ---
+    "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS target_agent_name String DEFAULT ''",
+    "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS lineage_provenance LowCardinality(String) DEFAULT 'explicit'",
+    "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS lineage_status LowCardinality(String) DEFAULT 'complete'",
+    "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS schema_version String DEFAULT '1.0'",
 ]
 
 
@@ -726,6 +731,10 @@ class ClickHouseBackend:
         "input_tokens",
         "output_tokens",
         "model_id",
+        "target_agent_name",
+        "lineage_provenance",
+        "lineage_status",
+        "schema_version",
     ]
 
     def _span_row(self, s: ToolCallSpan) -> list[Any]:
@@ -762,6 +771,10 @@ class ClickHouseBackend:
             s.input_tokens,  # Nullable(UInt32)
             s.output_tokens,  # Nullable(UInt32)
             s.model_id or "",
+            s.target_agent_name or "",
+            s.lineage_provenance,
+            s.lineage_status,
+            s.schema_version,
         ]
 
     async def save_tool_call_span(self, span: ToolCallSpan) -> None:
@@ -1087,7 +1100,9 @@ class ClickHouseBackend:
                 input_json, output_json,
                 llm_input, llm_output,
                 replay_of, project_id,
-                input_tokens, output_tokens, model_id
+                input_tokens, output_tokens, model_id,
+                target_agent_name, lineage_provenance,
+                lineage_status, schema_version
             FROM mcp_tool_calls
             WHERE {where}
             ORDER BY started_at ASC
@@ -1117,6 +1132,10 @@ class ClickHouseBackend:
             "input_tokens",
             "output_tokens",
             "model_id",
+            "target_agent_name",
+            "lineage_provenance",
+            "lineage_status",
+            "schema_version",
         ]
         rows = [dict(zip(cols, row, strict=False)) for row in result.result_rows]
         # Ensure timestamps carry UTC timezone — ClickHouse DateTime64('UTC')
@@ -1505,18 +1524,22 @@ class ClickHouseBackend:
             f"""
             SELECT
                 agent_name                       AS from_agent,
-                replaceOne(tool_name, '\u2192 ', '') AS to_agent,
+                if(target_agent_name != '', target_agent_name,
+                   replaceOne(tool_name, '\u2192 ', '')) AS to_agent,
                 count()                          AS handoff_count,
-                uniq(session_id)                 AS session_count
+                uniq(session_id)                 AS session_count,
+                countIf(lineage_provenance = 'explicit') AS explicit_count,
+                countIf(lineage_provenance != 'explicit') AS inferred_count
             FROM mcp_tool_calls
             {where}
-            GROUP BY agent_name, tool_name
+            GROUP BY from_agent, to_agent
             ORDER BY handoff_count DESC
             """,
             parameters=params,
         )
 
-        cols = ["from_agent", "to_agent", "handoff_count", "session_count"]
+        cols = ["from_agent", "to_agent", "handoff_count", "session_count",
+                "explicit_count", "inferred_count"]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
     async def _lineage_delegation_edges(

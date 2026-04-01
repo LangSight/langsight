@@ -222,7 +222,44 @@ await langsight.send_span(ToolCallSpan.record(
 
 When Agent A delegates to Agent B, pass the `trace_id` and the parent agent's span ID so LangSight can reconstruct the full call tree.
 
-### Recommended pattern
+### Recommended pattern (v1.0 helpers)
+
+Use `create_handoff()` and `wrap_child_agent()` for the simplest multi-agent setup. These helpers emit a properly linked handoff span and pre-configure the child proxy's parent references.
+
+```python
+from langsight.sdk import LangSightClient
+
+client = LangSightClient(url="http://localhost:8000")
+
+async def orchestrator_agent():
+    session_id = "sess-f2a9b1"
+    trace_id = "trace-abc123"
+
+    traced_jira = client.wrap(
+        jira_session,
+        server_name="jira-mcp",
+        agent_name="orchestrator",
+        session_id=session_id,
+        trace_id=trace_id,
+    )
+    await traced_jira.call_tool("get_issue", {"id": "TASK-42"})
+
+    # create_handoff emits the span and returns it
+    handoff = client.create_handoff(
+        "orchestrator", "research-agent",
+        trace_id=trace_id, session_id=session_id,
+    )
+
+    # wrap_child_agent pre-sets parent_span_id and agent_name from the handoff
+    traced_confluence = client.wrap_child_agent(
+        confluence_session, "confluence-mcp", "research-agent", handoff,
+    )
+    await traced_confluence.call_tool("search", {"query": "returns policy"})
+```
+
+### Manual pattern (full control)
+
+For cases where you need more control over span construction, you can create handoff spans directly.
 
 ```python
 from datetime import UTC, datetime

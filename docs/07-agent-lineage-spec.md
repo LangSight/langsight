@@ -26,18 +26,71 @@ The lineage feature has shipped, but the final implementation differs from the o
 - The renderer is raw SVG + `dagre`, not React Flow
 - Tool/per-call expansion happens inside the shared renderer rather than via a separate tool-level page mode
 
+## Lineage Protocol v1.0 (2026-04-01)
+
+The lineage protocol was hardened across the full stack to produce reliable, explicit parent/child links instead of relying on heuristic inference.
+
+### Why this was needed
+
+The original lineage implementation relied on parsing `tool_name` to extract handoff targets (`"→ billing-agent"` → `"billing-agent"`) and on heuristic matching to link tool calls to their parent agent spans. This caused three live bugs:
+1. **Dashed edges in topology**: missing `parent_span_id` on tool calls created orphaned nodes
+2. **Wrong latency attribution**: handoff spans computed latency from the wrong start/end times
+3. **Orphaned tool calls**: tool calls from delegated agents had no link back to the handoff
+
+### Protocol fields
+
+Four new fields on `ToolCallSpan` and `mcp_tool_calls`:
+
+| Field | Type | Default | Purpose |
+|-------|------|---------|---------|
+| `target_agent_name` | `String` | `''` | Explicit handoff destination. Populated on `span_type="handoff"`. Replaces `tool_name` parsing. |
+| `lineage_provenance` | `LowCardinality(String)` | `'explicit'` | How the parent/child link was determined. Values: `explicit`, `derived_parent`, `derived_timing`, `derived_legacy`, `inferred_otel`. |
+| `lineage_status` | `LowCardinality(String)` | `'complete'` | Quality flag. Values: `complete`, `incomplete`, `orphaned`, `invalid_parent`, `session_mismatch`, `trace_mismatch`. |
+| `schema_version` | `String` | `'1.0'` | Protocol version for backward/forward compat. |
+
+### New span type: `llm_intent`
+
+LLM tool-call decisions are now emitted as `span_type="llm_intent"` instead of `"tool_call"`. This prevents double-counting in agent-to-server reliability metrics. `llm_intent` spans still register in the pending-tool queue so the actual `tool_call` execution can claim the parent link.
+
+Span types are now: `tool_call`, `agent`, `handoff`, `llm_intent`.
+
+### Ingest validation
+
+The traces ingest endpoint (`POST /api/traces/spans`) now performs three lineage checks:
+1. **Parent batch check**: if `parent_span_id` is set but not found in the current batch, `lineage_status` is downgraded to `incomplete`
+2. **Legacy handoff upgrade**: handoff spans without `target_agent_name` get it extracted from `tool_name` and `lineage_provenance` is set to `derived_legacy`
+3. **Trace consistency warning**: if a span's parent is in a different `trace_id`, a structured log warning is emitted
+
+### Dashboard changes
+
+- `SpanType` union includes `"llm_intent"` (`dashboard/lib/types.ts`)
+- `LineageProvenance` and `LineageStatus` type aliases added
+- `SpanNode` gained 4 new fields: `target_agent_name`, `lineage_provenance`, `lineage_status`, `schema_version`
+- `session-graph.ts` uses `span_type === "llm_intent"` with legacy heuristic fallback; uses `target_agent_name` for handoff detection with `tool_name` parsing as fallback
+
+### SDK helpers
+
+Two new convenience methods on `LangSightClient`:
+- `create_handoff(from_agent, to_agent, ...)` -- emits a properly linked handoff span and returns it
+- `wrap_child_agent(mcp, server_name, agent_name, handoff_span)` -- wraps an MCP client for a child agent with pre-configured `parent_span_id` and `agent_name` from the handoff span
+
+### Async-safe context
+
+`sdk/context.py` replaced `threading.local()` with `contextvars.ContextVar` for the pending-tool tracking queue. This ensures that async tasks (e.g., concurrent agent handlers in OpenAI Agents SDK) correctly inherit the parent task's pending-tool state.
+
 ---
 
 ## Data Model
 
-All required data already exists in `mcp_tool_calls`:
+All required data exists in `mcp_tool_calls`:
 
 ```
 span_id, parent_span_id, span_type, trace_id, session_id,
-server_name, tool_name, agent_name, status, latency_ms, project_id
+server_name, tool_name, agent_name, status, latency_ms, project_id,
+target_agent_name, lineage_provenance, lineage_status, schema_version
 ```
 
-Span types: `tool_call` (agent → tool), `handoff` (agent → agent), `agent` (lifecycle).
+Span types: `tool_call` (agent → tool), `handoff` (agent → agent), `agent` (lifecycle), `llm_intent` (LLM decided to call a tool — not actual execution, excluded from metrics).
 
 ### Derived graph structure
 
@@ -84,19 +137,23 @@ ORDER BY call_count DESC
 
 ### 2. Agent-to-agent edges (handoffs)
 
+(changed from original 2026-04-01: uses `target_agent_name` with fallback to `tool_name` parsing for pre-protocol data; returns `explicit_count`/`inferred_count` per edge)
+
 ```sql
 SELECT
     agent_name                           AS from_agent,
-    -- Extract target agent from tool_name: "→ billing-agent" → "billing-agent"
-    replaceOne(tool_name, '→ ', '')      AS to_agent,
+    if(target_agent_name != '', target_agent_name,
+       replaceOne(tool_name, '→ ', ''))  AS to_agent,
     count()                              AS handoff_count,
+    countIf(lineage_provenance = 'explicit') AS explicit_count,
+    countIf(lineage_provenance != 'explicit') AS inferred_count,
     uniq(session_id)                     AS session_count
 FROM mcp_tool_calls
 WHERE started_at >= now() - INTERVAL {hours} HOUR
   AND span_type = 'handoff'
   AND agent_name != ''
   {project_filter}
-GROUP BY agent_name, tool_name
+GROUP BY agent_name, to_agent
 ORDER BY handoff_count DESC
 ```
 
@@ -287,6 +344,15 @@ Why the implementation changed:
 | Shared SVG topology renderer | ✅ Shipped |
 | Agents page topology integration | ✅ Shipped |
 | Session detail page lineage integration | ✅ Shipped |
+| Lineage protocol v1.0 — SDK model fields (`target_agent_name`, `lineage_provenance`, `lineage_status`, `schema_version`) | ✅ Shipped (2026-04-01) |
+| `llm_intent` span type — separates LLM decisions from tool executions | ✅ Shipped (2026-04-01) |
+| Async-safe `contextvars` pending-tool tracking | ✅ Shipped (2026-04-01) |
+| `LangSightClient.create_handoff()` / `wrap_child_agent()` helpers | ✅ Shipped (2026-04-01) |
+| ClickHouse 4-column schema migration for lineage | ✅ Shipped (2026-04-01) |
+| Handoff edge query with `target_agent_name` + `explicit_count`/`inferred_count` | ✅ Shipped (2026-04-01) |
+| Ingest lineage validation (parent batch check, legacy upgrade, trace consistency) | ✅ Shipped (2026-04-01) |
+| Lineage-aware integration adapters (OpenAI Agents, Anthropic, LangChain) | ✅ Shipped (2026-04-01) |
+| Dashboard `llm_intent` + lineage types in `types.ts` and `session-graph.ts` | ✅ Shipped (2026-04-01) |
 
 ### Deferred / not shipped
 
@@ -343,3 +409,10 @@ The marketing writes itself: "The first lineage graph for AI agent actions."
 - [x] Empty state exists when no lineage data is present
 - [ ] Dedicated blast-radius interaction exists as a first-class flow
 - [ ] Tests: add explicit lineage router/query coverage if not already present
+- [x] Lineage protocol v1.0: explicit `target_agent_name` on handoff spans
+- [x] Lineage protocol v1.0: `lineage_provenance` tracks how links were determined
+- [x] Lineage protocol v1.0: `lineage_status` quality flag on every span
+- [x] Lineage protocol v1.0: `schema_version` for forward compat
+- [x] `llm_intent` span type separates LLM decisions from actual executions
+- [x] Ingest validates lineage links on ingestion (parent batch check, legacy upgrade)
+- [x] Integration adapters (OpenAI, Anthropic, LangChain) emit correct parent links

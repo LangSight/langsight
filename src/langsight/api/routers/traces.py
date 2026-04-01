@@ -166,6 +166,31 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                 ),
             )
 
+    # --- Lineage validation (v1.0 protocol) ---
+    # Mark orphaned spans and upgrade legacy handoffs.  Never reject —
+    # degrade gracefully so old SDKs keep working.
+    span_ids_in_batch = {s.span_id for s in spans}
+    for span in spans:
+        # Parent not in this batch → mark as potentially incomplete
+        if span.parent_span_id and span.parent_span_id not in span_ids_in_batch:
+            if span.lineage_status == "complete":
+                span.lineage_status = "incomplete"
+
+        # Legacy handoff upgrade: extract target from tool_name if not set
+        if span.span_type == "handoff" and not span.target_agent_name:
+            if span.tool_name.startswith("→ ") or span.tool_name.startswith("\u2192 "):
+                span.target_agent_name = span.tool_name.replace("→ ", "").replace("\u2192 ", "")
+                span.lineage_provenance = "derived_legacy"
+
+    # Warn on multiple trace_ids in one batch (unusual, may indicate bug)
+    trace_ids = {s.trace_id for s in spans if s.trace_id}
+    if len(trace_ids) > 1:
+        logger.warning(
+            "trace.multiple_trace_ids_in_batch",
+            trace_ids=sorted(trace_ids),
+            span_count=len(spans),
+        )
+
     for span in spans:
         logger.info(
             "trace.span_received",

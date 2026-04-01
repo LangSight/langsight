@@ -207,7 +207,6 @@ If your agent hands off to sub-agents, LangSight captures the full tree:
 
 ```python
 from langsight.sdk import LangSightClient
-from langsight.sdk.models import ToolCallSpan
 
 langsight = LangSightClient(url="http://localhost:8000")
 trace_id = "trace-abc"
@@ -219,18 +218,15 @@ orchestrator = langsight.wrap(
     agent_name="orchestrator", trace_id=trace_id, session_id=session_id,
 )
 
-# When handing off, create a handoff span
-handoff = ToolCallSpan.handoff_span(
-    from_agent="orchestrator", to_agent="research-agent",
+# create_handoff emits a handoff span with explicit target_agent_name
+handoff = langsight.create_handoff(
+    "orchestrator", "research-agent",
     trace_id=trace_id, session_id=session_id,
 )
-await langsight.send_span(handoff)
 
-# Sub-agent wraps with parent_span_id → links to the handoff
-researcher = langsight.wrap(
-    mcp, server_name="confluence-mcp",
-    agent_name="research-agent", trace_id=trace_id, session_id=session_id,
-    parent_span_id=handoff.span_id,
+# wrap_child_agent pre-sets parent_span_id and agent_name from the handoff
+researcher = langsight.wrap_child_agent(
+    mcp, "confluence-mcp", "research-agent", handoff,
 )
 ```
 

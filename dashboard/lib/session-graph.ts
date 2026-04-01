@@ -91,12 +91,15 @@ export function buildSessionGraph(
   // Build span lookup first — needed for LLM intent detection and delegation
   const spanById = new Map(trace.spans_flat.map((s) => [s.span_id, s]));
 
-  // Identify LLM intent spans: tool_call spans whose parent is an "agent" span.
-  // These represent "the LLM decided to call this tool" (from wrap_llm), NOT
-  // actual MCP server executions. They should not create server nodes.
+  // Identify LLM intent spans — these are NOT actual MCP server executions.
+  // Protocol v1.0: use explicit span_type="llm_intent".
+  // Legacy fallback: tool_call spans whose parent is an "agent" span.
   const llmIntentSpanIds = new Set<string>();
   for (const span of trace.spans_flat) {
-    if (span.span_type === "tool_call" && span.parent_span_id) {
+    if (span.span_type === "llm_intent") {
+      llmIntentSpanIds.add(span.span_id);
+    } else if (span.span_type === "tool_call" && span.parent_span_id) {
+      // Legacy heuristic for old data without llm_intent span type
       const parent = spanById.get(span.parent_span_id);
       if (parent?.span_type === "agent") {
         llmIntentSpanIds.add(span.span_id);
@@ -109,7 +112,9 @@ export function buildSessionGraph(
     if (span.agent_name) agents.add(agent);
 
     if (span.span_type === "handoff" && span.tool_name) {
-      const target = span.tool_name.replace(/^->\s*/, "").replace(/^→\s*/, "");
+      // Protocol v1.0: use target_agent_name if available, else parse tool_name
+      const target = span.target_agent_name
+        || span.tool_name.replace(/^->\s*/, "").replace(/^→\s*/, "");
       if (target) {
         agents.add(target);
         const hKey = `${agent}→${target}`;

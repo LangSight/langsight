@@ -1,8 +1,8 @@
 # LangSight: Architecture Design
 
-> **Version**: 1.8.0
-> **Date**: 2026-03-27
-> **Status**: Active — v0.3 Prevention Layer (Tier 1) shipped: circuit breaker, loop detection, budget guardrails integrated into SDK `call_tool()` path. New alert types for prevention events. Health tag engine for session auto-classification. Dashboard sessions page updated with health tag column and filter (2026-03-22). Prevention Config shipped (2026-03-22): dashboard-managed thresholds via `prevention_config` Postgres table, 6 API endpoints, SDK `_apply_remote_config()` background fetch on `wrap()`, Settings → Prevention dashboard tab (section 2.9.2). v0.8.4: health_tool backend probe + MCPHealthToolError (2026-03-27). v0.8.5: inputSchema string coercion in _parse_tools() (2026-03-27). v0.8.6: /health merged into /servers, invocations endpoint, Agents Servers tab, upsert_server_tools on every check, project_id fix (2026-03-27).
+> **Version**: 1.9.0
+> **Date**: 2026-04-01
+> **Status**: Active — Lineage protocol v1.0 shipped (2026-04-01): `llm_intent` span type, `target_agent_name`/`lineage_provenance`/`lineage_status`/`schema_version` fields on `ToolCallSpan`, async-safe `contextvars` pending-tool tracking, lineage validation in ingest, 4 new ClickHouse columns, lineage-aware integration adapters (OpenAI Agents, Anthropic, LangChain). v0.3 Prevention Layer (Tier 1) shipped: circuit breaker, loop detection, budget guardrails integrated into SDK `call_tool()` path. New alert types for prevention events. Health tag engine for session auto-classification. Dashboard sessions page updated with health tag column and filter (2026-03-22). Prevention Config shipped (2026-03-22): dashboard-managed thresholds via `prevention_config` Postgres table, 6 API endpoints, SDK `_apply_remote_config()` background fetch on `wrap()`, Settings → Prevention dashboard tab (section 2.9.2). v0.8.4: health_tool backend probe + MCPHealthToolError (2026-03-27). v0.8.5: inputSchema string coercion in _parse_tools() (2026-03-27). v0.8.6: /health merged into /servers, invocations endpoint, Agents Servers tab, upsert_server_tools on every check, project_id fix (2026-03-27).
 
 ---
 
@@ -322,6 +322,10 @@ LangSightClient(
 - **Payload capture is opt-out, not opt-in** (decided 2026-03-18): `input_args` and `output_result` are captured by default for maximum debuggability. Set `redact_payloads: true` in `.langsight.yaml` (or pass `redact_payloads=True` to `LangSightClient`) for tools that handle PII. Redaction is applied before transmission — payloads never leave the host process when redaction is enabled.
 - **Prevention defaults to disabled** (decided 2026-03-22): all prevention params (`loop_detection`, `circuit_breaker`, budget limits) default to disabled/`None`. Existing SDK users are not affected — zero breaking changes. Engineers opt in per-feature.
 - **Prevention is blocking, observability is async** (decided 2026-03-22): span recording is fire-and-forget (`asyncio.create_task`), but prevention checks are synchronous within `call_tool()`. A blocked call must raise immediately — not after the call completes. This is a deliberate asymmetry: observability must never slow an agent, but prevention must be able to stop one.
+- **Lineage protocol v1.0 fields** (added 2026-04-01): `ToolCallSpan` gained 4 fields for explicit lineage tracking: `target_agent_name` (handoff destination — no longer embedded only in `tool_name`), `lineage_provenance` (how the parent/child link was determined), `lineage_status` (quality flag for the link), `schema_version` (protocol version for forward compat). `handoff_span()` now sets `target_agent_name` explicitly. `record()` accepts all 4 new params.
+- **`llm_intent` span type** (added 2026-04-01): LLM tool-call decisions are now `span_type="llm_intent"`, distinct from actual `tool_call` executions. This prevents double-counting in agent-to-server metrics. `llm_intent` spans still register in the pending-tool queue so the real execution can claim the parent link.
+- **Async-safe pending tool context** (added 2026-04-01): `sdk/context.py` replaced `threading.local()` with `contextvars.ContextVar`. Async tasks now correctly inherit the parent task's pending-tool queue, preventing lost parent links in concurrent agent frameworks.
+- **`create_handoff()` and `wrap_child_agent()` helpers** (added 2026-04-01): Convenience methods on `LangSightClient` that emit a properly linked handoff span and pre-configure the child proxy's `parent_span_id` and `agent_name`. Reduces multi-agent integration boilerplate from ~15 lines to 2.
 
 ### 2.9.1 SDK Prevention Layer (v0.3, added 2026-03-22)
 
@@ -445,6 +449,16 @@ Dashboard UI (Settings → Prevention)
 All adapters share a common `IntegrationBase` that handles span serialization and HTTP dispatch. Fail-open behavior is enforced at the base class level.
 
 **Total integration count**: 9 (MCP SDK wrap, LangChain, LangGraph, CrewAI, Pydantic AI, OpenAI Agents, Anthropic/Claude, OTEL, LibreChat). Added 2026-03-21: OpenAI Agents, Anthropic/Claude, and dedicated LangGraph.
+
+**Lineage-aware adapters** (updated 2026-04-01): Three adapters were updated to produce correct lineage graphs:
+
+| Adapter | What changed |
+|---------|-------------|
+| `openai_agents.py` | Tracks `_active_agent_spans` and `_active_handoffs` dicts keyed by `id(agent)`. `on_agent_start` emits an agent lifecycle span and records its `span_id`. `on_handoff` links to the parent agent's active span and stores handoff context for the child. `on_tool_end/error` propagates `agent_name` and `parent_span_id` from handoff context. |
+| `anthropic_sdk.py` | Same pattern: `_active_agent_spans`, `_current_handoff_span_id`, `_current_agent_name`. Tool callbacks pass `agent_name` and `parent_span_id` through to the span. |
+| `langchain.py` | `on_chain_start` emits explicit handoff spans when a child agent is detected under a different parent agent, using `parent_span_id` from the call stack. |
+
+These changes fix 3 live bugs: dashed edges in topology graphs (missing `parent_span_id`), wrong latency attribution on handoff spans, and orphaned tool calls not linked to their agent.
 
 ### 2.13 Replay Engine (Phase 5.7)
 
@@ -723,6 +737,16 @@ At current scale (demo data, single-digit projects) this is invisible — ClickH
 | `llm_output` | `Nullable(String)` | LLM completion text extracted from OTLP `gen_ai.completion` / `llm.completions` attributes. Populated only on `span_type="agent"` spans originating from LLM generation spans. (P5.3) |
 | `replay_of` | `String DEFAULT ''` | When this span is a replay, contains the `span_id` of the original span being replayed. Empty string for non-replay spans. Links replay sessions back to their originals without a separate table. (P5.7, added 2026-03-19) |
 
+**`mcp_tool_calls` lineage protocol columns** (added 2026-04-01):
+| Column | Type | Description |
+|--------|------|-------------|
+| `target_agent_name` | `String DEFAULT ''` | Explicit handoff destination agent name. Populated on `span_type="handoff"` spans. Replaces the previous convention of parsing target from `tool_name` (`"→ billing-agent"` → `"billing-agent"`). Empty string for non-handoff spans. |
+| `lineage_provenance` | `LowCardinality(String) DEFAULT 'explicit'` | How the parent/child relationship was determined. Values: `explicit`, `derived_parent`, `derived_timing`, `derived_legacy`, `inferred_otel`. Used by the ingest validator and the dashboard to display lineage quality indicators. |
+| `lineage_status` | `LowCardinality(String) DEFAULT 'complete'` | Quality flag for this span's lineage links. Values: `complete`, `incomplete`, `orphaned`, `invalid_parent`, `session_mismatch`, `trace_mismatch`. Set by the ingest validator when `parent_span_id` cannot be resolved in the same batch. |
+| `schema_version` | `String DEFAULT '1.0'` | Protocol version for backward/forward compatibility. Allows future schema evolution without breaking existing queries. |
+
+**Handoff edge query update** (changed 2026-04-01): The `get_lineage_graph()` handoff edge query now uses `if(target_agent_name != '', target_agent_name, replaceOne(tool_name, '→ ', ''))` for backward compatibility with pre-protocol data. Returns `explicit_count` and `inferred_count` per edge so the dashboard can display lineage quality.
+
 ### PostgreSQL (metadata — all data that requires relational integrity)
 
 (changed from original: SQLite removed; all metadata now lives in Postgres; decided 2026-03-19)
@@ -750,6 +774,15 @@ At current scale (demo data, single-digit projects) this is invisible — ClickH
 | `GET /api/health/servers/{name}/scorecard` | A-F composite health grade — score, grade, 5 dimension scores, cap_applied |
 | `GET /api/health/servers/{name}/drift-history` | Recent schema drift events, newest first. `?limit=20` |
 | `GET /api/health/servers/{name}/drift-impact?tool_name=<tool>&hours=24` | Agents/sessions that called a changed tool (consumer impact) |
+
+**Lineage protocol v1.0 schema migrations** (auto-applied on API startup, idempotent, added 2026-04-01):
+
+| Table | Change | Notes |
+|-------|--------|-------|
+| `mcp_tool_calls` (ClickHouse) | `target_agent_name String DEFAULT ''` via `ALTER TABLE … ADD COLUMN IF NOT EXISTS` | Explicit handoff destination; empty for non-handoff spans |
+| `mcp_tool_calls` (ClickHouse) | `lineage_provenance LowCardinality(String) DEFAULT 'explicit'` via `ALTER TABLE … ADD COLUMN IF NOT EXISTS` | How parent/child link was determined |
+| `mcp_tool_calls` (ClickHouse) | `lineage_status LowCardinality(String) DEFAULT 'complete'` via `ALTER TABLE … ADD COLUMN IF NOT EXISTS` | Quality flag for lineage link |
+| `mcp_tool_calls` (ClickHouse) | `schema_version String DEFAULT '1.0'` via `ALTER TABLE … ADD COLUMN IF NOT EXISTS` | Protocol version for forward compat |
 
 **v0.8.1 schema migrations** (auto-applied on API startup, idempotent):
 

@@ -1,7 +1,9 @@
 export type ServerStatus = "up" | "degraded" | "down" | "stale" | "unknown";
 export type ToolCallStatus = "success" | "error" | "timeout" | "prevented";
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
-export type SpanType = "tool_call" | "agent" | "handoff";
+export type SpanType = "tool_call" | "agent" | "handoff" | "llm_intent";
+export type LineageProvenance = "explicit" | "derived_parent" | "derived_timing" | "derived_legacy" | "inferred_otel";
+export type LineageStatus = "complete" | "incomplete" | "orphaned" | "invalid_parent" | "session_mismatch" | "trace_mismatch";
 
 export interface HealthResult {
   server_name: string;
@@ -81,6 +83,10 @@ export interface SpanNode {
   input_tokens: number | null;  // P7 — LLM input token count
   output_tokens: number | null; // P7 — LLM output token count
   model_id: string | null;      // P7 — model used
+  target_agent_name: string | null;       // lineage v1.0 — handoff destination
+  lineage_provenance: LineageProvenance;  // lineage v1.0 — how parent was determined
+  lineage_status: LineageStatus;          // lineage v1.0 — quality flag
+  schema_version: string;                 // lineage v1.0 — protocol version
   children: SpanNode[];
 }
 
