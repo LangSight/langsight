@@ -29,6 +29,7 @@ from typing import Any
 import structlog
 
 from langsight.sdk.auto_patch import (
+    SessionContext,
     auto_patch,
     clear_context,
     session,

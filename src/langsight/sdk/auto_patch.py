@@ -825,27 +825,180 @@ def clear_context(tokens: list[contextvars.Token[str | None]]) -> None:
         token.var.reset(token)
 
 
+class SessionContext(str):
+    """Returned by :func:`session`. Subclasses ``str`` for backward compatibility.
+
+    Existing code that treats the yielded value as a plain session_id string
+    continues to work. New code can use the additional methods to capture
+    the human prompt, final response, and mid-session user messages.
+
+    Example::
+
+        async with langsight.session(
+            agent_name="orchestrator",
+            input="What products need restocking?",
+        ) as sess:
+            result = await agent.run(question)
+            sess.set_output(result)                      # capture final answer
+
+        # Human-in-the-loop / clarification mid-session:
+        async with langsight.session(agent_name="orchestrator") as sess:
+            partial = await agent.analyze(question)
+            approval = await ask_human("Place order for 50 units?")
+            sess.record_user_message(approval)           # first-class HITL span
+            result = await agent.execute(approval)
+            sess.set_output(result)
+    """
+
+    def __new__(
+        cls,
+        session_id: str,
+        agent_name: str | None = None,
+        trace_id: str | None = None,
+        started_at: "datetime | None" = None,
+        input_text: str | None = None,
+    ) -> "SessionContext":
+        return str.__new__(cls, session_id)
+
+    def __init__(
+        self,
+        session_id: str,
+        agent_name: str | None = None,
+        trace_id: str | None = None,
+        started_at: "datetime | None" = None,
+        input_text: str | None = None,
+    ) -> None:
+        super().__init__()
+        object.__setattr__(self, "_agent_name", agent_name)
+        object.__setattr__(self, "_trace_id", trace_id)
+        object.__setattr__(self, "_started_at", started_at or datetime.now(UTC))
+        object.__setattr__(self, "_input_text", input_text)
+        object.__setattr__(self, "_output_text", None)
+        object.__setattr__(self, "_session_id", session_id)
+
+    def set_output(self, output: str) -> None:
+        """Capture the final agent response for display in the dashboard.
+
+        Call this at the end of the agent run with the final answer::
+
+            async with langsight.session(input=question) as sess:
+                result = await agent.run(question)
+                sess.set_output(result)
+        """
+        object.__setattr__(self, "_output_text", str(output))
+
+    def record_user_message(self, text: str) -> None:
+        """Record a human message mid-session — HITL, clarification, approval.
+
+        Creates a ``user_message`` span in the session timeline so the
+        dashboard shows exactly when the human intervened and what they said::
+
+            async with langsight.session(agent_name="orchestrator") as sess:
+                partial = await agent.first_pass(question)
+                approval = await ask_human("Confirm order for 50 units?")
+                sess.record_user_message(approval)
+                result = await agent.finalize(approval)
+        """
+        if _global_client is None:
+            return
+        from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+
+        span = ToolCallSpan.record(
+            server_name="human",
+            tool_name=text[:120] if len(text) > 120 else text,  # truncated label
+            started_at=datetime.now(UTC),
+            status=ToolCallStatus.SUCCESS,
+            agent_name=object.__getattribute__(self, "_agent_name"),
+            session_id=object.__getattribute__(self, "_session_id"),
+            trace_id=object.__getattribute__(self, "_trace_id"),
+            span_type="user_message",
+            llm_input=text,  # full message stored here
+            lineage_provenance="explicit",
+            schema_version="1.0",
+        )
+        _global_client.buffer_span(span)
+
+
 @contextlib.asynccontextmanager
 async def session(
     agent_name: str | None = None,
     trace_id: str | None = None,
     session_id: str | None = None,
+    input: str | None = None,  # noqa: A002 — mirrors LangSmith/Langfuse API convention
 ) -> Any:
     """Async context manager that sets a tracing context for an agent run.
 
-    Generates a ``session_id`` if not provided.  All LLM calls inside the
-    block are tagged with this session::
+    Generates a ``session_id`` if not provided.  All LLM + MCP calls inside
+    the block are tagged with this session automatically.
 
+    v0.13.0 additions:
+    - ``input``: capture the human prompt that started this session
+    - Yields a :class:`SessionContext` (backward-compatible with plain str)
+    - ``sess.set_output(result)``: capture the final agent response
+    - ``sess.record_user_message(text)``: record mid-session human input
+
+    Examples::
+
+        # Simple — just set context:
         async with langsight.session(agent_name="orchestrator") as session_id:
             response = await client.aio.models.generate_content(...)
-            print(f"Session: {session_id}")
+
+        # With input/output capture:
+        async with langsight.session(
+            agent_name="orchestrator",
+            input="What products need restocking?",
+        ) as sess:
+            result = await agent.run(question)
+            sess.set_output(result)
+
+        # Multi-turn conversation (same trace_id links sessions):
+        async with langsight.session(
+            agent_name="orchestrator",
+            input=turn1,
+            trace_id=conversation_id,
+        ) as sess:
+            result = await agent.run(turn1)
+            sess.set_output(result)
     """
     sid = session_id or str(uuid.uuid4())
+    started_at = datetime.now(UTC)
+    ctx = SessionContext(
+        sid,
+        agent_name=agent_name,
+        trace_id=trace_id,
+        started_at=started_at,
+        input_text=input,
+    )
     tokens = set_context(session_id=sid, agent_name=agent_name, trace_id=trace_id)
     try:
-        yield sid
+        yield ctx
     finally:
         clear_context(tokens)
+        # Emit a root session span if input or output was provided.
+        # This is the top-level span that appears as the session summary
+        # in the dashboard — equivalent to LangSmith's root run or
+        # Langfuse's trace input/output.
+        _input = object.__getattribute__(ctx, "_input_text")
+        _output = object.__getattribute__(ctx, "_output_text")
+        if (_input is not None or _output is not None) and _global_client is not None:
+            from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+
+            root_span = ToolCallSpan.record(
+                server_name=agent_name or "agent",
+                tool_name="session",
+                started_at=started_at,  # session wall-clock duration
+                status=ToolCallStatus.SUCCESS,
+                agent_name=agent_name,
+                session_id=sid,
+                trace_id=trace_id,
+                span_type="agent",
+                llm_input=_input,
+                llm_output=_output,
+                lineage_provenance="explicit",
+                schema_version="1.0",
+            )
+            _global_client.buffer_span(root_span)
+
         if _global_client is not None:
             try:
                 await _global_client.flush()
