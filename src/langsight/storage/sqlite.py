@@ -144,7 +144,7 @@ class SQLiteBackend(StorageBackend):
 
     # ── Schema snapshots ──────────────────────────────────────────────────────
 
-    async def get_latest_schema_hash(self, server_name: str) -> str | None:
+    async def get_latest_schema_hash(self, server_name: str, project_id: str = "") -> str | None:
         async with self._db.execute(
             "SELECT schema_hash FROM schema_snapshots WHERE server_name = ?",
             (server_name,),
@@ -157,6 +157,7 @@ class SQLiteBackend(StorageBackend):
         server_name: str,
         schema_hash: str,
         tools_count: int,
+        project_id: str = "",
     ) -> None:
         await self._db.execute(
             """
@@ -377,11 +378,14 @@ class SQLiteBackend(StorageBackend):
     async def delete_slo(self, slo_id: str, project_id: str | None = None) -> bool:
         return False
 
-    async def get_alert_config(self) -> dict[str, Any] | None:
+    async def get_alert_config(self, project_id: str = "") -> dict[str, Any] | None:
         return None
 
     async def save_alert_config(
-        self, slack_webhook: str | None, alert_types: dict[str, bool]
+        self,
+        slack_webhook: str | None,
+        alert_types: dict[str, bool],
+        project_id: str = "",
     ) -> None:
         pass
 
