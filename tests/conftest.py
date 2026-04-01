@@ -17,6 +17,21 @@ import os
 
 import pytest
 
+# ---------------------------------------------------------------------------
+# Test isolation — prevent test spans from polluting the live dashboard
+# ---------------------------------------------------------------------------
+# Set LANGSIGHT_TEST_MODE=1 for the entire test process.
+# LangSightClient reads this in __init__ and silently drops all spans
+# instead of POSTing them to the API. This means:
+#   - No dummy sessions appear in the dashboard after a test run
+#   - No dummy projects are created
+#   - The atexit flush handler is a no-op
+#
+# Integration tests that genuinely need HTTP behaviour should create their
+# own client with os.environ.pop("LANGSIGHT_TEST_MODE") in a fixture and
+# use a dedicated test project_id + cleanup fixture.
+os.environ.setdefault("LANGSIGHT_TEST_MODE", "1")
+
 from langsight.models import MCPServer, TransportType
 
 # ---------------------------------------------------------------------------

@@ -96,7 +96,13 @@ class LangSightClient:
         circuit_breaker_cooldown: float = 60.0,
         circuit_breaker_half_open_max: int = 2,
     ) -> None:
+        import os
+
         self._url = url.rstrip("/")
+        # Test mode: LANGSIGHT_TEST_MODE=1 silently drops all spans.
+        # Prevents test runs from polluting the dashboard with dummy sessions.
+        # The URL is preserved so tests can assert on it — only HTTP sends are skipped.
+        self._test_mode = os.environ.get("LANGSIGHT_TEST_MODE") == "1"
         self._api_key = api_key
         self._timeout = timeout
         self._redact_payloads = redact_payloads
@@ -560,6 +566,8 @@ class LangSightClient:
         entirely. This works reliably even during interpreter shutdown when
         ``asyncio.run()`` and ``create_task()`` would fail.
         """
+        if self._test_mode:
+            return  # never send spans during tests — no dashboard pollution
         with self._lock:
             if not self._buffer:
                 return
@@ -674,6 +682,8 @@ class LangSightClient:
 
     async def _post_spans(self, spans: list[ToolCallSpan]) -> bool:
         """Internal: POST a batch of spans. Returns True on success, False on failure. Never raises."""
+        if self._test_mode:
+            return True  # silently discard — no dashboard pollution during tests
         payload = [s.model_dump(mode="json") for s in spans]
         try:
             http = await self._get_http()

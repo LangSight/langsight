@@ -69,7 +69,9 @@ class TestLangSightClient:
         # Should not raise — fail-open
         await client._post_spans([_span()])
 
-    async def test_post_spans_sends_json_payload(self) -> None:
+    async def test_post_spans_sends_json_payload(self, monkeypatch) -> None:
+        # Clear test mode so _post_spans actually calls HTTP (what we're testing here)
+        monkeypatch.delenv("LANGSIGHT_TEST_MODE", raising=False)
         client = LangSightClient(url="http://localhost:8000")
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
