@@ -40,6 +40,10 @@ function makeSpan(overrides: Partial<SpanNode> = {}): SpanNode {
     input_tokens: null,
     output_tokens: null,
     model_id: null,
+    target_agent_name: null,
+    lineage_provenance: "explicit" as const,
+    lineage_status: "complete" as const,
+    schema_version: "1.0",
     children: [],
     ...overrides,
   };
