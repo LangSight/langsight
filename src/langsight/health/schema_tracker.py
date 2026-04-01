@@ -215,6 +215,7 @@ class SchemaTracker:
         current_hash: str,
         tools_count: int,
         current_tools: list[ToolInfo] | None = None,
+        project_id: str = "",
     ) -> SchemaDriftResult:
         """Compare current_hash against the stored snapshot.
 
@@ -228,11 +229,11 @@ class SchemaTracker:
         Returns:
             SchemaDriftResult with drift details and classified changes.
         """
-        previous_hash = await self._storage.get_latest_schema_hash(server_name)
+        previous_hash = await self._storage.get_latest_schema_hash(server_name, project_id)
 
         # First run — store baseline, no drift
         if previous_hash is None:
-            await self._storage.save_schema_snapshot(server_name, current_hash, tools_count)
+            await self._storage.save_schema_snapshot(server_name, current_hash, tools_count, project_id)
             if current_tools:
                 await self._storage.upsert_server_tools(
                     server_name,
@@ -287,13 +288,14 @@ class SchemaTracker:
             previous_hash=previous_hash,
             current_hash=current_hash,
             detected_at=datetime.now(UTC),
+            project_id=project_id,
         )
         save_fn = getattr(self._storage, "save_schema_drift_event", None)
         if save_fn:
             await save_fn(event)
 
         # Update snapshot
-        await self._storage.save_schema_snapshot(server_name, current_hash, tools_count)
+        await self._storage.save_schema_snapshot(server_name, current_hash, tools_count, project_id)
         if current_tools:
             await self._storage.upsert_server_tools(
                 server_name,

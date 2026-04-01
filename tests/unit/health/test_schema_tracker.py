@@ -34,7 +34,7 @@ class TestSchemaTrackerFirstRun:
     ) -> None:
         mock_storage.get_latest_schema_hash.return_value = None
         await tracker.check_and_update("pg", "abc123", 5)
-        mock_storage.save_schema_snapshot.assert_called_once_with("pg", "abc123", 5)
+        mock_storage.save_schema_snapshot.assert_called_once_with("pg", "abc123", 5, "")
 
     async def test_previous_hash_is_none_on_first_run(
         self, tracker: SchemaTracker, mock_storage: MagicMock
@@ -82,7 +82,7 @@ class TestSchemaTrackerDriftDetected:
     ) -> None:
         mock_storage.get_latest_schema_hash.return_value = "old_hash"
         await tracker.check_and_update("pg", "new_hash", 6)
-        mock_storage.save_schema_snapshot.assert_called_once_with("pg", "new_hash", 6)
+        mock_storage.save_schema_snapshot.assert_called_once_with("pg", "new_hash", 6, "")
 
     async def test_returns_both_hashes_on_drift(
         self, tracker: SchemaTracker, mock_storage: MagicMock

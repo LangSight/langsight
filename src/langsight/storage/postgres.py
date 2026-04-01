@@ -70,7 +70,8 @@ _DDL_STATEMENTS = [
         server_name  TEXT        NOT NULL,
         schema_hash  TEXT        NOT NULL,
         tools_count  INTEGER     NOT NULL DEFAULT 0,
-        recorded_at  TIMESTAMPTZ NOT NULL
+        recorded_at  TIMESTAMPTZ NOT NULL,
+        project_id   TEXT        NOT NULL DEFAULT ''
     )
     """,
     """
@@ -81,6 +82,8 @@ _DDL_STATEMENTS = [
     CREATE INDEX IF NOT EXISTS idx_schema_server_time
         ON schema_snapshots (server_name, recorded_at DESC)
     """,
+    "ALTER TABLE schema_snapshots ADD COLUMN IF NOT EXISTS project_id TEXT NOT NULL DEFAULT ''",
+    "CREATE INDEX IF NOT EXISTS idx_schema_snapshots_project ON schema_snapshots (project_id, server_name, recorded_at DESC)",
     """
     CREATE TABLE IF NOT EXISTS model_pricing (
         id                    TEXT        PRIMARY KEY,
@@ -170,11 +173,14 @@ _DDL_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_agent_slos_project_agent ON agent_slos(project_id, agent_name)",
     """
     CREATE TABLE IF NOT EXISTS alert_config (
-        id            TEXT        PRIMARY KEY DEFAULT 'singleton',
+        id            TEXT        PRIMARY KEY DEFAULT '',
         slack_webhook TEXT,
-        alert_types   JSONB       NOT NULL DEFAULT '{}'
+        alert_types   JSONB       NOT NULL DEFAULT '{}',
+        project_id    TEXT        NOT NULL DEFAULT ''
     )
     """,
+    "ALTER TABLE alert_config ADD COLUMN IF NOT EXISTS project_id TEXT NOT NULL DEFAULT ''",
+    "UPDATE alert_config SET id = '', project_id = '' WHERE id = 'singleton'",
     """
     CREATE TABLE IF NOT EXISTS audit_logs (
         id         BIGSERIAL   PRIMARY KEY,
@@ -404,17 +410,18 @@ class PostgresBackend:
             )
         logger.debug("storage.postgres.health_saved", server=result.server_name)
 
-    async def get_latest_schema_hash(self, server_name: str) -> str | None:
+    async def get_latest_schema_hash(self, server_name: str, project_id: str = "") -> str | None:
         """Return the most recent schema hash for a server, or None."""
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
                 SELECT schema_hash FROM schema_snapshots
-                WHERE server_name = $1
+                WHERE server_name = $1 AND project_id = $2
                 ORDER BY recorded_at DESC
                 LIMIT 1
                 """,
                 server_name,
+                project_id,
             )
         return row["schema_hash"] if row else None
 
@@ -423,19 +430,21 @@ class PostgresBackend:
         server_name: str,
         schema_hash: str,
         tools_count: int,
+        project_id: str = "",
     ) -> None:
         """Persist a schema snapshot."""
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
                 INSERT INTO schema_snapshots
-                    (server_name, schema_hash, tools_count, recorded_at)
-                VALUES ($1, $2, $3, $4)
+                    (server_name, schema_hash, tools_count, recorded_at, project_id)
+                VALUES ($1, $2, $3, $4, $5)
                 """,
                 server_name,
                 schema_hash,
                 tools_count,
                 datetime.now(UTC),
+                project_id,
             )
         logger.debug(
             "storage.postgres.schema_saved",
@@ -837,10 +846,11 @@ class PostgresBackend:
 
     # ── Alert config ──────────────────────────────────────────────────────────
 
-    async def get_alert_config(self) -> dict[str, Any] | None:
-        """Return the persisted alert config, or None if never saved."""
+    async def get_alert_config(self, project_id: str = "") -> dict[str, Any] | None:
+        """Return the persisted alert config for a project, or None if never saved."""
         row = await self._pool.fetchrow(
-            "SELECT slack_webhook, alert_types FROM alert_config WHERE id = 'singleton'"
+            "SELECT slack_webhook, alert_types FROM alert_config WHERE id = $1",
+            project_id,
         )
         if row is None:
             return None
@@ -850,17 +860,22 @@ class PostgresBackend:
         return {"slack_webhook": row["slack_webhook"], "alert_types": alert_types}
 
     async def save_alert_config(
-        self, slack_webhook: str | None, alert_types: dict[str, bool]
+        self,
+        slack_webhook: str | None,
+        alert_types: dict[str, bool],
+        project_id: str = "",
     ) -> None:
-        """Upsert the singleton alert config row."""
+        """Upsert the alert config row for a project."""
         await self._pool.execute(
             """
-            INSERT INTO alert_config (id, slack_webhook, alert_types)
-            VALUES ('singleton', $1, $2::jsonb)
+            INSERT INTO alert_config (id, project_id, slack_webhook, alert_types)
+            VALUES ($1, $1, $2, $3::jsonb)
             ON CONFLICT (id) DO UPDATE SET
+                project_id    = EXCLUDED.project_id,
                 slack_webhook = EXCLUDED.slack_webhook,
                 alert_types   = EXCLUDED.alert_types
             """,
+            project_id,
             slack_webhook,
             json.dumps(alert_types),
         )

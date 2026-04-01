@@ -50,7 +50,8 @@ class HealthChecker:
             # Schema drift detection (only when storage is available)
             if self._schema_tracker:
                 drift = await self._schema_tracker.check_and_update(
-                    server.name, schema_hash, len(tools), current_tools=tools
+                    server.name, schema_hash, len(tools), current_tools=tools,
+                    project_id=self._project_id,
                 )
                 if drift.drifted:
                     status = ServerStatus.DEGRADED

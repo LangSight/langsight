@@ -29,7 +29,7 @@ class StorageBackend(Protocol):
         """Persist a health check result."""
         ...
 
-    async def get_latest_schema_hash(self, server_name: str) -> str | None:
+    async def get_latest_schema_hash(self, server_name: str, project_id: str = "") -> str | None:
         """Return the most recently stored schema hash for a server, or None."""
         ...
 
@@ -38,6 +38,7 @@ class StorageBackend(Protocol):
         server_name: str,
         schema_hash: str,
         tools_count: int,
+        project_id: str = "",
     ) -> None:
         """Persist a schema snapshot for drift comparison on the next run."""
         ...
@@ -215,14 +216,17 @@ class StorageBackend(Protocol):
 
     # ── Alert config ─────────────────────────────────────────────────────────
 
-    async def get_alert_config(self) -> dict[str, Any] | None:
-        """Return the persisted alert config (slack_webhook + alert_types), or None."""
+    async def get_alert_config(self, project_id: str = "") -> dict[str, Any] | None:
+        """Return the persisted alert config for a project, or None if never saved."""
         ...
 
     async def save_alert_config(
-        self, slack_webhook: str | None, alert_types: dict[str, bool]
+        self,
+        slack_webhook: str | None,
+        alert_types: dict[str, bool],
+        project_id: str = "",
     ) -> None:
-        """Upsert the singleton alert config row."""
+        """Upsert the alert config row for a project."""
         ...
 
     # ── Fired alerts (persisted history + lifecycle) ─────────────────────────

@@ -101,7 +101,7 @@ class TestAnalyticsRouting:
         analytics.get_latest_schema_hash = AsyncMock(return_value="hashval")
         result = await storage.get_latest_schema_hash("my-server")
         assert result == "hashval"
-        analytics.get_latest_schema_hash.assert_called_once_with("my-server")
+        analytics.get_latest_schema_hash.assert_called_once_with("my-server", "")
         meta.get_latest_schema_hash.assert_not_called()
 
     async def test_save_schema_snapshot_goes_to_analytics(
@@ -109,7 +109,7 @@ class TestAnalyticsRouting:
     ) -> None:
         analytics.save_schema_snapshot = AsyncMock()
         await storage.save_schema_snapshot("srv", "h123", 5)
-        analytics.save_schema_snapshot.assert_called_once_with("srv", "h123", 5)
+        analytics.save_schema_snapshot.assert_called_once_with("srv", "h123", 5, "")
         meta.save_schema_snapshot.assert_not_called()
 
     async def test_get_health_history_goes_to_analytics(
@@ -465,7 +465,7 @@ class TestAlertConfigRouting:
         meta.save_alert_config = AsyncMock()
         await storage.save_alert_config("https://hooks.slack.com/x", {"mcp_down": True})
         meta.save_alert_config.assert_called_once_with(
-            "https://hooks.slack.com/x", {"mcp_down": True}
+            "https://hooks.slack.com/x", {"mcp_down": True}, ""
         )
         analytics.save_alert_config.assert_not_called()
 

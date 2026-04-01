@@ -42,7 +42,7 @@ _DEFAULT_ALERT_TYPES = {
 }
 
 
-async def _load_alert_config(request: Request) -> dict[str, Any]:
+async def _load_alert_config(request: Request, project_id: str = "") -> dict[str, Any]:
     """Load alert config from DB (authoritative), falling back to env/yaml.
 
     Priority for webhook URL:
@@ -55,7 +55,7 @@ async def _load_alert_config(request: Request) -> dict[str, Any]:
     db_cfg: dict[str, Any] | None = None
     if hasattr(storage, "get_alert_config"):
         try:
-            db_cfg = await storage.get_alert_config()
+            db_cfg = await storage.get_alert_config(project_id)
         except Exception:  # noqa: BLE001
             pass
 
@@ -99,9 +99,12 @@ class AlertConfigUpdate(BaseModel):
 
 
 @router.get("/alerts/config", response_model=AlertConfigResponse)
-async def get_alerts_config(request: Request) -> AlertConfigResponse:
+async def get_alerts_config(
+    request: Request,
+    project_id: str = Query(default=""),
+) -> AlertConfigResponse:
     """Return the current alert configuration (read from DB)."""
-    cfg = await _load_alert_config(request)
+    cfg = await _load_alert_config(request, project_id)
     webhook = cfg["slack_webhook"]
     return AlertConfigResponse(
         # Mask the full URL — expose only a configured/not-configured flag.
@@ -117,10 +120,11 @@ async def save_alerts_config(
     body: AlertConfigUpdate,
     request: Request,
     _: None = Depends(require_admin),
+    project_id: str = Query(default=""),
 ) -> AlertConfigResponse:
     """Persist alert configuration to the database."""
     # Load current values so we can merge
-    current = await _load_alert_config(request)
+    current = await _load_alert_config(request, project_id)
 
     new_webhook = body.slack_webhook if body.slack_webhook is not None else current["slack_webhook"]
     new_alert_types: dict[str, bool] = dict(current["alert_types"])
@@ -130,7 +134,7 @@ async def save_alerts_config(
     # Persist to DB
     storage: StorageBackend = request.app.state.storage
     if hasattr(storage, "save_alert_config"):
-        await storage.save_alert_config(new_webhook, new_alert_types)
+        await storage.save_alert_config(new_webhook, new_alert_types, project_id)
 
     logger.info(
         "audit.alerts.config_updated",

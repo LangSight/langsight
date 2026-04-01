@@ -249,6 +249,7 @@ class SchemaDriftEvent(BaseModel):
     previous_hash: str | None = None
     current_hash: str
     detected_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    project_id: str = ""
 
 
 class ApiKeyRole(StrEnum):

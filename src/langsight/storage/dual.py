@@ -112,16 +112,17 @@ class DualStorage:
     async def save_health_result(self, result: HealthCheckResult) -> None:
         return await self._analytics.save_health_result(result)
 
-    async def get_latest_schema_hash(self, server_name: str) -> str | None:
-        return await self._analytics.get_latest_schema_hash(server_name)
+    async def get_latest_schema_hash(self, server_name: str, project_id: str = "") -> str | None:
+        return await self._analytics.get_latest_schema_hash(server_name, project_id)
 
     async def save_schema_snapshot(
         self,
         server_name: str,
         schema_hash: str,
         tools_count: int,
+        project_id: str = "",
     ) -> None:
-        return await self._analytics.save_schema_snapshot(server_name, schema_hash, tools_count)
+        return await self._analytics.save_schema_snapshot(server_name, schema_hash, tools_count, project_id)
 
     async def get_health_history(
         self,
@@ -334,13 +335,16 @@ class DualStorage:
 
     # Alert config → Postgres
 
-    async def get_alert_config(self) -> dict[str, Any] | None:
-        return await self._meta.get_alert_config()
+    async def get_alert_config(self, project_id: str = "") -> dict[str, Any] | None:
+        return await self._meta.get_alert_config(project_id)
 
     async def save_alert_config(
-        self, slack_webhook: str | None, alert_types: dict[str, bool]
+        self,
+        slack_webhook: str | None,
+        alert_types: dict[str, bool],
+        project_id: str = "",
     ) -> None:
-        return await self._meta.save_alert_config(slack_webhook, alert_types)
+        return await self._meta.save_alert_config(slack_webhook, alert_types, project_id)
 
     # Instance settings → Postgres
 

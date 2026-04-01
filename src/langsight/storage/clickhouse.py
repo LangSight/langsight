@@ -108,12 +108,14 @@ _DDL = [
         server_name  String,
         schema_hash  String,
         tools_count  UInt16 DEFAULT 0,
-        recorded_at  DateTime64(3, 'UTC')
+        recorded_at  DateTime64(3, 'UTC'),
+        project_id   String DEFAULT ''
     )
     ENGINE = MergeTree()
-    ORDER BY (server_name, recorded_at)
+    ORDER BY (project_id, server_name, recorded_at)
     SETTINGS index_granularity = 8192
     """,
+    "ALTER TABLE mcp_schema_snapshots ADD COLUMN IF NOT EXISTS project_id String DEFAULT ''",
     # Schema drift events — one row per atomic change, append-only
     """
     CREATE TABLE IF NOT EXISTS schema_drift_events (
@@ -127,14 +129,16 @@ _DDL = [
         previous_hash  Nullable(String),
         current_hash   String,
         has_breaking   UInt8 DEFAULT 0,
-        detected_at    DateTime64(3, 'UTC')
+        detected_at    DateTime64(3, 'UTC'),
+        project_id     String DEFAULT ''
     )
     ENGINE = MergeTree()
     PARTITION BY toYYYYMM(detected_at)
-    ORDER BY (server_name, detected_at)
+    ORDER BY (project_id, server_name, detected_at)
     TTL toDateTime(detected_at) + INTERVAL 90 DAY
     SETTINGS index_granularity = 8192
     """,
+    "ALTER TABLE schema_drift_events ADD COLUMN IF NOT EXISTS project_id String DEFAULT ''",
     # Migration: drop old mv_tool_reliability if it lacks project_id so the
     # CREATE below recreates it with multi-tenant support. Safe: POPULATE
     # rebuilds from the raw mcp_tool_calls table on first startup.
@@ -325,17 +329,18 @@ class ClickHouseBackend:
         )
         logger.debug("storage.clickhouse.health_saved", server=result.server_name)
 
-    async def get_latest_schema_hash(self, server_name: str) -> str | None:
+    async def get_latest_schema_hash(self, server_name: str, project_id: str = "") -> str | None:
         """Return the most recent schema hash for a server."""
         result = await self._client.query(
             """
             SELECT schema_hash
             FROM mcp_schema_snapshots
             WHERE server_name = {server_name:String}
+              AND project_id = {project_id:String}
             ORDER BY recorded_at DESC
             LIMIT 1
             """,
-            parameters={"server_name": server_name},
+            parameters={"server_name": server_name, "project_id": project_id},
         )
         rows = result.result_rows
         return rows[0][0] if rows else None
@@ -345,12 +350,13 @@ class ClickHouseBackend:
         server_name: str,
         schema_hash: str,
         tools_count: int,
+        project_id: str = "",
     ) -> None:
         """Persist a schema snapshot."""
         await self._client.insert(
             "mcp_schema_snapshots",
-            [[server_name, schema_hash, tools_count, datetime.now(UTC)]],
-            column_names=["server_name", "schema_hash", "tools_count", "recorded_at"],
+            [[server_name, schema_hash, tools_count, datetime.now(UTC), project_id]],
+            column_names=["server_name", "schema_hash", "tools_count", "recorded_at", "project_id"],
         )
 
     async def get_health_history(
@@ -418,74 +424,35 @@ class ClickHouseBackend:
 
     async def save_schema_drift_event(self, event: SchemaDriftEvent) -> None:
         """Persist one row per SchemaChange in the schema_drift_events table."""
+        project_id = getattr(event, "project_id", "")
+        cols = [
+            "server_name", "tool_name", "drift_type", "change_kind",
+            "param_name", "old_value", "new_value",
+            "previous_hash", "current_hash", "has_breaking", "detected_at", "project_id",
+        ]
         if not event.changes:
-            # No individual changes to store — store a single summary row
             await self._client.insert(
                 "schema_drift_events",
-                [
-                    [
-                        event.server_name,
-                        "",
-                        "unknown",
-                        "hash_changed",
-                        None,
-                        None,
-                        None,
-                        event.previous_hash,
-                        event.current_hash,
-                        int(event.has_breaking),
-                        event.detected_at,
-                    ]
-                ],
-                column_names=[
-                    "server_name",
-                    "tool_name",
-                    "drift_type",
-                    "change_kind",
-                    "param_name",
-                    "old_value",
-                    "new_value",
-                    "previous_hash",
-                    "current_hash",
-                    "has_breaking",
-                    "detected_at",
-                ],
+                [[
+                    event.server_name, "", "unknown", "hash_changed",
+                    None, None, None,
+                    event.previous_hash, event.current_hash,
+                    int(event.has_breaking), event.detected_at, project_id,
+                ]],
+                column_names=cols,
             )
             return
 
         rows = [
             [
-                event.server_name,
-                change.tool_name,
-                change.drift_type.value,
-                change.kind,
-                change.param_name,
-                change.old_value,
-                change.new_value,
-                event.previous_hash,
-                event.current_hash,
-                int(event.has_breaking),
-                event.detected_at,
+                event.server_name, change.tool_name, change.drift_type.value, change.kind,
+                change.param_name, change.old_value, change.new_value,
+                event.previous_hash, event.current_hash,
+                int(event.has_breaking), event.detected_at, project_id,
             ]
             for change in event.changes
         ]
-        await self._client.insert(
-            "schema_drift_events",
-            rows,
-            column_names=[
-                "server_name",
-                "tool_name",
-                "drift_type",
-                "change_kind",
-                "param_name",
-                "old_value",
-                "new_value",
-                "previous_hash",
-                "current_hash",
-                "has_breaking",
-                "detected_at",
-            ],
-        )
+        await self._client.insert("schema_drift_events", rows, column_names=cols)
         logger.info(
             "storage.schema_drift.saved",
             server=event.server_name,
@@ -497,6 +464,7 @@ class ClickHouseBackend:
         self,
         server_name: str,
         limit: int = 20,
+        project_id: str = "",
     ) -> list[dict[str, Any]]:
         """Return recent drift events for a server, grouped by detected_at."""
         result = await self._client.query(
@@ -515,10 +483,11 @@ class ClickHouseBackend:
                 detected_at
             FROM schema_drift_events
             WHERE server_name = {server_name:String}
+              AND project_id = {project_id:String}
             ORDER BY detected_at DESC
             LIMIT {limit:UInt32}
             """,
-            parameters={"server_name": server_name, "limit": limit},
+            parameters={"server_name": server_name, "limit": limit, "project_id": project_id},
         )
         cols = [
             "server_name",
