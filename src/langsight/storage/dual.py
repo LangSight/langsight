@@ -122,7 +122,9 @@ class DualStorage:
         tools_count: int,
         project_id: str = "",
     ) -> None:
-        return await self._analytics.save_schema_snapshot(server_name, schema_hash, tools_count, project_id)
+        return await self._analytics.save_schema_snapshot(
+            server_name, schema_hash, tools_count, project_id
+        )
 
     async def get_health_history(
         self,

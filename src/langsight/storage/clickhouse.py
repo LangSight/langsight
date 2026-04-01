@@ -426,29 +426,56 @@ class ClickHouseBackend:
         """Persist one row per SchemaChange in the schema_drift_events table."""
         project_id = getattr(event, "project_id", "")
         cols = [
-            "server_name", "tool_name", "drift_type", "change_kind",
-            "param_name", "old_value", "new_value",
-            "previous_hash", "current_hash", "has_breaking", "detected_at", "project_id",
+            "server_name",
+            "tool_name",
+            "drift_type",
+            "change_kind",
+            "param_name",
+            "old_value",
+            "new_value",
+            "previous_hash",
+            "current_hash",
+            "has_breaking",
+            "detected_at",
+            "project_id",
         ]
         if not event.changes:
             await self._client.insert(
                 "schema_drift_events",
-                [[
-                    event.server_name, "", "unknown", "hash_changed",
-                    None, None, None,
-                    event.previous_hash, event.current_hash,
-                    int(event.has_breaking), event.detected_at, project_id,
-                ]],
+                [
+                    [
+                        event.server_name,
+                        "",
+                        "unknown",
+                        "hash_changed",
+                        None,
+                        None,
+                        None,
+                        event.previous_hash,
+                        event.current_hash,
+                        int(event.has_breaking),
+                        event.detected_at,
+                        project_id,
+                    ]
+                ],
                 column_names=cols,
             )
             return
 
         rows = [
             [
-                event.server_name, change.tool_name, change.drift_type.value, change.kind,
-                change.param_name, change.old_value, change.new_value,
-                event.previous_hash, event.current_hash,
-                int(event.has_breaking), event.detected_at, project_id,
+                event.server_name,
+                change.tool_name,
+                change.drift_type.value,
+                change.kind,
+                change.param_name,
+                change.old_value,
+                change.new_value,
+                event.previous_hash,
+                event.current_hash,
+                int(event.has_breaking),
+                event.detected_at,
+                project_id,
             ]
             for change in event.changes
         ]

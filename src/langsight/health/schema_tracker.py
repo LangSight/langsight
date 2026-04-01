@@ -233,7 +233,9 @@ class SchemaTracker:
 
         # First run — store baseline, no drift
         if previous_hash is None:
-            await self._storage.save_schema_snapshot(server_name, current_hash, tools_count, project_id)
+            await self._storage.save_schema_snapshot(
+                server_name, current_hash, tools_count, project_id
+            )
             if current_tools:
                 await self._storage.upsert_server_tools(
                     server_name,
