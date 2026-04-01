@@ -1,6 +1,9 @@
 # MCP tool state (Ruflo swarm persistence — not part of the project)
 .swarm/
 
+# Local config with secrets — use env vars, never commit tokens
+.langsight.yaml
+
 # Python
 __pycache__/
 *.py[cod]
