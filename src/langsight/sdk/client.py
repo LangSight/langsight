@@ -273,6 +273,58 @@ class LangSightClient:
                 pass  # no event loop (e.g. sync context) — constructor defaults apply
         return proxy
 
+    def create_handoff(
+        self,
+        from_agent: str,
+        to_agent: str,
+        trace_id: str | None = None,
+        session_id: str | None = None,
+        parent_span_id: str | None = None,
+    ) -> ToolCallSpan:
+        """Create and buffer a handoff span for agent delegation.
+
+        Returns the handoff span so callers can use its ``span_id`` as the
+        ``parent_span_id`` for the child agent's spans.
+
+        Example::
+
+            handoff = client.create_handoff("orchestrator", "analyst",
+                                            trace_id=tid, session_id=sid)
+            child_mcp = client.wrap_child_agent(mcp, "catalog-mcp", "analyst", handoff)
+        """
+        handoff = ToolCallSpan.handoff_span(
+            from_agent=from_agent,
+            to_agent=to_agent,
+            started_at=datetime.now(UTC),
+            trace_id=trace_id,
+            session_id=session_id,
+            parent_span_id=parent_span_id,
+        )
+        self.buffer_span(handoff)
+        return handoff
+
+    def wrap_child_agent(
+        self,
+        mcp: object,
+        server_name: str,
+        agent_name: str,
+        handoff_span: ToolCallSpan,
+        **kwargs: object,
+    ) -> MCPClientProxy:
+        """Wrap an MCP session for a child agent, inheriting context from handoff.
+
+        Automatically sets ``session_id``, ``trace_id``, and ``parent_span_id``
+        from the handoff span so the child's tool calls form a connected tree.
+        """
+        return self.wrap(
+            mcp_client=mcp,
+            server_name=server_name,
+            agent_name=agent_name,
+            session_id=handoff_span.session_id,
+            trace_id=handoff_span.trace_id,
+            parent_span_id=handoff_span.span_id,
+        )
+
     def wrap_llm(
         self,
         llm_client: object,
