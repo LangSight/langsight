@@ -35,11 +35,11 @@ class ToolCallStatus(StrEnum):
 #               Never counted in agent→server metrics.  Still registered in
 #               the pending-tool queue so the real tool_call can claim it.
 SpanType = Literal[
-    "tool_call",      # MCP/tool execution
-    "agent",          # LLM generation or agent lifecycle
-    "handoff",        # agent-to-agent delegation
-    "llm_intent",     # LLM decided to call a tool (not actual execution)
-    "user_message",   # human input mid-session (HITL, clarification, approval)
+    "tool_call",  # MCP/tool execution
+    "agent",  # LLM generation or agent lifecycle
+    "handoff",  # agent-to-agent delegation
+    "llm_intent",  # LLM decided to call a tool (not actual execution)
+    "user_message",  # human input mid-session (HITL, clarification, approval)
 ]
 
 # Lineage provenance — how parent/child was determined
