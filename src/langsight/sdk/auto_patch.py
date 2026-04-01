@@ -549,17 +549,101 @@ def auto_patch(
     _patch_anthropic()
     _patch_google_genai()
     _patch_google_generativeai()
+    _patch_mcp()
 
     logger.info(
         "auto_patch.complete",
         patched=sorted(_patched_sdks),
         skipped_missing=[
             sdk
-            for sdk in ["openai", "anthropic", "google_genai", "google_generativeai"]
+            for sdk in ["openai", "anthropic", "google_genai", "google_generativeai", "mcp"]
             if sdk not in _patched_sdks
         ],
     )
     return ls
+
+
+def _patch_mcp() -> None:
+    """Patch mcp.ClientSession.call_tool for zero-config MCP tracing.
+
+    After auto_patch(), every MCP tool call is automatically traced with
+    the correct agent_name, session_id, and trace_id from contextvars.
+    No explicit ls.wrap() call needed.
+    """
+    try:
+        from mcp import ClientSession
+    except ImportError:
+        return  # MCP not installed — skip silently
+
+    if "mcp" in _patched_sdks:
+        return  # already patched
+
+    orig_call_tool = ClientSession.call_tool
+    _originals["mcp_call_tool"] = orig_call_tool
+
+    async def _patched_call_tool(
+        self_sdk: Any, name: str, arguments: dict[str, Any] | None = None
+    ) -> Any:
+        if _global_client is None:
+            return await orig_call_tool(self_sdk, name, arguments)
+
+        from langsight.sdk.context import claim_pending_tool
+        from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+
+        agent_name = _agent_ctx.get() or None
+        session_id = _session_ctx.get() or None
+        trace_id = _trace_ctx.get() or None
+
+        # Claim llm_intent parent span if LLM decided to call this tool
+        pending = claim_pending_tool(name)
+        parent_span_id = pending.span_id if pending else None
+        if pending and not agent_name:
+            agent_name = pending.agent_name
+
+        # Derive server_name from MCP session's server info if available
+        server_info = getattr(self_sdk, "_server_info", None)
+        server_name = (
+            getattr(server_info, "name", None)
+            if server_info
+            else getattr(self_sdk, "_server_name", None)
+        ) or "mcp"
+
+        started_at = datetime.now(UTC)
+        status = ToolCallStatus.SUCCESS
+        error: str | None = None
+        result: Any = None
+        try:
+            result = await orig_call_tool(self_sdk, name, arguments)
+            return result
+        except TimeoutError as exc:
+            status = ToolCallStatus.TIMEOUT
+            error = f"TimeoutError: {exc}"
+            raise
+        except BaseException as exc:  # noqa: BLE001
+            status = ToolCallStatus.ERROR
+            error = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            span = ToolCallSpan.record(
+                server_name=server_name,
+                tool_name=name,
+                started_at=started_at,
+                status=status,
+                error=error,
+                agent_name=agent_name,
+                session_id=session_id,
+                trace_id=trace_id,
+                parent_span_id=parent_span_id,
+                input_args=arguments,
+                output_result=str(result) if result is not None else None,
+                lineage_provenance="explicit",
+                schema_version="1.0",
+            )
+            _global_client.buffer_span(span)
+
+    ClientSession.call_tool = _patched_call_tool  # type: ignore[method-assign]
+    _patched_sdks.add("mcp")
+    logger.debug("auto_patch.patched", sdk="mcp")
 
 
 def unpatch() -> None:
@@ -603,6 +687,14 @@ def unpatch() -> None:
             GenerativeModel.generate_content = _originals.pop("genai_legacy_sync")
         if "genai_legacy_async" in _originals:
             GenerativeModel.generate_content_async = _originals.pop("genai_legacy_async")
+    except (ImportError, AttributeError):
+        pass
+
+    try:
+        from mcp import ClientSession
+
+        if "mcp_call_tool" in _originals:
+            ClientSession.call_tool = _originals.pop("mcp_call_tool")  # type: ignore[method-assign]
     except (ImportError, AttributeError):
         pass
 

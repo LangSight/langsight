@@ -32,6 +32,7 @@ from langsight.exceptions import (
     LoopDetectedError,
 )
 from langsight.sdk._ids import _new_session_id
+from langsight.sdk.auto_patch import _agent_ctx, _session_ctx, _trace_ctx
 from langsight.sdk.budget import BudgetConfig, SessionBudget
 from langsight.sdk.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
 from langsight.sdk.loop_detector import LoopAction, LoopDetector, LoopDetectorConfig
@@ -251,24 +252,27 @@ class LangSightClient:
                                       trace_id=trace_id,
                                       parent_span_id=handoff.span_id)
         """
-        effective_session = session_id if session_id else _new_session_id()
+        # Fall back to contextvars set by auto_patch() / session() if not explicit
+        effective_agent = agent_name or _agent_ctx.get() or None
+        effective_session = session_id or _session_ctx.get() or _new_session_id()
+        effective_trace = trace_id or _trace_ctx.get() or None
         effective_redact = redact_payloads if redact_payloads is not None else self._redact_payloads
         effective_project = project_id if project_id is not None else self._project_id
         proxy = MCPClientProxy(
             mcp_client,
             langsight=self,
             server_name=server_name,
-            agent_name=agent_name,
+            agent_name=effective_agent,
             session_id=effective_session,
-            trace_id=trace_id,
+            trace_id=effective_trace,
             parent_span_id=parent_span_id,
             redact_payloads=effective_redact,
             project_id=effective_project,
         )
         # Kick off async remote config fetch (fire-and-forget, never blocks wrap())
-        if agent_name:
+        if effective_agent:
             try:
-                asyncio.create_task(self._apply_remote_config(agent_name, effective_project))
+                asyncio.create_task(self._apply_remote_config(effective_agent, effective_project))
             except RuntimeError:
                 pass  # no event loop (e.g. sync context) — constructor defaults apply
         return proxy
@@ -367,12 +371,13 @@ class LangSightClient:
         """
         from langsight.sdk.llm_wrapper import wrap_llm
 
+        # Fall back to contextvars set by auto_patch() / session() if not explicit
         return wrap_llm(
             client=llm_client,
             langsight=self,
-            agent_name=agent_name,
-            session_id=session_id,
-            trace_id=trace_id,
+            agent_name=agent_name or _agent_ctx.get() or None,
+            session_id=session_id or _session_ctx.get() or None,
+            trace_id=trace_id or _trace_ctx.get() or None,
         )
 
     def buffer_span(self, span: ToolCallSpan) -> None:

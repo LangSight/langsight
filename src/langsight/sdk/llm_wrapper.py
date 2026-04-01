@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -46,6 +47,56 @@ import structlog
 
 from langsight.sdk.context import register_pending_tool
 from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+
+# ---------------------------------------------------------------------------
+# Handoff auto-detection
+# ---------------------------------------------------------------------------
+
+# Tool names matching these patterns signal agent delegation.
+# e.g. "call_analyst" → handoff to "analyst"
+_HANDOFF_TOOL_RE = re.compile(
+    r"^(?:call|delegate|invoke|transfer_to|run|dispatch)_(.+)$",
+    re.IGNORECASE,
+)
+
+
+def _maybe_emit_handoffs(
+    intent_spans: list[ToolCallSpan],
+    proxy: Any,
+) -> None:
+    """Emit explicit handoff spans for tool calls that signal agent delegation.
+
+    When the LLM selects a tool named call_analyst / delegate_procurement /
+    transfer_to_billing etc., we treat that as an agent handoff and emit a
+    handoff span so session-graph.ts renders a solid edge instead of a
+    timing-inferred dashed edge.
+
+    Called after intent spans are registered — so the handoff span appears
+    in the right position in the timeline.
+    """
+    from langsight.sdk.auto_patch import _agent_ctx, _session_ctx, _trace_ctx
+
+    for span in intent_spans:
+        m = _HANDOFF_TOOL_RE.match(span.tool_name)
+        if not m:
+            continue
+
+        target_agent = m.group(1)
+        source_agent = span.agent_name or _agent_ctx.get() or None
+
+        # Only emit if target differs from source — avoid self-handoffs
+        if not source_agent or target_agent == source_agent:
+            continue
+
+        handoff = ToolCallSpan.handoff_span(
+            from_agent=source_agent,
+            to_agent=target_agent,
+            started_at=span.started_at,
+            trace_id=span.trace_id or _trace_ctx.get() or None,
+            session_id=span.session_id or _session_ctx.get() or None,
+            parent_span_id=span.parent_span_id,
+        )
+        proxy._emit_spans([handoff])
 
 # finish_reason values treated as errors across all LLM SDKs
 _FINISH_REASON_ERRORS = frozenset(
@@ -321,10 +372,14 @@ def _process_openai_response(
 
     if spans:
         proxy._emit_spans(spans)
+        intent_spans = []
         # Register llm_intent spans so wrap() can claim them as parents
         for s in spans:
             if s.span_type == "llm_intent":
                 register_pending_tool(s.tool_name, s.span_id, s.agent_name)
+                intent_spans.append(s)
+        # Auto-emit handoff spans for call_*/delegate_* tool patterns
+        _maybe_emit_handoffs(intent_spans, proxy)
         logger.debug(
             "llm_wrapper.openai_traced",
             model=model,
@@ -487,9 +542,12 @@ def _process_anthropic_response(
 
     if spans:
         proxy._emit_spans(spans)
+        intent_spans = []
         for s in spans:
             if s.span_type == "llm_intent":
                 register_pending_tool(s.tool_name, s.span_id, s.agent_name)
+                intent_spans.append(s)
+        _maybe_emit_handoffs(intent_spans, proxy)
         logger.debug(
             "llm_wrapper.anthropic_traced",
             model=model,
@@ -654,9 +712,12 @@ def _process_gemini_response(
 
     if spans:
         proxy._emit_spans(spans)
+        intent_spans = []
         for s in spans:
             if s.span_type == "llm_intent":
                 register_pending_tool(s.tool_name, s.span_id, s.agent_name)
+                intent_spans.append(s)
+        _maybe_emit_handoffs(intent_spans, proxy)
         logger.debug(
             "llm_wrapper.gemini_traced",
             model=model,
