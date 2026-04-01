@@ -18,6 +18,13 @@ from types import SimpleNamespace
 
 import pytest
 
+from langsight.sdk.auto_patch import (
+    _agent_ctx,
+    _session_ctx,
+    _trace_ctx,
+    clear_context,
+    set_context,
+)
 from langsight.sdk.client import LangSightClient
 from langsight.sdk.context import (
     _pending_tools_ctx,
@@ -28,6 +35,7 @@ from langsight.sdk.llm_wrapper import (
     GeminiProxy,
     GenaiClientProxy,
     OpenAIProxy,
+    _maybe_emit_handoffs,
 )
 from langsight.sdk.models import ToolCallSpan
 
@@ -387,3 +395,202 @@ class TestGenaiClientLlmIntent:
         ctx = claim_pending_tool("get_orders")
         assert ctx is not None
         assert ctx.agent_name == "order-agent"
+
+
+# =============================================================================
+# _maybe_emit_handoffs — called from all three processors
+# =============================================================================
+
+
+@pytest.fixture(autouse=True)
+def _clean_ctx():
+    """Reset contextvars around every test in this module."""
+    _session_ctx.set(None)
+    _agent_ctx.set(None)
+    _trace_ctx.set(None)
+    yield
+    _session_ctx.set(None)
+    _agent_ctx.set(None)
+    _trace_ctx.set(None)
+
+
+class TestOpenAIHandoffViaProcessor:
+    """OpenAI _process_openai_response() calls _maybe_emit_handoffs() after
+    registering llm_intent spans.  Verify the handoff span appears when the
+    tool name matches a delegation pattern."""
+
+    def _make_openai_response(self, tool_name: str) -> tuple[SimpleNamespace, SimpleNamespace]:
+        tool_call = SimpleNamespace(
+            function=SimpleNamespace(name=tool_name, arguments='{"task": "go"}')
+        )
+        message = SimpleNamespace(tool_calls=[tool_call], content=None)
+        choice = SimpleNamespace(message=message, finish_reason="tool_calls")
+        usage = SimpleNamespace(prompt_tokens=100, completion_tokens=40)
+        response = SimpleNamespace(choices=[choice], model="gpt-4o", usage=usage)
+
+        fake_client = SimpleNamespace()
+        fake_client.chat = SimpleNamespace()
+        fake_client.chat.completions = SimpleNamespace()
+        fake_client.chat.completions.create = lambda **kw: response
+        return fake_client, response
+
+    def test_openai_call_analyst_emits_handoff_alongside_llm_intent(
+        self, client: LangSightClient
+    ) -> None:
+        """OpenAI: call_analyst tool → both llm_intent and handoff spans emitted."""
+        fake_client, _ = self._make_openai_response("call_analyst")
+        tokens = set_context(agent_name="orchestrator")
+        try:
+            captured: list[ToolCallSpan] = []
+            client.buffer_span = lambda s: captured.append(s)  # type: ignore[assignment]
+
+            proxy = OpenAIProxy(fake_client, client, agent_name="orchestrator", session_id="s1")
+            proxy.chat.completions.create(model="gpt-4o", messages=[])
+
+            intent_spans = [s for s in captured if s.span_type == "llm_intent"]
+            handoff_spans = [s for s in captured if s.span_type == "handoff"]
+
+            assert len(intent_spans) == 1, "llm_intent span must still be emitted"
+            assert intent_spans[0].tool_name == "call_analyst"
+
+            assert len(handoff_spans) == 1, "handoff span must be auto-emitted"
+            assert handoff_spans[0].target_agent_name == "analyst"
+            assert handoff_spans[0].agent_name == "orchestrator"
+        finally:
+            clear_context(tokens)
+
+    def test_openai_regular_tool_no_handoff_but_intent_present(
+        self, client: LangSightClient
+    ) -> None:
+        """OpenAI: get_weather → llm_intent emitted, but no handoff span."""
+        fake_client, _ = self._make_openai_response("get_weather")
+        tokens = set_context(agent_name="orchestrator")
+        try:
+            captured: list[ToolCallSpan] = []
+            client.buffer_span = lambda s: captured.append(s)  # type: ignore[assignment]
+
+            proxy = OpenAIProxy(fake_client, client, agent_name="orchestrator", session_id="s1")
+            proxy.chat.completions.create(model="gpt-4o", messages=[])
+
+            handoff_spans = [s for s in captured if s.span_type == "handoff"]
+            intent_spans = [s for s in captured if s.span_type == "llm_intent"]
+
+            assert len(intent_spans) == 1
+            assert len(handoff_spans) == 0
+        finally:
+            clear_context(tokens)
+
+
+class TestAnthropicHandoffViaProcessor:
+    """Anthropic _process_anthropic_response() calls _maybe_emit_handoffs()."""
+
+    def _make_anthropic_response(self, tool_name: str) -> tuple[SimpleNamespace, SimpleNamespace]:
+        block = SimpleNamespace(type="tool_use", name=tool_name, input={"task": "go"})
+        usage = SimpleNamespace(input_tokens=100, output_tokens=40)
+        response = SimpleNamespace(
+            content=[block],
+            model="claude-sonnet-4-6",
+            usage=usage,
+            stop_reason="tool_use",
+        )
+        fake_client = SimpleNamespace()
+        fake_client.messages = SimpleNamespace()
+        fake_client.messages.create = lambda **kw: response
+        return fake_client, response
+
+    def test_anthropic_delegate_worker_emits_handoff_alongside_llm_intent(
+        self, client: LangSightClient
+    ) -> None:
+        """Anthropic: delegate_worker tool → both llm_intent and handoff spans emitted."""
+        fake_client, _ = self._make_anthropic_response("delegate_worker")
+        tokens = set_context(agent_name="supervisor")
+        try:
+            captured: list[ToolCallSpan] = []
+            client.buffer_span = lambda s: captured.append(s)  # type: ignore[assignment]
+
+            proxy = AnthropicProxy(fake_client, client, agent_name="supervisor", session_id="s2")
+            proxy.messages.create(model="claude-sonnet-4-6", messages=[])
+
+            intent_spans = [s for s in captured if s.span_type == "llm_intent"]
+            handoff_spans = [s for s in captured if s.span_type == "handoff"]
+
+            assert len(intent_spans) == 1
+            assert intent_spans[0].tool_name == "delegate_worker"
+
+            assert len(handoff_spans) == 1
+            assert handoff_spans[0].target_agent_name == "worker"
+            assert handoff_spans[0].agent_name == "supervisor"
+        finally:
+            clear_context(tokens)
+
+    def test_anthropic_regular_tool_no_handoff(self, client: LangSightClient) -> None:
+        """Anthropic: search_db → llm_intent but no handoff."""
+        fake_client, _ = self._make_anthropic_response("search_db")
+        tokens = set_context(agent_name="supervisor")
+        try:
+            captured: list[ToolCallSpan] = []
+            client.buffer_span = lambda s: captured.append(s)  # type: ignore[assignment]
+
+            proxy = AnthropicProxy(fake_client, client, agent_name="supervisor", session_id="s2")
+            proxy.messages.create(model="claude-sonnet-4-6", messages=[])
+
+            handoff_spans = [s for s in captured if s.span_type == "handoff"]
+            assert len(handoff_spans) == 0
+        finally:
+            clear_context(tokens)
+
+
+class TestGeminiHandoffViaProcessor:
+    """Gemini _process_gemini_response() calls _maybe_emit_handoffs()."""
+
+    def _make_gemini_response(self, tool_name: str) -> tuple[SimpleNamespace, SimpleNamespace]:
+        fn_call = SimpleNamespace(name=tool_name, args={"task": "go"})
+        part = SimpleNamespace(function_call=fn_call)
+        content = SimpleNamespace(parts=[part])
+        candidate = SimpleNamespace(content=content, finish_reason="STOP")
+        usage = SimpleNamespace(prompt_token_count=100, candidates_token_count=40)
+        response = SimpleNamespace(candidates=[candidate], usage_metadata=usage)
+        fake_model = SimpleNamespace(model_name="gemini-2.5-flash")
+        fake_model.generate_content = lambda *a, **kw: response
+        return fake_model, response
+
+    def test_gemini_invoke_billing_emits_handoff_alongside_llm_intent(
+        self, client: LangSightClient
+    ) -> None:
+        """Gemini: invoke_billing tool → both llm_intent and handoff spans emitted."""
+        fake_model, _ = self._make_gemini_response("invoke_billing")
+        tokens = set_context(agent_name="planner")
+        try:
+            captured: list[ToolCallSpan] = []
+            client.buffer_span = lambda s: captured.append(s)  # type: ignore[assignment]
+
+            proxy = GeminiProxy(fake_model, client, agent_name="planner", session_id="s3")
+            proxy.generate_content(contents=[])
+
+            intent_spans = [s for s in captured if s.span_type == "llm_intent"]
+            handoff_spans = [s for s in captured if s.span_type == "handoff"]
+
+            assert len(intent_spans) == 1
+            assert intent_spans[0].tool_name == "invoke_billing"
+
+            assert len(handoff_spans) == 1
+            assert handoff_spans[0].target_agent_name == "billing"
+            assert handoff_spans[0].agent_name == "planner"
+        finally:
+            clear_context(tokens)
+
+    def test_gemini_regular_tool_no_handoff(self, client: LangSightClient) -> None:
+        """Gemini: list_products → llm_intent but no handoff."""
+        fake_model, _ = self._make_gemini_response("list_products")
+        tokens = set_context(agent_name="planner")
+        try:
+            captured: list[ToolCallSpan] = []
+            client.buffer_span = lambda s: captured.append(s)  # type: ignore[assignment]
+
+            proxy = GeminiProxy(fake_model, client, agent_name="planner", session_id="s3")
+            proxy.generate_content(contents=[])
+
+            handoff_spans = [s for s in captured if s.span_type == "handoff"]
+            assert len(handoff_spans) == 0
+        finally:
+            clear_context(tokens)

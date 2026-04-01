@@ -17,33 +17,124 @@ pip install langsight
 uv add langsight
 ```
 
-## Zero-code auto_patch()
+## The simplest integration (v0.12.0)
 
-The fastest path — patches OpenAI, Anthropic, and Gemini SDK classes globally. No `wrap_llm()` needed:
+Two lines. LLM calls, MCP calls, and agent handoffs are all traced automatically:
 
 ```python
 import langsight
-
-langsight.auto_patch()   # reads LANGSIGHT_URL, LANGSIGHT_API_KEY, LANGSIGHT_PROJECT_ID from env
-
-from google import genai
-
-async def run(question: str) -> str:
-    async with langsight.session(agent_name="orchestrator") as session_id:
-        client = genai.Client()   # automatically traced
-        response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[question],
-        )
-        return response.text
+langsight.auto_patch()  # LLM + MCP + handoffs — all automatic
 ```
 
-`langsight.session()` is an async context manager that:
-- Generates a `session_id` (or use your own: `session(session_id="my-id")`)
-- Tags all LLM calls inside the block with that session
-- Calls `flush()` when the block exits
+Then wrap your agent logic in a `session()` context:
+
+```python
+async with langsight.session(agent_name="orchestrator") as session_id:
+    client = OpenAI()                           # LLM calls: auto-traced
+    result = await mcp_session.call_tool(...)   # MCP calls: auto-traced
+    # When LLM selects tool "call_analyst" → handoff span: auto-emitted
+```
+
+That is the complete integration. No `wrap()`, no `wrap_llm()`, no `create_handoff()`.
+
+### What auto_patch() covers
+
+| What | How | Since |
+|---|---|---|
+| LLM generation calls | Patches `OpenAI`, `Anthropic`, `google.genai`, `google.generativeai` at the class level | v0.11.0 |
+| MCP tool calls | Patches `mcp.ClientSession.call_tool` | **v0.12.0** |
+| Agent handoffs | Auto-emits handoff spans when LLM selects `call_*`, `delegate_*`, `invoke_*`, `transfer_to_*`, `run_*`, `dispatch_*` tools | **v0.12.0** |
+
+### Environment variables
+
+```bash
+export LANGSIGHT_URL=http://localhost:8000
+export LANGSIGHT_API_KEY=lsk_your_key
+export LANGSIGHT_PROJECT_ID=my-project
+```
+
+`auto_patch()` reads these automatically. It returns `None` if `LANGSIGHT_URL` is not set — safe to call unconditionally.
+
+## Multi-agent without any boilerplate
+
+Before v0.12.0, instrumenting a multi-agent system required 15+ lines: manual session IDs, explicit wraps, and handoff spans for every agent. Now:
+
+```python
+import langsight
+langsight.auto_patch()  # call once at startup
+
+async def orchestrator(question: str):
+    async with langsight.session(agent_name="orchestrator"):
+        # LLM calls: auto-traced
+        # If LLM selects "call_analyst" tool → handoff span auto-emitted
+        response = await llm.generate(question, tools=[call_analyst_tool])
+
+async def analyst(question: str):
+    async with langsight.session(agent_name="analyst"):
+        # MCP call: auto-traced, attributed to "analyst"
+        data = await mcp.call_tool("search_products", {"q": question})
+        return data
+```
+
+The dashboard session graph shows analyst as a child of orchestrator with a solid edge — no `create_handoff()` needed because the tool name `call_analyst` triggers auto-detection.
+
+### Handoff auto-detection rules
+
+LangSight inspects every `llm_intent` span (tool selected by LLM). If the tool name matches:
+
+| Pattern | Example | Target agent |
+|---|---|---|
+| `call_<agent>` | `call_analyst` | `analyst` |
+| `delegate_<agent>` | `delegate_billing` | `billing` |
+| `invoke_<agent>` | `invoke_researcher` | `researcher` |
+| `transfer_to_<agent>` | `transfer_to_support` | `support` |
+| `run_<agent>` | `run_summarizer` | `summarizer` |
+| `dispatch_<agent>` | `dispatch_validator` | `validator` |
+
+Self-handoffs (target == source agent) are silently suppressed.
+
+## Context inheritance
+
+Inside a `session()` block, the context variables `_agent_ctx`, `_session_ctx`, and `_trace_ctx` are set for the current asyncio task. Both `wrap()` and `wrap_llm()` read these as fallback when their params are not explicitly provided:
+
+```python
+langsight.auto_patch()
+
+async with langsight.session(agent_name="analyst") as session_id:
+    # All of these are equivalent — context inherited automatically:
+    traced_a = ls.wrap(mcp_a, server_name="catalog")           # agent_name + session_id from ctx
+    traced_b = ls.wrap(mcp_b, server_name="crm")               # same
+    client   = ls.wrap_llm(OpenAI())                           # same
+    # Or skip wrap() entirely — auto_patch() covers mcp.call_tool directly
+```
+
+## Coexistence with Langfuse
+
+LangSight and Langfuse observe different layers and coexist without conflict:
+
+```python
+from langfuse.decorators import observe
+import langsight
+
+langsight.auto_patch()  # MCP + handoffs + lineage (zero decorators)
+
+@observe()              # LLM prompt/completion tracing (Langfuse)
+async def my_agent(query: str) -> str:
+    # Langfuse traces the LLM call (prompt, completion, cost)
+    # LangSight also traces the LLM call (token counts, tool spans)
+    response = await llm.generate(...)
+
+    # LangSight traces this; Langfuse does not (MCP is not a Langfuse concept)
+    data = await mcp.call_tool("search", {"q": query})
+
+    return response
+```
+
+LangSight focuses on MCP health, agent handoffs, loop detection, and circuit breakers. Langfuse focuses on prompt engineering and LLM evals. Use both.
 
 ## Quick start with `init()` + explicit wrapping
+
+When you want explicit control over which sessions and agents are traced:
 
 ```python
 import langsight
@@ -57,32 +148,68 @@ traced = ls.wrap(mcp_session, server_name="my-server", session_id="sess-001")
 client = ls.wrap_llm(genai.Client(), agent_name="analyst", session_id="sess-001")
 ```
 
-Set the environment variables:
+`init()` returns `None` if `LANGSIGHT_URL` is not set — safe to call unconditionally.
 
-```bash
-export LANGSIGHT_URL=http://localhost:8000
-export LANGSIGHT_API_KEY=lsk_your_key
-export LANGSIGHT_PROJECT_ID=my-project
-```
+## Manual MCP wrapping
 
-`init()` returns `None` if `LANGSIGHT_URL` is not set — safe to call unconditionally. All extra kwargs are forwarded to `LangSightClient` (e.g. `loop_detection=True`, `max_steps=25`).
-
-## 2-line integration
+For cases where you want explicit control (e.g. per-session circuit breakers or different redact policies per server):
 
 ```python
 from langsight.sdk import LangSightClient
 
-client = LangSightClient(
+ls = LangSightClient(
     url="http://localhost:8000",
-    project_id="my-project",   # required for multi-project deployments
+    project_id="my-project",
 )
-traced_mcp = client.wrap(mcp_session, server_name="my-server") # line 2
 
-# All call_tool() calls are now traced automatically
+# Explicit wrap — agent_name, session_id, trace_id still optional when inside session()
+traced_mcp = ls.wrap(mcp_session, server_name="postgres-mcp")
+
+# All call_tool() calls are now traced
 result = await traced_mcp.call_tool("query", {"sql": "SELECT 1"})
 ```
 
 ## Full example
+
+The recommended v0.12.0 pattern — zero manual instrumentation:
+
+```python
+import asyncio
+import langsight
+from mcp import ClientSession
+from mcp.client.stdio import stdio_client, StdioServerParameters
+from openai import OpenAI
+
+# One-time setup
+langsight.auto_patch()  # LLM + MCP + handoffs — all automatic
+
+async def support_agent(question: str) -> str:
+    async with langsight.session(agent_name="support-agent") as session_id:
+        # Connect to MCP server — call_tool() auto-traced, no wrap() needed
+        params = StdioServerParameters(command="python", args=["postgres-mcp/server.py"])
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as mcp_session:
+                await mcp_session.initialize()
+
+                # MCP tool call: auto-traced with agent="support-agent", session=session_id
+                orders = await mcp_session.call_tool(
+                    "query", {"sql": "SELECT COUNT(*) FROM orders"}
+                )
+
+                # LLM call: auto-traced
+                client = OpenAI()
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "user", "content": f"Orders data: {orders}\n{question}"}
+                    ],
+                )
+                return response.choices[0].message.content
+
+asyncio.run(support_agent("How many orders were placed today?"))
+```
+
+For explicit wrapping (full control over server_name, redact_payloads per server, etc.):
 
 ```python
 import asyncio
@@ -91,29 +218,26 @@ from mcp.client.stdio import stdio_client, StdioServerParameters
 from langsight.sdk import LangSightClient
 
 async def main():
-    # Start LangSight client
-    langsight = LangSightClient(
+    ls = LangSightClient(
         url="http://localhost:8000",
         api_key="your-api-key",      # required in production (X-API-Key header)
         project_id="my-project",     # required for multi-project deployments
         redact_payloads=False,       # set True to omit input_args/output_result from spans
     )
 
-    # Connect to your MCP server
     params = StdioServerParameters(command="python", args=["server.py"])
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
 
-            # Wrap the session — one line
-            traced = langsight.wrap(
+            # Explicit wrap — agent_name/session_id optional when inside session()
+            traced = ls.wrap(
                 session,
                 server_name="postgres-mcp",
-                agent_name="support-agent",    # optional metadata
-                session_id="sess-abc123",       # optional metadata
+                agent_name="support-agent",
+                session_id="sess-abc123",
             )
 
-            # Use exactly like the original session
             result = await traced.call_tool("query", {"sql": "SELECT COUNT(*) FROM orders"})
             print(result)
 
@@ -220,59 +344,73 @@ await langsight.send_span(ToolCallSpan.record(
 
 ## Multi-agent tracing
 
-When Agent A delegates to Agent B, pass the `trace_id` and the parent agent's span ID so LangSight can reconstruct the full call tree.
+### Zero-boilerplate (v0.12.0 — recommended)
 
-### Recommended pattern (v1.0 helpers)
-
-Use `create_handoff()` and `wrap_child_agent()` for the simplest multi-agent setup. These helpers emit a properly linked handoff span and pre-configure the child proxy's parent references.
+If your agents use tool names matching the handoff pattern (`call_<agent>`, `delegate_<agent>`, etc.), no explicit handoff code is needed:
 
 ```python
+import langsight
+langsight.auto_patch()
+
+async def orchestrator(question: str):
+    async with langsight.session(agent_name="orchestrator"):
+        # LLM + MCP calls auto-traced. Handoff auto-emitted when LLM
+        # selects "call_research_agent" as a tool.
+        await jira_mcp.call_tool("get_issue", {"id": "TASK-42"})
+        response = await llm.generate(question, tools=[call_research_agent_tool])
+
+async def research_agent(question: str):
+    async with langsight.session(agent_name="research_agent"):
+        # MCP auto-traced, attributed to "research_agent"
+        return await confluence_mcp.call_tool("search", {"query": question})
+```
+
+The dashboard shows orchestrator → research_agent as a solid edge because the tool name `call_research_agent` triggers auto-detection.
+
+### With explicit handoff helpers
+
+When you need precise control over handoff timing and parent linking, use `create_handoff()` + `wrap_child_agent()`:
+
+```python
+import langsight
 from langsight.sdk import LangSightClient
 
-client = LangSightClient(url="http://localhost:8000")
+ls = LangSightClient(url="http://localhost:8000")
+langsight.auto_patch()
 
 async def orchestrator_agent():
-    session_id = "sess-f2a9b1"
-    trace_id = "trace-abc123"
+    async with langsight.session(agent_name="orchestrator") as session_id:
+        # MCP call: auto-traced (no wrap needed)
+        await jira_mcp.call_tool("get_issue", {"id": "TASK-42"})
 
-    traced_jira = client.wrap(
-        jira_session,
-        server_name="jira-mcp",
-        agent_name="orchestrator",
-        session_id=session_id,
-        trace_id=trace_id,
-    )
-    await traced_jira.call_tool("get_issue", {"id": "TASK-42"})
+        # Explicit handoff — use when you need the handoff.span_id for
+        # parent linking (e.g. framework doesn't use handoff-named tools)
+        handoff = ls.create_handoff(
+            "orchestrator", "research-agent",
+            session_id=session_id,
+        )
 
-    # create_handoff emits the span and returns it
-    handoff = client.create_handoff(
-        "orchestrator", "research-agent",
-        trace_id=trace_id, session_id=session_id,
-    )
-
-    # wrap_child_agent pre-sets parent_span_id and agent_name from the handoff
-    traced_confluence = client.wrap_child_agent(
-        confluence_session, "confluence-mcp", "research-agent", handoff,
-    )
-    await traced_confluence.call_tool("search", {"query": "returns policy"})
+        # wrap_child_agent pre-sets parent_span_id and agent_name from the handoff
+        traced_confluence = ls.wrap_child_agent(
+            confluence_session, "confluence-mcp", "research-agent", handoff,
+        )
+        await traced_confluence.call_tool("search", {"query": "returns policy"})
 ```
 
 ### Manual pattern (full control)
-
-For cases where you need more control over span construction, you can create handoff spans directly.
 
 ```python
 from datetime import UTC, datetime
 from langsight.sdk import LangSightClient
 from langsight.sdk.models import ToolCallSpan
 
-client = LangSightClient(url="http://localhost:8000")
+ls = LangSightClient(url="http://localhost:8000")
 
 async def orchestrator_agent():
     session_id = "sess-f2a9b1"
     trace_id = "trace-abc123"
 
-    traced_jira = client.wrap(
+    traced_jira = ls.wrap(
         jira_session,
         server_name="jira-mcp",
         agent_name="orchestrator",
@@ -288,7 +426,7 @@ async def orchestrator_agent():
         session_id=session_id,
         trace_id=trace_id,
     )
-    await client.send_span(handoff)
+    ls.buffer_span(handoff)
 
     await research_agent(
         session_id=session_id,
@@ -297,7 +435,7 @@ async def orchestrator_agent():
     )
 
 async def research_agent(session_id: str, trace_id: str, parent_span_id: str):
-    traced_confluence = client.wrap(
+    traced_confluence = ls.wrap(
         confluence_session,
         server_name="confluence-mcp",
         agent_name="research-agent",
@@ -341,15 +479,23 @@ No configuration needed — silent error detection is always on.
 
 ## Direct LLM SDK tracing (wrap_llm)
 
-For agents that call OpenAI, Anthropic, or Gemini SDKs directly (not through LangChain), use `wrap_llm()` to auto-trace LLM generation calls and tool use blocks from responses. See the dedicated [Direct SDK integration](/sdk/integrations/direct-sdk) page.
+After `auto_patch()`, LLM clients are traced without `wrap_llm()` — you only need `wrap_llm()` when using `init()` without `auto_patch()`, or when you want per-client control over `agent_name`/`session_id` outside a `session()` context.
 
 ```python
-from openai import OpenAI
+# With auto_patch() — no wrap_llm() needed:
+langsight.auto_patch()
+async with langsight.session(agent_name="my-agent") as session_id:
+    client = OpenAI()  # auto-traced
+    response = client.chat.completions.create(model="gpt-4o", tools=[...], messages=[...])
 
-client = langsight.wrap_llm(OpenAI(), agent_name="my-agent", session_id="sess-001")
+# Without auto_patch() — explicit wrap_llm():
+ls = LangSightClient(url="http://localhost:8000")
+client = ls.wrap_llm(OpenAI(), agent_name="my-agent", session_id="sess-001")
 response = client.chat.completions.create(model="gpt-4o", tools=[...], messages=[...])
-# LLM generation span + tool_use spans auto-traced
+# LLM generation span + tool_use spans + handoff auto-detection — all on
 ```
+
+`wrap_llm()` accepts `agent_name`, `session_id`, and `trace_id` — all optional when inside a `session()` context (inherited from contextvars). See the [Direct SDK integration](/sdk/integrations/direct-sdk) page for full examples.
 
 ## Prevention Guardrails
 

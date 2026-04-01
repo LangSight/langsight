@@ -70,13 +70,59 @@ The traces ingest endpoint (`POST /api/traces/spans`) now performs three lineage
 
 ### SDK helpers
 
-Two new convenience methods on `LangSightClient`:
+Two convenience methods on `LangSightClient`:
 - `create_handoff(from_agent, to_agent, ...)` -- emits a properly linked handoff span and returns it
 - `wrap_child_agent(mcp, server_name, agent_name, handoff_span)` -- wraps an MCP client for a child agent with pre-configured `parent_span_id` and `agent_name` from the handoff span
 
 ### Async-safe context
 
 `sdk/context.py` replaced `threading.local()` with `contextvars.ContextVar` for the pending-tool tracking queue. This ensures that async tasks (e.g., concurrent agent handlers in OpenAI Agents SDK) correctly inherit the parent task's pending-tool state.
+
+---
+
+## Handoff Auto-Detection (v0.12.0)
+
+### Problem
+
+The v1.0 lineage protocol required explicit `create_handoff()` calls. In practice, many multi-agent systems express delegation through tool names (e.g. `call_analyst`, `transfer_to_billing`). Requiring manual `create_handoff()` after every LLM call was error-prone and easy to forget.
+
+### Solution
+
+`_maybe_emit_handoffs()` in `sdk/llm_wrapper.py` inspects every `llm_intent` span emitted after LLM generation. If the tool name matches `_HANDOFF_TOOL_RE`:
+
+```
+^(?:call|delegate|invoke|transfer_to|run|dispatch)_(.+)$
+```
+
+an explicit handoff span is automatically emitted from the current agent (resolved from `span.agent_name` or `_agent_ctx`) to the target agent (captured group). This handoff span is identical to one produced by `create_handoff()` — same fields, same provenance path.
+
+### Coverage
+
+| Tool name pattern | Target agent | Example |
+|---|---|---|
+| `call_<agent>` | `<agent>` | `call_analyst` → `analyst` |
+| `delegate_<agent>` | `<agent>` | `delegate_billing` → `billing` |
+| `invoke_<agent>` | `<agent>` | `invoke_researcher` → `researcher` |
+| `transfer_to_<agent>` | `<agent>` | `transfer_to_support` → `support` |
+| `run_<agent>` | `<agent>` | `run_summarizer` → `summarizer` |
+| `dispatch_<agent>` | `<agent>` | `dispatch_validator` → `validator` |
+
+Self-handoffs (target == source agent name) are silently suppressed to avoid spurious edges.
+
+### Interaction with manual `create_handoff()`
+
+Both paths produce the same span type and are not deduplicated. If your agent both names tools with the `call_*` pattern AND calls `create_handoff()` manually, you will get two handoff spans. The recommended pattern is to rely on auto-detection and remove manual `create_handoff()` calls when tool names follow the convention.
+
+### MCP auto-patch interaction
+
+When the LLM selects `call_analyst` and the MCP tool execution follows, the `llm_intent` span (emitted by `_process_*_response`) registers a pending parent in the context. The `_patch_mcp()` hook then claims this pending parent for the actual `call_tool()` execution, producing the chain:
+
+```
+LLM generate/model → [llm_intent: call_analyst] → [handoff: orchestrator→analyst]
+                                                  → [tool_call: call_analyst via MCP]  ← parent_span_id = llm_intent span
+```
+
+The handoff span and the MCP tool_call span are siblings under the llm_intent span, giving the full lineage picture in the session graph.
 
 ---
 

@@ -56,33 +56,44 @@ CLI and the dashboard.
 
 ## 2. Instrument your agent
 
-Add 3 lines to your existing agent code. LangSight wraps your MCP client
-and captures every `call_tool()` automatically — fire-and-forget, fail-open.
+Add 2 lines to your existing agent code. LangSight traces every LLM call,
+every MCP tool call, and every agent handoff — automatically.
+
+```python
+import langsight
+langsight.auto_patch()  # LLM + MCP + handoffs — all automatic
+
+# Wrap your agent logic in a session context
+async with langsight.session(agent_name="my-agent") as session_id:
+    # MCP calls: auto-traced — no wrap() needed
+    result = await mcp_session.call_tool("query", {"sql": "SELECT 1"})
+    #                                                 ↑ traced automatically
+```
+
+Set environment variables before running:
+
+```bash
+export LANGSIGHT_URL=http://localhost:8000
+export LANGSIGHT_API_KEY=lsk_your_key
+```
+
+<Note>
+  `auto_patch()` patches `mcp.ClientSession.call_tool`, all OpenAI/Anthropic/
+  Gemini SDK classes, and enables handoff auto-detection — all at once.
+  If LangSight is unreachable, your agent works normally — nothing breaks.
+</Note>
+
+If you need explicit control over which MCP sessions are traced (e.g. different
+`redact_payloads` per server), use `wrap()` directly:
 
 ```python
 from langsight.sdk import LangSightClient
 
-# Connect to your LangSight server
-langsight = LangSightClient(url="http://localhost:8000")
-
-# Wrap your MCP session — every call_tool() is now traced
-traced = langsight.wrap(
-    mcp_session,                     # your existing MCP client
-    server_name="postgres-mcp",      # which server this is
-    agent_name="my-agent",           # which agent is calling
-    session_id="sess-001",           # groups calls into one session
-)
-
-# Use traced exactly like your original session — the API is identical
+ls = LangSightClient(url="http://localhost:8000")
+traced = ls.wrap(mcp_session, server_name="postgres-mcp",
+                 agent_name="my-agent", session_id="sess-001")
 result = await traced.call_tool("query", {"sql": "SELECT 1"})
-#        ↑ this call is traced automatically
 ```
-
-<Note>
-  `wrap()` returns a transparent proxy. It intercepts `call_tool()` and
-  `list_tools()`, records timing and status, and sends spans asynchronously.
-  If LangSight is unreachable, your agent works normally — nothing breaks.
-</Note>
 
 ### Using a framework? Even simpler.
 
@@ -203,34 +214,37 @@ You now have full traces of every tool call. Here's what LangSight does beyond t
 
 ### Multi-agent tracing
 
-If your agent hands off to sub-agents, LangSight captures the full tree:
+If your agent hands off to sub-agents, LangSight captures the full tree — automatically when tools follow the `call_<agent>` naming convention:
+
+```python
+import langsight
+langsight.auto_patch()
+
+async def orchestrator(question: str):
+    async with langsight.session(agent_name="orchestrator"):
+        await jira_mcp.call_tool("get_issue", {"id": "TASK-42"})
+        # LLM selects "call_research_agent" → handoff span auto-emitted
+        response = await llm.generate(question, tools=[call_research_agent_tool])
+
+async def research_agent(question: str):
+    async with langsight.session(agent_name="research_agent"):
+        return await confluence_mcp.call_tool("search", {"query": question})
+```
+
+For explicit handoff control (no tool-name convention required):
 
 ```python
 from langsight.sdk import LangSightClient
 
-langsight = LangSightClient(url="http://localhost:8000")
-trace_id = "trace-abc"
-session_id = "sess-002"
+ls = LangSightClient(url="http://localhost:8000")
 
-# Orchestrator wraps its MCP client
-orchestrator = langsight.wrap(
-    mcp, server_name="jira-mcp",
-    agent_name="orchestrator", trace_id=trace_id, session_id=session_id,
-)
-
-# create_handoff emits a handoff span with explicit target_agent_name
-handoff = langsight.create_handoff(
-    "orchestrator", "research-agent",
-    trace_id=trace_id, session_id=session_id,
-)
-
-# wrap_child_agent pre-sets parent_span_id and agent_name from the handoff
-researcher = langsight.wrap_child_agent(
-    mcp, "confluence-mcp", "research-agent", handoff,
-)
+async with langsight.session(agent_name="orchestrator") as session_id:
+    handoff = ls.create_handoff("orchestrator", "research-agent", session_id=session_id)
+    researcher = ls.wrap_child_agent(mcp, "confluence-mcp", "research-agent", handoff)
+    await researcher.call_tool("search", {"query": "returns policy"})
 ```
 
-The dashboard renders this as a single connected tree across all agents.
+The dashboard renders both patterns as a single connected tree across all agents.
 
 <CardGroup cols={2}>
   <Card title="Python SDK Reference" icon="code" href="/sdk/python">
