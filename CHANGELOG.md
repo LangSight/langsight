@@ -6,22 +6,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-04-01
+
+**Lineage Protocol v1.0** -- authoritative agent lineage with explicit delegation semantics.
+
 ### Added
-- **Lineage hardening — protocol v1.0**: Explicit lineage provenance tracking across the full stack. New `llm_intent` span type distinguishes LLM tool-call decisions from actual tool executions. `ToolCallSpan` gains 4 fields: `target_agent_name` (explicit handoff destination), `lineage_provenance` (how parent/child was determined: `explicit`, `derived_parent`, `derived_timing`, `derived_legacy`, `inferred_otel`), `lineage_status` (quality flag: `complete`, `incomplete`, `orphaned`, etc.), and `schema_version` (protocol version, default `"1.0"`). `LineageProvenance` and `LineageStatus` type aliases added to the SDK models.
-- **SDK helpers**: `LangSightClient.create_handoff()` and `wrap_child_agent()` — convenience methods for multi-agent orchestration that emit properly linked handoff spans and pre-configure child proxy parent references.
-- **Ingest lineage validation** (`src/langsight/api/routers/traces.py`): parent_span_id batch check marks spans as `incomplete` when parent is absent; legacy handoff upgrade extracts `target_agent_name` from `tool_name` and marks `derived_legacy`; trace_id consistency warning on cross-trace parent references.
-- **ClickHouse schema**: 4 new columns on `mcp_tool_calls` via `ALTER TABLE`: `target_agent_name String DEFAULT ''`, `lineage_provenance LowCardinality(String) DEFAULT 'explicit'`, `lineage_status LowCardinality(String) DEFAULT 'complete'`, `schema_version String DEFAULT '1.0'`. Handoff edge query now uses `target_agent_name` with fallback to `tool_name` parsing; returns `explicit_count` and `inferred_count` per edge.
-- **Dashboard lineage types**: `llm_intent` added to `SpanType`, `LineageProvenance` and `LineageStatus` types, and 4 new fields on `SpanNode` in `dashboard/lib/types.ts`. Session graph uses `span_type === "llm_intent"` with legacy heuristic fallback and `target_agent_name` for handoff detection.
-- **Docs: `docs-site/alerts.mdx`** — new "Alerts & Notifications" reference page covering both alert pipelines (CLI monitor and API/Dashboard), all eight alert types with their toggle keys and deduplication rules, Slack webhook configuration priority order (Dashboard > YAML > env var), Alert Inbox lifecycle (firing → acknowledged → snoozed → resolved), inbox REST API (`GET /api/alerts/inbox`, `POST /api/alerts/{id}/ack`, `POST /api/alerts/{id}/resolve`, `POST /api/alerts/{id}/snooze`), structured log events for debugging, and end-to-end test instructions.
-- **Docs: `docs-site/mint.json`** — `alerts` added to the "Reliability Features" navigation group.
+- **Lineage Protocol v1.0**: 4 new fields on `ToolCallSpan` -- `target_agent_name`, `lineage_provenance`, `lineage_status`, `schema_version`
+- **`llm_intent` span type**: Separates LLM tool decisions from actual tool execution. Never counted in agent-to-server metrics.
+- **`LineageProvenance` and `LineageStatus` type aliases**: Explicit types for provenance tracking and integrity quality
+- **SDK helpers**: `create_handoff()` and `wrap_child_agent()` on `LangSightClient` for ergonomic multi-agent delegation
+- **Ingest validation**: Parent span batch check (marks orphans as `incomplete`), legacy handoff auto-upgrade (extracts target from tool_name), trace_id consistency warnings
+- **ClickHouse schema**: 4 new columns via ALTER TABLE -- backward compatible with defaults
+- **Dashboard lineage types**: `llm_intent` in SpanType, `LineageProvenance`, `LineageStatus`, 4 new fields on SpanNode
+- **162 new tests**: 123 unit tests (models, context, llm_intent, integrations, ingest) + 39 security tests (injection, spoofing, DoS, circular refs)
+- **Docs: `docs-site/alerts.mdx`** -- new "Alerts & Notifications" reference page covering both alert pipelines (CLI monitor and API/Dashboard), all eight alert types with their toggle keys and deduplication rules, Slack webhook configuration priority order (Dashboard > YAML > env var), Alert Inbox lifecycle (firing -> acknowledged -> snoozed -> resolved), inbox REST API, structured log events for debugging, and end-to-end test instructions
+- **Docs: `docs-site/mint.json`** -- `alerts` added to the "Reliability Features" navigation group
 
 ### Changed
-- **SDK context**: `src/langsight/sdk/context.py` replaced `threading.local()` with `contextvars.ContextVar` for async-safe pending tool tracking. Async tasks now correctly inherit the parent task's pending-tool queue.
-- **LLM wrapper**: All 3 LLM response processors (OpenAI, Anthropic, Gemini/GenAI) in `src/langsight/sdk/llm_wrapper.py` now emit `span_type="llm_intent"` instead of `"tool_call"` for LLM tool decisions. `llm_intent` spans are never counted in agent-to-server reliability metrics but still register in the pending queue for the actual `tool_call` execution to claim.
-- **Integration adapters — lineage-aware handoffs**: `openai_agents.py`, `anthropic_sdk.py`, and `langchain.py` now track active agent spans and handoff context. Tool callbacks propagate `agent_name` and `parent_span_id` from handoff context, fixing 3 live bugs: dashed edges in topology (missing parent), wrong latency attribution, and orphaned tool calls.
-- **`handoff_span()` factory**: Now sets `target_agent_name` explicitly (no longer relies solely on `tool_name` parsing). `tool_name` retains `"→ {to_agent}"` for backward-compatible display.
-- **Docs: `docs-site/self-hosting/configuration.mdx`** — "Slack alert configuration" section updated to reflect that the webhook URL and alert toggles are now persisted to Postgres (not in-memory), the full alert type table updated to include `anomaly_warning` and `security_high` types added in v0.10.0, and a cross-reference to the new `/alerts` page added.
-- **Docs: `docs-site/cli/monitor.mdx`** — added `<Note>` cross-referencing the new Alerts & Notifications page for alert type details and deduplication behaviour.
+- **SDK context**: Replaced `threading.local()` with `contextvars.ContextVar` for async-safe pending tool tracking
+- **LLM wrapper**: All 3 processors (OpenAI, Anthropic, Gemini/GenAI) now emit `span_type="llm_intent"` instead of `"tool_call"` for LLM tool decisions
+- **OpenAI Agents integration**: Added `_active_agent_spans`/`_active_handoffs` tracking. Fixes 3 live bugs: dashed handoff edges, wrong agent latency, orphaned tool calls
+- **Anthropic/Claude integration**: Same handoff context tracking pattern -- parent linking and agent_name propagation
+- **LangChain integration**: Emits explicit handoff spans at agent boundaries (was implicit parent links only)
+- **`handoff_span()` factory**: Now sets `target_agent_name` explicitly (not embedded in tool_name string)
+- **ClickHouse handoff query**: Uses `target_agent_name` with tool_name fallback, returns `explicit_count`/`inferred_count`
+- **Dashboard session graph**: Direct `span_type="llm_intent"` check with legacy heuristic fallback. Uses `target_agent_name` for handoff detection.
+- **Docs: `docs-site/self-hosting/configuration.mdx`** -- Slack alert configuration section updated to reflect Postgres persistence, updated alert type table, cross-reference to new `/alerts` page
+- **Docs: `docs-site/cli/monitor.mdx`** -- added cross-reference to Alerts & Notifications page
+
+### Fixed
+- **Dashed handoff edges**: OpenAI Agents handoff spans now link to parent agent task via `parent_span_id` -- produces solid explicit edges instead of timing-inferred dashed edges
+- **Wrong agent latency**: Tool call spans now get correct `agent_name` from runtime agent object, not empty string -- dashboard shows real MCP call latency
+- **Orphaned tool calls**: All tool calls attributed to correct agent via handoff context propagation -- edge count matches server node total
 
 ## [0.10.1] - 2026-03-29
 

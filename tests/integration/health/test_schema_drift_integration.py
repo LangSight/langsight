@@ -99,7 +99,7 @@ class TestFirstRunBaseline:
             current_tools=tools,
         )
 
-        mock_storage.save_schema_snapshot.assert_called_once_with("pg", "initial-hash", 1)
+        mock_storage.save_schema_snapshot.assert_called_once_with("pg", "initial-hash", 1, "")
 
     async def test_first_run_saves_tool_snapshot(
         self, tracker: SchemaTracker, mock_storage: MagicMock
@@ -275,7 +275,7 @@ class TestChangedSchemaReturnsDrift:
             current_tools=new_tools,
         )
 
-        mock_storage.save_schema_snapshot.assert_called_once_with("pg", "new-hash", 1)
+        mock_storage.save_schema_snapshot.assert_called_once_with("pg", "new-hash", 1, "")
 
     async def test_drift_detected_persists_drift_event(
         self, tracker: SchemaTracker, mock_storage: MagicMock

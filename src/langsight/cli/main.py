@@ -23,7 +23,7 @@ structlog.configure(logger_factory=structlog.PrintLoggerFactory(sys.stderr))
 
 
 @click.group()
-@click.version_option(version="0.10.1", prog_name="langsight")
+@click.version_option(version="0.11.0", prog_name="langsight")
 def cli() -> None:
     """LangSight — agent runtime reliability platform.
 
