@@ -641,7 +641,7 @@ def _patch_mcp() -> None:
             )
             _global_client.buffer_span(span)
 
-    ClientSession.call_tool = _patched_call_tool  # type: ignore[method-assign]
+    ClientSession.call_tool = _patched_call_tool  # type: ignore[method-assign, assignment]
     _patched_sdks.add("mcp")
     logger.debug("auto_patch.patched", sdk="mcp")
 
