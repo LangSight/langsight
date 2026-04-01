@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import status as http_status
 from pydantic import BaseModel
 
-from langsight.api.dependencies import get_active_project_id, verify_api_key
+from langsight.api.dependencies import get_active_project_id
 from langsight.storage.base import StorageBackend
 
 logger = structlog.get_logger()
