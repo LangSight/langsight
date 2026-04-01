@@ -313,7 +313,7 @@ def _process_openai_response(
                 session_id=session_id,
                 trace_id=trace_id,
                 parent_span_id=llm_span.span_id,
-                span_type="llm_intent",
+                span_type="tool_call",
                 project_id=project_id,
                 input_args=input_args,
             )
@@ -321,9 +321,9 @@ def _process_openai_response(
 
     if spans:
         proxy._emit_spans(spans)
-        # Register llm_intent spans so wrap() can claim them as parents
+        # Register tool_call spans so wrap() can claim them as parents
         for s in spans:
-            if s.span_type == "llm_intent":
+            if s.span_type == "tool_call":
                 register_pending_tool(s.tool_name, s.span_id, s.agent_name)
         logger.debug(
             "llm_wrapper.openai_traced",
@@ -479,7 +479,7 @@ def _process_anthropic_response(
             session_id=session_id,
             trace_id=trace_id,
             parent_span_id=llm_span.span_id,
-            span_type="llm_intent",
+            span_type="tool_call",
             project_id=project_id,
             input_args=input_args if isinstance(input_args, dict) else None,
         )
@@ -488,7 +488,7 @@ def _process_anthropic_response(
     if spans:
         proxy._emit_spans(spans)
         for s in spans:
-            if s.span_type == "llm_intent":
+            if s.span_type == "tool_call":
                 register_pending_tool(s.tool_name, s.span_id, s.agent_name)
         logger.debug(
             "llm_wrapper.anthropic_traced",
@@ -644,7 +644,7 @@ def _process_gemini_response(
                     session_id=session_id,
                     trace_id=trace_id,
                     parent_span_id=llm_span.span_id,
-                    span_type="llm_intent",
+                    span_type="tool_call",
                     project_id=project_id,
                     input_args=input_args,
                 )
@@ -655,7 +655,7 @@ def _process_gemini_response(
     if spans:
         proxy._emit_spans(spans)
         for s in spans:
-            if s.span_type == "llm_intent":
+            if s.span_type == "tool_call":
                 register_pending_tool(s.tool_name, s.span_id, s.agent_name)
         logger.debug(
             "llm_wrapper.gemini_traced",

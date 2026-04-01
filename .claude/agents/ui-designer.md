@@ -417,13 +417,6 @@ For every design task:
 
 ## Skills to invoke
 
-- `/ui-ux-pro-max` — ALWAYS query this first before any design decision (style, palette, typography, charts):
-  - Style: `python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<query>" --stack nextjs --domain style`
-  - Color: `python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<query>" --domain color`
-  - Typography: `python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<query>" --domain typography`
-  - Charts: `python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<query>" --domain chart`
-  - UX patterns: `python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<query>" --domain ux`
-  - Use results to inform decisions, then apply LangSight design tokens on top
 - `/frontend-design` — for aesthetics direction and avoiding generic AI design
 - `/next-best-practices` — for Next.js file conventions, RSC patterns, metadata
 - `/nextjs-app-router-patterns` — for Server Components, streaming, parallel routes

@@ -3,8 +3,7 @@
     "allow": [
       "Bash(docker exec:*)",
       "Bash(xargs sed:*)",
-      "WebFetch(domain:www.langsight.dev)",
-      "mcp__ruflo__*"
+      "WebFetch(domain:www.langsight.dev)"
     ]
   }
 }

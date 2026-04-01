@@ -1,4 +1,4 @@
-"""Async-safe pending tool calls — links wrap_llm() spans to wrap() spans.
+"""Thread-local pending tool calls — links wrap_llm() spans to wrap() spans.
 
 When ``wrap_llm()`` processes an LLM response containing function_calls, it
 registers each tool_call span_id here.  When ``wrap()`` → ``call_tool()``
@@ -7,23 +7,20 @@ executes the actual MCP call, it claims the pending entry as its
 lineage::
 
     LLM agent span
-      └── list_low_stock  (llm_intent, from wrap_llm)
-           └── inventory/list_low_stock  (tool_call, from wrap)
+      └── list_low_stock  (LLM intent, from wrap_llm)
+           └── inventory/list_low_stock  (MCP execution, from wrap)
 
-Uses ``contextvars.ContextVar`` so that async tasks inherit the parent
-context automatically.  Entries are consumed on claim (FIFO per tool name).
+Thread-safe via ``threading.local()`` — each thread has its own dict.
+Entries are consumed on claim (FIFO per tool name).
 """
 
 from __future__ import annotations
 
+import threading
 from collections import defaultdict
-from contextvars import ContextVar
 from dataclasses import dataclass
 
-_pending_tools_ctx: ContextVar[dict[str, list[PendingToolContext]] | None] = ContextVar(
-    "langsight_pending_tools",
-    default=None,
-)
+_local = threading.local()
 
 
 @dataclass
@@ -35,11 +32,11 @@ class PendingToolContext:
 
 
 def _get_pending() -> dict[str, list[PendingToolContext]]:
-    pending = _pending_tools_ctx.get()
-    if pending is None:
-        pending = defaultdict(list)
-        _pending_tools_ctx.set(pending)
-    return pending
+    if not hasattr(_local, "pending"):
+        _local.pending = defaultdict(list)
+    from typing import cast as _cast
+
+    return _cast(dict[str, list[PendingToolContext]], _local.pending)
 
 
 def register_pending_tool(tool_name: str, span_id: str, agent_name: str | None = None) -> None:

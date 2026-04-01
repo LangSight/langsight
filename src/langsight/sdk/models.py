@@ -28,42 +28,16 @@ class ToolCallStatus(StrEnum):
 
 
 # Span types for multi-agent tracing
-#   tool_call:  actual MCP tool execution, HTTP API call, or function call
-#   agent:      agent lifecycle span (LLM generation, task started/finished)
-#   handoff:    explicit delegation from one agent to another
-#   llm_intent: LLM decided to call a tool — NOT actual execution.
-#               Never counted in agent→server metrics.  Still registered in
-#               the pending-tool queue so the real tool_call can claim it.
-SpanType = Literal["tool_call", "agent", "handoff", "llm_intent"]
-
-# Lineage provenance — how parent/child was determined
-LineageProvenance = Literal[
-    "explicit",  # from explicit handoff_span() or manual parent_span_id
-    "derived_parent",  # inferred from parent_span_id where agent_name differs
-    "derived_timing",  # inferred from timestamp proximity (weakest fallback)
-    "derived_legacy",  # pre-protocol historical data
-    "inferred_otel",  # auto-instrumented via OpenTelemetry
-]
-
-# Lineage quality status
-LineageStatus = Literal[
-    "complete",  # all parent/child links valid
-    "incomplete",  # some links missing but recoverable
-    "orphaned",  # parent span not found in session
-    "invalid_parent",  # parent exists but violates invariants
-    "session_mismatch",  # parent in different session_id
-    "trace_mismatch",  # parent in different trace_id
-]
+SpanType = Literal["tool_call", "agent", "handoff"]
 
 
 class ToolCallSpan(BaseModel):
     """A single span in an agent trace.
 
-    Four span types:
-    - tool_call:  an MCP tool call, HTTP API call, or function call by an agent
-    - agent:      an agent lifecycle span (agent started/finished a task)
-    - handoff:    one agent delegating work to another agent
-    - llm_intent: LLM decided to call a tool (not actual execution)
+    Three span types:
+    - tool_call: an MCP tool call, HTTP API call, or function call by an agent
+    - agent:     an agent lifecycle span (agent started/finished a task)
+    - handoff:   one agent delegating work to another agent
 
     Multi-agent tracing:
         parent_span_id links child spans to their parent, forming a tree.
@@ -107,12 +81,6 @@ class ToolCallSpan(BaseModel):
     output_tokens: int | None = None  # P7 — LLM output token count
     model_id: str | None = None  # P7 — model used (gen_ai.request.model)
 
-    # --- Lineage protocol v1.0 fields ---
-    target_agent_name: str | None = None  # explicit handoff destination (handoff spans only)
-    lineage_provenance: LineageProvenance = "explicit"  # how parent/child was determined
-    lineage_status: LineageStatus = "complete"  # quality flag for this span's lineage
-    schema_version: str = "1.0"  # protocol version for backward/forward compat
-
     @model_validator(mode="after")
     def _compute_latency(self) -> ToolCallSpan:
         """Auto-compute latency_ms from started_at/ended_at if not provided."""
@@ -142,10 +110,6 @@ class ToolCallSpan(BaseModel):
         input_tokens: int | None = None,
         output_tokens: int | None = None,
         model_id: str | None = None,
-        target_agent_name: str | None = None,
-        lineage_provenance: LineageProvenance = "explicit",
-        lineage_status: LineageStatus = "complete",
-        schema_version: str = "1.0",
     ) -> ToolCallSpan:
         """Convenience constructor — computes ended_at and latency_ms automatically."""
         ended_at = datetime.now(UTC)
@@ -172,10 +136,6 @@ class ToolCallSpan(BaseModel):
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             model_id=model_id,
-            target_agent_name=target_agent_name,
-            lineage_provenance=lineage_provenance,
-            lineage_status=lineage_status,
-            schema_version=schema_version,
         )
 
     @classmethod
@@ -214,11 +174,7 @@ class ToolCallSpan(BaseModel):
         session_id: str | None = None,
         parent_span_id: str | None = None,
     ) -> ToolCallSpan:
-        """Create a handoff span when one agent delegates to another.
-
-        Sets target_agent_name explicitly (not embedded in tool_name).
-        tool_name still contains "→ {to_agent}" for backward compat display.
-        """
+        """Create a handoff span when one agent delegates to another."""
         return cls.record(
             server_name=from_agent,
             tool_name=f"→ {to_agent}",
@@ -229,9 +185,6 @@ class ToolCallSpan(BaseModel):
             session_id=session_id,
             parent_span_id=parent_span_id,
             span_type="handoff",
-            target_agent_name=to_agent,
-            lineage_provenance="explicit",
-            schema_version="1.0",
         )
 
 

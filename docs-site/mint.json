@@ -131,7 +131,6 @@
         "costs-model-pricing",
         "slos",
         "anomaly-detection",
-        "alerts",
         "monitoring"
       ]
     },
