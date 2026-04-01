@@ -132,6 +132,44 @@ async def my_agent(query: str) -> str:
 
 LangSight focuses on MCP health, agent handoffs, loop detection, and circuit breakers. Langfuse focuses on prompt engineering and LLM evals. Use both.
 
+## Upgrading from 0.11.x
+
+<Note>
+**Breaking behaviour change in `wrap()` and `wrap_llm()`** — not a signature change, but a behavioural one.
+
+In 0.11.x, calling `ls.wrap(mcp)` outside a `session()` block generated a **new random session_id** on every call, so MCP spans were disconnected from the LLM spans in the same run.
+
+In 0.12.0, both `wrap()` and `wrap_llm()` **inherit `agent_name`, `session_id`, and `trace_id` from the active `session()` context** when those params are not explicitly provided. You no longer need to thread them manually.
+</Note>
+
+**Before 0.12.0** — manual param threading (verbose, error-prone):
+
+```python
+session_id = str(uuid.uuid4())
+tokens = langsight.set_context(session_id=session_id, agent_name="orchestrator")
+
+client  = ls.wrap_llm(raw_client, agent_name="orchestrator", session_id=session_id)
+catalog = ls.wrap(catalog_mcp, server_name="catalog", agent_name="analyst", session_id=session_id)
+
+langsight.clear_context(tokens)
+```
+
+**After 0.12.0** — context flows automatically:
+
+```python
+async with langsight.session(agent_name="orchestrator") as session_id:
+    client  = ls.wrap_llm(raw_client)                       # inherits agent_name + session_id
+    catalog = ls.wrap(catalog_mcp, server_name="catalog")   # same
+    # Or skip wrap() entirely — MCP auto-patch covers call_tool directly
+```
+
+Three things you can remove from your existing code:
+1. `session_id = str(uuid.uuid4())` → removed, `session()` generates it
+2. `session_id=session_id` param on every `wrap()` / `wrap_llm()` call → removed
+3. `agent_name=...` param on `wrap()` → removed (inherited from `session()`)
+
+---
+
 ## Quick start with `init()` + explicit wrapping
 
 When you want explicit control over which sessions and agents are traced:
@@ -141,11 +179,10 @@ import langsight
 
 ls = langsight.init()  # reads LANGSIGHT_URL, LANGSIGHT_API_KEY, LANGSIGHT_PROJECT_ID from env
 
-# Wrap MCP sessions
-traced = ls.wrap(mcp_session, server_name="my-server", session_id="sess-001")
-
-# Wrap LLM clients (OpenAI, Anthropic, Gemini — auto-detected)
-client = ls.wrap_llm(genai.Client(), agent_name="analyst", session_id="sess-001")
+async with langsight.session(agent_name="analyst") as session_id:
+    # Both wrap() and wrap_llm() inherit session_id + agent_name from context
+    traced = ls.wrap(mcp_session, server_name="my-server")   # no session_id= needed
+    client = ls.wrap_llm(genai.Client())                      # no agent_name= needed
 ```
 
 `init()` returns `None` if `LANGSIGHT_URL` is not set — safe to call unconditionally.
@@ -397,7 +434,9 @@ async def orchestrator_agent():
         await traced_confluence.call_tool("search", {"query": "returns policy"})
 ```
 
-### Manual pattern (full control)
+### Advanced: manual pattern (full control, no session() context manager)
+
+Use this pattern only when you cannot use `session()` context manager (e.g. non-async code, or when session lifecycle is managed externally). Session IDs should come from a caller-controlled source, not uuid4 generation inline:
 
 ```python
 from datetime import UTC, datetime
@@ -407,6 +446,7 @@ from langsight.sdk.models import ToolCallSpan
 ls = LangSightClient(url="http://localhost:8000")
 
 async def orchestrator_agent():
+    # session_id and trace_id from your own session management layer
     session_id = "sess-f2a9b1"
     trace_id = "trace-abc123"
 

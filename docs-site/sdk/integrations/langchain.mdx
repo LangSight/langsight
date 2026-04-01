@@ -36,7 +36,7 @@ Omit `server_name` to enable auto-detection. The callback automatically:
 - Links sub-agent spans to their parent tool call via a thread-local stack
 
 ```python
-import uuid
+import langsight
 from langsight.sdk import LangSightClient
 from langsight.integrations.langchain import LangSightLangChainCallback
 
@@ -45,21 +45,19 @@ client = LangSightClient(
     project_id="my-project",
 )
 
-session_id = str(uuid.uuid4())
-trace_id = str(uuid.uuid4())
-
 # No server_name → auto-detect mode
-cb = LangSightLangChainCallback(
-    client=client,
-    session_id=session_id,
-    trace_id=trace_id,
-)
+# session_id is generated and managed by langsight.session()
+async with langsight.session(agent_name="supervisor") as session_id:
+    cb = LangSightLangChainCallback(
+        client=client,
+        session_id=session_id,
+    )
 
-# Pass to ANY agent — works across supervisor + sub-agents
-result = await supervisor.ainvoke(
-    {"input": "Analyze Q4 sales"},
-    config={"callbacks": [cb]},
-)
+    # Pass to ANY agent — works across supervisor + sub-agents
+    result = await supervisor.ainvoke(
+        {"input": "Analyze Q4 sales"},
+        config={"callbacks": [cb]},
+    )
 ```
 
 ### What auto-detect captures

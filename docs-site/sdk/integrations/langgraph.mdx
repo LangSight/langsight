@@ -23,7 +23,7 @@ The recommended setup for LangGraph omits `server_name`, enabling auto-detect mo
 
 ```python
 import os
-import uuid
+import langsight
 from langsight.sdk import LangSightClient
 from langsight.integrations.langgraph import LangSightLangGraphCallback
 
@@ -33,14 +33,12 @@ client = LangSightClient(
     project_id=os.getenv("LANGSIGHT_PROJECT_ID"),
 )
 
-session_id = str(uuid.uuid4())
-trace_id = str(uuid.uuid4())
-
-callback = LangSightLangGraphCallback(
-    client=client,
-    session_id=session_id,
-    trace_id=trace_id,
-)
+# session_id is generated and managed by langsight.session()
+async with langsight.session(agent_name="my-graph") as session_id:
+    callback = LangSightLangGraphCallback(
+        client=client,
+        session_id=session_id,
+    )
 ```
 
 ## Setup (fixed mode)

@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Docs cleanup**: Removed all stale v0.11.x patterns from public-facing docs. Primary examples in `quickstart.mdx`, `sdk/python.mdx`, `sdk/integrations/langchain.mdx`, `sdk/integrations/langgraph.mdx`, and `sdk/integrations/gemini-sdk.mdx` now consistently use the v0.12.0 `session()` context manager pattern. Manual uuid4 generation, explicit `session_id=` threading, and `set_context`/`clear_context` boilerplate are moved to clearly labeled "Before 0.12.0" migration sections or "Advanced: manual pattern" sections only. The "Combining with MCP tracing" example in gemini-sdk.mdx now shows context-inherited `wrap_llm()` and `wrap()` calls (no explicit `session_id` threading).
+
 ## [0.12.0] - 2026-04-01
 
 **Auto-instrumentation v2** — zero-boilerplate multi-agent tracing. MCP calls, LLM calls, and agent handoffs are all captured with 2 lines of code.

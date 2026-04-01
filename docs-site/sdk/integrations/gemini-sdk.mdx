@@ -37,61 +37,77 @@ export LANGSIGHT_PROJECT_ID=my-project
 
 ## Option B: Explicit wrap_llm()
 
+When you need per-call control, or when `auto_patch()` is not suitable:
+
 ```python
 import langsight
 from google import genai
 
 ls = langsight.init()  # reads LANGSIGHT_URL, LANGSIGHT_API_KEY, LANGSIGHT_PROJECT_ID
-session_id = "sess-001"
 
-raw_client = genai.Client()
-client = ls.wrap_llm(raw_client, agent_name="analyst", session_id=session_id)
+async with langsight.session(agent_name="analyst") as session_id:
+    # agent_name and session_id inherited from context — no need to pass them
+    client = ls.wrap_llm(genai.Client())
 
-# Async — your existing code, unchanged
-response = await client.aio.models.generate_content(
-    model="gemini-2.5-flash",
-    contents=[...],
-    config=config,
-)
-# Auto-traced: LLM generation span + function_call spans
-
-# Sync works too
-response = client.models.generate_content(
-    model="gemini-2.5-flash",
-    contents="Analyze this data",
-    config=config,
-)
+    # Async — your existing code, unchanged
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[...],
+        config=config,
+    )
+    # Auto-traced: LLM generation span + llm_intent spans per tool decision
 ```
 
 The wrapper intercepts `client.models.generate_content()` (sync) and `client.aio.models.generate_content()` (async). All other attributes and methods forward to the original client unchanged.
 
+<Note>
+`agent_name`, `session_id`, and `trace_id` are **optional** when called inside `langsight.session()` — the context is inherited automatically. Only pass them explicitly when you need to override the context values.
+</Note>
+
 ## Multi-agent example
 
-For agents that share MCP servers and use Gemini for reasoning:
+The recommended pattern for orchestrator → analyst → procurement workflows:
 
 ```python
 import langsight
 from google import genai
 
-ls = langsight.init()
-session_id = str(uuid.uuid4())
+langsight.auto_patch()  # patches all Gemini clients + MCP sessions globally
 
-# Wrap MCP sessions
-catalog_session = ls.wrap(raw_catalog_session, server_name="catalog", session_id=session_id)
-inventory_session = ls.wrap(raw_inventory_session, server_name="inventory", session_id=session_id)
+# Each agent uses its own session() block — context flows automatically
+async def orchestrator(question: str):
+    async with langsight.session(agent_name="orchestrator"):
+        client = genai.Client()  # auto-traced, no wrap_llm() needed
+        # Tool named "call_analyst" → handoff span emitted automatically
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash", contents=[question], config=config,
+        )
+        return response
 
-# Wrap each agent's Gemini client
-orchestrator = ls.wrap_llm(genai.Client(), agent_name="orchestrator", session_id=session_id)
-analyst = ls.wrap_llm(genai.Client(), agent_name="analyst", session_id=session_id)
-procurement = ls.wrap_llm(genai.Client(), agent_name="procurement", session_id=session_id)
-
-# Function-calling loops stay exactly the same — no changes needed
-response = await orchestrator.aio.models.generate_content(
-    model="gemini-2.5-flash", contents=contents, config=config,
-)
+async def analyst(question: str):
+    async with langsight.session(agent_name="analyst"):
+        client = genai.Client()  # auto-traced
+        # MCP calls auto-traced — no wrap() needed
+        data = await catalog_mcp_session.call_tool("search", {"q": question})
+        return data
 ```
 
-All spans share the same `session_id`, so the dashboard shows the full multi-agent call tree.
+<Accordion title="Advanced: sharing a single session_id across sub-agents">
+When sub-agents run in separate asyncio tasks (e.g. via `asyncio.create_task()`), the context variable does not propagate automatically. Pass `session_id` explicitly in that case:
+
+```python
+async with langsight.session(agent_name="orchestrator") as session_id:
+    # session_id passed explicitly only when sub-agent runs in a separate task
+    await analyst_agent(question, session_id=session_id)
+
+async def analyst_agent(question: str, session_id: str):
+    async with langsight.session(agent_name="analyst", session_id=session_id):
+        client = genai.Client()  # inherits session_id from context
+        ...
+```
+
+In the common case where sub-agents are awaited directly (not spawned as separate tasks), context propagates automatically and no explicit `session_id` threading is needed.
+</Accordion>
 
 ## What gets traced
 
@@ -109,14 +125,15 @@ Session: sess-001
 
 ## Combining with MCP tracing
 
-`wrap_llm()` and `wrap()` work independently. Use both when your agent calls Gemini directly and also uses MCP servers:
+`wrap_llm()` and `wrap()` work independently. Use both when your agent calls Gemini directly and also uses MCP servers. Inside a `session()` block, `agent_name` and `session_id` are inherited automatically — no threading needed:
 
 ```python
-# Trace LLM calls
-client = ls.wrap_llm(genai.Client(), agent_name="analyst", session_id=sid)
+async with langsight.session(agent_name="analyst") as session_id:
+    # Trace LLM calls — agent_name and session_id inherited from context
+    client = ls.wrap_llm(genai.Client())
 
-# Trace MCP tool calls
-traced_mcp = ls.wrap(mcp_session, server_name="postgres-mcp", session_id=sid)
+    # Trace MCP tool calls — same
+    traced_mcp = ls.wrap(mcp_session, server_name="postgres-mcp")
 ```
 
 ## Parameters
