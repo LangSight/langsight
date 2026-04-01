@@ -1,3 +1,6 @@
+# MCP tool state (Ruflo swarm persistence — not part of the project)
+.swarm/
+
 # Python
 __pycache__/
 *.py[cod]
