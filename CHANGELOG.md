@@ -9,6 +9,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 - **Docs cleanup**: Removed all stale v0.11.x patterns from public-facing docs. Primary examples in `quickstart.mdx`, `sdk/python.mdx`, `sdk/integrations/langchain.mdx`, `sdk/integrations/langgraph.mdx`, and `sdk/integrations/gemini-sdk.mdx` now consistently use the v0.12.0 `session()` context manager pattern. Manual uuid4 generation, explicit `session_id=` threading, and `set_context`/`clear_context` boilerplate are moved to clearly labeled "Before 0.12.0" migration sections or "Advanced: manual pattern" sections only. The "Combining with MCP tracing" example in gemini-sdk.mdx now shows context-inherited `wrap_llm()` and `wrap()` calls (no explicit `session_id` threading).
 
+## [0.13.0] - 2026-04-01
+
+**Session I/O capture + HITL support** — capture the human prompt that started a session, the final agent response, and mid-session human input events; plus eliminates an MCP ghost node for users combining `ls.wrap()` with `auto_patch()`.
+
+### Added
+- **`session(input=...)` parameter**: Captures the human prompt that started the session as a root agent span attribute. Pass the user's initial message to `session()` and it is stored on the root span for display in the session timeline.
+- **`sess.set_output(result)`**: Captures the final agent response on the `SessionContext` object. Call this before the `async with langsight.session(...)` block exits to record what the agent ultimately returned.
+- **`sess.record_user_message(text)`**: First-class mid-session human input capture. Emits a `user_message` span on the active session, enabling HITL, clarification, and approval workflows to appear in the session timeline as discrete events.
+- **`SessionContext` class**: Returned by `session()`. Subclasses `str` for full backward compatibility — existing code that treats the session ID as a plain string continues to work unchanged. Exported from both `langsight` and `langsight.sdk`.
+- **`user_message` span type**: New span type renders as a human icon in the session timeline, visually distinguishing human input events from tool calls and LLM decisions.
+
+### Fixed
+- **MCP ghost server node eliminated**: `_mcp_proxy_active` contextvar prevents the MCP auto-patch from double-tracing calls already traced by `MCPClientProxy`. Users who use both `ls.wrap()` and `auto_patch()` no longer see a spurious `mcp` server node in their session graph.
+- **Test isolation — no live dashboard pollution**: `LANGSIGHT_TEST_MODE=1` is now set in `tests/conftest.py`, preventing all spans from being sent to the configured backend during `pytest` runs.
+
 ## [0.12.0] - 2026-04-01
 
 **Auto-instrumentation v2** — zero-boilerplate multi-agent tracing. MCP calls, LLM calls, and agent handoffs are all captured with 2 lines of code.
