@@ -104,7 +104,7 @@ def test_patch_mcp_replaces_call_tool_on_client_session(monkeypatch):
     original_call_tool = fake_cs.call_tool
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
 
     # Inject the global client so _make_proxy() returns a valid proxy
     ls = _make_client()
@@ -128,7 +128,7 @@ async def test_patched_call_tool_emits_span_with_agent_name_from_ctx(monkeypatch
     fake_mcp, fake_cs = _make_fake_mcp_module()
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
 
     ls = _make_client()
     captured = _capture_spans(ls)
@@ -156,7 +156,7 @@ async def test_patched_call_tool_emits_span_with_session_id_from_ctx(monkeypatch
     fake_mcp, fake_cs = _make_fake_mcp_module()
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
 
     ls = _make_client()
     captured = _capture_spans(ls)
@@ -182,7 +182,7 @@ async def test_patched_call_tool_emits_span_with_tool_name(monkeypatch):
     fake_mcp, fake_cs = _make_fake_mcp_module()
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
 
     ls = _make_client()
     captured = _capture_spans(ls)
@@ -204,7 +204,7 @@ async def test_patched_call_tool_uses_server_name_from_server_info(monkeypatch):
     fake_mcp, fake_cs = _make_fake_mcp_module()
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
 
     ls = _make_client()
     captured = _capture_spans(ls)
@@ -226,7 +226,7 @@ async def test_patched_call_tool_falls_back_to_server_name_attr(monkeypatch):
     fake_mcp, fake_cs = _make_fake_mcp_module()
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
 
     ls = _make_client()
     captured = _capture_spans(ls)
@@ -247,7 +247,7 @@ async def test_patched_call_tool_defaults_server_name_to_mcp(monkeypatch):
     fake_mcp, fake_cs = _make_fake_mcp_module()
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
 
     ls = _make_client()
     captured = _capture_spans(ls)
@@ -273,7 +273,7 @@ async def test_patched_call_tool_links_to_pending_llm_intent_span(monkeypatch):
     fake_mcp, fake_cs = _make_fake_mcp_module()
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
     from langsight.sdk.context import _pending_tools_ctx, register_pending_tool
 
     ls = _make_client()
@@ -300,7 +300,7 @@ async def test_patched_call_tool_inherits_agent_name_from_pending_span(monkeypat
     fake_mcp, fake_cs = _make_fake_mcp_module()
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
     from langsight.sdk.context import register_pending_tool
 
     ls = _make_client()
@@ -327,7 +327,7 @@ async def test_patched_call_tool_no_pending_span_parent_is_none(monkeypatch):
     fake_mcp, fake_cs = _make_fake_mcp_module()
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
 
     ls = _make_client()
     captured = _capture_spans(ls)
@@ -355,7 +355,7 @@ async def test_patched_call_tool_emits_error_span_on_exception(monkeypatch):
     fake_cs.call_tool = AsyncMock(side_effect=RuntimeError("connection refused"))
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
 
     ls = _make_client()
     captured = _capture_spans(ls)
@@ -383,7 +383,7 @@ async def test_patched_call_tool_emits_timeout_span_on_timeout(monkeypatch):
     fake_cs.call_tool = AsyncMock(side_effect=TimeoutError("read timeout"))
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
 
     ls = _make_client()
     captured = _capture_spans(ls)
@@ -407,7 +407,7 @@ async def test_patched_call_tool_span_has_success_status_on_normal_return(monkey
     fake_mcp, fake_cs = _make_fake_mcp_module()
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
 
     ls = _make_client()
     captured = _capture_spans(ls)
@@ -433,7 +433,7 @@ async def test_patched_call_tool_span_lineage_provenance_is_explicit(monkeypatch
     fake_mcp, fake_cs = _make_fake_mcp_module()
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
 
     ls = _make_client()
     captured = _capture_spans(ls)
@@ -461,7 +461,7 @@ async def test_patched_call_tool_is_noop_when_no_global_client(monkeypatch):
     fake_cs.call_tool = AsyncMock(return_value=original_return)
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
 
     # Ensure no global client
     monkeypatch.setattr(ap_module, "_global_client", None)
@@ -488,7 +488,7 @@ def test_unpatch_restores_original_call_tool(monkeypatch):
     original_call_tool = fake_cs.call_tool
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
     from langsight.sdk.auto_patch import _patch_mcp
 
     ls = _make_client()
@@ -509,7 +509,7 @@ def test_unpatch_removes_mcp_from_patched_sdks(monkeypatch):
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
     monkeypatch.setenv("LANGSIGHT_URL", "http://localhost:8000")
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
     from langsight.sdk.auto_patch import _patch_mcp
 
     ls = _make_client()
@@ -566,7 +566,7 @@ def test_patch_mcp_is_idempotent(monkeypatch):
     fake_mcp, fake_cs = _make_fake_mcp_module()
     monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
 
-    from langsight.sdk import auto_patch as ap_module
+    import importlib; ap_module = importlib.import_module("langsight.sdk.auto_patch")
     from langsight.sdk.auto_patch import _patch_mcp
 
     ls = _make_client()
