@@ -577,11 +577,20 @@ class LangSightClient:
                     headers=headers,
                 )
                 if resp.status_code < 300:
-                    logger.debug("sdk.atexit_flush_ok", count=len(batch))
+                    try:
+                        logger.debug("sdk.atexit_flush_ok", count=len(batch))
+                    except Exception:  # noqa: BLE001
+                        pass  # stdout/stderr may be closed during interpreter shutdown
                 else:
-                    logger.warning("sdk.atexit_flush_failed", status=resp.status_code)
+                    try:
+                        logger.warning("sdk.atexit_flush_failed", status=resp.status_code)
+                    except Exception:  # noqa: BLE001
+                        pass
         except Exception as exc:  # noqa: BLE001
-            logger.warning("sdk.atexit_flush_error", count=len(batch), error=str(exc))
+            try:
+                logger.warning("sdk.atexit_flush_error", count=len(batch), error=str(exc))
+            except Exception:  # noqa: BLE001
+                pass  # stdout/stderr closed during interpreter shutdown — silently drop
 
     async def close(self) -> None:
         """Flush remaining spans, cancel the flush loop, and close the HTTP client."""
