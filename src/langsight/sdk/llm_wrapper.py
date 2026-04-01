@@ -98,6 +98,7 @@ def _maybe_emit_handoffs(
         )
         proxy._emit_spans([handoff])
 
+
 # finish_reason values treated as errors across all LLM SDKs
 _FINISH_REASON_ERRORS = frozenset(
     {
