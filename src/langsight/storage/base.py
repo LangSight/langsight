@@ -259,15 +259,15 @@ class StorageBackend(Protocol):
         """Count fired alerts matching the given filters."""
         ...
 
-    async def ack_alert(self, alert_id: str, acked_by: str = "user") -> bool:
+    async def ack_alert(self, alert_id: str, acked_by: str = "user", project_id: str = "") -> bool:
         """Mark an alert as acknowledged. Returns True if updated."""
         ...
 
-    async def resolve_alert(self, alert_id: str) -> bool:
+    async def resolve_alert(self, alert_id: str, project_id: str = "") -> bool:
         """Mark an alert as resolved. Returns True if updated."""
         ...
 
-    async def snooze_alert(self, alert_id: str, snooze_minutes: int) -> bool:
+    async def snooze_alert(self, alert_id: str, snooze_minutes: int, project_id: str = "") -> bool:
         """Snooze an alert for N minutes. Returns True if updated."""
         ...
 

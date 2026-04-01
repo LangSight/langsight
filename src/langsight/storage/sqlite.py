@@ -503,13 +503,13 @@ class SQLiteBackend(StorageBackend):
     async def count_fired_alerts(self, project_id: str = "", status: str | None = None) -> int:
         return 0
 
-    async def ack_alert(self, alert_id: str, acked_by: str = "user") -> bool:
+    async def ack_alert(self, alert_id: str, acked_by: str = "user", project_id: str = "") -> bool:
         return False
 
-    async def resolve_alert(self, alert_id: str) -> bool:
+    async def resolve_alert(self, alert_id: str, project_id: str = "") -> bool:
         return False
 
-    async def snooze_alert(self, alert_id: str, snooze_minutes: int) -> bool:
+    async def snooze_alert(self, alert_id: str, snooze_minutes: int, project_id: str = "") -> bool:
         return False
 
     async def get_alert_counts(self, project_id: str = "") -> dict[str, int]:

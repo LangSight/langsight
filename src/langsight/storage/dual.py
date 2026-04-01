@@ -491,14 +491,18 @@ class DualStorage:
     async def count_fired_alerts(self, project_id: str = "", status: str | None = None) -> int:
         return await self._meta.count_fired_alerts(project_id=project_id, status=status)
 
-    async def ack_alert(self, alert_id: str, acked_by: str = "user") -> bool:
-        return await self._meta.ack_alert(alert_id=alert_id, acked_by=acked_by)
+    async def ack_alert(self, alert_id: str, acked_by: str = "user", project_id: str = "") -> bool:
+        return await self._meta.ack_alert(
+            alert_id=alert_id, acked_by=acked_by, project_id=project_id
+        )
 
-    async def resolve_alert(self, alert_id: str) -> bool:
-        return await self._meta.resolve_alert(alert_id=alert_id)
+    async def resolve_alert(self, alert_id: str, project_id: str = "") -> bool:
+        return await self._meta.resolve_alert(alert_id=alert_id, project_id=project_id)
 
-    async def snooze_alert(self, alert_id: str, snooze_minutes: int) -> bool:
-        return await self._meta.snooze_alert(alert_id=alert_id, snooze_minutes=snooze_minutes)
+    async def snooze_alert(self, alert_id: str, snooze_minutes: int, project_id: str = "") -> bool:
+        return await self._meta.snooze_alert(
+            alert_id=alert_id, snooze_minutes=snooze_minutes, project_id=project_id
+        )
 
     async def get_alert_counts(self, project_id: str = "") -> dict[str, int]:
         return await self._meta.get_alert_counts(project_id=project_id)
