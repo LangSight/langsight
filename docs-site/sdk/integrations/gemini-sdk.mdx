@@ -76,19 +76,21 @@ langsight.auto_patch()  # patches all Gemini clients + MCP sessions globally
 
 # Each agent uses its own session() block — context flows automatically
 async def orchestrator(question: str):
-    async with langsight.session(agent_name="orchestrator"):
+    async with langsight.session(agent_name="orchestrator", input=question) as sess:
         client = genai.Client()  # auto-traced, no wrap_llm() needed
         # Tool named "call_analyst" → handoff span emitted automatically
         response = await client.aio.models.generate_content(
             model="gemini-2.5-flash", contents=[question], config=config,
         )
+        sess.set_output(response.text)
         return response
 
 async def analyst(question: str):
-    async with langsight.session(agent_name="analyst"):
+    async with langsight.session(agent_name="analyst", input=question) as sess:
         client = genai.Client()  # auto-traced
         # MCP calls auto-traced — no wrap() needed
         data = await catalog_mcp_session.call_tool("search", {"q": question})
+        sess.set_output(data)
         return data
 ```
 

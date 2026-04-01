@@ -54,6 +54,8 @@ LLM tool-call decisions are now emitted as `span_type="llm_intent"` instead of `
 
 Span types are now: `tool_call`, `agent`, `handoff`, `llm_intent`.
 
+Note: v0.13.0 adds a fifth span type `user_message` for HITL workflows (see HITL section below).
+
 ### Ingest validation
 
 The traces ingest endpoint (`POST /api/traces/spans`) now performs three lineage checks:
@@ -126,6 +128,37 @@ The handoff span and the MCP tool_call span are siblings under the llm_intent sp
 
 ---
 
+## Human-in-the-Loop (HITL) Workflows (v0.13.0)
+
+### user_message span type
+
+HITL workflows pause agent execution to collect human input — approvals, clarifications, or corrections. LangSight tracks these pauses as first-class `user_message` spans so the full session timeline is complete, including where human decisions occurred.
+
+```python
+async with langsight.session(agent_name="procurement-agent") as sess:
+    analysis = await agent.analyze(question)
+    approval = await ask_human("Order 50 units of SKU-42?")
+    sess.record_user_message(approval)   # creates user_message span
+    result = await agent.execute(approval)
+    sess.set_output(result)
+```
+
+`record_user_message(text)` creates a span with:
+- `span_type="user_message"`
+- `llm_input=text`
+- `started_at` = time of the call
+- Parented to the active session's root `agent` span
+
+### Session input/output
+
+`session(input=...)` and `sess.set_output(...)` record the human question and final agent answer on the root `agent` span as `llm_input` / `llm_output`. These are the session-level bookends — `user_message` spans record everything in between.
+
+### Lineage graph treatment
+
+`user_message` spans are excluded from agent-to-server reliability metrics and lineage edge counts. They appear in the session timeline view only, marked with a human icon. They do not create edges in the topology graph.
+
+---
+
 ## Data Model
 
 All required data exists in `mcp_tool_calls`:
@@ -136,7 +169,7 @@ server_name, tool_name, agent_name, status, latency_ms, project_id,
 target_agent_name, lineage_provenance, lineage_status, schema_version
 ```
 
-Span types: `tool_call` (agent → tool), `handoff` (agent → agent), `agent` (lifecycle), `llm_intent` (LLM decided to call a tool — not actual execution, excluded from metrics).
+Span types: `tool_call` (agent → tool), `handoff` (agent → agent), `agent` (lifecycle), `llm_intent` (LLM decided to call a tool — not actual execution, excluded from metrics), `user_message` (mid-session human input from HITL checkpoint — excluded from metrics, v0.13.0).
 
 ### Derived graph structure
 

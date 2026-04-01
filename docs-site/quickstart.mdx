@@ -63,11 +63,17 @@ every MCP tool call, and every agent handoff — automatically.
 import langsight
 langsight.auto_patch()  # LLM + MCP + handoffs — all automatic
 
+question = "How many orders were placed today?"
+
 # Wrap your agent logic in a session context
-async with langsight.session(agent_name="my-agent") as session_id:
+async with langsight.session(
+    agent_name="my-agent",
+    input=question,          # records the initial human prompt
+) as sess:
     # MCP calls: auto-traced — no wrap() needed
     result = await mcp_session.call_tool("query", {"sql": "SELECT 1"})
     #                                                 ↑ traced automatically
+    sess.set_output(result)  # records the final agent response
 ```
 
 Set environment variables before running:
@@ -221,14 +227,17 @@ import langsight
 langsight.auto_patch()
 
 async def orchestrator(question: str):
-    async with langsight.session(agent_name="orchestrator"):
+    async with langsight.session(agent_name="orchestrator", input=question) as sess:
         await jira_mcp.call_tool("get_issue", {"id": "TASK-42"})
         # LLM selects "call_research_agent" → handoff span auto-emitted
         response = await llm.generate(question, tools=[call_research_agent_tool])
+        sess.set_output(response)
 
 async def research_agent(question: str):
-    async with langsight.session(agent_name="research_agent"):
-        return await confluence_mcp.call_tool("search", {"query": question})
+    async with langsight.session(agent_name="research_agent", input=question) as sess:
+        result = await confluence_mcp.call_tool("search", {"query": question})
+        sess.set_output(result)
+        return result
 ```
 
 For explicit handoff control (no tool-name convention required):

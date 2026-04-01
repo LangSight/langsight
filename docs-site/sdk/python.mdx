@@ -17,7 +17,7 @@ pip install langsight
 uv add langsight
 ```
 
-## The simplest integration (v0.12.0)
+## The simplest integration (v0.13.0)
 
 Two lines. LLM calls, MCP calls, and agent handoffs are all traced automatically:
 
@@ -106,6 +106,87 @@ async with langsight.session(agent_name="analyst") as session_id:
     traced_b = ls.wrap(mcp_b, server_name="crm")               # same
     client   = ls.wrap_llm(OpenAI())                           # same
     # Or skip wrap() entirely — auto_patch() covers mcp.call_tool directly
+```
+
+## Capturing user input and agent output
+
+`session()` accepts `input=` to record the initial human prompt and returns a `SessionContext` object with methods to capture the agent's final response and any mid-session human messages. These map directly to Langfuse's trace `input`/`output` concepts — if you're familiar with Langfuse, the mental model is the same.
+
+`SessionContext` subclasses `str`, so existing code that assigns it as `session_id = sess` continues to work without changes.
+
+### Level 1: Single-turn — capture question and answer
+
+```python
+async with langsight.session(
+    agent_name="orchestrator",
+    input="What products need restocking?",
+) as sess:
+    result = await agent.run(sess)   # sess is usable as a string (session_id)
+    sess.set_output(result)
+```
+
+`input=` is stored as `llm_input` on the root `agent` span. `set_output()` stores the value as `llm_output` on the same span. Both are visible in the session detail panel in the dashboard and in `langsight sessions --id <id>`.
+
+### Level 2: Human-in-the-loop — mid-session human input
+
+```python
+async with langsight.session(agent_name="orchestrator") as sess:
+    analysis = await agent.analyze(question)
+    approval = await ask_human("Order 50 units of SKU-42?")
+    sess.record_user_message(approval)   # creates a user_message span in the timeline
+    result = await agent.execute(approval)
+    sess.set_output(result)
+```
+
+`record_user_message(text)` creates a `user_message` span with `span_type="user_message"` and `llm_input=text`. The span appears as a human-icon entry in the session timeline between the surrounding agent spans. Use this whenever the agent pauses for human input — approval gates, clarification questions, or any HITL checkpoint.
+
+### Level 3: Multi-turn conversations — link sessions with trace_id
+
+Use a shared `trace_id` to link multiple sessions into a single conversation thread:
+
+```python
+import uuid
+import langsight
+
+trace_id = str(uuid.uuid4())   # generate once per conversation
+
+# Turn 1
+async with langsight.session(
+    agent_name="support-agent",
+    input=turn1_question,
+    trace_id=trace_id,
+) as sess:
+    result = await agent.run(turn1_question)
+    sess.set_output(result)
+
+# Turn 2 — linked to Turn 1 by shared trace_id
+async with langsight.session(
+    agent_name="support-agent",
+    input=turn2_question,
+    trace_id=trace_id,
+) as sess:
+    result = await agent.run(turn2_question)
+    sess.set_output(result)
+```
+
+The dashboard groups all sessions sharing a `trace_id` into a single conversation view, showing the full turn-by-turn history with inputs, outputs, and latencies.
+
+### SessionContext reference
+
+| Method / attribute | Description |
+|---|---|
+| `sess.set_output(value)` | Stores `value` as `llm_output` on the root session span. Call once at the end of the session. |
+| `sess.record_user_message(text)` | Creates a `user_message` span in the timeline with `llm_input=text`. Call each time the agent receives human input mid-session. |
+| `str(sess)` / `sess` as string | Returns the session ID — backward-compatible with code that used `as session_id`. |
+
+### No breaking changes
+
+`SessionContext` subclasses `str`. All of the following existing patterns continue to work:
+
+```python
+# All still valid in v0.13.0
+async with langsight.session(agent_name="my-agent") as session_id:
+    traced = ls.wrap(mcp, server_name="postgres-mcp", session_id=session_id)
 ```
 
 ## Coexistence with Langfuse

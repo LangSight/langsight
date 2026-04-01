@@ -695,7 +695,17 @@ The Details tab is the visual debugging surface. It has three sub-regions stacke
 
 #### 4.3.2 Trace tab
 
-Tree of `agent`, `handoff`, `tool_call`, and `llm_intent` spans. `llm_intent` spans represent LLM tool-call decisions (not actual executions) and are shown with a distinct icon/label. Clicking a span row expands inline payload/error content. Payload visibility requires P5.1 payload capture to be active (`redact_payloads: false`, default).
+Tree of `agent`, `handoff`, `tool_call`, `llm_intent`, and `user_message` spans. Span type semantics:
+
+| Span type | Icon | Description | Counted in metrics? |
+|---|---|---|---|
+| `agent` | agent icon | Session lifecycle span — one per `session()` block. Root node in the tree. Carries `llm_input` (session `input=`) and `llm_output` (`set_output()`). | No |
+| `tool_call` | wrench | Actual MCP tool execution. Counts toward agent-to-server reliability metrics. | Yes |
+| `handoff` | arrow | Agent delegation. Links orchestrator → sub-agent. | No |
+| `llm_intent` | brain | LLM tool-call decision (not actual execution). Excluded from reliability metrics to prevent double-counting. | No |
+| `user_message` | human | Mid-session human input captured via `sess.record_user_message(text)`. Carries `llm_input=text`. Shown as a human-icon entry between surrounding agent spans. (Added v0.13.0) | No |
+
+`llm_intent` spans are shown with a distinct icon/label. `user_message` spans are shown with a human icon to mark HITL checkpoints. Clicking any span row expands inline payload/error content. Payload visibility requires P5.1 payload capture to be active (`redact_payloads: false`, default).
 
 #### 4.3.3 Session comparison
 
