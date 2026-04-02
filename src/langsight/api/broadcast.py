@@ -148,7 +148,7 @@ class RedisBroadcaster:
     ``client_count`` is per-worker approximate — used for logging/metrics only.
     """
 
-    def __init__(self, redis_client: "aioredis.Redis") -> None:
+    def __init__(self, redis_client: aioredis.Redis) -> None:
         self._redis = redis_client
         self._local_client_count: int = 0
 

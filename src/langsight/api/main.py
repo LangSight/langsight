@@ -345,8 +345,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         app.state.storage = await open_storage(app.state.config.storage)
 
         # ── Redis — optional, required for multi-worker mode ─────────────────
-        from langsight.api.redis_client import close_redis_client, get_redis_client
         from langsight.api.rate_limit import limiter as _rate_limiter
+        from langsight.api.redis_client import close_redis_client, get_redis_client
 
         if settings.redis_url:
             try:
@@ -363,7 +363,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             app.state.redis = None
 
         # ── SSE broadcaster — Redis-backed when available, in-memory otherwise
-        from langsight.api.broadcast import RedisBroadcaster, SSEBroadcaster
+        from langsight.api.broadcast import RedisBroadcaster
 
         if settings.redis_url and app.state.redis is not None:
             app.state.broadcaster = RedisBroadcaster(app.state.redis)

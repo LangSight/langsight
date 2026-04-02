@@ -38,7 +38,7 @@ def is_redis_configured(redis_url: str | None) -> bool:
     return bool(redis_url)
 
 
-async def get_redis_client(redis_url: str) -> "aioredis.Redis":
+async def get_redis_client(redis_url: str) -> aioredis.Redis:
     """Return a connected redis.asyncio client, creating it on first call.
 
     The client uses a connection pool with:
