@@ -42,8 +42,12 @@ export default function AgentLoopDetectionPost() {
         </div>
 
         {/* Hero image */}
-        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
+        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)] relative">
           <img src="/blog/ai-agent-loop-detection.png" alt="How to Detect and Stop AI Agent Loops in Production" className="w-full" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
+            <span className="text-2xl sm:text-3xl font-bold text-white tracking-wide drop-shadow-lg">Loop Detection</span>
+            <span className="text-sm text-white/80 mt-1.5 drop-shadow-md">Stop infinite agent loops before they burn your budget</span>
+          </div>
         </div>
 
         {/* Content */}

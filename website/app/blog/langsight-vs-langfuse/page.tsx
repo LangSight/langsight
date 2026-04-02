@@ -42,8 +42,12 @@ export default function LangsightVsLangfusePost() {
         </div>
 
         {/* Hero image */}
-        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
+        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)] relative">
           <img src="/blog/langsight-vs-langfuse.png" alt="LangSight vs Langfuse: Different Tools for Different Problems" className="w-full" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
+            <span className="text-2xl sm:text-3xl font-bold text-white tracking-wide drop-shadow-lg">LangSight vs Langfuse</span>
+            <span className="text-sm text-white/80 mt-1.5 drop-shadow-md">Different tools for different problems</span>
+          </div>
         </div>
 
         {/* Content */}

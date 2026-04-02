@@ -42,8 +42,12 @@ export default function SelfHostingAiObservabilityPost() {
         </div>
 
         {/* Hero image */}
-        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
+        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)] relative">
           <img src="/blog/self-hosting-ai-observability.png" alt="Self-Hosting AI Observability: Why Your Data Should Never Leave" className="w-full" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
+            <span className="text-2xl sm:text-3xl font-bold text-white tracking-wide drop-shadow-lg">Self-Hosted</span>
+            <span className="text-sm text-white/80 mt-1.5 drop-shadow-md">Your data never leaves your network</span>
+          </div>
         </div>
 
         {/* Content */}

@@ -42,8 +42,12 @@ export default function McpMonitoringProductionPost() {
         </div>
 
         {/* Hero image */}
-        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
+        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)] relative">
           <img src="/blog/mcp-monitoring-production.png" alt="How to Monitor MCP Servers in Production" className="w-full" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
+            <span className="text-2xl sm:text-3xl font-bold text-white tracking-wide drop-shadow-lg">MCP Monitoring</span>
+            <span className="text-sm text-white/80 mt-1.5 drop-shadow-md">Proactive health checks for your MCP fleet</span>
+          </div>
         </div>
 
         {/* Content */}

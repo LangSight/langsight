@@ -42,8 +42,12 @@ export default function McpServerSecurityPost() {
         </div>
 
         {/* Hero image */}
-        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
+        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)] relative">
           <img src="/blog/mcp-server-security.png" alt="MCP Server Security: OWASP Top 10 for Model Context Protocol" className="w-full" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
+            <span className="text-2xl sm:text-3xl font-bold text-white tracking-wide drop-shadow-lg">MCP Security</span>
+            <span className="text-sm text-white/80 mt-1.5 drop-shadow-md">Scan every server, surface every threat</span>
+          </div>
         </div>
 
         {/* Content */}

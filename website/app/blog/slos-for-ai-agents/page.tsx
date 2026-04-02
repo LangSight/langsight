@@ -42,8 +42,12 @@ export default function SlosForAiAgentsPost() {
         </div>
 
         {/* Hero image */}
-        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
+        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)] relative">
           <img src="/blog/slos-for-ai-agents.png" alt="Setting SLOs for AI Agents: A Practical Guide" className="w-full" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
+            <span className="text-2xl sm:text-3xl font-bold text-white tracking-wide drop-shadow-lg">Agent SLOs</span>
+            <span className="text-sm text-white/80 mt-1.5 drop-shadow-md">Set reliability targets that actually work</span>
+          </div>
         </div>
 
         {/* Content */}

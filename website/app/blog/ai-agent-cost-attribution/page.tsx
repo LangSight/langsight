@@ -42,8 +42,12 @@ export default function AiAgentCostAttributionPost() {
         </div>
 
         {/* Hero image */}
-        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
+        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)] relative">
           <img src="/blog/ai-agent-cost-attribution.png" alt="AI Agent Cost Attribution: Tracking Spend Per Tool Call" className="w-full" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
+            <span className="text-2xl sm:text-3xl font-bold text-white tracking-wide drop-shadow-lg">Cost Attribution</span>
+            <span className="text-sm text-white/80 mt-1.5 drop-shadow-md">Track every dollar across agents and tools</span>
+          </div>
         </div>
 
         {/* Content */}
