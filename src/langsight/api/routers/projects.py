@@ -431,6 +431,18 @@ async def add_member(
             status_code=http_status.HTTP_403_FORBIDDEN,
             detail="Only project owners can add members.",
         )
+
+    # Verify the user exists before creating the membership.
+    # Without this check, arbitrary user_ids could be inserted, creating
+    # orphaned rows with no corresponding user account.
+    if hasattr(storage, "get_user_by_id"):
+        target_user = await storage.get_user_by_id(body.user_id)
+        if not target_user:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail="User not found.",
+            )
+
     now = datetime.now(UTC)
     adder_id = caller_user_id or "system"
 

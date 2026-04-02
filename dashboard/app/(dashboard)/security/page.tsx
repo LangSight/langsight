@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Shield, Scan, AlertTriangle, CheckCircle } from "lucide-react";
 import { triggerSecurityScan } from "@/lib/api";
@@ -62,21 +62,13 @@ export default function SecurityPage() {
   const { activeProject } = useProject();
   const [results, setResults] = useState<SecurityScanResult[] | null>(null);
   const [scanning, setScanning] = useState(false);
-  const didAutoScan = useRef(false);
 
-  // Re-scan when project changes
+  // Clear results when project changes — user must explicitly trigger a new scan.
+  // Auto-scanning on page load was removed: in team environments it caused
+  // concurrent scan storms (health probes + CVE lookups + alerts) on every visit.
   useEffect(() => {
-    didAutoScan.current = false;
     setResults(null);
   }, [activeProject?.id]);
-
-  // Auto-trigger first scan on page load
-  useEffect(() => {
-    if (!didAutoScan.current && !results && !scanning) {
-      didAutoScan.current = true;
-      runScan();
-    }
-  });
 
   async function runScan() {
     setScanning(true);

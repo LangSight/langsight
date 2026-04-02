@@ -142,6 +142,21 @@ _DDL_STATEMENTS = [
     """
     CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)
     """,
+    # FK from project_members.user_id → users.id — added after both tables exist.
+    # ON DELETE CASCADE: removing a user removes their project memberships.
+    # IF NOT EXISTS guard makes this idempotent on existing installs.
+    """
+    DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'fk_project_members_user_id'
+        ) THEN
+            ALTER TABLE project_members
+                ADD CONSTRAINT fk_project_members_user_id
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+        END IF;
+    END $$
+    """,
     """
     CREATE TABLE IF NOT EXISTS invite_tokens (
         token       TEXT        PRIMARY KEY,

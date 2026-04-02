@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -31,6 +32,53 @@ from langsight.api.dependencies import (
     require_admin,
 )
 from langsight.api.rate_limit import limiter
+
+# ---------------------------------------------------------------------------
+# Per-account lockout — simple in-process counter.
+# Keys: email (lowercased) → (fail_count, window_start_monotonic)
+# Locked out after _MAX_FAILURES failures within _WINDOW_SECONDS.
+# Lock clears automatically after _LOCKOUT_SECONDS.
+# Works for single-worker deployments; with Redis multi-worker, the rate
+# limiter's per-IP 10/min already provides strong brute-force protection.
+# ---------------------------------------------------------------------------
+_MAX_FAILURES = 5
+_WINDOW_SECONDS = 300   # 5-minute failure window
+_LOCKOUT_SECONDS = 900  # 15-minute lockout
+_login_failures: dict[str, tuple[int, float]] = {}  # email → (count, first_fail_ts)
+
+
+def _record_login_failure(email: str) -> bool:
+    """Record a failed login attempt. Returns True if the account is now locked."""
+    key = email.lower()
+    now = time.monotonic()
+    count, window_start = _login_failures.get(key, (0, now))
+
+    if now - window_start > _WINDOW_SECONDS:
+        # Window expired — reset
+        count, window_start = 0, now
+
+    count += 1
+    _login_failures[key] = (count, window_start)
+    return count >= _MAX_FAILURES
+
+
+def _is_locked_out(email: str) -> bool:
+    """Return True if the account is currently locked out."""
+    key = email.lower()
+    now = time.monotonic()
+    count, window_start = _login_failures.get(key, (0, 0.0))
+    if count < _MAX_FAILURES:
+        return False
+    # Locked — check if lockout period has passed
+    if now - window_start > _LOCKOUT_SECONDS:
+        _login_failures.pop(key, None)
+        return False
+    return True
+
+
+def _clear_login_failures(email: str) -> None:
+    """Clear failure counter on successful login."""
+    _login_failures.pop(email.lower(), None)
 from langsight.models import InviteToken, User, UserRole
 from langsight.storage.base import StorageBackend
 
@@ -496,20 +544,30 @@ async def verify_credentials(
     """
     _require_user_storage(storage)
 
+    # Check account lockout before hitting the DB or running bcrypt
+    if _is_locked_out(body.email):
+        raise HTTPException(
+            status_code=http_status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Account temporarily locked after too many failed attempts. Try again later.",
+        )
+
     user = await storage.get_user_by_email(body.email)
     if not user or not await _verify_password(body.password, user.password_hash):
         # Mask email — log domain only to avoid PII in log aggregators
         _domain = body.email.split("@")[-1] if "@" in body.email else "?"
+        locked = _record_login_failure(body.email)
         logger.warning(
             "audit.auth.dashboard_login_failed",
             email_domain=_domain,
             client_ip=request.client.host if request.client else "unknown",
+            account_locked=locked,
         )
         raise HTTPException(
             status_code=http_status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password.",
         )
 
+    _clear_login_failures(body.email)
     await storage.touch_user_login(user.id)
 
     logger.info(

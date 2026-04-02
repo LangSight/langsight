@@ -597,10 +597,12 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                         await storage.get_health_history("__probe__", limit=1)
                     storage_ok = True
                     storage_detail = {"storage": "ok"}
-                except Exception as exc:  # noqa: BLE001
-                    storage_detail = {"storage": f"error: {exc}"}
+                except Exception:  # noqa: BLE001
+                    # Do not expose error details — connection strings, hostnames,
+                    # and credentials may appear in exception messages.
+                    storage_detail = {"storage": "error"}
         else:
-            storage_detail = {"storage": "error: storage not initialised"}
+            storage_detail = {"storage": "error"}
 
         body: dict[str, Any] = {
             "status": "ready" if storage_ok else "not_ready",

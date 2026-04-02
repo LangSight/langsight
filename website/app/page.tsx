@@ -157,7 +157,7 @@ function Hero() {
               style={{ background: "var(--indigo-dim)", border: "1px solid rgba(45,212,191,0.25)", color: "var(--indigo)" }}
             >
               <span className="w-1.5 h-1.5 rounded-full pulse-dot" style={{ background: "var(--indigo)" }} />
-              v0.3.0 · Self-host free · Apache 2.0
+              v0.14.0 · Self-host free · Apache 2.0
             </div>
 
             {/* Headline — lead with pain */}
@@ -596,7 +596,7 @@ const FEATURES = [
   {
     icon: "🛡️",
     title: "Prevention Guardrails",
-    badge: "v0.3",
+    badge: "v0.14",
     desc: "Loop detection, budget limits, and circuit breakers. Configure thresholds per-agent from the dashboard — no code change needed after initial SDK setup.",
   },
   {
@@ -607,17 +607,17 @@ const FEATURES = [
   {
     title: "Session Replay",
     desc: "Re-execute any session against live MCP servers. Compare two runs side-by-side to see what changed.",
-    badge: "v0.6.2",
+    badge: "v0.14",
   },
   {
     title: "Anomaly Detection",
     desc: "Z-score analysis against 7-day baseline. Warning at |z|>=2, critical at |z|>=3. No manual thresholds.",
-    badge: "v0.6.2",
+    badge: "v0.14",
   },
   {
     title: "Agent SLO Tracking",
     desc: "Define success_rate and latency_p99 targets per agent. Get alerted before you breach availability.",
-    badge: "v0.6.2",
+    badge: "v0.14",
   },
   {
     title: "AI Root Cause Analysis",
@@ -627,7 +627,7 @@ const FEATURES = [
   {
     title: "Prometheus Metrics",
     desc: "Native /metrics endpoint. Plug into your existing Grafana stack. Request counts, latencies, SSE connections.",
-    badge: "v0.6.2",
+    badge: "v0.14",
   },
 ];
 

@@ -110,21 +110,13 @@ server {
         proxy_set_header Connection "upgrade";
     }
 
-    # SSE live feed — disable buffering so events arrive in real time
-    location /api/live/ {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_read_timeout 600s;
-    }
 }
+
 ```
 
-<Note>
-  The Next.js dashboard already proxies `/api/*` calls to FastAPI internally. Nginx only needs to proxy to port 3003 — do not create a separate Nginx `location /api/` block that points to port 8000, or you will bypass the dashboard's auth proxy layer.
-</Note>
+<Warning>
+  Nginx should proxy **only to port 3003 (Next.js)**. Do not add separate `location /api/` or `location /api/live/` blocks pointing to port 8000. All API calls — including the SSE live feed — go through the Next.js proxy at `/api/live/stream`, which injects authentication headers (`X-User-Id`, `X-User-Role`, `X-API-Key`) before forwarding to FastAPI. Routing SSE or API calls directly from Nginx to FastAPI bypasses this auth layer.
+</Warning>
 
 Enable and reload:
 

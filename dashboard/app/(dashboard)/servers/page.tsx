@@ -1009,23 +1009,12 @@ function InvestigatePanel({ serverName, projectId }: { serverName: string; proje
               Root Cause Analysis · {providerUsed}
             </span>
           </div>
-          <div
-            className="prose prose-sm max-w-none text-foreground"
-            style={{ fontSize: 12, lineHeight: 1.7 }}
-            dangerouslySetInnerHTML={{
-              __html: report
-                // basic markdown rendering: headers, bold, bullets, code
-                .replace(/^### (.+)$/gm, '<h3 class="text-[12px] font-semibold mt-3 mb-1">$1</h3>')
-                .replace(/^## (.+)$/gm, '<h2 class="text-[13px] font-bold mt-4 mb-1">$2</h2>'.replace('$2', '$1'))
-                .replace(/^# (.+)$/gm, '<h1 class="text-[14px] font-bold mt-4 mb-2">$1</h1>')
-                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                .replace(/`([^`]+)`/g, '<code class="bg-muted px-1 rounded text-[10px] font-mono">$1</code>')
-                .replace(/^[\*\-] (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
-                .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal">$1</li>')
-                .replace(/\n\n/g, '<br/>')
-                .replace(/---/g, '<hr class="border-border my-2"/>')
-            }}
-          />
+          <pre
+            className="text-foreground whitespace-pre-wrap break-words"
+            style={{ fontSize: 12, lineHeight: 1.7, fontFamily: "var(--font-geist-sans)" }}
+          >
+            {report}
+          </pre>
         </div>
       )}
       {!report && !loading && !error && (
