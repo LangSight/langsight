@@ -6,9 +6,19 @@ const nextConfig: NextConfig = {
     const apiUrl = process.env.LANGSIGHT_API_URL || "http://127.0.0.1:8000";
     return [
       {
-        // Exclude /api/auth/* (NextAuth) and /api/proxy/* (our auth proxy route)
-        // All other /api/* calls go directly to FastAPI (unauthenticated, for SDK/CLI compat)
-        source: "/api/:path((?!auth|proxy).*)",
+        // SDK/CLI compatibility rewrite — allows agents to POST spans directly
+        // to the dashboard host without CORS preflight.  FastAPI enforces its
+        // own API-key auth on every route, so this is NOT an auth bypass when
+        // LANGSIGHT_API_KEYS is configured (the default for any real deployment).
+        //
+        // Excluded paths (handled by Next.js itself, never forwarded):
+        //   /api/auth/*  — NextAuth session endpoints
+        //   /api/proxy/* — authenticated server-side proxy (session → API key)
+        //
+        // In fail-open mode (no LANGSIGHT_API_KEYS set) all FastAPI routes are
+        // publicly accessible — this is intentional for local dev only.
+        // Always set LANGSIGHT_API_KEYS before exposing on a network.
+        source: "/api/:path((?!auth(?:/|$)|proxy(?:/|$)).*)",
         destination: `${apiUrl}/api/:path*`,
       },
     ];

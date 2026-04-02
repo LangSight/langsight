@@ -35,12 +35,12 @@ In the dashboard: sidebar project switcher → **New Project** → enter a name.
 
 Dashboard → Settings → API Keys → **Create Key** → select the target project from the dropdown.
 
-The key will look like `lsk_prod_abc123...`. Copy it — it is only shown once.
+The key will look like `ls_prod_abc123...`. Copy it — it is only shown once.
 
 ### Step 3 — Export the key
 
 ```bash
-export LANGSIGHT_API_KEY=lsk_prod_abc123...
+export LANGSIGHT_API_KEY=ls_prod_abc123...
 ```
 
 ### Step 4 — Run any command
@@ -61,10 +61,10 @@ Different key, different project. That is all.
 
 ```bash
 # production monitoring
-LANGSIGHT_API_KEY=lsk_prod_abc123 langsight monitor
+LANGSIGHT_API_KEY=ls_prod_abc123 langsight monitor
 
 # staging monitoring
-LANGSIGHT_API_KEY=lsk_staging_xyz456 langsight monitor
+LANGSIGHT_API_KEY=ls_staging_xyz456 langsight monitor
 ```
 
 Run both in parallel. The production project and the staging project stay completely isolated in the dashboard.

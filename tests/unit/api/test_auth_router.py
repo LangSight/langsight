@@ -56,7 +56,9 @@ class TestCreateApiKey:
         c, _ = client
         response = await c.post("/api/auth/api-keys", json={"name": "once"})
         assert "key" in response.json()
-        assert len(response.json()["key"]) == 64   # token_hex(32)
+        key = response.json()["key"]
+        assert key.startswith("ls_")              # ls_ prefix always present
+        assert len(key) == 67                      # "ls_" (3) + token_hex(32) (64)
 
     async def test_returns_501_when_storage_lacks_create(self, client) -> None:
         c, storage = client

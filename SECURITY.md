@@ -30,10 +30,12 @@ Instead, please report vulnerabilities through one of these channels:
 
 ## Supported Versions
 
+Only the **latest release** receives security fixes. We do not backport patches to older versions.
+
 | Version | Supported |
 |---------|-----------|
-| 0.2.x   | Yes       |
-| < 0.2   | No        |
+| 0.14.x (latest) | ✅ Yes |
+| < 0.14  | ❌ No — upgrade to latest |
 
 ## Security Model
 

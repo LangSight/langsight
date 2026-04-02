@@ -211,7 +211,7 @@ with httpx.Client() as client:
         client,
         "GET",
         "http://localhost:8000/api/live/events",
-        headers={"X-API-Key": "lsk_your_key"},
+        headers={"X-API-Key": "ls_your_key"},
     ) as event_source:
         for sse in event_source.iter_sse():
             if sse.event == "span:new":
@@ -223,7 +223,7 @@ with httpx.Client() as client:
 ### curl example
 
 ```bash
-curl -N -H "X-API-Key: lsk_your_key" \
+curl -N -H "X-API-Key: ls_your_key" \
   http://localhost:8000/api/live/events
 ```
 

@@ -21,7 +21,7 @@ Direct API access for the LangSight SDK, CLI, and any external client.
 
 ```bash
 curl http://localhost:8000/api/health/servers \
-  -H "X-API-Key: lsk_your_api_key_here"
+  -H "X-API-Key: ls_your_api_key_here"
 ```
 
 API keys are created in the dashboard under **Settings → API Keys**.
@@ -336,7 +336,7 @@ Query params: `limit` (default 50, max 200), `offset` (default 0).
   "timestamp": "2026-03-19T10:42:00Z",
   "actor": "user@example.com",
   "action": "api_key.created",
-  "resource": "key:lsk_xxxxxxxx",
+  "resource": "key:ls_xxxxxxxx",
   "result": "success"
 }
 ```
@@ -362,7 +362,7 @@ The stream sends keepalive comments (`: keepalive`) every 15 seconds to prevent 
 
 ```javascript
 const source = new EventSource("/api/live/events", {
-  headers: { "X-API-Key": "lsk_your_key" }
+  headers: { "X-API-Key": "ls_your_key" }
 });
 
 source.addEventListener("span:new", (e) => {
@@ -423,11 +423,11 @@ curl http://localhost:8000/api/readiness
 
 # Latest server health (authenticated)
 curl http://localhost:8000/api/health/servers \
-  -H "X-API-Key: lsk_your_key" | jq .
+  -H "X-API-Key: ls_your_key" | jq .
 
 # Send a span
 curl -X POST http://localhost:8000/api/traces/spans \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: lsk_your_key" \
+  -H "X-API-Key: ls_your_key" \
   -d '[{"server_name":"pg","tool_name":"query","started_at":"2026-03-17T12:00:00Z","ended_at":"2026-03-17T12:00:00.042Z","latency_ms":42,"status":"success","project_id":"default"}]'
 ```

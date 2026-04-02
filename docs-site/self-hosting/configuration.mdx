@@ -141,11 +141,11 @@ Go to **Settings -> Instance -> Data Privacy** and toggle **Redact all payloads*
 ```bash
 # Check current setting
 curl http://localhost:8000/api/settings \
-  -H "X-API-Key: lsk_your_key"
+  -H "X-API-Key: ls_your_key"
 
 # Enable global redaction
 curl -X PUT http://localhost:8000/api/settings \
-  -H "X-API-Key: lsk_your_key" \
+  -H "X-API-Key: ls_your_key" \
   -H "Content-Type: application/json" \
   -d '{"redact_payloads": true}'
 ```

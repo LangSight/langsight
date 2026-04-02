@@ -95,9 +95,9 @@ async def create_api_key(
     if body.expires_in_days is not None and body.expires_in_days <= 0:
         raise HTTPException(status_code=422, detail="expires_in_days must be > 0 or null")
 
-    raw_key = secrets.token_hex(_KEY_BYTES)
+    raw_key = "ls_" + secrets.token_hex(_KEY_BYTES)
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
-    key_prefix = raw_key[:8]
+    key_prefix = raw_key[:11]  # "ls_" + first 8 hex chars
     key_id = uuid.uuid4().hex
     now = datetime.now(UTC)
 

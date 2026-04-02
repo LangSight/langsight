@@ -49,7 +49,7 @@ That is the complete integration. No `wrap()`, no `wrap_llm()`, no `create_hando
 
 ```bash
 export LANGSIGHT_URL=http://localhost:8000
-export LANGSIGHT_API_KEY=lsk_your_key
+export LANGSIGHT_API_KEY=ls_your_key
 export LANGSIGHT_PROJECT_ID=my-project
 ```
 
@@ -750,7 +750,7 @@ Configure thresholds at **Settings → Prevention** in the dashboard, or via the
 
 ```bash
 curl -X PUT http://localhost:8000/api/agents/orchestrator/prevention-config \
-  -H "X-API-Key: lsk_your_key" \
+  -H "X-API-Key: ls_your_key" \
   -H "Content-Type: application/json" \
   -d '{"loop_threshold": 5, "max_steps": 30, "max_cost_usd": 1.00}'
 ```

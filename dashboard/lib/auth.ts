@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import { authConfig } from "./auth.config";
 
 /**
  * Dashboard authentication via the LangSight users API.
@@ -25,6 +26,7 @@ import Credentials from "next-auth/providers/credentials";
 const LANGSIGHT_API_URL = process.env.LANGSIGHT_API_URL ?? "http://localhost:8000";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
   providers: [
     Credentials({
       credentials: {

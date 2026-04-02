@@ -50,7 +50,7 @@ Via API (admin only):
 ```bash
 PATCH /api/users/{user_id}/role
 Content-Type: application/json
-X-API-Key: lsk_admin_key
+X-API-Key: ls_admin_key
 
 {"role": "viewer"}
 ```
@@ -63,7 +63,7 @@ Via API:
 
 ```bash
 DELETE /api/users/{user_id}
-X-API-Key: lsk_admin_key
+X-API-Key: ls_admin_key
 ```
 
 ## API keys
@@ -81,7 +81,7 @@ Via API (authenticated user, any role):
 ```bash
 POST /api/users/me/change-password
 Content-Type: application/json
-X-API-Key: lsk_your_key
+X-API-Key: ls_your_key
 
 {
   "current_password": "your-current-password",

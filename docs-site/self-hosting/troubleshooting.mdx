@@ -80,8 +80,8 @@ The secret must be identical on both sides — the Next.js proxy validates the s
 
 | Cause | Fix |
 |-------|-----|
-| `LANGSIGHT_API_KEYS` not set | Add your key: `LANGSIGHT_API_KEYS=lsk_yourkey` |
-| Wrong header name | Use `X-API-Key: lsk_yourkey`, not `Authorization: Bearer ...` |
+| `LANGSIGHT_API_KEYS` not set | Add your key: `LANGSIGHT_API_KEYS=ls_yourkey` |
+| Wrong header name | Use `X-API-Key: ls_yourkey`, not `Authorization: Bearer ...` |
 | Key was revoked | User changed password — generate a new key in Settings → API Keys |
 | Key belongs to deactivated user | Re-activate the user in Settings → Users |
 

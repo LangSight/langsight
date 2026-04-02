@@ -209,7 +209,7 @@ export function Footer() {
           ))}
         </div>
         <p className="text-xs" style={{ color: "var(--dimmer)" }}>
-          Apache 2.0 · v0.6.2
+          Apache 2.0 · v0.14.0
         </p>
       </div>
     </footer>

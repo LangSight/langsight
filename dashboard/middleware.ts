@@ -1,5 +1,12 @@
-import { auth } from "@/lib/auth";
+// Import auth from the edge-compatible config, NOT from lib/auth.
+// lib/auth.ts uses Credentials provider which imports Node.js crypto and
+// cannot run on Edge Runtime.  NextAuth(authConfig) here only needs to
+// read/verify the JWT session — no provider-specific code required.
+import NextAuth from "next-auth";
+import { authConfig } from "@/lib/auth.config";
 import { NextResponse } from "next/server";
+
+const { auth } = NextAuth(authConfig);
 
 export default auth((req) => {
   if (
