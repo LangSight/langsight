@@ -210,6 +210,27 @@ Alert types: server down/recovered, schema drift, latency spike, SLO breach, ano
 
 ---
 
+## Horizontal scaling with Redis
+
+For multi-worker deployments, add Redis for shared rate limiting, SSE broadcasting, and circuit breaker state:
+
+```bash
+# Install Redis support
+pip install "langsight[redis]"
+
+# Add to .env
+REDIS_PASSWORD=$(openssl rand -hex 24)
+LANGSIGHT_REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+LANGSIGHT_WORKERS=4
+
+# Start with Redis
+docker compose --profile redis up -d
+```
+
+Single-worker deployments do not need Redis. See [Redis docs](https://docs.langsight.dev/self-hosting/redis) for Sentinel, Cluster, and production tuning.
+
+---
+
 ## Architecture
 
 ```
@@ -235,6 +256,11 @@ Alert types: server down/recovered, schema drift, latency spike, SLO breach, ano
                                       │  │ FastAPI  │ │ Dashboard   │  │
                                       │  │ REST API │ │ Next.js 15  │  │
                                       │  └──────────┘ └─────────────┘  │
+                                      │                                 │
+                                      │  ┌──────────┐ (optional)       │
+                                      │  │  Redis   │ multi-worker     │
+                                      │  │  7       │ rate limits, SSE │
+                                      │  └──────────┘                  │
                                       └──────────────────────────────────┘
 ```
 

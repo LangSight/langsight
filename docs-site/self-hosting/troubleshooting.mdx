@@ -166,19 +166,68 @@ Set this to a comma-separated list of all origins that need to reach the API. Th
 
 ---
 
+## Redis connection refused
+
+**Symptom:** API fails to start with `redis.exceptions.ConnectionError: Error connecting to redis://redis:6379`.
+
+**Causes and fixes:**
+
+| Cause | Fix |
+|-------|-----|
+| Redis container not running | `docker compose --profile redis up -d redis` |
+| Wrong password | Check `REDIS_PASSWORD` in `.env` matches the password in `LANGSIGHT_REDIS_URL` |
+| Wrong hostname | Inside Docker Compose: use `redis` (service name). Outside: use `localhost` |
+| Forgot `--profile redis` | Redis is an optional profile — start with `docker compose --profile redis up -d` |
+
+Test the connection:
+
+```bash
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" ping
+# Expected: PONG
+```
+
+For full Redis setup, monitoring, HA, and performance tuning, see [Redis](/self-hosting/redis).
+
+---
+
+## Redis timeout errors
+
+**Symptom:** Intermittent `redis.exceptions.TimeoutError` in API logs.
+
+| Cause | Fix |
+|-------|-----|
+| Redis overloaded | Check `redis-cli info stats` — look at `instantaneous_ops_per_sec` |
+| Network latency | Redis should be on the same host or Docker network as the API |
+| Connection pool exhaustion | Reduce `LANGSIGHT_WORKERS` or check for connection leaks |
+| Slow Lua scripts | Check `redis-cli slowlog get 10` for circuit breaker CAS operations |
+
+---
+
 ## Workers > 1 startup error
 
 **Symptom:** API fails to start with:
 
 ```
 RuntimeError: LANGSIGHT_WORKERS=4 is not safe with the current in-memory rate limiter.
+Set LANGSIGHT_REDIS_URL to enable shared state across workers.
 ```
 
-**Cause:** `LANGSIGHT_WORKERS` is set to more than 1.
+**Cause:** `LANGSIGHT_WORKERS` is set to more than 1 but `LANGSIGHT_REDIS_URL` is not configured.
 
-**Fix:** Set `LANGSIGHT_WORKERS=1` (the default). The in-memory rate limiter gives each worker an independent counter. Under N workers, the effective rate limit becomes limit×N, which breaks brute-force protection. This is enforced at startup to prevent silent misconfiguration.
+**Fix:** Either set `LANGSIGHT_WORKERS=1` (the default) or configure Redis:
 
-See [Production Hardening](/self-hosting/production-hardening) for details on why multi-worker requires a Redis-backed limiter.
+```bash
+# Option 1: Single worker (no Redis needed)
+LANGSIGHT_WORKERS=1
+
+# Option 2: Multi-worker with Redis
+LANGSIGHT_REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+LANGSIGHT_WORKERS=4
+```
+
+The in-memory rate limiter gives each worker an independent counter. Under N workers, the effective rate limit becomes limit×N, which breaks brute-force protection. This is enforced at startup to prevent silent misconfiguration.
+
+See [Redis](/self-hosting/redis) for setup instructions and [Production Hardening](/self-hosting/production-hardening) for the full multi-worker guide.
 
 ---
 
@@ -209,6 +258,7 @@ docker compose restart api
 ## Related
 
 - [Configuration Reference](/self-hosting/configuration) — all environment variables
+- [Redis](/self-hosting/redis) — Redis setup, HA, monitoring, and troubleshooting
 - [Production Hardening](/self-hosting/production-hardening) — reverse proxy, firewall, TLS
 - [Backup & Restore](/self-hosting/backup-restore) — recover from data loss
 - [Docker Compose](/self-hosting/docker-compose) — full stack setup

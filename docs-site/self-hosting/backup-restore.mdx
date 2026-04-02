@@ -157,10 +157,34 @@ For automated backups, add a cron job on the host:
 
 ---
 
+## Redis (no backup needed)
+
+Redis data in LangSight is **ephemeral** — rate limit counters, SSE pub/sub channels, circuit breaker state, and alert deduplication keys are all transient. They rebuild automatically from PostgreSQL and ClickHouse on restart.
+
+The only visible effect of a Redis restart is:
+- **Rate limits** briefly relaxed (counters reset to zero)
+- **SSE clients** reconnect automatically within 15 seconds
+- **Circuit breaker** state rebuilds from the next health check cycle
+
+If you enabled Redis persistence (AOF/RDB) and want to back it up anyway:
+
+```bash
+# Trigger a background save
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" bgsave
+
+# Copy the dump file
+docker compose cp redis:/data/dump.rdb ./backups/redis-dump.rdb
+```
+
+See [Redis](/self-hosting/redis) for persistence configuration.
+
+---
+
 ## What is not in the backup
 
 The following data does not need backup:
 
+- **Redis** — all keys are ephemeral with TTLs; state rebuilds on restart.
 - **Model pricing seed data** — re-seeded automatically on startup from built-in values.
 - **Demo / Sample Project data** — re-seeded on first run; only matters if you rely on it for demos.
 - **Prometheus metrics** — ephemeral counters, not stored in either database.

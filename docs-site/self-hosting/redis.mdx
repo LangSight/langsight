@@ -1,0 +1,507 @@
+---
+title: "Redis"
+description: "Redis setup, architecture, high availability, monitoring, and troubleshooting for LangSight"
+---
+
+## Overview
+
+Redis is an **optional** dependency that becomes **required** when running multiple API workers (`LANGSIGHT_WORKERS > 1`). It provides shared state across workers for features that cannot function correctly with in-memory storage alone.
+
+For single-worker deployments, Redis is not needed — LangSight works out of the box without it.
+
+---
+
+## What Redis does in LangSight
+
+| Feature | Without Redis | With Redis |
+|---------|---------------|------------|
+| **Rate limiting** | Per-worker counters (limit × N workers = effectively no limit) | Shared counters across all workers — brute-force protection works correctly |
+| **SSE live view** | Events only reach clients connected to the same worker | Events published by any worker reach all connected dashboard clients |
+| **Circuit breaker** | Per-worker state — each worker tracks failures independently | Shared state — one worker opening the circuit protects all workers |
+| **Alert deduplication** | Per-worker dedup set — duplicate alerts fire from different workers | Shared dedup — each alert fires exactly once |
+
+<Note>
+  When `LANGSIGHT_WORKERS > 1` and `LANGSIGHT_REDIS_URL` is not set, the API **refuses to start** with a clear error message. This prevents silent misconfiguration where rate limiting appears to work but is actually ineffective.
+</Note>
+
+---
+
+## Architecture
+
+```
+┌────────────────────────────────────────────────────┐
+│                   LangSight API                     │
+│                                                     │
+│  Worker 1 ──┐                                       │
+│  Worker 2 ──┼──▶ Redis ──▶ Shared state             │
+│  Worker 3 ──┤       │      • Rate limit counters    │
+│  Worker N ──┘       │      • SSE pub/sub channels   │
+│                     │      • Circuit breaker state   │
+│                     │      • Alert dedup keys        │
+│                     │                                │
+│                     └──▶ Key layout                  │
+│                          langsight:events:{project}  │
+│                          langsight:events:admin      │
+│                          langsight:cb:{server_name}  │
+│                          langsight:alerts:dedup:*    │
+└────────────────────────────────────────────────────┘
+```
+
+### Connection management
+
+LangSight creates a single Redis connection pool per API worker process:
+
+- **Max connections**: 20 per worker
+- **Connect timeout**: 5 seconds
+- **Keepalive**: Enabled (detects dead connections)
+- **Decode responses**: UTF-8 (all values stored as strings)
+- **Startup check**: `PING` sent on startup — fails fast if Redis is unreachable
+
+The pool is created lazily on first use and closed gracefully on shutdown.
+
+---
+
+## Setup
+
+### 1. Install the Redis extra
+
+```bash
+# If using pip
+pip install "langsight[redis]"
+
+# If using uv
+uv add "langsight[redis]"
+```
+
+This installs `redis[hiredis]>=5` — the `hiredis` C extension provides 10x faster parsing.
+
+### 2. Generate a Redis password
+
+```bash
+echo "REDIS_PASSWORD=$(openssl rand -hex 24)" >> .env
+```
+
+### 3. Start Redis
+
+```bash
+docker compose --profile redis up -d
+```
+
+This starts Redis 7 (Alpine) alongside your existing stack. Redis is bound to `127.0.0.1:6379` — not accessible from outside the host.
+
+### 4. Configure the API
+
+Add to your `.env`:
+
+```bash
+LANGSIGHT_REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+LANGSIGHT_WORKERS=4    # CPU count is a good starting point
+```
+
+### 5. Restart the API
+
+```bash
+docker compose up -d --force-recreate api
+```
+
+Verify Redis is connected:
+
+```bash
+docker compose logs api --tail=20 | grep -i redis
+# Expected: "redis.connected url=redis://redis:6379"
+```
+
+---
+
+## Configuration reference
+
+| Env var | Required | Default | Description |
+|---------|----------|---------|-------------|
+| `LANGSIGHT_REDIS_URL` | When `LANGSIGHT_WORKERS > 1` | *(empty)* | Redis connection URI. Supports `redis://`, `redis+sentinel://`, `redis+cluster://` |
+| `LANGSIGHT_WORKERS` | No | `1` | Uvicorn worker processes. Set > 1 only when Redis is configured |
+| `REDIS_PASSWORD` | When using Docker Compose | *(empty)* | Password for the Docker Compose Redis service |
+
+### Connection URI formats
+
+```bash
+# Standalone (most common)
+LANGSIGHT_REDIS_URL=redis://:mypassword@redis:6379
+
+# Standalone with database selection
+LANGSIGHT_REDIS_URL=redis://:mypassword@redis:6379/0
+
+# TLS (Redis 6+)
+LANGSIGHT_REDIS_URL=rediss://:mypassword@redis:6380
+
+# Sentinel (high availability)
+LANGSIGHT_REDIS_URL=redis+sentinel://:mypassword@sentinel1:26379,sentinel2:26379,sentinel3:26379/mymaster/0
+
+# Cluster
+LANGSIGHT_REDIS_URL=redis+cluster://:mypassword@node1:6379,node2:6379,node3:6379
+```
+
+---
+
+## High availability
+
+### Redis Sentinel
+
+For production deployments where Redis downtime is unacceptable, use [Redis Sentinel](https://redis.io/docs/management/sentinel/) for automatic failover.
+
+```
+┌──────────┐  ┌──────────┐  ┌──────────┐
+│ Sentinel │  │ Sentinel │  │ Sentinel │
+│    :26379│  │    :26379│  │    :26379│
+└────┬─────┘  └────┬─────┘  └────┬─────┘
+     │             │              │
+     └─────────┬───┘──────────────┘
+               ▼
+     ┌─────────────────┐
+     │  Redis Primary   │ ◄── writes
+     │     :6379        │
+     └────────┬────────┘
+              │ replication
+     ┌────────▼────────┐
+     │  Redis Replica   │ ◄── reads (optional)
+     │     :6380        │
+     └─────────────────┘
+```
+
+**docker-compose.override.yml** for Sentinel:
+
+```yaml
+services:
+  redis-primary:
+    image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD} --bind 0.0.0.0
+    networks: [langsight-net]
+
+  redis-replica:
+    image: redis:7-alpine
+    command: >
+      redis-server
+        --replicaof redis-primary 6379
+        --masterauth ${REDIS_PASSWORD}
+        --requirepass ${REDIS_PASSWORD}
+    depends_on: [redis-primary]
+    networks: [langsight-net]
+
+  sentinel:
+    image: redis:7-alpine
+    command: >
+      redis-sentinel /etc/sentinel.conf
+    volumes:
+      - ./sentinel.conf:/etc/sentinel.conf
+    networks: [langsight-net]
+```
+
+**sentinel.conf**:
+
+```
+sentinel monitor mymaster redis-primary 6379 2
+sentinel auth-pass mymaster ${REDIS_PASSWORD}
+sentinel down-after-milliseconds mymaster 5000
+sentinel failover-timeout mymaster 10000
+```
+
+Configure LangSight:
+
+```bash
+LANGSIGHT_REDIS_URL=redis+sentinel://:${REDIS_PASSWORD}@sentinel:26379/mymaster/0
+```
+
+### Redis Cluster
+
+For very high throughput (>100K ops/sec), use Redis Cluster. LangSight's key layout uses hash tags to ensure related keys land on the same shard:
+
+```bash
+LANGSIGHT_REDIS_URL=redis+cluster://:${REDIS_PASSWORD}@node1:6379,node2:6379,node3:6379
+```
+
+<Warning>
+  Most LangSight deployments do not need Sentinel or Cluster. A single Redis instance handles thousands of concurrent API requests. Use HA only if your uptime SLA requires it.
+</Warning>
+
+---
+
+## Monitoring Redis
+
+### Check Redis health
+
+```bash
+# From the host
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" ping
+# Expected: PONG
+
+# Memory usage
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" info memory | grep used_memory_human
+# Expected: used_memory_human:2.5M (typically under 10MB for LangSight)
+
+# Connected clients
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" info clients | grep connected_clients
+# Expected: connected_clients:5 (1 per API worker + overhead)
+```
+
+### Key inventory
+
+```bash
+# Count all LangSight keys
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" --scan --pattern "langsight:*" | wc -l
+
+# List event channels (pub/sub)
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" pubsub channels "langsight:*"
+
+# Check circuit breaker state for a specific server
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" hgetall "langsight:cb:postgres-mcp"
+```
+
+### Key expiration and memory
+
+LangSight sets TTLs on all keys to prevent unbounded growth:
+
+| Key pattern | TTL | Purpose |
+|-------------|-----|---------|
+| `langsight:cb:{server}` | 2× cooldown (default: 120s) | Circuit breaker state |
+| `langsight:alerts:dedup:{session}` | 1 hour | Alert deduplication |
+| Rate limit counters | Window duration (60s) | Per-IP/key rate counters |
+| Pub/sub channels | No TTL (ephemeral) | SSE event broadcasting |
+
+Typical memory usage: **under 10 MB** for deployments with up to 100 MCP servers and 1,000 concurrent sessions.
+
+### Prometheus metrics
+
+If you have Prometheus monitoring Redis (via [redis_exporter](https://github.com/oliver006/redis_exporter)):
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: redis
+    static_configs:
+      - targets: ["localhost:9121"]
+```
+
+Key metrics to alert on:
+
+| Metric | Alert threshold | Meaning |
+|--------|----------------|---------|
+| `redis_memory_used_bytes` | > 100MB | Unexpected key growth |
+| `redis_connected_clients` | > 50 | Connection leak |
+| `redis_rejected_connections_total` | > 0 | Pool exhaustion |
+| `redis_keyspace_misses_total` increasing | Sudden spike | Cache invalidation storm |
+
+---
+
+## Troubleshooting
+
+### Redis connection refused
+
+**Symptom:** API fails to start with `redis.exceptions.ConnectionError: Error connecting to redis://redis:6379`.
+
+| Cause | Fix |
+|-------|-----|
+| Redis container not running | `docker compose --profile redis up -d redis` |
+| Wrong password | Check `REDIS_PASSWORD` in `.env` matches `LANGSIGHT_REDIS_URL` password |
+| Wrong hostname | Inside Docker Compose, use `redis` (service name). Outside, use `localhost` |
+| Redis not in profile | Ensure you started with `--profile redis` |
+
+```bash
+# Check Redis is running
+docker compose --profile redis ps redis
+
+# Test connection from the API container
+docker compose exec api python -c "
+import redis
+r = redis.from_url('${LANGSIGHT_REDIS_URL}')
+print(r.ping())  # Should print: True
+"
+```
+
+### Redis timeout errors
+
+**Symptom:** Intermittent `redis.exceptions.TimeoutError` in API logs.
+
+| Cause | Fix |
+|-------|-----|
+| Redis overloaded | Check `redis-cli info stats` — look at `instantaneous_ops_per_sec` |
+| Network latency | Redis should be on the same host or in the same Docker network |
+| Slow Lua scripts | Circuit breaker CAS uses Lua — check with `redis-cli slowlog get 10` |
+| Connection pool exhaustion | Increase pool size or reduce worker count |
+
+```bash
+# Check slow queries
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" slowlog get 10
+
+# Check current operations
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" info stats | grep instantaneous_ops
+```
+
+### Workers > 1 startup error
+
+**Symptom:**
+
+```
+RuntimeError: LANGSIGHT_WORKERS=4 is not safe with the current in-memory rate limiter.
+Set LANGSIGHT_REDIS_URL to enable shared state across workers.
+```
+
+**Fix:** Set `LANGSIGHT_REDIS_URL` in your `.env` and ensure Redis is running. See [Setup](#setup) above.
+
+### SSE events not reaching all dashboard tabs
+
+**Symptom:** Live view works in one browser tab but not another, or events appear on one dashboard instance but not another.
+
+| Cause | Fix |
+|-------|-----|
+| Redis not configured | SSE falls back to in-memory — events only reach clients on the same worker |
+| Pub/sub disconnected | Check API logs for `redis.pubsub.disconnected` errors |
+| Project isolation | SSE channels are project-scoped — ensure both tabs use the same project |
+
+```bash
+# Verify pub/sub is active
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" pubsub numsub "langsight:events:admin"
+```
+
+### Circuit breaker not shared across workers
+
+**Symptom:** Worker A opens the circuit for a failing MCP server, but Worker B continues sending requests to it.
+
+**Current status:** `RedisCircuitBreakerStore` is implemented but not wired into the default dependency injection. Circuit breaker state is per-worker by default.
+
+**Workaround:** Reduce `LANGSIGHT_WORKERS` to `1` if circuit breaker consistency is critical, or set short `cooldown_seconds` so all workers independently open the circuit quickly.
+
+---
+
+## Migrating from single-worker to multi-worker
+
+If you are running LangSight with a single worker and want to scale horizontally:
+
+### Pre-migration checklist
+
+- [ ] Redis installed (`pip install "langsight[redis]"` or `uv add "langsight[redis]"`)
+- [ ] Redis password generated (`openssl rand -hex 24`)
+- [ ] `.env` updated with `LANGSIGHT_REDIS_URL` and `REDIS_PASSWORD`
+- [ ] Docker Compose started with `--profile redis`
+- [ ] Redis responds to `PING`
+
+### Migration steps
+
+1. **Stop the API** (prevents split-brain during transition):
+   ```bash
+   docker compose stop api
+   ```
+
+2. **Update `.env`**:
+   ```bash
+   REDIS_PASSWORD=<your-generated-password>
+   LANGSIGHT_REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+   LANGSIGHT_WORKERS=4
+   ```
+
+3. **Start Redis**:
+   ```bash
+   docker compose --profile redis up -d redis
+   ```
+
+4. **Verify Redis**:
+   ```bash
+   docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" ping
+   ```
+
+5. **Start the API**:
+   ```bash
+   docker compose up -d api
+   ```
+
+6. **Verify multi-worker**:
+   ```bash
+   docker compose logs api --tail=5
+   # Should show: "Started server process" messages for each worker
+   ```
+
+### Rollback
+
+To go back to single-worker:
+
+```bash
+# In .env
+LANGSIGHT_WORKERS=1
+# Optionally remove LANGSIGHT_REDIS_URL
+
+docker compose up -d --force-recreate api
+```
+
+Redis can remain running — it is simply unused when `LANGSIGHT_WORKERS=1`.
+
+---
+
+## Performance tuning
+
+### Memory policy
+
+LangSight uses TTLs on all keys, so Redis memory stays bounded. The default `maxmemory-policy` of `noeviction` is correct — expired keys are cleaned up automatically.
+
+If you want to set an explicit memory limit:
+
+```bash
+# In redis.conf or via command
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" config set maxmemory 64mb
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" config set maxmemory-policy allkeys-lru
+```
+
+### Connection pool sizing
+
+Each API worker opens up to 20 Redis connections. For N workers:
+
+| Workers | Max Redis connections | Recommended `maxclients` |
+|---------|----------------------|--------------------------|
+| 1 | 20 | 128 (default) |
+| 4 | 80 | 128 (default) |
+| 8 | 160 | 256 |
+| 16 | 320 | 512 |
+
+Set `maxclients` in Redis if running many workers:
+
+```bash
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" config set maxclients 256
+```
+
+### Persistence
+
+LangSight does **not** require Redis persistence. All data stored in Redis is ephemeral — rate limit counters, SSE channels, and circuit breaker state can be safely lost on restart. The API reconstructs state from PostgreSQL and ClickHouse on startup.
+
+If you want persistence for faster recovery after Redis restarts:
+
+```bash
+# Enable AOF (append-only file) for minimal data loss
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" config set appendonly yes
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" config set appendfsync everysec
+```
+
+<Note>
+  Redis persistence is optional for LangSight. Rate limit counters reset (briefly allowing extra requests), SSE clients reconnect automatically, and circuit breaker state rebuilds from health check results. The only visible effect of a Redis restart is a brief window where rate limits are relaxed.
+</Note>
+
+---
+
+## Backup
+
+Redis data in LangSight is **ephemeral** — it does not need to be backed up. All persistent data lives in PostgreSQL and ClickHouse. See [Backup & Restore](/self-hosting/backup-restore) for database backup procedures.
+
+If you enabled Redis persistence (AOF/RDB) and want to back it up:
+
+```bash
+# Trigger a background save
+docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" bgsave
+
+# Copy the dump file
+docker compose cp redis:/data/dump.rdb ./backups/redis-dump.rdb
+```
+
+---
+
+## Related
+
+- [Configuration Reference](/self-hosting/configuration) — all environment variables including Redis
+- [Production Hardening](/self-hosting/production-hardening) — horizontal scaling setup steps
+- [Troubleshooting](/self-hosting/troubleshooting) — common startup errors
+- [Backup & Restore](/self-hosting/backup-restore) — database backup procedures

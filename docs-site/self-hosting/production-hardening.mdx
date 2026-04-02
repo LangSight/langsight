@@ -16,29 +16,22 @@ Redis provides shared state for:
 
 - **Rate limiting** — all workers share counters (brute-force protection works correctly)
 - **SSE live view** — events published by any worker reach all connected clients
+- **Circuit breaker** — shared failure state across all workers
+- **Alert deduplication** — each alert fires exactly once, not once per worker
 
-### Setup
+### Quick setup
 
-1. Generate a Redis password and add to `.env`:
-   ```bash
-   echo "REDIS_PASSWORD=$(openssl rand -hex 24)" >> .env
-   ```
+```bash
+# 1. Generate password and configure
+echo "REDIS_PASSWORD=$(openssl rand -hex 24)" >> .env
+echo "LANGSIGHT_REDIS_URL=redis://:\${REDIS_PASSWORD}@redis:6379" >> .env
+echo "LANGSIGHT_WORKERS=4" >> .env
 
-2. Start Redis alongside the stack:
-   ```bash
-   docker compose --profile redis up -d
-   ```
+# 2. Start with Redis profile
+docker compose --profile redis up -d
+```
 
-3. Configure the API in `.env`:
-   ```bash
-   LANGSIGHT_REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
-   LANGSIGHT_WORKERS=4   # CPU count is a good starting point
-   ```
-
-4. Rebuild and restart:
-   ```bash
-   docker compose up -d --force-recreate api
-   ```
+For the full guide — including Sentinel HA, Cluster, monitoring, performance tuning, and troubleshooting — see the dedicated [Redis](/self-hosting/redis) page.
 
 ### Without Redis (default)
 
@@ -235,6 +228,7 @@ services:
 
 ## Related
 
+- [Redis](/self-hosting/redis) — full Redis guide: architecture, HA, monitoring, troubleshooting
 - [Configuration Reference](/self-hosting/configuration) — all environment variables
 - [Backup & Restore](/self-hosting/backup-restore) — backup Postgres and ClickHouse data
 - [Troubleshooting](/self-hosting/troubleshooting) — common startup and runtime errors
