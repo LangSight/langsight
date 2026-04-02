@@ -27,8 +27,8 @@
     "dagre": "^0.8.5",
     "geist": "^1.7.0",
     "lucide-react": "^0.577.0",
-    "next": "15.2.3",
-    "next-auth": "^5.0.0-beta.30",
+    "next": "15.5.14",
+    "next-auth": "5.0.0-beta.30",
     "next-themes": "^0.4.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -36,6 +36,24 @@
     "sonner": "^2.0.7",
     "swr": "^2.2.5",
     "tailwind-merge": "^2.5.5"
+  },
+  "overrides": {
+    "handlebars": "^4.7.9",
+    "lodash": "^4.18.1",
+    "picomatch": "^2.3.2",
+    "brace-expansion": "^2.0.3",
+    "tinyglobby": {
+      "picomatch": "^4.0.4"
+    },
+    "jest-haste-map": {
+      "picomatch": "^4.0.4"
+    },
+    "jest-message-util": {
+      "picomatch": "^4.0.4"
+    },
+    "jest-util": {
+      "picomatch": "^4.0.4"
+    }
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
@@ -53,6 +71,6 @@
     "postcss": "^8",
     "tailwindcss": "^3.4.0",
     "ts-jest": "^29.4.6",
-    "typescript": "^5"
+    "typescript": "^5.9.3"
   }
 }
