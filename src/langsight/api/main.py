@@ -423,60 +423,34 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         # are running a separate `langsight monitor` daemon instead).
         monitor_task: asyncio.Task[Any] | None = None
         if settings.monitor_enabled and app.state.config.servers:
-            import threading
+            from langsight.health.checker import HealthChecker
 
             _interval = settings.monitor_interval_seconds
-            _servers = app.state.config.servers
-            _storage_config = settings.apply_to_storage(app.state.config.storage)
-
-            # Run the monitor in a dedicated thread with its own event loop so
-            # health checks (including subprocess-spawning stdio transports) never
-            # compete with FastAPI request handling on the main event loop.
-            _monitor_stop = threading.Event()
-
-            def _monitor_thread_target() -> None:
-                import asyncio as _asyncio
-
-                from langsight.health.checker import HealthChecker
-
-                loop = _asyncio.new_event_loop()
-                _asyncio.set_event_loop(loop)
-
-                async def _run() -> None:
-                    async with await open_storage(_storage_config) as _storage:
-                        checker = HealthChecker(storage=_storage, project_id="")
-                        logger.info(
-                            "monitor.started",
-                            servers=len(_servers),
-                            interval_seconds=_interval,
-                        )
-                        while not _monitor_stop.is_set():
-                            try:
-                                await checker.check_many(_servers)
-                            except Exception as exc:  # noqa: BLE001
-                                logger.error("monitor.cycle_error", error=str(exc))
-                            # Sleep in small increments so we can check stop event
-                            for _ in range(_interval):
-                                if _monitor_stop.is_set():
-                                    break
-                                await _asyncio.sleep(1)
-
-                try:
-                    loop.run_until_complete(_run())
-                finally:
-                    loop.close()
-
-            _monitor_thread = threading.Thread(
-                target=_monitor_thread_target,
-                name="langsight-monitor",
-                daemon=True,
+            _checker = HealthChecker(
+                storage=app.state.storage,
+                project_id="",  # global — visible to all projects
             )
-            _monitor_thread.start()
+            _servers = app.state.config.servers
+
+            async def _monitor_loop() -> None:
+                logger.info(
+                    "monitor.started",
+                    servers=len(_servers),
+                    interval_seconds=_interval,
+                )
+                while True:
+                    try:
+                        await _checker.check_many(_servers)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.error("monitor.cycle_error", error=str(exc))
+                    await asyncio.sleep(_interval)
+
+            monitor_task = asyncio.create_task(_monitor_loop())
             logger.info(
                 "monitor.embedded",
                 servers=len(_servers),
                 interval_seconds=_interval,
-                note="running in dedicated thread — disable with LANGSIGHT_MONITOR_ENABLED=false",
+                note="disable with LANGSIGHT_MONITOR_ENABLED=false",
             )
         elif not app.state.config.servers:
             logger.info(
@@ -487,10 +461,6 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         try:
             yield
         finally:
-            # Signal monitor thread to stop and wait up to 5s for clean exit
-            if settings.monitor_enabled and app.state.config.servers:
-                _monitor_stop.set()
-                _monitor_thread.join(timeout=5)
             if monitor_task:
                 monitor_task.cancel()
                 try:

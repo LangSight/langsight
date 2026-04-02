@@ -83,6 +83,13 @@ dev = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-m 'not integration and not e2e' --cov=langsight --cov-report=term-missing --cov-fail-under=70 -v"
+filterwarnings = [
+    # AsyncMock in Python 3.12 generates RuntimeWarning when a coroutine created
+    # by the mock is garbage-collected without being awaited.  This is a CPython
+    # 3.12 behaviour change and is benign in test code — the mock correctly
+    # records the call even when the coroutine is not driven to completion.
+    "ignore::RuntimeWarning:unittest.mock",
+]
 markers = [
     "unit: fast tests, no external deps",
     "integration: requires docker compose up (postgres + ClickHouse) — run with -m integration",
