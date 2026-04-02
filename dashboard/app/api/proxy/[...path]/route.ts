@@ -74,6 +74,12 @@ async function proxyRequest(
       cache: "no-store",
     });
 
+    // 204 / 304 must be returned with no body — the Response constructor throws
+    // if you pass a body string for these status codes (Next.js Edge Runtime).
+    if (res.status === 204 || res.status === 304) {
+      return new NextResponse(null, { status: res.status });
+    }
+
     // Stream response back
     const data = await res.text();
     return new NextResponse(data, {
