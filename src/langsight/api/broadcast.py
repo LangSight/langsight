@@ -177,10 +177,7 @@ class RedisBroadcaster:
         project_id=None  → listens on langsight:events:admin (all events)
         project_id='x'   → listens on langsight:events:x (own events only)
         """
-        channel = (
-            _ADMIN_CHANNEL if project_id is None
-            else f"{_PROJECT_CHANNEL_PREFIX}{project_id}"
-        )
+        channel = _ADMIN_CHANNEL if project_id is None else f"{_PROJECT_CHANNEL_PREFIX}{project_id}"
         pubsub = self._redis.pubsub()
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=_CLIENT_BUFFER)
         self._local_client_count += 1
