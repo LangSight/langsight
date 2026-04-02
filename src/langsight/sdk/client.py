@@ -187,7 +187,14 @@ class LangSightClient:
         key = session_id or "__default__"
         if key not in self._loop_detectors:
             if len(self._loop_detectors) >= _MAX_SESSION_STATE:
+                evicted_key, _ = next(iter(self._loop_detectors.items()))
                 self._loop_detectors.popitem(last=False)  # evict LRU (oldest)
+                logger.warning(
+                    "sdk.loop_detector_evicted",
+                    evicted_session=evicted_key,
+                    cap=_MAX_SESSION_STATE,
+                    hint="Increase _MAX_SESSION_STATE or reduce concurrent sessions",
+                )
             self._loop_detectors[key] = LoopDetector(self._loop_config)
         else:
             self._loop_detectors.move_to_end(key)  # promote to MRU
@@ -203,7 +210,14 @@ class LangSightClient:
         key = session_id or "__default__"
         if key not in self._session_budgets:
             if len(self._session_budgets) >= _MAX_SESSION_STATE:
+                evicted_key, _ = next(iter(self._session_budgets.items()))
                 self._session_budgets.popitem(last=False)  # evict LRU (oldest)
+                logger.warning(
+                    "sdk.budget_evicted",
+                    evicted_session=evicted_key,
+                    cap=_MAX_SESSION_STATE,
+                    hint="Increase _MAX_SESSION_STATE or reduce concurrent sessions",
+                )
             self._session_budgets[key] = SessionBudget(self._budget_config)
         else:
             self._session_budgets.move_to_end(key)  # promote to MRU

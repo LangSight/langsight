@@ -69,32 +69,40 @@ runs:
     # ── Install ───────────────────────────────────────────────────────────────
     - name: Install LangSight
       shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
       run: |
-        if [ "${{ inputs.version }}" = "latest" ]; then
+        if [ "${INPUT_VERSION}" = "latest" ]; then
           pip install --quiet langsight
         else
-          pip install --quiet "langsight==${{ inputs.version }}"
+          pip install --quiet "langsight==${INPUT_VERSION}"
         fi
 
     # ── Scan (JSON capture + human display) ───────────────────────────────────
     - name: Scan MCP servers
       id: scan
       shell: bash
+      # Security: inputs are passed via env vars, not interpolated directly into
+      # the shell script, to prevent command injection (CWE-78).
+      env:
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_EXTRA_ARGS: ${{ inputs.extra-args }}
       run: |
         REPORT_PATH="${RUNNER_TEMP}/langsight-report.json"
         echo "report_path=${REPORT_PATH}" >> "$GITHUB_OUTPUT"
 
         CONFIG_ARG=""
-        if [ -n "${{ inputs.config }}" ]; then
-          CONFIG_ARG="--config ${{ inputs.config }}"
+        if [ -n "${INPUT_CONFIG}" ]; then
+          CONFIG_ARG="--config ${INPUT_CONFIG}"
         fi
 
         # Capture JSON to file; show human-readable output in the log
-        langsight scan ${CONFIG_ARG} ${{ inputs.extra-args }} --json \
+        # shellcheck disable=SC2086  # intentional word-split on CONFIG_ARG / INPUT_EXTRA_ARGS
+        langsight scan ${CONFIG_ARG} ${INPUT_EXTRA_ARGS} --json \
           > "${REPORT_PATH}" 2>&1 || true
 
         echo "--- Human-readable summary ---"
-        langsight scan ${CONFIG_ARG} ${{ inputs.extra-args }} 2>&1 || true
+        langsight scan ${CONFIG_ARG} ${INPUT_EXTRA_ARGS} 2>&1 || true
 
     # ── Parse counts from JSON ────────────────────────────────────────────────
     - name: Parse results
@@ -129,8 +137,12 @@ runs:
     # ── Enforce threshold ─────────────────────────────────────────────────────
     - name: Enforce severity threshold
       shell: bash
+      env:
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_EXTRA_ARGS: ${{ inputs.extra-args }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
       run: |
-        FAIL_ON="${{ inputs.fail-on }}"
+        FAIL_ON="${INPUT_FAIL_ON}"
         CRITICAL="${{ steps.parse.outputs.critical }}"
         HIGH="${{ steps.parse.outputs.high }}"
 
@@ -148,8 +160,9 @@ runs:
           medium|low)
             # For medium/low use --ci flag directly
             CONFIG_ARG=""
-            [ -n "${{ inputs.config }}" ] && CONFIG_ARG="--config ${{ inputs.config }}"
-            langsight scan ${CONFIG_ARG} --ci ${{ inputs.extra-args }} || \
+            [ -n "${INPUT_CONFIG}" ] && CONFIG_ARG="--config ${INPUT_CONFIG}"
+            # shellcheck disable=SC2086
+            langsight scan ${CONFIG_ARG} --ci ${INPUT_EXTRA_ARGS} || \
               fail "Findings at or above '${FAIL_ON}' severity detected."
             ;;
           *)
