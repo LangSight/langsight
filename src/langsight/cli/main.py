@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from importlib.metadata import version as _pkg_version
 
 import click
 import structlog
@@ -23,7 +24,7 @@ structlog.configure(logger_factory=structlog.PrintLoggerFactory(sys.stderr))
 
 
 @click.group()
-@click.version_option(version="0.11.0", prog_name="langsight")
+@click.version_option(version=_pkg_version("langsight"), prog_name="langsight")
 def cli() -> None:
     """LangSight — agent runtime reliability platform.
 

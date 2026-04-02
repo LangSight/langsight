@@ -9,6 +9,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 - **Docs cleanup**: Removed all stale v0.11.x patterns from public-facing docs. Primary examples in `quickstart.mdx`, `sdk/python.mdx`, `sdk/integrations/langchain.mdx`, `sdk/integrations/langgraph.mdx`, and `sdk/integrations/gemini-sdk.mdx` now consistently use the v0.12.0 `session()` context manager pattern. Manual uuid4 generation, explicit `session_id=` threading, and `set_context`/`clear_context` boilerplate are moved to clearly labeled "Before 0.12.0" migration sections or "Advanced: manual pattern" sections only. The "Combining with MCP tracing" example in gemini-sdk.mdx now shows context-inherited `wrap_llm()` and `wrap()` calls (no explicit `session_id` threading).
 
+## [0.14.0] - 2026-04-01
+
+**Optional Redis support for multi-worker horizontal scaling.**
+
+### Added
+- **Optional Redis support** (`langsight[redis]` extra): new env var `LANGSIGHT_REDIS_URL` enables Redis-backed rate limiting and SSE broadcasting. When unset, behaviour is identical to v0.13.x.
+- **`LANGSIGHT_WORKERS > 1` now works**: multiple Uvicorn workers share state via Redis when `LANGSIGHT_REDIS_URL` is set; previously only a single worker was safe.
+- **`RedisBroadcaster`** (`src/langsight/broadcast.py`): Redis pub/sub SSE broadcaster for cross-worker event fan-out.
+- **`RedisCircuitBreakerStore`** (`src/langsight/sdk/circuit_breaker.py`): optional shared circuit-breaker state backed by Redis; in-process store remains the default.
+- **`redis_client.py`** (`src/langsight/redis_client.py`): lazy-import singleton Redis connection factory — Redis is imported only when `LANGSIGHT_REDIS_URL` is set, so deployments without Redis pay zero import cost.
+- **`langsight[redis]` optional dependency**: `pip install "langsight[redis]"` (or `uv add "langsight[redis]"`) pulls in `redis[hiredis]>=5`.
+- **Docker Compose Redis profile**: `docker compose --profile redis up -d` starts a `redis:7-alpine` sidecar; no profile change required for single-worker deployments.
+- **80 new tests**: unit tests for `RedisBroadcaster`, `RedisCircuitBreakerStore`, and `redis_client`; integration tests against a live Redis container; security tests for Redis auth and key-isolation invariants.
+- **Docs updated**: `docs-site/self-hosting/configuration.mdx` and `docs-site/self-hosting/production-hardening.mdx` document `LANGSIGHT_REDIS_URL`, the `[redis]` extra, worker scaling, and the Compose profile.
+
 ## [0.13.1] - 2026-04-01
 
 **Shared-proxy attribution fix + session graph Input/Output panel.**
