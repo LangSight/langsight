@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Nav, Footer, useTheme, useScrollReveal } from "@/components/site-shell";
 
 function GithubIcon({ className }: { className?: string }) {
