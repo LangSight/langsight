@@ -70,7 +70,7 @@ class TestHealthCheckerCheck:
             result = await checker.check(server)
 
         assert result.schema_hash is not None
-        assert len(result.schema_hash) == 16  # hash_tools returns 16-char hex
+        assert len(result.schema_hash) == 32  # hash_tools returns 32-char hex
 
     async def test_down_status_on_timeout(
         self, server: MCPServer, checker: HealthChecker
@@ -416,10 +416,10 @@ class TestHashTools:
         other = ToolInfo(name="delete", description="Delete a row")
         assert hash_tools([TOOL_QUERY]) != hash_tools([other])
 
-    def test_hash_length_is_16(self) -> None:
+    def test_hash_length_is_32(self) -> None:
         from langsight.health.transports import hash_tools
 
-        assert len(hash_tools([TOOL_QUERY])) == 16
+        assert len(hash_tools([TOOL_QUERY])) == 32
 
     def test_empty_tools_has_stable_hash(self) -> None:
         from langsight.health.transports import hash_tools

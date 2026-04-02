@@ -113,7 +113,7 @@ services:
       # Bearer token required on inbound OTLP connections. Set in .env.
       # SDK clients must send: OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer <token>
       # Leave empty for local dev (no auth). Required for shared/production deployments.
-      OTEL_COLLECTOR_TOKEN: ${OTEL_COLLECTOR_TOKEN:-}
+      OTEL_COLLECTOR_TOKEN: ${OTEL_COLLECTOR_TOKEN:-changeme-set-a-real-token-in-env}
       LANGSIGHT_API_KEY: ${LANGSIGHT_API_KEYS}
     ports:
       - "127.0.0.1:4317:4317"  # gRPC OTLP — loopback only

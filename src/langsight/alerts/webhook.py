@@ -7,6 +7,12 @@ but never raise exceptions (monitoring must not break because alerting is down).
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import os
+import time
+
 import httpx
 import structlog
 
@@ -16,6 +22,28 @@ from langsight.alerts.engine import Alert
 logger = structlog.get_logger()
 
 WEBHOOK_TIMEOUT = 5.0
+
+# Optional shared secret for HMAC signing.  Set LANGSIGHT_WEBHOOK_SECRET to
+# a random 32-byte hex string.  Receivers verify:
+#   HMAC-SHA256(secret, f"{timestamp}.{body}") == X-LangSight-Signature
+# When unset, the header is omitted (backward-compatible).
+_WEBHOOK_SECRET = os.environ.get("LANGSIGHT_WEBHOOK_SECRET", "")
+
+
+def _sign_payload(body: str) -> dict[str, str]:
+    """Return signing headers if LANGSIGHT_WEBHOOK_SECRET is configured."""
+    if not _WEBHOOK_SECRET:
+        return {}
+    ts = str(int(time.time()))
+    sig = hmac.new(
+        _WEBHOOK_SECRET.encode(),
+        f"{ts}.{body}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return {
+        "X-LangSight-Timestamp": ts,
+        "X-LangSight-Signature": f"sha256={sig}",
+    }
 
 
 async def send_alert(webhook_url: str, alert: Alert) -> bool:
@@ -38,8 +66,10 @@ async def send_alert(webhook_url: str, alert: Alert) -> bool:
         "fired_at": alert.fired_at.isoformat(),
     }
     try:
+        body = json.dumps(payload)
+        headers = {"Content-Type": "application/json", **_sign_payload(body)}
         async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
-            response = await client.post(webhook_url, json=payload)
+            response = await client.post(webhook_url, content=body, headers=headers)
             response.raise_for_status()
         logger.info(
             "webhook.alert_sent",

@@ -105,4 +105,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   session: { strategy: "jwt" },
   secret: process.env.AUTH_SECRET,
+  // SameSite=Strict prevents CSRF — cookies are not sent on cross-origin requests.
+  // lax would allow GET-based CSRF; strict requires same-site navigation.
+  cookies: {
+    sessionToken: {
+      options: {
+        httpOnly: true,
+        sameSite: "strict" as const,
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+  },
 });

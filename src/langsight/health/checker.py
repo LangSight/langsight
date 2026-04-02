@@ -191,34 +191,49 @@ class HealthChecker:
         A semaphore caps concurrency at _CONCURRENCY to prevent spawning unbounded
         subprocesses when many servers are configured.
         """
+        if not servers:
+            return []
+
         sem = asyncio.Semaphore(self._CONCURRENCY)
 
         async def _bounded_check(server: MCPServer) -> HealthCheckResult:
             async with sem:
                 return await self.check(server)
 
-        try:
-            results = await asyncio.wait_for(
-                asyncio.gather(*[_bounded_check(server) for server in servers]),
+        # Use asyncio.wait() with a timeout so completed checks are not thrown away.
+        # Previously asyncio.wait_for() cancelled all pending tasks on timeout,
+        # marking every server DOWN — causing alert storms when a single slow
+        # server stalled the batch.  Now: already-completed checks are returned;
+        # only the still-pending ones get the DOWN result.
+        tasks = {asyncio.ensure_future(_bounded_check(s)): s for s in servers}
+        done, pending = await asyncio.wait(tasks.keys(), timeout=global_timeout)
+
+        if pending:
+            logger.warning(
+                "health_checker.partial_timeout",
                 timeout=global_timeout,
+                completed=len(done),
+                timed_out=len(pending),
             )
-            return list(results)
-        except TimeoutError:
-            logger.error(
-                "health_checker.global_timeout", timeout=global_timeout, servers=len(servers)
-            )
-            # Return DOWN results for all servers
             now = datetime.now(UTC)
-            return [
-                HealthCheckResult(
-                    server_name=s.name,
-                    status=ServerStatus.DOWN,
-                    latency_ms=None,
-                    tools_count=0,
-                    schema_hash=None,
-                    error=f"global timeout ({global_timeout}s)",
-                    checked_at=now,
-                    project_id=self._project_id,
+            timeout_results: list[HealthCheckResult] = []
+            for task in pending:
+                task.cancel()
+                server = tasks[task]
+                timeout_results.append(
+                    HealthCheckResult(
+                        server_name=server.name,
+                        status=ServerStatus.DOWN,
+                        latency_ms=None,
+                        tools_count=0,
+                        schema_hash=None,
+                        error=f"global timeout ({global_timeout}s)",
+                        checked_at=now,
+                        project_id=self._project_id,
+                    )
                 )
-                for s in servers
-            ]
+        else:
+            timeout_results = []
+
+        completed_results = [t.result() for t in done if not t.exception()]
+        return completed_results + timeout_results

@@ -14,6 +14,7 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool
 
+from langsight.alerts._url_validation import validate_webhook_url
 from langsight.exceptions import MCPConnectionError, MCPHealthToolError, MCPTimeoutError
 from langsight.models import MCPServer, ToolInfo, TransportType
 
@@ -44,6 +45,10 @@ async def _open_session(server: MCPServer) -> AsyncGenerator[ClientSession, None
             raise MCPConnectionError(
                 f"Server '{server.name}': sse transport requires 'url' to be set."
             )
+        try:
+            validate_webhook_url(server.url)
+        except ValueError as exc:
+            raise MCPConnectionError(f"Server '{server.name}': blocked URL — {exc}") from exc
         async with sse_client(server.url) as (read, write):
             async with ClientSession(read, write) as session:
                 yield session
@@ -53,6 +58,10 @@ async def _open_session(server: MCPServer) -> AsyncGenerator[ClientSession, None
             raise MCPConnectionError(
                 f"Server '{server.name}': streamable_http transport requires 'url' to be set."
             )
+        try:
+            validate_webhook_url(server.url)
+        except ValueError as exc:
+            raise MCPConnectionError(f"Server '{server.name}': blocked URL — {exc}") from exc
         async with streamablehttp_client(server.url) as (read, write, _):
             async with ClientSession(read, write) as session:
                 yield session
@@ -144,7 +153,7 @@ def hash_tools(tools: list[ToolInfo]) -> str:
         }
         for t in sorted(tools, key=lambda t: t.name)
     ]
-    return hashlib.sha256(json.dumps(schema, sort_keys=True).encode()).hexdigest()[:16]
+    return hashlib.sha256(json.dumps(schema, sort_keys=True).encode()).hexdigest()[:32]
 
 
 # ---------------------------------------------------------------------------

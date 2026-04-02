@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/sidebar";
 import { ProjectProvider } from "@/lib/project-context";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import { SWRConfig } from "swr";
 
 const PAGE_META: Record<string, { title: string; description: string }> = {
   "/":            { title: "Dashboard",      description: "Agent runtime health at a glance" },
@@ -96,6 +97,9 @@ function Topbar() {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
+    // revalidateOnFocus: false — prevents API storm when user alt-tabs back.
+    // Dashboard data is already refreshed on a per-page interval via refreshInterval.
+    <SWRConfig value={{ revalidateOnFocus: false, revalidateOnReconnect: true }}>
     <ProjectProvider>
       <NavProgress />
       <div className="flex h-screen overflow-hidden">
@@ -113,5 +117,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </div>
     </ProjectProvider>
+    </SWRConfig>
   );
 }
