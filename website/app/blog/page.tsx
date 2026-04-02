@@ -12,6 +12,8 @@ const posts = [
     readTime: "10 min read",
     tags: ["MCP Monitoring", "Health Checks", "Production"],
     image: "/blog/mcp-monitoring-production.png",
+    label: "MCP Monitoring",
+    sublabel: "Proactive health checks for your MCP fleet",
   },
   {
     slug: "owasp-mcp-top-10-guide",
@@ -22,6 +24,8 @@ const posts = [
     readTime: "12 min read",
     tags: ["OWASP", "MCP Security", "Compliance"],
     image: "/blog/owasp-mcp-top-10-guide.png",
+    label: "OWASP MCP Top 10",
+    sublabel: "The definitive security checklist",
   },
   {
     slug: "mcp-tool-poisoning",
@@ -32,6 +36,8 @@ const posts = [
     readTime: "9 min read",
     tags: ["Tool Poisoning", "Security", "Attack Vectors"],
     image: "/blog/mcp-tool-poisoning.png",
+    label: "Tool Poisoning",
+    sublabel: "Hidden instructions that hijack your agents",
   },
   {
     slug: "ai-agent-cost-attribution",
@@ -42,6 +48,8 @@ const posts = [
     readTime: "8 min read",
     tags: ["Cost Tracking", "Budget", "Production"],
     image: "/blog/ai-agent-cost-attribution.png",
+    label: "Cost Attribution",
+    sublabel: "Track every dollar across agents and tools",
   },
   {
     slug: "mcp-schema-drift",
@@ -52,6 +60,8 @@ const posts = [
     readTime: "8 min read",
     tags: ["Schema Drift", "MCP Health", "Silent Failures"],
     image: "/blog/mcp-schema-drift.png",
+    label: "Schema Drift",
+    sublabel: "The silent failure your agents can't detect",
   },
   {
     slug: "circuit-breakers-ai-agents",
@@ -62,6 +72,8 @@ const posts = [
     readTime: "9 min read",
     tags: ["Circuit Breaker", "Reliability", "Fault Tolerance"],
     image: "/blog/circuit-breakers-ai-agents.png",
+    label: "Circuit Breakers",
+    sublabel: "Prevent cascading failures across agents",
   },
   {
     slug: "langsight-vs-langfuse",
@@ -72,6 +84,8 @@ const posts = [
     readTime: "7 min read",
     tags: ["Comparison", "Langfuse", "Observability"],
     image: "/blog/langsight-vs-langfuse.png",
+    label: "LangSight vs Langfuse",
+    sublabel: "Different tools for different problems",
   },
   {
     slug: "self-hosting-ai-observability",
@@ -82,6 +96,8 @@ const posts = [
     readTime: "7 min read",
     tags: ["Self-Hosted", "Data Privacy", "Open Source"],
     image: "/blog/self-hosting-ai-observability.png",
+    label: "Self-Hosted",
+    sublabel: "Your data never leaves your network",
   },
   {
     slug: "blast-radius-mapping",
@@ -92,6 +108,8 @@ const posts = [
     readTime: "8 min read",
     tags: ["Blast Radius", "Dependencies", "Reliability"],
     image: "/blog/blast-radius-mapping.png",
+    label: "Blast Radius",
+    sublabel: "Know what breaks when a tool goes down",
   },
   {
     slug: "slos-for-ai-agents",
@@ -102,6 +120,8 @@ const posts = [
     readTime: "9 min read",
     tags: ["SLOs", "Reliability Engineering", "Monitoring"],
     image: "/blog/slos-for-ai-agents.png",
+    label: "Agent SLOs",
+    sublabel: "Set reliability targets that actually work",
   },
   {
     slug: "ai-agent-loop-detection",
@@ -112,6 +132,8 @@ const posts = [
     readTime: "8 min read",
     tags: ["Loop Detection", "Agent Reliability", "Production"],
     image: "/blog/ai-agent-loop-detection.png",
+    label: "Loop Detection",
+    sublabel: "Stop infinite agent loops before they burn your budget",
   },
   {
     slug: "mcp-server-security",
@@ -122,6 +144,8 @@ const posts = [
     readTime: "10 min read",
     tags: ["MCP Security", "OWASP", "CVE"],
     image: "/blog/mcp-server-security.png",
+    label: "MCP Security",
+    sublabel: "Scan every server, surface every threat",
   },
 ];
 
@@ -155,7 +179,7 @@ export default function BlogIndex() {
       <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--bg)]/90 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2 font-semibold text-[var(--fg)]">
-            <img src="/logo-icon.png" alt="LangSight" className="w-7 h-7" />
+            <img src="/logo-icon.svg" alt="LangSight" className="w-7 h-7" />
             LangSight
           </a>
           <a href="/" className="text-sm text-[var(--muted)] hover:text-[var(--fg)] transition-colors">
@@ -190,6 +214,15 @@ export default function BlogIndex() {
                   className="w-full h-full object-cover"
                   style={{ aspectRatio: "1200/630", minHeight: "220px" }}
                 />
+                {/* Text overlay */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
+                  <span className="text-2xl sm:text-3xl font-bold text-white tracking-wide drop-shadow-lg">
+                    {featured.label}
+                  </span>
+                  <span className="text-sm text-white/80 mt-1.5 drop-shadow-md">
+                    {featured.sublabel}
+                  </span>
+                </div>
                 <div className="absolute bottom-4 left-5">
                   <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-white/15 text-white/90 backdrop-blur-sm">
                     Featured
@@ -247,6 +280,15 @@ export default function BlogIndex() {
                     alt={post.title}
                     className="w-full h-full object-cover"
                   />
+                  {/* Text overlay */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
+                    <span className="text-base sm:text-lg font-bold text-white tracking-wide drop-shadow-lg">
+                      {post.label}
+                    </span>
+                    <span className="text-[11px] text-white/75 mt-1 drop-shadow-md">
+                      {post.sublabel}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Content */}
