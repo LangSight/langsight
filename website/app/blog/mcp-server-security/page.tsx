@@ -294,6 +294,14 @@ langsight security-scan --ci --min-severity high
             The scan is free, self-hosted, and takes one minute. The alternative is finding out about CVE-2025-6514 after an agent has already run arbitrary code on your infrastructure.
           </p>
 
+          <h2>Related articles</h2>
+          <ul>
+            <li><a href="/blog/owasp-mcp-top-10-guide/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>OWASP MCP Top 10 Explained: A Practical Security Guide</a> — The comprehensive walkthrough of every OWASP MCP risk with detailed examples and remediation steps.</li>
+            <li><a href="/blog/mcp-tool-poisoning/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>MCP Tool Poisoning</a> — Deep dive into the most dangerous attack vector: hidden instructions in tool descriptions.</li>
+            <li><a href="/blog/mcp-schema-drift/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Schema Drift in MCP</a> — Schema drift is both a reliability risk and a security risk. Malicious schema changes can disguise poisoning attacks.</li>
+            <li><a href="/blog/self-hosting-ai-observability/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Self-Hosting AI Observability</a> — Keep your security scan results and agent traces in your own network.</li>
+          </ul>
+
           <div className="mt-12 p-6 border border-[var(--indigo)]/30 rounded-xl bg-[var(--indigo)]/5">
             <p className="font-semibold text-[var(--indigo)] mb-2">Audit your MCP servers in 60 seconds</p>
             <p className="text-[var(--muted)] text-sm mb-4">
@@ -372,6 +380,14 @@ langsight security-scan --ci --min-severity high
         .prose-custom strong {
           font-weight: 600;
           color: var(--fg);
+        }
+        .prose-custom a {
+          color: var(--indigo);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose-custom a:hover {
+          opacity: 0.8;
         }
       `}</style>
     </main>

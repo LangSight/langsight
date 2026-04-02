@@ -329,6 +329,14 @@ $ langsight security-scan --json | jq '.findings[] | select(.severity == "critic
             <li><strong>Automate the audit.</strong> Run <code>langsight security-scan --ci</code> in every deployment pipeline. Do not rely on manual reviews for security checks that can be automated.</li>
           </ul>
 
+          <h2>Related articles</h2>
+          <ul>
+            <li><a href="/blog/mcp-tool-poisoning/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>MCP Tool Poisoning: How Attackers Hijack AI Agents</a> — Deep dive into MCP-01, the highest-severity risk: hidden instructions in tool descriptions.</li>
+            <li><a href="/blog/mcp-server-security/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>MCP Server Security: OWASP Top 10 for Model Context Protocol</a> — The practical security audit guide with CVE tracking and CI/CD integration.</li>
+            <li><a href="/blog/mcp-schema-drift/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Schema Drift in MCP</a> — MCP-05 in depth: how schema changes cause silent agent failures and how to detect them.</li>
+            <li><a href="/blog/mcp-monitoring-production/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>How to Monitor MCP Servers in Production</a> — Set up proactive health monitoring for your entire MCP fleet.</li>
+          </ul>
+
           <div className="mt-12 p-6 border border-[var(--indigo)]/30 rounded-xl bg-[var(--indigo)]/5">
             <p className="font-semibold text-[var(--indigo)] mb-2">Audit against the OWASP MCP Top 10</p>
             <p className="text-[var(--muted)] text-sm mb-4">
@@ -407,6 +415,14 @@ $ langsight security-scan --json | jq '.findings[] | select(.severity == "critic
         .prose-custom strong {
           font-weight: 600;
           color: var(--fg);
+        }
+        .prose-custom a {
+          color: var(--indigo);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose-custom a:hover {
+          opacity: 0.8;
         }
       `}</style>
     </main>

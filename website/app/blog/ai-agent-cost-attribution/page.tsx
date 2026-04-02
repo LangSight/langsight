@@ -210,6 +210,14 @@ traced = client.wrap(mcp_session, agent_name="support-agent")`}</pre>
             <li><strong>One command to see costs:</strong> <code>langsight costs --hours 24</code> shows per-session attribution with anomaly detection built in.</li>
           </ul>
 
+          <h2>Related articles</h2>
+          <ul>
+            <li><a href="/blog/ai-agent-loop-detection/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>How to Detect and Stop AI Agent Loops</a> — Loops are the most common cause of runaway costs. Detect and stop them before they burn your budget.</li>
+            <li><a href="/blog/slos-for-ai-agents/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Setting SLOs for AI Agents</a> — Budget adherence is one of the four SLO metrics. Learn how to define and enforce cost targets.</li>
+            <li><a href="/blog/circuit-breakers-ai-agents/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Circuit Breakers for AI Agents</a> — Failed tool calls waste tokens. Circuit breakers prevent expensive retry cascades.</li>
+            <li><a href="/blog/langsight-vs-langfuse/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>LangSight vs Langfuse</a> — How LangSight's per-session cost tracking complements Langfuse's token-level cost tracking.</li>
+          </ul>
+
           <div className="mt-12 p-6 border border-[var(--indigo)]/30 rounded-xl bg-[var(--indigo)]/5">
             <p className="font-semibold text-[var(--indigo)] mb-2">Track AI agent costs per tool call</p>
             <p className="text-[var(--muted)] text-sm mb-4">
@@ -285,6 +293,14 @@ traced = client.wrap(mcp_session, agent_name="support-agent")`}</pre>
         .prose-custom strong {
           font-weight: 600;
           color: var(--fg);
+        }
+        .prose-custom a {
+          color: var(--indigo);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose-custom a:hover {
+          opacity: 0.8;
         }
       `}</style>
     </main>

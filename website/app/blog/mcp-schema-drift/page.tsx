@@ -196,6 +196,14 @@ servers:
             <li><strong>Pin versions and schemas.</strong> Never auto-update MCP servers in production. Pin both the version and the expected schema hash.</li>
           </ul>
 
+          <h2>Related articles</h2>
+          <ul>
+            <li><a href="/blog/mcp-monitoring-production/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>How to Monitor MCP Servers in Production</a> — Schema drift detection is one of five monitoring signals. Set up proactive health checks for your entire fleet.</li>
+            <li><a href="/blog/mcp-tool-poisoning/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>MCP Tool Poisoning</a> — The "rug pull" attack uses schema drift as the delivery mechanism for poisoned tool descriptions.</li>
+            <li><a href="/blog/owasp-mcp-top-10-guide/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>OWASP MCP Top 10 Explained</a> — Schema drift is MCP-05 in the OWASP framework. See the full security risk taxonomy.</li>
+            <li><a href="/blog/circuit-breakers-ai-agents/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Circuit Breakers for AI Agents</a> — When schema drift causes tool failures, circuit breakers prevent cascading failures.</li>
+          </ul>
+
           <div className="mt-12 p-6 border border-[var(--indigo)]/30 rounded-xl bg-[var(--indigo)]/5">
             <p className="font-semibold text-[var(--indigo)] mb-2">Detect schema drift before your agents break</p>
             <p className="text-[var(--muted)] text-sm mb-4">
@@ -271,6 +279,14 @@ servers:
         .prose-custom strong {
           font-weight: 600;
           color: var(--fg);
+        }
+        .prose-custom a {
+          color: var(--indigo);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose-custom a:hover {
+          opacity: 0.8;
         }
       `}</style>
     </main>

@@ -246,6 +246,14 @@ result = await traced.call_tool("lookup_customer", {"id": 456})`}</pre>
             <li>Start with <code>loop_action="warn"</code>, monitor for a week, then switch to <code>"terminate"</code> once you're confident in your thresholds.</li>
           </ul>
 
+          <h2>Related articles</h2>
+          <ul>
+            <li><a href="/blog/ai-agent-cost-attribution/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>AI Agent Cost Attribution</a> — Loops are the top cause of runaway agent costs. Budget guardrails are the backstop when loop detection misses.</li>
+            <li><a href="/blog/circuit-breakers-ai-agents/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Circuit Breakers for AI Agents</a> — Circuit breakers complement loop detection by preventing cascading failures when tools go down.</li>
+            <li><a href="/blog/slos-for-ai-agents/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Setting SLOs for AI Agents</a> — Loop rate is one of the four SLO metrics for AI agents. Learn how to track and enforce reliability targets.</li>
+            <li><a href="/blog/mcp-monitoring-production/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>How to Monitor MCP Servers in Production</a> — Many loops are caused by MCP servers returning unexpected responses. Health monitoring catches the root cause.</li>
+          </ul>
+
           <div className="mt-12 p-6 border border-[var(--indigo)]/30 rounded-xl bg-[var(--indigo)]/5">
             <p className="font-semibold text-[var(--indigo)] mb-2">Stop agent loops in production</p>
             <p className="text-[var(--muted)] text-sm mb-4">
@@ -321,6 +329,14 @@ result = await traced.call_tool("lookup_customer", {"id": 456})`}</pre>
         .prose-custom strong {
           font-weight: 600;
           color: var(--fg);
+        }
+        .prose-custom a {
+          color: var(--indigo);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose-custom a:hover {
+          opacity: 0.8;
         }
         .prose-custom em {
           font-style: italic;

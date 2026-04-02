@@ -195,6 +195,14 @@ Creating langsight-dashboard  ... done
             <li><strong>Five minutes to deploy:</strong> <code>docker compose up -d</code> gives you the full stack. <code>langsight init</code> gives you the CLI with zero infrastructure.</li>
           </ul>
 
+          <h2>Related articles</h2>
+          <ul>
+            <li><a href="/blog/langsight-vs-langfuse/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>LangSight vs Langfuse</a> — Both tools are self-hostable. See how they complement each other in a production observability stack.</li>
+            <li><a href="/blog/mcp-server-security/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>MCP Server Security</a> — Security scanning and audit data should also stay in your network. How to run security audits self-hosted.</li>
+            <li><a href="/blog/mcp-monitoring-production/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>How to Monitor MCP Servers in Production</a> — Self-hosted MCP monitoring: zero external dependencies, full fleet visibility.</li>
+            <li><a href="/blog/ai-agent-cost-attribution/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>AI Agent Cost Attribution</a> — Self-hosted cost tracking saves you the $2,400/month cloud observability bill.</li>
+          </ul>
+
           <div className="mt-12 p-6 border border-[var(--indigo)]/30 rounded-xl bg-[var(--indigo)]/5">
             <p className="font-semibold text-[var(--indigo)] mb-2">Keep your agent data in your network</p>
             <p className="text-[var(--muted)] text-sm mb-4">
@@ -270,6 +278,14 @@ Creating langsight-dashboard  ... done
         .prose-custom strong {
           font-weight: 600;
           color: var(--fg);
+        }
+        .prose-custom a {
+          color: var(--indigo);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose-custom a:hover {
+          opacity: 0.8;
         }
       `}</style>
     </main>

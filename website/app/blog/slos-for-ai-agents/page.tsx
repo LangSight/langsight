@@ -230,6 +230,14 @@ slos:
             <li><strong>SLOs answer the reliability question.</strong> When your VP asks "how reliable are our AI products?", the SLO dashboard provides a quantitative, defensible answer.</li>
           </ul>
 
+          <h2>Related articles</h2>
+          <ul>
+            <li><a href="/blog/ai-agent-loop-detection/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>AI Agent Loop Detection</a> — Loop rate is one of the four SLO metrics. Learn how to detect and prevent the most common agent failure mode.</li>
+            <li><a href="/blog/ai-agent-cost-attribution/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>AI Agent Cost Attribution</a> — Budget adherence is an SLO metric. Per-session cost tracking makes it measurable.</li>
+            <li><a href="/blog/mcp-monitoring-production/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>How to Monitor MCP Servers in Production</a> — MCP health data feeds into agent availability SLOs.</li>
+            <li><a href="/blog/blast-radius-mapping/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Blast Radius Mapping</a> — Understand dependencies to set appropriate per-agent SLO targets based on tool reliability.</li>
+          </ul>
+
           <div className="mt-12 p-6 border border-[var(--indigo)]/30 rounded-xl bg-[var(--indigo)]/5">
             <p className="font-semibold text-[var(--indigo)] mb-2">Set and track SLOs for your agents</p>
             <p className="text-[var(--muted)] text-sm mb-4">
@@ -305,6 +313,14 @@ slos:
         .prose-custom strong {
           font-weight: 600;
           color: var(--fg);
+        }
+        .prose-custom a {
+          color: var(--indigo);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose-custom a:hover {
+          opacity: 0.8;
         }
       `}</style>
     </main>

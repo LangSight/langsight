@@ -238,6 +238,14 @@ WARN  jira-mcp   UNICODE    Tool 'create_issue' description contains 4
             <li><strong>Pin, review, and scan on every update.</strong> Never auto-upgrade MCP servers in production without scanning the new tool descriptions for poisoning patterns.</li>
           </ul>
 
+          <h2>Related articles</h2>
+          <ul>
+            <li><a href="/blog/owasp-mcp-top-10-guide/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>OWASP MCP Top 10 Explained</a> — Tool poisoning is MCP-01. See the full list of all 10 security risks with detection and remediation.</li>
+            <li><a href="/blog/mcp-server-security/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>MCP Server Security</a> — The complete security audit guide for MCP servers including CVE scanning and CI/CD integration.</li>
+            <li><a href="/blog/mcp-schema-drift/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Schema Drift in MCP</a> — The "rug pull" attack uses schema drift to deliver poisoned tool descriptions. How to detect and prevent it.</li>
+            <li><a href="/blog/self-hosting-ai-observability/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Self-Hosting AI Observability</a> — Keep your security scanning and agent traces in your own network.</li>
+          </ul>
+
           <div className="mt-12 p-6 border border-[var(--indigo)]/30 rounded-xl bg-[var(--indigo)]/5">
             <p className="font-semibold text-[var(--indigo)] mb-2">Detect tool poisoning automatically</p>
             <p className="text-[var(--muted)] text-sm mb-4">
@@ -313,6 +321,14 @@ WARN  jira-mcp   UNICODE    Tool 'create_issue' description contains 4
         .prose-custom strong {
           font-weight: 600;
           color: var(--fg);
+        }
+        .prose-custom a {
+          color: var(--indigo);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose-custom a:hover {
+          opacity: 0.8;
         }
       `}</style>
     </main>

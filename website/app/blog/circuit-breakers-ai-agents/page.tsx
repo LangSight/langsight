@@ -218,6 +218,14 @@ servers:
             <li><strong>Design for graceful degradation.</strong> A circuit breaker that rejects calls is only half the solution. The agent must handle the rejection — inform the user, use a fallback, or return cached data.</li>
           </ul>
 
+          <h2>Related articles</h2>
+          <ul>
+            <li><a href="/blog/blast-radius-mapping/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Blast Radius Mapping</a> — When a circuit opens, know exactly which agents, sessions, and handoff chains are affected.</li>
+            <li><a href="/blog/mcp-monitoring-production/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>How to Monitor MCP Servers in Production</a> — Proactive health monitoring detects outages before circuit breakers need to trip.</li>
+            <li><a href="/blog/ai-agent-loop-detection/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>AI Agent Loop Detection</a> — Loops and cascading failures are related failure modes. Use both circuit breakers and loop detection together.</li>
+            <li><a href="/blog/slos-for-ai-agents/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Setting SLOs for AI Agents</a> — Circuit breakers improve your SLO metrics by preventing token waste on known-failed tools.</li>
+          </ul>
+
           <div className="mt-12 p-6 border border-[var(--indigo)]/30 rounded-xl bg-[var(--indigo)]/5">
             <p className="font-semibold text-[var(--indigo)] mb-2">Add circuit breakers to your agents</p>
             <p className="text-[var(--muted)] text-sm mb-4">
@@ -293,6 +301,14 @@ servers:
         .prose-custom strong {
           font-weight: 600;
           color: var(--fg);
+        }
+        .prose-custom a {
+          color: var(--indigo);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose-custom a:hover {
+          opacity: 0.8;
         }
       `}</style>
     </main>

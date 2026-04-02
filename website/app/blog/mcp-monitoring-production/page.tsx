@@ -369,6 +369,14 @@ langsight_mcp_errors_total{server="postgres-mcp",type="timeout"} 2`}</pre>
             <li><strong>One command to start.</strong> <code>pip install langsight && langsight init && langsight monitor</code> gets you from zero to full fleet monitoring in under two minutes. No Docker required for local mode.</li>
           </ul>
 
+          <h2>Related articles</h2>
+          <ul>
+            <li><a href="/blog/mcp-schema-drift/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Schema Drift in MCP: The Silent Failure Your Agents Cannot Detect</a> — When MCP server schemas change, agents fail silently. How to detect drift before your users notice.</li>
+            <li><a href="/blog/circuit-breakers-ai-agents/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Circuit Breakers for AI Agents</a> — When an MCP server goes down, circuit breakers prevent cascading failures across your agent fleet.</li>
+            <li><a href="/blog/blast-radius-mapping/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Blast Radius Mapping</a> — Understand which agents and sessions are affected when a specific MCP server goes down.</li>
+            <li><a href="/blog/slos-for-ai-agents/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Setting SLOs for AI Agents</a> — Define measurable reliability targets for your agent fleet including uptime, latency, and success rate.</li>
+          </ul>
+
           <div className="mt-12 p-6 border border-[var(--indigo)]/30 rounded-xl bg-[var(--indigo)]/5">
             <p className="font-semibold text-[var(--indigo)] mb-2">Monitor your MCP fleet</p>
             <p className="text-[var(--muted)] text-sm mb-4">
@@ -447,6 +455,14 @@ langsight_mcp_errors_total{server="postgres-mcp",type="timeout"} 2`}</pre>
         .prose-custom strong {
           font-weight: 600;
           color: var(--fg);
+        }
+        .prose-custom a {
+          color: var(--indigo);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose-custom a:hover {
+          opacity: 0.8;
         }
       `}</style>
     </main>

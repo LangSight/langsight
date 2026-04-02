@@ -201,6 +201,14 @@ export default function LangsightVsLangfusePost() {
             <li><strong>Both are open source, both self-hostable.</strong> No vendor lock-in on either side of the stack.</li>
           </ul>
 
+          <h2>Related articles</h2>
+          <ul>
+            <li><a href="/blog/mcp-monitoring-production/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>How to Monitor MCP Servers in Production</a> — The MCP health monitoring that LangSight provides and Langfuse does not.</li>
+            <li><a href="/blog/self-hosting-ai-observability/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>Self-Hosting AI Observability</a> — Both LangSight and Langfuse are self-hostable. Why self-hosting matters for your agent data.</li>
+            <li><a href="/blog/ai-agent-cost-attribution/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>AI Agent Cost Attribution</a> — How LangSight's per-session cost tracking works alongside Langfuse's token-level tracking.</li>
+            <li><a href="/blog/owasp-mcp-top-10-guide/" style={{ color: "var(--indigo)", textDecoration: "underline" }}>OWASP MCP Top 10 Explained</a> — The security scanning layer that only LangSight provides.</li>
+          </ul>
+
           <div className="mt-12 p-6 border border-[var(--indigo)]/30 rounded-xl bg-[var(--indigo)]/5">
             <p className="font-semibold text-[var(--indigo)] mb-2">Complete your observability stack</p>
             <p className="text-[var(--muted)] text-sm mb-4">
@@ -276,6 +284,14 @@ export default function LangsightVsLangfusePost() {
         .prose-custom strong {
           font-weight: 600;
           color: var(--fg);
+        }
+        .prose-custom a {
+          color: var(--indigo);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose-custom a:hover {
+          opacity: 0.8;
         }
       `}</style>
     </main>
