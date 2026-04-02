@@ -61,6 +61,7 @@ export interface AgentSession {
   total_output_tokens: number | null;
   model_id: string | null;
   est_cost_usd: number | null;
+  has_prompt: boolean;  // true when a session span with llm_input was captured
 }
 
 export interface SpanNode {

@@ -3,7 +3,7 @@
 import type { HealthTag } from "@/lib/types";
 
 const TAG_CONFIG: Record<
-  HealthTag,
+  HealthTag | "incomplete",
   { label: string; bg: string; text: string; dot: string }
 > = {
   success: {
@@ -54,10 +54,16 @@ const TAG_CONFIG: Record<
     text: "text-blue-400",
     dot: "bg-blue-400",
   },
+  incomplete: {
+    label: "Incomplete",
+    bg: "bg-zinc-500/10",
+    text: "text-zinc-400",
+    dot: "bg-zinc-400",
+  },
 };
 
 interface HealthTagBadgeProps {
-  tag: HealthTag | null;
+  tag: HealthTag | "incomplete" | null;
 }
 
 export function HealthTagBadge({ tag }: HealthTagBadgeProps) {

@@ -251,9 +251,13 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
       {/* Session Input / Output — shown when clicking an agent node that has a
           root session span (emitted by session(input=...) / sess.set_output()) */}
       {isAgent && (() => {
-        const rootSpan = trace.spans_flat.find(
+        // Prefer the span that has both input+output (close-time span).
+        // Fall back to the start-time span that has only llm_input (emitted before
+        // the agent runs so the prompt is never lost even if set_output() is skipped).
+        const sessionSpans = trace.spans_flat.filter(
           (s: SpanNode) => s.span_type === "agent" && s.tool_name === "session" && s.agent_name === name
         );
+        const rootSpan = sessionSpans.find((s: SpanNode) => s.llm_output) ?? sessionSpans[0];
         if (!rootSpan?.llm_input && !rootSpan?.llm_output) return null;
         return (
           <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
@@ -262,6 +266,12 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
               <div className="mb-3">
                 <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5 text-muted-foreground">Question</p>
                 <p className="text-[12px] text-foreground rounded-lg px-3 py-2.5 leading-relaxed" style={{ background: "hsl(var(--muted))" }}>{rootSpan.llm_input}</p>
+              </div>
+            )}
+            {!rootSpan.llm_output && rootSpan.llm_input && (
+              <div className="mt-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-zinc-500/10 text-zinc-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-zinc-400" />
+                No answer captured — agent may have crashed or set_output() was not called
               </div>
             )}
             {rootSpan.llm_output && (

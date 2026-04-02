@@ -74,10 +74,12 @@ function SortHeader({
 }
 
 /* ── Compute fallback health tag ─────────────────────────── */
-function effectiveHealthTag(s: AgentSession): HealthTag | null {
+function effectiveHealthTag(s: AgentSession): HealthTag | "incomplete" | null {
   if (s.health_tag) return s.health_tag;
   if (s.failed_calls > 0) return "tool_failure";
   if (s.tool_calls > 0) return "success";
+  // LLM-only session with no prompt captured — data is incomplete
+  if (!s.has_prompt) return "incomplete";
   return null;
 }
 
@@ -336,6 +338,7 @@ export default function SessionsPage() {
               <option value="circuit_breaker_open">Circuit Open</option>
               <option value="timeout">Timeout</option>
               <option value="schema_drift">Schema Drift</option>
+              <option value="incomplete">Incomplete</option>
             </select>
           </div>
         </div>

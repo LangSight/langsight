@@ -66,6 +66,7 @@ class AgentSession(BaseModel):
     total_output_tokens: int | None = None
     model_id: str | None = None
     est_cost_usd: float | None = None
+    has_prompt: bool = False  # True when a session span with llm_input was captured
 
 
 class SpanNode(BaseModel):
@@ -181,6 +182,7 @@ async def list_sessions(
             else None,
             model_id=r.get("model_id") or None,
             est_cost_usd=_est_cost(r),
+            has_prompt=bool(r.get("has_prompt", False)),
         )
         for r in rows
     ]

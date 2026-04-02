@@ -9,6 +9,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 - **Docs cleanup**: Removed all stale v0.11.x patterns from public-facing docs. Primary examples in `quickstart.mdx`, `sdk/python.mdx`, `sdk/integrations/langchain.mdx`, `sdk/integrations/langgraph.mdx`, and `sdk/integrations/gemini-sdk.mdx` now consistently use the v0.12.0 `session()` context manager pattern. Manual uuid4 generation, explicit `session_id=` threading, and `set_context`/`clear_context` boilerplate are moved to clearly labeled "Before 0.12.0" migration sections or "Advanced: manual pattern" sections only. The "Combining with MCP tracing" example in gemini-sdk.mdx now shows context-inherited `wrap_llm()` and `wrap()` calls (no explicit `session_id` threading).
 
+## [0.14.1] - 2026-04-02
+
+**SDK patch: `session()` now flushes the human prompt to ClickHouse at open time.**
+
+### Fixed
+- **`session()` captures human prompt at open time** (`src/langsight/sdk/auto_patch.py`): Previously, the `input=` value passed to `async with langsight.session(input=question)` was only written to ClickHouse when the context manager exited (at `set_output()` or block end). If an agent crashed or `set_output()` was never called, the prompt was silently lost. A `session_start` span is now flushed to ClickHouse immediately when the `session()` block opens, matching the behaviour of Langfuse and LangSmith. The close-time span (carrying both `input` and `output`) is still emitted when `set_output()` is called, so fully-completed sessions are unaffected.
+
 ## [0.14.0] - 2026-04-01
 
 **Optional Redis support for multi-worker horizontal scaling.**

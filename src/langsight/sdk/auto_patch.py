@@ -970,17 +970,46 @@ async def session(
         input_text=input,
     )
     tokens = set_context(session_id=sid, agent_name=agent_name, trace_id=trace_id)
+
+    # Emit the session_start span immediately so the prompt is persisted before
+    # the agent runs — matches Langfuse/LangSmith behaviour where input is written
+    # at trace-open time, not at close. This means even if the agent crashes or
+    # set_output() is never called, the human prompt is already in ClickHouse.
+    if input is not None and _global_client is not None:
+        from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+
+        start_span = ToolCallSpan.record(
+            server_name=agent_name or "agent",
+            tool_name="session",
+            started_at=started_at,
+            status=ToolCallStatus.SUCCESS,
+            agent_name=agent_name,
+            session_id=sid,
+            trace_id=trace_id,
+            span_type="agent",
+            llm_input=input,
+            llm_output=None,  # output not known yet; updated at close if set_output() called
+            lineage_provenance="explicit",
+            schema_version="1.0",
+        )
+        _global_client.buffer_span(start_span)
+        try:
+            await _global_client.flush()
+        except Exception:  # noqa: BLE001
+            pass  # fail-open
+
     try:
         yield ctx
     finally:
         clear_context(tokens)
-        # Emit a root session span if input or output was provided.
-        # This is the top-level span that appears as the session summary
-        # in the dashboard — equivalent to LangSmith's root run or
-        # Langfuse's trace input/output.
+        # Emit a close-time span when output was captured via set_output().
+        # This span carries both llm_input and llm_output so the detail page
+        # can show the complete prompt→answer pair.
+        # If only input was provided (no set_output call), the start span
+        # emitted above already has the prompt — no duplicate needed.
         _input = object.__getattribute__(ctx, "_input_text")
         _output = object.__getattribute__(ctx, "_output_text")
-        if (_input is not None or _output is not None) and _global_client is not None:
+        if _output is not None and _global_client is not None:
             from langsight.sdk.models import ToolCallSpan, ToolCallStatus
 
             root_span = ToolCallSpan.record(
@@ -998,6 +1027,10 @@ async def session(
                 schema_version="1.0",
             )
             _global_client.buffer_span(root_span)
+        elif _input is None and _output is None:
+            # No input or output at all — nothing to emit (keep previous behaviour
+            # of not cluttering ClickHouse with empty session spans).
+            pass
 
         if _global_client is not None:
             try:

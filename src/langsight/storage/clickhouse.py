@@ -1023,6 +1023,7 @@ class ClickHouseBackend:
             "total_output_tokens",
             "model_id",
             "agents_used",
+            "has_prompt",  # True when a session span with llm_input was captured
         ]
 
         # Both the project-scoped and admin (all-projects) paths use the same query
@@ -1059,7 +1060,8 @@ class ClickHouseBackend:
                 sum(t.input_tokens)                                  AS total_input_tokens,
                 sum(t.output_tokens)                                 AS total_output_tokens,
                 anyIf(t.model_id, t.model_id != '')                  AS model_id,
-                arrayFilter(x -> x != '', groupUniqArray(t.agent_name)) AS agents_used
+                arrayFilter(x -> x != '', groupUniqArray(t.agent_name)) AS agents_used,
+                countIf(t.span_type = 'agent' AND t.tool_name = 'session' AND t.llm_input != '') > 0 AS has_prompt
             FROM mcp_tool_calls t
             LEFT JOIN (
                 -- Coalesce project_id to '' so spans with no project_id
