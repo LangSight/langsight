@@ -32,6 +32,8 @@ from langsight.api.dependencies import (
     require_admin,
 )
 from langsight.api.rate_limit import limiter
+from langsight.models import InviteToken, User, UserRole
+from langsight.storage.base import StorageBackend
 
 # ---------------------------------------------------------------------------
 # Per-account lockout — simple in-process counter.
@@ -79,8 +81,7 @@ def _is_locked_out(email: str) -> bool:
 def _clear_login_failures(email: str) -> None:
     """Clear failure counter on successful login."""
     _login_failures.pop(email.lower(), None)
-from langsight.models import InviteToken, User, UserRole
-from langsight.storage.base import StorageBackend
+
 
 logger = structlog.get_logger()
 
