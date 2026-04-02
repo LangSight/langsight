@@ -21,15 +21,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import yaml
-from fastapi import HTTPException
-from httpx import ASGITransport, AsyncClient
 
-from langsight.api.main import create_app
-from langsight.config import load_config
 from langsight.models import (
     ApiKeyRecord,
     ApiKeyRole,
-    HealthCheckResult,
     MCPServer,
     ServerStatus,
     TransportType,

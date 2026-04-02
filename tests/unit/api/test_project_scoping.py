@@ -13,7 +13,6 @@ All tests run offline — no Docker, no real DB, no network.
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

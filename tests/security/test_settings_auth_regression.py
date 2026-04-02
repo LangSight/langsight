@@ -164,7 +164,7 @@ async def viewer_client_with_storage(config_file: Path):
     invalidate_api_key_cache()
 
     viewer_secret = "viewer-secret-key-for-settings-test"
-    viewer_key_hash = hashlib.sha256(viewer_secret.encode()).hexdigest()
+    hashlib.sha256(viewer_secret.encode()).hexdigest()
 
     viewer_record = MagicMock()
     viewer_record.id = "viewer-key-id"

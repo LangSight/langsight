@@ -8,13 +8,8 @@ beyond tmp_path.
 from __future__ import annotations
 
 import json
-import platform
 from pathlib import Path
 from unittest.mock import patch
-
-import pytest
-import yaml
-from click.testing import CliRunner
 
 from langsight.cli.init import (
     _detect_transport,
@@ -23,8 +18,6 @@ from langsight.cli.init import (
     _get_config_sources,
     _parse_mcp_config,
 )
-from langsight.cli.main import cli
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -17,7 +17,6 @@ import pytest
 from langsight.sdk._ids import _new_session_id
 from langsight.sdk.client import LangSightClient, MCPClientProxy
 
-
 # ---------------------------------------------------------------------------
 # _new_session_id
 # ---------------------------------------------------------------------------

@@ -11,13 +11,12 @@ Run: uv run pytest tests/integration/health/test_schema_drift_integration.py -v
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from langsight.health.schema_tracker import SchemaTracker
 from langsight.models import DriftType, ToolInfo
-
 
 pytestmark = pytest.mark.integration
 

@@ -25,8 +25,8 @@ import pytest
 from langsight.models import (
     DriftType,
     HealthCheckResult,
-    SchemaDriftEvent,
     SchemaChange,
+    SchemaDriftEvent,
     ServerStatus,
 )
 from langsight.storage.sqlite import DEFAULT_DB_PATH, SQLiteBackend
@@ -172,7 +172,6 @@ class TestOpen:
 
     async def test_busy_timeout_set(self, tmp_path: Path) -> None:
         """open() must set a non-zero busy_timeout to allow write retries."""
-        import aiosqlite
         db_path = tmp_path / "busy.db"
         b = await SQLiteBackend.open(db_path)
         # Verify via the live connection — busy_timeout is a session pragma
@@ -744,7 +743,6 @@ class TestLifecycle:
         async with await SQLiteBackend.open(db_path) as backend:
             await backend.save_health_result(_health_result("ctx-srv"))
         # After __aexit__ the connection is closed; accessing it should fail
-        import aiosqlite
         with pytest.raises(Exception):
             await backend.save_health_result(_health_result("ctx-srv-2"))
 

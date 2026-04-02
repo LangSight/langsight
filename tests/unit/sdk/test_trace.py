@@ -18,7 +18,6 @@ import pytest
 from langsight.sdk.models import ToolCallStatus
 from langsight.sdk.trace import AgentTrace, _NoopTrace, trace
 
-
 # ---------------------------------------------------------------------------
 # Minimal client stub — avoids importing LangSightClient (heavy deps)
 # ---------------------------------------------------------------------------

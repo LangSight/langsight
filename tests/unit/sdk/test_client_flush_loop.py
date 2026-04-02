@@ -12,13 +12,12 @@ the Live page empty during agent runs.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, patch
+from datetime import UTC, datetime
 
 import pytest
 
 from langsight.sdk.client import LangSightClient
 from langsight.sdk.models import ToolCallSpan, ToolCallStatus
-from datetime import UTC, datetime
 
 
 def _make_span(**kw) -> ToolCallSpan:

@@ -6,11 +6,8 @@ ToolInfo lists and returns a list of SchemaChange objects.
 
 from __future__ import annotations
 
-import pytest
-
 from langsight.health.schema_tracker import classify_drift
 from langsight.models import DriftType, SchemaChange, ToolInfo
-
 
 # ---------------------------------------------------------------------------
 # Helpers

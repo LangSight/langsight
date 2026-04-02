@@ -17,11 +17,9 @@ import pytest
 from langsight.sdk.models import (
     LineageProvenance,
     LineageStatus,
-    SpanType,
     ToolCallSpan,
     ToolCallStatus,
 )
-
 
 # =============================================================================
 # SpanType literal

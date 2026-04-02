@@ -16,14 +16,12 @@ All tests run offline — no Docker, no real DB, no network.
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
 
 from tests.security.conftest import (
-    _active_key_record,
     _make_request,
     _make_storage,
 )

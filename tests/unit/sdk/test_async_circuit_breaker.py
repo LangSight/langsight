@@ -8,7 +8,6 @@ import pytest
 from langsight.sdk.circuit_breaker import (
     AsyncCircuitBreaker,
     CircuitBreakerConfig,
-    CircuitBreakerState,
 )
 
 

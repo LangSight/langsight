@@ -215,7 +215,7 @@ class TestHealthCheckerProjectIdStamping:
             mock_hash.return_value = "hash-123"
 
             checker = HealthChecker(storage=mock_storage, project_id="stored-project")
-            result = await checker.check(server)
+            await checker.check(server)
 
         mock_storage.save_health_result.assert_called_once()
         saved: HealthCheckResult = mock_storage.save_health_result.call_args[0][0]
@@ -235,7 +235,7 @@ class TestHealthCheckerProjectIdStamping:
             mock_hash.return_value = "hash-456"
 
             checker = HealthChecker(storage=mock_storage)
-            result = await checker.check(server)
+            await checker.check(server)
 
         saved: HealthCheckResult = mock_storage.save_health_result.call_args[0][0]
         assert saved.project_id == ""  # empty string — not None

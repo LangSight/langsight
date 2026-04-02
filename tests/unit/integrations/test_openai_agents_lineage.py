@@ -20,7 +20,7 @@ import pytest
 
 from langsight.integrations.openai_agents import LangSightOpenAIHooks
 from langsight.sdk.client import LangSightClient
-from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+from langsight.sdk.models import ToolCallSpan
 
 
 @pytest.fixture

@@ -11,10 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from langsight.cli.init import _fingerprint, _parse_mcp_config
-
 
 # ---------------------------------------------------------------------------
 # test_init_does_not_read_env_values_from_config

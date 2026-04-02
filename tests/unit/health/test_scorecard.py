@@ -9,12 +9,11 @@ from __future__ import annotations
 import pytest
 
 from langsight.health.scorecard import (
-    ServerHealthState,
     ScorecardEngine,
     ScorecardResult,
+    ServerHealthState,
     _numeric_to_grade,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helper: build a perfect-server state

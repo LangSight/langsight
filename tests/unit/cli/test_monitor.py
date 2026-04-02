@@ -7,10 +7,10 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
+from langsight.alerts.engine import Alert, AlertSeverity, AlertType
 from langsight.cli.main import cli
 from langsight.cli.monitor import _deliver_alerts
-from langsight.alerts.engine import Alert, AlertSeverity, AlertType
-from langsight.config import LangSightConfig, AlertConfig, Settings
+from langsight.config import AlertConfig, LangSightConfig, Settings
 from langsight.models import HealthCheckResult, ServerStatus
 
 

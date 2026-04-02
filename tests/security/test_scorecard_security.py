@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from langsight.health.scorecard import ServerHealthState, ScorecardEngine
-
+from langsight.health.scorecard import ScorecardEngine, ServerHealthState
 
 # ---------------------------------------------------------------------------
 # Helpers

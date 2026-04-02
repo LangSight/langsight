@@ -6,11 +6,9 @@ Config I/O is done in tmp_path so the working directory is never polluted.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 import yaml
 from click.testing import CliRunner
 
@@ -21,7 +19,6 @@ from langsight.cli.add import (
     _server_exists,
 )
 from langsight.cli.main import cli
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -128,7 +125,7 @@ class TestAddHttpServer:
     def test_add_http_server_writes_config(self, tmp_path: Path) -> None:
         """Adding an HTTP server writes it to the config file."""
         config_path = tmp_path / ".langsight.yaml"
-        mock_result = _ok_health_result(tool_names=["query"])
+        _ok_health_result(tool_names=["query"])
 
         with patch("langsight.cli.add._test_connection", new=AsyncMock(return_value=(True, "", 42, ["query"]))):
             result = _invoke_add(
@@ -377,7 +374,7 @@ class TestAddDuplication:
         _save_config({"servers": [{"name": "pg", "command": "old-cmd"}]}, config_path)
 
         with patch("langsight.cli.add._test_connection", new=AsyncMock(return_value=(True, "", 10, []))):
-            result = _invoke_add(
+            _invoke_add(
                 ["pg", "--command", "new-cmd"],
                 config_path=config_path,
                 input_text="y\n",

@@ -43,15 +43,14 @@ from langsight.sdk.auto_patch import (
 from langsight.sdk.client import LangSightClient
 from langsight.sdk.context import _pending_tools_ctx
 from langsight.sdk.llm_wrapper import (
-    AnthropicProxy,
-    GenaiClientProxy,
-    GeminiProxy,
-    OpenAIProxy,
     _HANDOFF_TOOL_RE,
+    AnthropicProxy,
+    GeminiProxy,
+    GenaiClientProxy,
+    OpenAIProxy,
     _maybe_emit_handoffs,
 )
 from langsight.sdk.models import ToolCallSpan, ToolCallStatus
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

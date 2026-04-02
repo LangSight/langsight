@@ -35,7 +35,6 @@ from langsight.sdk.llm_wrapper import (
     GeminiProxy,
     GenaiClientProxy,
     OpenAIProxy,
-    _maybe_emit_handoffs,
 )
 from langsight.sdk.models import ToolCallSpan
 

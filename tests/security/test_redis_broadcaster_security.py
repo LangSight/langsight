@@ -33,16 +33,15 @@ pub/sub contract, which is stronger than in-process fan-out filtering.
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from langsight.api.broadcast import (
-    RedisBroadcaster,
     _ADMIN_CHANNEL,
     _PROJECT_CHANNEL_PREFIX,
+    RedisBroadcaster,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]

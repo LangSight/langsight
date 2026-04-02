@@ -17,8 +17,9 @@ Covers:
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from langsight.sdk.auto_patch import (
     _agent_ctx,
@@ -30,7 +31,6 @@ from langsight.sdk.auto_patch import (
     unpatch,
 )
 from langsight.sdk.client import LangSightClient, MCPClientProxy
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

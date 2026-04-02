@@ -674,6 +674,7 @@ class TestHandoffQueryParameterisation:
     def test_handoff_query_uses_parameterised_project_id(self) -> None:
         """Verify the handoff query uses {project_id:String} placeholder, not f-string."""
         import inspect
+
         from langsight.storage.clickhouse import ClickHouseBackend
 
         source = inspect.getsource(ClickHouseBackend._lineage_handoff_edges)
@@ -689,6 +690,7 @@ class TestHandoffQueryParameterisation:
     def test_handoff_query_uses_parameterised_hours(self) -> None:
         """Verify the hours parameter is passed via placeholder, not interpolated."""
         import inspect
+
         from langsight.storage.clickhouse import ClickHouseBackend
 
         source = inspect.getsource(ClickHouseBackend._lineage_handoff_edges)

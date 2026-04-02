@@ -18,7 +18,6 @@ from langsight.reliability.engine import (
     categorise_error,
 )
 
-
 # ---------------------------------------------------------------------------
 # ToolMetrics — computed properties
 # ---------------------------------------------------------------------------

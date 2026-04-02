@@ -259,7 +259,7 @@ class TestGlobalEventsDeliveredToAllSubscribers:
         try:
             await _next_event(gen, timeout=timeout)
             raise AssertionError("Expected no event but generator yielded one")
-        except (asyncio.TimeoutError, StopAsyncIteration):
+        except (TimeoutError, StopAsyncIteration):
             pass
 
     async def test_event_with_empty_project_id_does_not_reach_project_scoped_subscriber(
