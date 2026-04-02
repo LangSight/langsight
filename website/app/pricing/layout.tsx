@@ -18,12 +18,14 @@ export const metadata: Metadata = {
     url: "https://langsight.dev/pricing",
     siteName: "LangSight",
     type: "website",
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "LangSight — Free self-hosted agent reliability" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "LangSight Pricing — Free Self-Hosted",
     description:
       "Free forever. Apache 2.0. Self-host LangSight at $0 — loop detection, guardrails, MCP health, security.",
+    images: ["/og-image.png"],
   },
   alternates: {
     canonical: "https://langsight.dev/pricing/",

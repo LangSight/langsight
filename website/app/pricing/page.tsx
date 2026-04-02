@@ -1,107 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-// Shared shell — canonical source; local defs below kept until full migration
-import { Nav as _Nav, Footer as _Footer, Logo as _Logo, useTheme as _useTheme, useScrollReveal as _useScrollReveal } from "@/components/site-shell"; void _Nav; void _Footer; void _Logo; void _useTheme; void _useScrollReveal;
-
-/* ── Theme ──────────────────────────────────────────────────── */
-function useTheme() {
-  const [dark, setDark] = useState(true);
-  useEffect(() => {
-    const saved = localStorage.getItem("ls-theme");
-    setDark(saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches);
-  }, []);
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-    localStorage.setItem("ls-theme", dark ? "dark" : "light");
-  }, [dark]);
-  return { dark, toggle: () => setDark((d) => !d) };
-}
-
-function useScrollReveal() {
-  useEffect(() => {
-    const obs = new IntersectionObserver(
-      (entries) => entries.forEach((e) => e.isIntersecting && e.target.classList.add("visible")),
-      { threshold: 0.07 }
-    );
-    document.querySelectorAll("[data-reveal]").forEach((el) => obs.observe(el));
-    return () => obs.disconnect();
-  }, []);
-}
+import { Nav, Footer, useTheme, useScrollReveal } from "@/components/site-shell";
 
 function GithubIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
     </svg>
-  );
-}
-
-function Logo() {
-  return (
-    <a href="/" className="flex items-center gap-2.5 shrink-0">
-      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "var(--indigo)" }}>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M2 7h10M7 2v10M4 4l6 6M10 4l-6 6" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
-      </div>
-      <span className="font-bold text-lg tracking-tight" style={{ fontFamily: "var(--font-geist-sans)", color: "var(--text)" }}>
-        LangSight
-      </span>
-    </a>
-  );
-}
-
-function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
-  const [scrolled, setScrolled] = useState(false);
-  useEffect(() => {
-    const h = () => setScrolled(window.scrollY > 24);
-    window.addEventListener("scroll", h);
-    return () => window.removeEventListener("scroll", h);
-  }, []);
-  return (
-    <nav
-      className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
-      style={{
-        background: scrolled ? "color-mix(in srgb, var(--bg) 88%, transparent)" : "transparent",
-        backdropFilter: scrolled ? "blur(16px)" : "none",
-        borderBottom: scrolled ? "1px solid var(--border)" : "1px solid transparent",
-      }}
-    >
-      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-6">
-        <Logo />
-        <div className="hidden md:flex items-center gap-1">
-          {[
-            { label: "Home", href: "/" },
-            { label: "Security", href: "/security" },
-            { label: "Pricing", href: "/pricing" },
-            { label: "Docs", href: "https://docs.langsight.dev" },
-            { label: "GitHub", href: "https://github.com/LangSight/langsight" },
-          ].map((l) => (
-            <a key={l.label} href={l.href}
-              className="px-3 py-1.5 rounded-md text-sm transition-colors"
-              style={{ color: l.label === "Pricing" ? "var(--indigo)" : "var(--muted)" }}>
-              {l.label}
-            </a>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={toggle} aria-label="Toggle theme"
-            className="w-9 h-9 rounded-lg flex items-center justify-center"
-            style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--muted)" }}>
-            {dark
-              ? <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-              : <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
-            }
-          </button>
-          <a href="https://docs.langsight.dev/quickstart"
-            className="hidden sm:flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-lg transition-all hover:opacity-90"
-            style={{ background: "var(--indigo)", color: "white" }}>
-            Get started →
-          </a>
-        </div>
-      </div>
-    </nav>
   );
 }
 
@@ -186,7 +91,7 @@ export default function PricingPage() {
 
   return (
     <>
-      <Nav dark={dark} toggle={toggle} />
+      <Nav dark={dark} toggle={toggle} activePage="Pricing" />
       <main>
 
         {/* Hero */}
@@ -549,22 +454,7 @@ export default function PricingPage() {
 
       </main>
 
-      {/* Footer */}
-      <footer className="py-10" style={{ borderTop: "1px solid var(--border)" }}>
-        <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <Logo />
-          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm">
-            {[["Home", "/"], ["Security", "/security"], ["Docs", "https://docs.langsight.dev"], ["GitHub", "https://github.com/LangSight/langsight"]].map(([l, h]) => (
-              <a key={l} href={h} className="transition-colors" style={{ color: "var(--muted)" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
-                onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted)")}>
-                {l}
-              </a>
-            ))}
-          </div>
-          <p className="text-xs" style={{ color: "var(--dimmer)" }}>Apache 2.0 · v0.14.0</p>
-        </div>
-      </footer>
+      <Footer />
     </>
   );
 }

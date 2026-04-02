@@ -229,9 +229,12 @@ def aggregate_cost_rows(
         )
 
         if use_token_pricing and model_pricing:
-            total_cost_usd = (
-                model_pricing.cost_for(row_model_id, input_tokens or 0, output_tokens or 0)
-                * total_calls
+            # input_tokens / output_tokens come from SUM() in the ClickHouse query —
+            # they already represent the total across all calls in this group.
+            # cost_for() computes (tokens / 1M) * price, giving the total cost directly.
+            # Do NOT multiply by total_calls — that would double-count.
+            total_cost_usd = model_pricing.cost_for(
+                row_model_id, input_tokens or 0, output_tokens or 0
             )
             cost_per_call = total_cost_usd / max(total_calls, 1)
             cost_type = "token_based"

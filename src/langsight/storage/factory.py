@@ -67,13 +67,19 @@ async def open_storage(config: StorageConfig) -> StorageBackend:
         metadata = await PostgresBackend.open(
             config.postgres_url, min_size=config.pg_pool_min, max_size=config.pg_pool_max
         )
-        analytics = await ClickHouseBackend.open(
-            host=host,
-            port=port,
-            database=config.clickhouse_database,
-            username=config.clickhouse_username,
-            password=config.clickhouse_password,
-        )
+        try:
+            analytics = await ClickHouseBackend.open(
+                host=host,
+                port=port,
+                database=config.clickhouse_database,
+                username=config.clickhouse_username,
+                password=config.clickhouse_password,
+            )
+        except Exception:
+            # ClickHouse open failed — close the Postgres pool we already opened
+            # so connections are not leaked on restart loops.
+            await metadata.close()
+            raise
         return DualStorage(metadata, analytics)
 
     if mode == "sqlite":

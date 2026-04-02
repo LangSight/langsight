@@ -3,15 +3,30 @@
 # Engineers point their framework's OTEL exporter here:
 #   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 #
+# When OTEL_COLLECTOR_TOKEN is set, include it in your exporter config:
+#   OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer ${OTEL_COLLECTOR_TOKEN}"
+#
 # The collector receives spans and forwards them to the LangSight OTLP endpoint.
+
+extensions:
+  bearertokenauth/collector:
+    # Validate inbound OTLP requests from SDK clients against this token.
+    # Set OTEL_COLLECTOR_TOKEN in the environment (docker-compose passes it
+    # from the host).  When the env var is empty, the token is blank and any
+    # request is accepted — safe for local dev, not for shared deployments.
+    token: "${env:OTEL_COLLECTOR_TOKEN}"
 
 receivers:
   otlp:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+        auth:
+          authenticator: bearertokenauth/collector
       http:
         endpoint: 0.0.0.0:4318
+        auth:
+          authenticator: bearertokenauth/collector
 
 processors:
   batch:
@@ -28,17 +43,16 @@ processors:
           - "gen_ai\\.tool\\..*"
 
 exporters:
-  # Forward to LangSight OTLP endpoint
+  # Forward to LangSight OTLP endpoint (API key required)
   otlphttp/langsight:
     endpoint: http://api:8000/api/traces/otlp
     tls:
       insecure: true
-
-  # Also log to console for debugging (remove in production)
-  debug:
-    verbosity: detailed
+    headers:
+      X-API-Key: "${env:LANGSIGHT_API_KEY}"
 
 service:
+  extensions: [bearertokenauth/collector]
   pipelines:
     traces:
       receivers: [otlp]

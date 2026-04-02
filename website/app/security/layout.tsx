@@ -21,12 +21,14 @@ export const metadata: Metadata = {
     url: "https://langsight.dev/security",
     siteName: "LangSight",
     type: "website",
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "LangSight MCP Security Scanner" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "MCP Security Scanning — OWASP MCP Top 10 | LangSight",
     description:
       "Automated MCP security scanning: CVEs, OWASP MCP Top 10, tool poisoning, auth gaps. One command, CI/CD ready.",
+    images: ["/og-image.png"],
   },
   alternates: {
     canonical: "https://langsight.dev/security/",

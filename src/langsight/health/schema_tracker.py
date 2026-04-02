@@ -240,6 +240,7 @@ class SchemaTracker:
                 await self._storage.upsert_server_tools(
                     server_name,
                     [_tool_to_dict(t) for t in current_tools],
+                    project_id=project_id,
                 )
             logger.info(
                 "schema_tracker.baseline_stored",
@@ -302,6 +303,7 @@ class SchemaTracker:
             await self._storage.upsert_server_tools(
                 server_name,
                 [_tool_to_dict(t) for t in current_tools],
+                project_id=project_id,
             )
 
         return SchemaDriftResult(

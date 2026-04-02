@@ -10,10 +10,17 @@ import { useEffect, useState } from "react";
 
 /* ── Theme ──────────────────────────────────────────────────── */
 export function useTheme() {
-  const [dark, setDark] = useState(true);
+  // Read localStorage synchronously in the initializer to avoid a flash of
+  // the default value (dark) before the effect fires on first render.
+  const [dark, setDark] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true; // SSR fallback
+    const saved = localStorage.getItem("ls-theme");
+    return saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
   useEffect(() => {
     const saved = localStorage.getItem("ls-theme");
-    setDark(saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches);
+    const preferred = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    setDark(saved ? saved === "dark" : preferred);
   }, []);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -71,7 +78,7 @@ export function Logo() {
 }
 
 /* ── Nav ────────────────────────────────────────────────────── */
-export function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
+export function Nav({ dark, toggle, activePage }: { dark: boolean; toggle: () => void; activePage?: string }) {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -102,18 +109,21 @@ export function Nav({ dark, toggle }: { dark: boolean; toggle: () => void }) {
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-6">
         <Logo />
         <div className="hidden md:flex items-center gap-1">
-          {navLinks.map((l) => (
-            <a
-              key={l.label}
-              href={l.href}
-              className="px-3 py-1.5 rounded-md text-sm transition-colors"
-              style={{ color: "var(--muted)" }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted)")}
-            >
-              {l.label}
-            </a>
-          ))}
+          {navLinks.map((l) => {
+            const isActive = activePage === l.label;
+            return (
+              <a
+                key={l.label}
+                href={l.href}
+                className="px-3 py-1.5 rounded-md text-sm transition-colors"
+                style={{ color: isActive ? "var(--indigo)" : "var(--muted)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = isActive ? "var(--indigo)" : "var(--muted)")}
+              >
+                {l.label}
+              </a>
+            );
+          })}
         </div>
         <div className="flex items-center gap-2">
           <button

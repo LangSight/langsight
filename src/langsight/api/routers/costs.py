@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,6 +23,41 @@ from langsight.models import ModelPricing
 from langsight.storage.base import StorageBackend
 
 router = APIRouter(prefix="/costs", tags=["costs"])
+
+# ---------------------------------------------------------------------------
+# Model pricing cache — DB round-trip per request is wasteful; pricing changes
+# only when an admin edits it via the dashboard.  Cache for 1 hour.
+# ---------------------------------------------------------------------------
+_PRICING_CACHE: tuple[list[ModelPricing], float] = ([], 0.0)  # (rows, expires_at)
+_PRICING_CACHE_TTL = 3600.0  # 1 hour
+_PRICING_CACHE_LOCK = asyncio.Lock()
+
+
+async def _get_cached_pricing(storage: StorageBackend) -> list[ModelPricing]:
+    """Return active model pricing rows, cached for 1 hour."""
+    global _PRICING_CACHE  # noqa: PLW0603
+    rows, expires_at = _PRICING_CACHE
+    if time.monotonic() < expires_at:
+        return rows
+    async with _PRICING_CACHE_LOCK:
+        rows, expires_at = _PRICING_CACHE
+        if time.monotonic() < expires_at:
+            return rows
+        if not hasattr(storage, "list_model_pricing"):
+            return []
+        try:
+            all_rows = await storage.list_model_pricing()
+            rows = [p for p in all_rows if p.effective_to is None]
+        except Exception:  # noqa: BLE001
+            rows = []
+        _PRICING_CACHE = (rows, time.monotonic() + _PRICING_CACHE_TTL)
+        return rows
+
+
+def invalidate_pricing_cache() -> None:
+    """Call after creating/updating model pricing to bust the cache."""
+    global _PRICING_CACHE  # noqa: PLW0603
+    _PRICING_CACHE = ([], 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +234,7 @@ async def create_model_pricing(
         is_custom=True,
     )
     await storage.create_model_pricing(entry)
+    invalidate_pricing_cache()
     return _pricing_to_response(entry)
 
 
@@ -239,6 +277,7 @@ async def update_model_pricing(
         is_custom=True,
     )
     await storage.create_model_pricing(new_entry)
+    invalidate_pricing_cache()
     return _pricing_to_response(new_entry)
 
 
@@ -297,16 +336,11 @@ async def get_costs_breakdown(
     config_path = getattr(request.app.state, "config_path", None)
     rules = load_cost_rules(config_path if isinstance(config_path, Path) else None)
 
-    # Load model pricing from DB for token-based costing
-    model_lookup: ModelPricingLookup | None = None
-    if hasattr(storage, "list_model_pricing"):
-        try:
-            pricing_rows = await storage.list_model_pricing()
-            # Only use active (effective_to is None) pricing
-            active = [p for p in pricing_rows if p.effective_to is None]
-            model_lookup = ModelPricingLookup(active)
-        except Exception:  # noqa: BLE001
-            pass
+    # Load model pricing from cache (1h TTL) for token-based costing
+    active_pricing = await _get_cached_pricing(storage)
+    model_lookup: ModelPricingLookup | None = (
+        ModelPricingLookup(active_pricing) if active_pricing else None
+    )
 
     by_tool, by_agent, by_session = aggregate_cost_rows(rows, rules, model_lookup)
     total_calls = sum(entry.total_calls for entry in by_tool)

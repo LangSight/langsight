@@ -104,12 +104,10 @@ async def prometheus_metrics(request: Request) -> Response:
     Returns 503 if LANGSIGHT_METRICS_TOKEN is not configured.
     """
     if not _METRICS_TOKEN:
-        # Token not configured — refuse rather than expose metrics openly.
-        # Operators must explicitly set LANGSIGHT_METRICS_TOKEN to enable scraping.
-        return Response(
-            status_code=503,
-            content="LANGSIGHT_METRICS_TOKEN is not set. Configure it to enable /metrics.",
-        )
+        # Token not configured — return 404 with no body so the endpoint does not
+        # fingerprint the deployment config (503 + message leaks that the server
+        # exists and the token is unconfigured).
+        return Response(status_code=404)
     auth_header = request.headers.get("Authorization", "")
     bearer = auth_header.removeprefix("Bearer ").strip()
     if not bearer or not hmac.compare_digest(bearer, _METRICS_TOKEN):

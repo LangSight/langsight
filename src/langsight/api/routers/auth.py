@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -28,11 +28,17 @@ _KEY_BYTES = 32  # 256-bit key → 64 hex chars
 # ── Request / response models ─────────────────────────────────────────────────
 
 
+_DEFAULT_KEY_EXPIRY_DAYS = 365  # Keys expire after 1 year by default
+
+
 class CreateApiKeyRequest(BaseModel):
     name: str  # user-given label, e.g. "LibreChat production"
     role: ApiKeyRole = ApiKeyRole.ADMIN  # "admin" or "viewer"
     project_id: str | None = None  # when set, this key scopes ALL CLI/API calls
     # to this project automatically (API key = project)
+    expires_in_days: int | None = _DEFAULT_KEY_EXPIRY_DAYS
+    # None = never expires (explicitly opt-out of expiry)
+    # 0 is rejected — use None for non-expiring keys
 
 
 class ApiKeyCreatedResponse(BaseModel):
@@ -86,6 +92,8 @@ async def create_api_key(
     """Generate a new API key.  The raw key is returned **once** — store it safely."""
     if not body.name.strip():
         raise HTTPException(status_code=422, detail="Key name cannot be empty")
+    if body.expires_in_days is not None and body.expires_in_days <= 0:
+        raise HTTPException(status_code=422, detail="expires_in_days must be > 0 or null")
 
     raw_key = secrets.token_hex(_KEY_BYTES)
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
@@ -97,6 +105,10 @@ async def create_api_key(
     # This links the key to its creator for project membership checks.
     creator_user_id = caller_user_id
 
+    expires_at = (
+        now + timedelta(days=body.expires_in_days) if body.expires_in_days is not None else None
+    )
+
     record = ApiKeyRecord(
         id=key_id,
         name=body.name.strip(),
@@ -106,6 +118,7 @@ async def create_api_key(
         user_id=creator_user_id,
         project_id=body.project_id or None,
         created_at=now,
+        expires_at=expires_at,
     )
 
     if hasattr(storage, "create_api_key"):

@@ -350,10 +350,10 @@ async def get_project_access(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
-    # Auth disabled — treat as global admin
-    has_any_keys = bool(env_keys) or (
-        hasattr(storage, "list_api_keys") and bool(await storage.list_api_keys())
-    )
+    # Auth disabled — treat as global admin.
+    # Use the cached _has_db_keys() instead of calling list_api_keys() directly
+    # so this per-request check is not a DB round-trip on every API call.
+    has_any_keys = bool(env_keys) or await _has_db_keys(storage)
     if not has_any_keys:
         return ProjectAccess(project, ProjectRole.OWNER, is_global_admin=True)
 

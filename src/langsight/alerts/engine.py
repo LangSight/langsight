@@ -75,6 +75,7 @@ class _ServerState:
     baseline_latency_ms: float | None = None
     alerted_down: bool = False
     alerted_drift: bool = False
+    alerted_latency: bool = False  # cleared when latency returns to normal
 
 
 class AlertEngine:
@@ -137,8 +138,13 @@ class AlertEngine:
                     session_id=session_id,
                     project_id=self._project_id,
                 )
-            except Exception:  # noqa: BLE001
-                pass  # Never let storage errors block alert delivery
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "alert_engine.persist_failed",
+                    alert_type=alert.alert_type.value,
+                    server=alert.server_name,
+                    error=str(exc),
+                )
 
     def evaluate(self, result: HealthCheckResult) -> list[Alert]:
         """Evaluate a health check result and return any new alerts to fire.
@@ -338,7 +344,12 @@ class AlertEngine:
                 title=f"MCP server '{result.server_name}' recovered",
                 message=(
                     f"Server '{result.server_name}' is back online. "
-                    f"Latency: {result.latency_ms:.0f}ms, tools: {result.tools_count}"
+                    + (
+                        f"Latency: {result.latency_ms:.0f}ms, "
+                        if result.latency_ms is not None
+                        else ""
+                    )
+                    + f"tools: {result.tools_count}"
                 ),
             )
         ]
@@ -369,12 +380,19 @@ class AlertEngine:
 
     def _check_latency(self, result: HealthCheckResult, state: _ServerState) -> list[Alert]:
         if result.status != ServerStatus.UP:
+            # Latency returns to normal when server is not UP — clear flag so next
+            # spike after recovery fires a fresh alert.
+            state.alerted_latency = False
             return []
         if result.latency_ms is None or state.baseline_latency_ms is None:
             return []
         if result.latency_ms < state.baseline_latency_ms * self._latency_multiplier:
+            state.alerted_latency = False  # back to normal
             return []
+        if state.alerted_latency:
+            return []  # already alerted this spike — suppress until it resolves
 
+        state.alerted_latency = True
         logger.warning(
             "alert_engine.high_latency",
             server=result.server_name,

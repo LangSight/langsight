@@ -60,10 +60,10 @@ class TestMetricsEndpoint:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             yield c
 
-    async def test_metrics_returns_503_when_token_not_set(self, client: AsyncClient) -> None:
-        """Without LANGSIGHT_METRICS_TOKEN the endpoint returns 503, not open metrics."""
+    async def test_metrics_returns_404_when_token_not_set(self, client: AsyncClient) -> None:
+        """Without LANGSIGHT_METRICS_TOKEN the endpoint returns 404 (no fingerprinting)."""
         r = await client.get("/metrics")
-        assert r.status_code == 503
+        assert r.status_code == 404
 
     async def test_metrics_returns_401_with_wrong_token(self, client: AsyncClient, monkeypatch) -> None:
         monkeypatch.setattr("langsight.api.metrics._METRICS_TOKEN", "correct-token")

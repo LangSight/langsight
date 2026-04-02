@@ -84,7 +84,7 @@ services:
       redis-server
       --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD env var is required when using the redis profile}
       --bind 0.0.0.0
-      --protected-mode no
+      --protected-mode yes
     ports:
       - "127.0.0.1:6379:6379"
     healthcheck:
@@ -109,6 +109,12 @@ services:
     command: ["--config=/etc/otel-collector.yaml"]
     volumes:
       - ./otel-collector.yaml:/etc/otel-collector.yaml:ro
+    environment:
+      # Bearer token required on inbound OTLP connections. Set in .env.
+      # SDK clients must send: OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer <token>
+      # Leave empty for local dev (no auth). Required for shared/production deployments.
+      OTEL_COLLECTOR_TOKEN: ${OTEL_COLLECTOR_TOKEN:-}
+      LANGSIGHT_API_KEY: ${LANGSIGHT_API_KEYS}
     ports:
       - "127.0.0.1:4317:4317"  # gRPC OTLP — loopback only
       - "127.0.0.1:4318:4318"  # HTTP OTLP — loopback only

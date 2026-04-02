@@ -173,6 +173,11 @@ class HealthChecker:
                 await self._storage.save_health_result(result)
             return result
 
+    # Limit concurrent health checks to avoid spawning hundreds of subprocesses
+    # (stdio transport) or opening too many HTTP connections simultaneously.
+    # At N=10, 100 servers finish in ~10 batches of 10 — still fast, but safe.
+    _CONCURRENCY = 10
+
     async def check_many(
         self,
         servers: list[MCPServer],
@@ -183,10 +188,18 @@ class HealthChecker:
         Individual server timeouts are configured per-server (MCPServer.timeout_seconds).
         The global_timeout prevents the entire batch from hanging if a server ignores
         its per-check timeout (e.g., a deadlocked MCP process).
+        A semaphore caps concurrency at _CONCURRENCY to prevent spawning unbounded
+        subprocesses when many servers are configured.
         """
+        sem = asyncio.Semaphore(self._CONCURRENCY)
+
+        async def _bounded_check(server: MCPServer) -> HealthCheckResult:
+            async with sem:
+                return await self.check(server)
+
         try:
             results = await asyncio.wait_for(
-                asyncio.gather(*[self.check(server) for server in servers]),
+                asyncio.gather(*[_bounded_check(server) for server in servers]),
                 timeout=global_timeout,
             )
             return list(results)
@@ -205,6 +218,7 @@ class HealthChecker:
                     schema_hash=None,
                     error=f"global timeout ({global_timeout}s)",
                     checked_at=now,
+                    project_id=self._project_id,
                 )
                 for s in servers
             ]

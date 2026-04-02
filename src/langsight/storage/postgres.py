@@ -1825,4 +1825,15 @@ def _redact_dsn(dsn: str) -> str:
             return urlunparse(redacted)
     except Exception:  # noqa: BLE001
         pass
+    # Fallback: never return a raw DSN that may contain a password.
+    # If parsing succeeded but no password was found, dsn is safe to return.
+    # If parsing failed, redact defensively.
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(dsn)
+        if parsed.password:
+            return "<dsn-redacted>"
+    except Exception:  # noqa: BLE001
+        return "<dsn-redacted>"
     return dsn
