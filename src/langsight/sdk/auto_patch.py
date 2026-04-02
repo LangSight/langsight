@@ -992,11 +992,14 @@ async def session(
             lineage_provenance="explicit",
             schema_version="1.0",
         )
-        _global_client.buffer_span(start_span)
+        # Post directly — do NOT buffer_span + flush() here.
+        # flush() drains the entire shared buffer, racing with the _flush_loop
+        # background task and causing every buffered span to be sent twice
+        # (duplicate spans in ClickHouse, broken session graph).
         try:
-            await _global_client.flush()
+            await _global_client._post_spans([start_span])
         except Exception:  # noqa: BLE001
-            pass  # fail-open
+            pass  # fail-open — if post fails, prompt is lost but agent still runs
 
     try:
         yield ctx
