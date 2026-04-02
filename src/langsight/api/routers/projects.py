@@ -285,16 +285,24 @@ async def create_project(
     )
     await storage.create_project(project)
 
-    # Auto-add creator as owner
-    await storage.add_member(
-        ProjectMember(
-            project_id=project.id,
-            user_id=creator_id,
-            role=ProjectRole.OWNER,
-            added_by=creator_id,
-            added_at=datetime.now(UTC),
+    # Auto-add creator as owner — skip if creator_id is not a real user
+    # (e.g. stale session cookie after a DB wipe, or "system" fallback).
+    creator_is_real = creator_id != "system"
+    if creator_is_real and hasattr(storage, "get_user"):
+        try:
+            creator_is_real = await storage.get_user(creator_id) is not None
+        except Exception:  # noqa: BLE001
+            creator_is_real = False
+    if creator_is_real:
+        await storage.add_member(
+            ProjectMember(
+                project_id=project.id,
+                user_id=creator_id,
+                role=ProjectRole.OWNER,
+                added_by=creator_id,
+                added_at=datetime.now(UTC),
+            )
         )
-    )
 
     logger.info(
         "audit.project.created", project_id=project.id, name=project.name, creator=creator_id
