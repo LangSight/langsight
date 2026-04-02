@@ -562,7 +562,7 @@ export default function PricingPage() {
               </a>
             ))}
           </div>
-          <p className="text-xs" style={{ color: "var(--dimmer)" }}>Apache 2.0 · v0.3.0</p>
+          <p className="text-xs" style={{ color: "var(--dimmer)" }}>Apache 2.0 · v0.14.0</p>
         </div>
       </footer>
     </>

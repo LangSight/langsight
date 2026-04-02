@@ -132,6 +132,11 @@ class Settings(BaseSettings):
     clickhouse_username: str | None = None
     clickhouse_password: str | None = None
     postgres_url: str | None = None
+    # Postgres connection pool size. Lower this on small managed instances
+    # where Postgres max_connections is constrained (e.g. set to 15 on a
+    # free-tier instance with max_connections=25).
+    # Default matches StorageConfig.pg_pool_max (50).
+    pg_pool_max: int | None = None
     # Redis — optional. When set, enables cross-worker rate limiting and SSE
     # broadcasting, allowing LANGSIGHT_WORKERS > 1.
     # Supported schemes: redis://, redis+sentinel://, redis+cluster://
@@ -167,6 +172,8 @@ class Settings(BaseSettings):
             overrides["clickhouse_password"] = self.clickhouse_password
         if self.postgres_url:
             overrides["postgres_url"] = self.postgres_url
+        if self.pg_pool_max is not None:
+            overrides["pg_pool_max"] = self.pg_pool_max
         if not overrides:
             return storage
         return storage.model_copy(update=overrides)

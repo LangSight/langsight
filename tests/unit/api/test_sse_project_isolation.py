@@ -21,12 +21,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import yaml
-from httpx import ASGITransport, AsyncClient
 
 from langsight.api.broadcast import SSEBroadcaster
 
@@ -311,10 +307,10 @@ class TestBroadcasterProjectFilter:
         msg_b = queue_b.get_nowait()
 
         payload_a = json.loads(
-            next(l for l in msg_a.splitlines() if l.startswith("data:"))[5:].strip()
+            next(line for line in msg_a.splitlines() if line.startswith("data:"))[5:].strip()
         )
         payload_b = json.loads(
-            next(l for l in msg_b.splitlines() if l.startswith("data:"))[5:].strip()
+            next(line for line in msg_b.splitlines() if line.startswith("data:"))[5:].strip()
         )
 
         assert payload_a["v"] == 100

@@ -11,13 +11,9 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
-
-import pytest
 
 from langsight.api.broadcast import SSEBroadcaster
 from langsight.sdk.models import ToolCallSpan, ToolCallStatus
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -231,7 +227,7 @@ class TestSSEWireFormat:
             "Browser addEventListener('span:new', ...) won't fire without it."
         )
         assert "data: " in raw
-        data_line = next(l for l in raw.splitlines() if l.startswith("data: "))
+        data_line = next(line for line in raw.splitlines() if line.startswith("data: "))
         parsed = _json.loads(data_line[len("data: "):])
         assert parsed["session_id"] == "abc123"
         assert "started_at" in parsed, "started_at must be in SSE payload"

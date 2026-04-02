@@ -57,7 +57,7 @@ const jsonLd = {
   description:
     "Agent runtime reliability platform. Detect loops, enforce budgets, break failing tools, map blast radius. MCP health checks, CVE scanning, schema drift detection. Self-host free.",
   url: "https://langsight.dev",
-  softwareVersion: "0.6.2",
+  softwareVersion: "0.14.0",
   license: "https://github.com/LangSight/langsight/blob/main/LICENSE",
   offers: {
     "@type": "Offer",

@@ -50,7 +50,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const isAdmin = (session?.user as { role?: string } | undefined)?.role === "admin";
 
-  // Restore from localStorage, then auto-select first project for non-admins
+  // Restore from localStorage, then revalidate against the API.
+  // Stale trust: a deleted or revoked project would strand non-admins with
+  // persistent 403/404s until they cleared localStorage.  We now verify the
+  // stored project is still accessible before applying it.
   useEffect(() => {
     if (!session) return; // wait until session is known
 
@@ -59,33 +62,41 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) restored = JSON.parse(stored) as ProjectResponse;
     } catch {
-      // Ignore parse errors
+      // Ignore parse errors — treat as no stored project
     }
 
-    if (restored) {
-      setActiveProjectState(restored);
-      setIsLoading(false);
-      return;
-    }
+    // Always fetch the current project list so we can revalidate the
+    // stored selection and auto-select for non-admins when needed.
+    fetch("/api/proxy/projects")
+      .then((r) => r.json() as Promise<ProjectResponse[]>)
+      .then((projects) => {
+        if (!Array.isArray(projects)) return;
 
-    // Non-admins without a stored project must have one selected —
-    // otherwise every API call returns 400 (missing project_id).
-    // Auto-select the first visible project.
-    if (!isAdmin) {
-      fetch("/api/proxy/projects")
-        .then((r) => r.json() as Promise<ProjectResponse[]>)
-        .then((projects) => {
-          if (Array.isArray(projects) && projects.length > 0) {
-            const first = projects[0];
-            setActiveProjectState(first);
-            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(first)); } catch { /**/ }
+        if (restored) {
+          // Revalidate: confirm stored project is still in the visible list
+          const stillValid = projects.find((p) => p.id === restored!.id);
+          if (stillValid) {
+            // Refresh metadata (name/slug may have changed) and persist
+            setActiveProjectState(stillValid);
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(stillValid)); } catch { /**/ }
+            return;
           }
-        })
-        .catch(() => { /* fail open — user can select manually */ })
-        .finally(() => setIsLoading(false));
-    } else {
-      setIsLoading(false);
-    }
+          // Stored project no longer accessible — clear stale entry
+          try { localStorage.removeItem(STORAGE_KEY); } catch { /**/ }
+        }
+
+        // No valid stored project — auto-select first for non-admins
+        if (!isAdmin && projects.length > 0) {
+          const first = projects[0];
+          setActiveProjectState(first);
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(first)); } catch { /**/ }
+        }
+      })
+      .catch(() => {
+        // API unreachable — fall back to stored value so the UI isn't blank
+        if (restored) setActiveProjectState(restored);
+      })
+      .finally(() => setIsLoading(false));
   }, [session, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setActiveProject = useCallback((p: ProjectResponse | null) => {

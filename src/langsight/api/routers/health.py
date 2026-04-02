@@ -17,12 +17,22 @@ router = APIRouter(prefix="/health", tags=["health"])
 
 
 async def _project_server_names(storage: StorageBackend, project_id: str) -> set[str]:
-    """Return server names visible to a project (from server_metadata + spans)."""
+    """Return server names visible to a project.
+
+    Unions server_metadata (Postgres) with ClickHouse health data so that
+    the detail/history endpoints authorise exactly the same set that
+    list_servers_health() shows.  Without the ClickHouse source, servers that
+    appear in the list because they have health data would 404 on drill-down.
+    """
     names: set[str] = set()
     get_meta = getattr(storage, "get_all_server_metadata", None)
     if get_meta and asyncio.iscoroutinefunction(get_meta):
         meta = await get_meta(project_id=project_id)
         names.update(m["server_name"] for m in meta)
+    # Also authorise servers that have health-check data in ClickHouse for
+    # this project — matches the list endpoint's inclusion logic exactly.
+    ch_names = await _health_server_names(storage, project_id)
+    names.update(ch_names)
     return names
 
 

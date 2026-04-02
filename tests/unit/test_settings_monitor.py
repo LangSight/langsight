@@ -10,8 +10,6 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
-import threading
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -19,8 +17,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from langsight.config import Settings, load_config
-
+from langsight.config import Settings
 
 # ---------------------------------------------------------------------------
 # Settings field tests
@@ -197,7 +194,8 @@ def test_monitor_calls_check_many_when_enabled(
     ):
         app = create_app(config_path=cfg)
         with TestClient(app) as client:
-            import time; time.sleep(0.1)  # give monitor loop one iteration
+            import time  # noqa: PLC0415
+            time.sleep(0.1)  # give monitor loop one iteration
             resp = client.get("/api/liveness")
             assert resp.status_code == 200
 
@@ -227,7 +225,8 @@ def test_monitor_not_called_when_disabled(
     ):
         app = create_app(config_path=cfg)
         with TestClient(app) as client:
-            import time; time.sleep(0.05)
+            import time  # noqa: PLC0415
+            time.sleep(0.05)
             client.get("/api/liveness")
 
     assert len(check_many_calls) == 0
@@ -255,7 +254,8 @@ def test_monitor_not_called_when_no_servers(
     ):
         app = create_app(config_path=cfg)
         with TestClient(app) as client:
-            import time; time.sleep(0.05)
+            import time  # noqa: PLC0415
+            time.sleep(0.05)
             client.get("/api/liveness")
 
     assert len(check_many_calls) == 0

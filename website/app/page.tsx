@@ -236,7 +236,7 @@ function Hero() {
             >
               <span>LangChain · CrewAI · Pydantic AI</span>
               <span>Postgres + ClickHouse</span>
-              <span>1,003 tests · 77% coverage</span>
+              <span>2,885 tests · 75% coverage</span>
             </div>
           </div>
 

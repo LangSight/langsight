@@ -398,8 +398,12 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         await _seed_model_pricing(app.state.storage)
         admin_id = await _bootstrap_admin(app.state.storage)
 
-        # Seed a "Sample Project" with demo agent sessions on first run
-        await _bootstrap_sample_project(app.state.storage, admin_id or "system")
+        # Seed a "Sample Project" with demo agent sessions on first run.
+        # Only attempt when admin_id is known — passing "system" would violate
+        # the FK constraint project_members.user_id → users.id and silently
+        # fail the entire bootstrap step.
+        if admin_id:
+            await _bootstrap_sample_project(app.state.storage, admin_id)
 
         logger.info(
             "api.startup",

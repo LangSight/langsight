@@ -5,7 +5,7 @@ description: "Choose between PostgreSQL, ClickHouse, and the dual-backend produc
 
 LangSight uses a **dual-storage architecture** by default: PostgreSQL for metadata and ClickHouse for analytics. Both run via `docker compose up -d`.
 
-> **Note (v0.2.0)**: SQLite has been removed. `docker compose up -d` is now required. Attempting `mode: sqlite` raises a `ConfigError` with migration guidance.
+> **Note**: SQLite mode (`mode: sqlite`) remains available for local development and evaluation but is not supported for production. It is not recommended for multi-user deployments — use `dual` mode with Docker Compose for any shared or persistent installation.
 
 ## Dual (default — production topology)
 

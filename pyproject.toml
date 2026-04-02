@@ -114,6 +114,15 @@ ignore = [
     "E501",  # line too long — not meaningful in prompt strings and markdown literals
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Integration tests set env vars before importing backends — E402 is intentional
+"tests/integration/**" = ["E402"]
+# Test helpers that use asyncio timeout parameter pattern
+"tests/**" = ["ASYNC109"]
+# pytest.raises(Exception) is valid in security/adversarial tests probing broad failure modes
+"tests/unit/sdk/test_models_lineage.py" = ["B017"]
+"tests/unit/storage/test_sqlite.py" = ["B017"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true
