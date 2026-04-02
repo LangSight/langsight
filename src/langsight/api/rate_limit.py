@@ -82,7 +82,7 @@ class _DeferredLimiter:
     """
 
     def __init__(self) -> None:
-        self._inner = Limiter(key_func=_rate_limit_key, default_limits=_DEFAULT_LIMITS)
+        self._inner = Limiter(key_func=_rate_limit_key, default_limits=_DEFAULT_LIMITS)  # type: ignore[arg-type]
 
     def __getattr__(self, name: str) -> object:
         return getattr(self._inner, name)
@@ -97,17 +97,17 @@ class _DeferredLimiter:
         if redis_url:
             self._inner = Limiter(
                 key_func=_rate_limit_key,
-                default_limits=_DEFAULT_LIMITS,
+                default_limits=_DEFAULT_LIMITS,  # type: ignore[arg-type]
                 storage_uri=redis_url,
             )
 
     def limit(self, *args: object, **kwargs: object) -> object:
         """Forward @limiter.limit() to the current inner Limiter."""
-        return self._inner.limit(*args, **kwargs)
+        return self._inner.limit(*args, **kwargs)  # type: ignore[arg-type]
 
     def shared_limit(self, *args: object, **kwargs: object) -> object:
         """Forward @limiter.shared_limit() to the current inner Limiter."""
-        return self._inner.shared_limit(*args, **kwargs)
+        return self._inner.shared_limit(*args, **kwargs)  # type: ignore[arg-type]
 
 
 limiter = _DeferredLimiter()

@@ -19,7 +19,7 @@ Usage::
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 
@@ -53,7 +53,7 @@ async def get_redis_client(redis_url: str) -> aioredis.Redis:
     """
     global _client
     if _client is not None:
-        return _client
+        return cast("aioredis.Redis", _client)
 
     import redis.asyncio as aioredis  # lazy — only imported when URL is set
 
@@ -69,7 +69,7 @@ async def get_redis_client(redis_url: str) -> aioredis.Redis:
     # Log the host/port only — strip any password from the URL
     safe_url = redis_url.split("@")[-1] if "@" in redis_url else redis_url
     logger.info("redis.connected", url=safe_url)
-    return _client
+    return cast("aioredis.Redis", _client)
 
 
 async def close_redis_client() -> None:

@@ -138,7 +138,7 @@ async def _resolve_tag(
 # ---------------------------------------------------------------------------
 
 
-@router.post(
+@router.post(  # type: ignore[operator]
     "/spans",
     status_code=http_status.HTTP_202_ACCEPTED,
     summary="Ingest tool call spans from the LangSight SDK",
@@ -386,7 +386,7 @@ def _extract_project_id(spans: list[ToolCallSpan]) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-@router.post(
+@router.post(  # type: ignore[operator]
     "/otlp",
     status_code=http_status.HTTP_202_ACCEPTED,
     summary="Ingest spans via OpenTelemetry OTLP/JSON",

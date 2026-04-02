@@ -240,7 +240,7 @@ async def invite_user(
     )
 
 
-@public_router.post(
+@public_router.post(  # type: ignore[operator]
     "/accept-invite",
     response_model=UserResponse,
     status_code=http_status.HTTP_201_CREATED,
@@ -404,7 +404,7 @@ async def deactivate_user(
     append_audit("user.deactivated", user_id, client_ip, storage=storage)
 
 
-@router.post(
+@router.post(  # type: ignore[operator]
     "/me/change-password",
     status_code=http_status.HTTP_204_NO_CONTENT,
     summary="Change the current user's password and revoke all their API keys",
@@ -477,7 +477,7 @@ async def change_password(
     )
 
 
-@public_router.post(
+@public_router.post(  # type: ignore[operator]
     "/verify",
     response_model=VerifyResponse,
     summary="Verify dashboard login credentials",

@@ -227,6 +227,6 @@ class RedisBroadcaster:
                 pass
             try:
                 await pubsub.unsubscribe(channel)
-                await pubsub.aclose()
+                await pubsub.aclose()  # type: ignore[no-untyped-call]
             except Exception:  # noqa: BLE001
                 pass
