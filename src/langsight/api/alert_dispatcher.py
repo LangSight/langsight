@@ -91,6 +91,9 @@ def _is_enabled(alert_types: dict[str, bool], alert_type: str, severity: str) ->
     return alert_types.get(key, True)  # default True if key not in DB yet
 
 
+_DEDUP_TTL_SECONDS = 3600  # 1 hour — same alert won't re-fire within this window
+
+
 async def fire_alert(
     storage: StorageBackend,
     alert_type: str,
@@ -101,6 +104,7 @@ async def fire_alert(
     session_id: str | None = None,
     project_id: str = "",
     config: Any | None = None,
+    redis: Any | None = None,
 ) -> bool:
     """Persist an alert to the DB and deliver it to Slack if enabled.
 
@@ -117,7 +121,30 @@ async def fire_alert(
         session_id:   Optional session ID for agent-level alerts.
         project_id:   Project scope for the fired_alerts table.
         config:       LangSightConfig instance (for YAML webhook fallback).
+        redis:        Optional Redis client. When provided, a SETNX dedup key
+                      (langsight:alerts:dedup:{project_id}:{alert_type}:{server_name})
+                      is checked before firing — duplicate alerts within 1 hour
+                      across all workers are suppressed.
     """
+    # Redis-backed deduplication — prevents duplicate Slack blasts across workers.
+    # SETNX returns True if the key was newly created (first worker to fire this alert).
+    # Subsequent workers within the TTL window get False and skip sending.
+    if redis is not None:
+        scope = session_id or server_name
+        dedup_key = f"langsight:alerts:dedup:{project_id}:{alert_type}:{scope}"
+        try:
+            is_new: bool = await redis.set(dedup_key, "1", nx=True, ex=_DEDUP_TTL_SECONDS)
+            if not is_new:
+                logger.debug(
+                    "alert_dispatcher.dedup_skipped",
+                    alert_type=alert_type,
+                    server=server_name,
+                    dedup_key=dedup_key,
+                )
+                return False
+        except Exception:  # noqa: BLE001
+            pass  # Redis unavailable — fall through and fire (fail-open)
+
     db_cfg = await _load_config(storage, project_id=project_id)
     alert_types: dict[str, bool] = db_cfg.get("alert_types", {})
 

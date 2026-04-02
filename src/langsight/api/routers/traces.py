@@ -295,6 +295,7 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                         session_id=session_id,
                         project_id=_batch_project_id or "",
                         config=getattr(request.app.state, "config", None),
+                        redis=getattr(request.app.state, "redis", None),
                     )
                     # Only dedup when alert was accepted (toggle on).
                     # Skipped alerts stay eligible so toggling on mid-session fires.

@@ -116,6 +116,7 @@ async def get_anomalies(
                     ),
                     project_id=pid,
                     config=getattr(request.app.state, "config", None),
+                    redis=getattr(request.app.state, "redis", None),
                 )
             except Exception:  # noqa: BLE001
                 pass  # fail-open — never block the response

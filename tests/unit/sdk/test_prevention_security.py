@@ -754,7 +754,8 @@ class TestNoDataLeakageInExceptions:
         assert "Traceback" not in msg
         assert "connection refused" not in msg
 
-    def test_prevented_span_error_field_does_not_contain_raw_args(self) -> None:
+    @pytest.mark.asyncio
+    async def test_prevented_span_error_field_does_not_contain_raw_args(self) -> None:
         """The error string in a prevented ToolCallSpan must not include
         raw argument values."""
         from datetime import UTC, datetime
@@ -774,7 +775,7 @@ class TestNoDataLeakageInExceptions:
         loop_det.record_call("dangerous_tool", sensitive_args, "success", None)
         loop_det.record_call("dangerous_tool", sensitive_args, "success", None)
 
-        result = _check_prevention(
+        result = await _check_prevention(
             client, "server", "sess-1", "dangerous_tool", sensitive_args,
             started, None, None, None, False, None,
         )
@@ -787,7 +788,8 @@ class TestNoDataLeakageInExceptions:
         assert "loop_detected" in span.error
         assert "dangerous_tool" in span.error
 
-    def test_prevented_span_with_redact_does_not_store_args(self) -> None:
+    @pytest.mark.asyncio
+    async def test_prevented_span_with_redact_does_not_store_args(self) -> None:
         """When redact_payloads=True, prevented spans must have input_args=None."""
         from datetime import UTC, datetime
 
@@ -806,7 +808,7 @@ class TestNoDataLeakageInExceptions:
         loop_det.record_call("tool", sensitive_args, "success", None)
 
         # Call with redact=True
-        result = _check_prevention(
+        result = await _check_prevention(
             client, "server", "sess-1", "tool", sensitive_args,
             started, None, None, None, True, None,  # redact=True
         )
@@ -905,7 +907,8 @@ class TestPreventionCheckOrder:
     Verify that the first triggered check wins and others are not skipped
     in ways that leak information."""
 
-    def test_circuit_breaker_blocks_before_loop_check(self) -> None:
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_blocks_before_loop_check(self) -> None:
         """When circuit breaker is open, loop detection must not even run."""
         from datetime import UTC, datetime
 
@@ -929,7 +932,7 @@ class TestPreventionCheckOrder:
         det.record_call("tool", {"x": 1}, "success", None)
         det.record_call("tool", {"x": 1}, "success", None)
 
-        result = _check_prevention(
+        result = await _check_prevention(
             client, "srv", "sess", "tool", {"x": 1},
             datetime.now(UTC), None, None, None, False, None,
         )
@@ -939,7 +942,8 @@ class TestPreventionCheckOrder:
         assert isinstance(exc, CircuitBreakerOpenError)
         assert "circuit_breaker_open" in span.error
 
-    def test_loop_blocks_before_budget_check(self) -> None:
+    @pytest.mark.asyncio
+    async def test_loop_blocks_before_budget_check(self) -> None:
         """When loop is detected, budget check must not run."""
         from datetime import UTC, datetime
 
@@ -955,7 +959,7 @@ class TestPreventionCheckOrder:
         det.record_call("tool", {"x": 1}, "success", None)
         det.record_call("tool", {"x": 1}, "success", None)
 
-        result = _check_prevention(
+        result = await _check_prevention(
             client, "srv", "sess", "tool", {"x": 1},
             datetime.now(UTC), None, None, None, False, None,
         )
@@ -964,13 +968,14 @@ class TestPreventionCheckOrder:
         assert isinstance(exc, LoopDetectedError)
         assert "loop_detected" in span.error
 
-    def test_all_disabled_returns_none(self) -> None:
+    @pytest.mark.asyncio
+    async def test_all_disabled_returns_none(self) -> None:
         """When no prevention is configured, _check_prevention returns None."""
         from datetime import UTC, datetime
 
         client = LangSightClient(url="http://test:8000")
 
-        result = _check_prevention(
+        result = await _check_prevention(
             client, "srv", "sess", "tool", {"x": 1},
             datetime.now(UTC), None, None, None, False, None,
         )
@@ -986,7 +991,8 @@ class TestPreventedSpanIntegrity:
     """Prevented spans must have correct metadata: zero duration, PREVENTED
     status, and the right error message format."""
 
-    def test_prevented_span_has_zero_latency(self) -> None:
+    @pytest.mark.asyncio
+    async def test_prevented_span_has_zero_latency(self) -> None:
         """A prevented call never executed, so latency must be 0.0."""
         from datetime import UTC, datetime
 
@@ -1000,7 +1006,7 @@ class TestPreventedSpanIntegrity:
         cb.record_failure()
 
         started = datetime.now(UTC)
-        result = _check_prevention(
+        result = await _check_prevention(
             client, "srv", None, "tool", {},
             started, None, None, None, False, None,
         )
@@ -1010,7 +1016,8 @@ class TestPreventedSpanIntegrity:
         assert span.started_at == span.ended_at
         assert span.status == ToolCallStatus.PREVENTED
 
-    def test_prevented_span_carries_project_id(self) -> None:
+    @pytest.mark.asyncio
+    async def test_prevented_span_carries_project_id(self) -> None:
         """project_id must be propagated to prevented spans for tenant isolation."""
         from datetime import UTC, datetime
 
@@ -1023,7 +1030,7 @@ class TestPreventedSpanIntegrity:
         assert cb is not None
         cb.record_failure()
 
-        result = _check_prevention(
+        result = await _check_prevention(
             client, "srv", None, "tool", {},
             datetime.now(UTC), "trace-1", "agent-1", "parent-1", False, "proj-42",
         )
@@ -1034,7 +1041,8 @@ class TestPreventedSpanIntegrity:
         assert span.agent_name == "agent-1"
         assert span.parent_span_id == "parent-1"
 
-    def test_prevented_span_tool_name_matches_requested(self) -> None:
+    @pytest.mark.asyncio
+    async def test_prevented_span_tool_name_matches_requested(self) -> None:
         """The span must record the tool that was ATTEMPTED, not a generic name."""
         from datetime import UTC, datetime
 
@@ -1048,7 +1056,7 @@ class TestPreventedSpanIntegrity:
         # max_steps=0 means even the first call exceeds limit
         # step_count is 0, next would be 1 > 0 = violation
 
-        _check_prevention(
+        await _check_prevention(
             client, "srv", "sess", "delete_all_data", {"confirm": True},
             datetime.now(UTC), None, None, None, False, None,
         )
@@ -1061,7 +1069,8 @@ class TestPreventedSpanIntegrity:
         # Let me verify by using max_steps=1 and recording one step.
         pass  # This edge case needs a different setup
 
-    def test_prevented_span_for_zero_max_steps(self) -> None:
+    @pytest.mark.asyncio
+    async def test_prevented_span_for_zero_max_steps(self) -> None:
         """max_steps=0 must prevent ALL calls — even the very first one.
         This is an edge case where budget is effectively a kill switch."""
         from datetime import UTC, datetime
@@ -1072,7 +1081,7 @@ class TestPreventedSpanIntegrity:
             max_steps=0,
         )
 
-        result = _check_prevention(
+        result = await _check_prevention(
             client, "srv", "sess", "any_tool", {},
             datetime.now(UTC), None, None, None, False, None,
         )

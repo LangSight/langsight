@@ -15,6 +15,7 @@ Transitions:
 
 from __future__ import annotations
 
+import asyncio
 import time
 from enum import StrEnum
 from typing import Protocol
@@ -255,3 +256,109 @@ return 1
             self._LUA_CAS, 1, self._key, *argv
         )
         return bool(result)
+
+
+# ---------------------------------------------------------------------------
+# Async circuit breaker — wraps CircuitBreaker with Redis persistence
+# ---------------------------------------------------------------------------
+
+
+class AsyncCircuitBreaker:
+    """CircuitBreaker with Redis-backed state for cross-replica convergence.
+
+    Multiple SDK replicas monitoring the same MCP server share one circuit
+    breaker state in Redis.  Worker A opening the breaker for ``postgres-mcp``
+    prevents Workers B and C from continuing to hammer it.
+
+    Read path stays in-process (zero Redis round-trip per call).  State is
+    loaded from Redis once on first access, then kept in sync via
+    fire-and-forget saves after every state change.
+
+    Usage::
+
+        async_cb = AsyncCircuitBreaker("postgres-mcp", config, redis_client)
+        if not await async_cb.should_allow():
+            raise CircuitBreakerOpenError(...)
+        try:
+            result = await mcp.call_tool(...)
+            await async_cb.record_success()
+        except Exception:
+            await async_cb.record_failure()
+            raise
+    """
+
+    def __init__(
+        self,
+        server_name: str,
+        config: CircuitBreakerConfig,
+        redis_client: object,
+    ) -> None:
+        self._cb = CircuitBreaker(server_name, config)
+        self._store = RedisCircuitBreakerStore(redis_client, server_name, config.cooldown_seconds)
+        self._initialized = False
+
+    async def _ensure_loaded(self) -> None:
+        """Load Redis state once on first access — no-op on subsequent calls."""
+        if self._initialized:
+            return
+        self._initialized = True  # set before await so concurrent calls don't double-load
+        try:
+            data = await self._store.load()
+            if not data:
+                return  # key absent → CLOSED default is correct
+            state_str = data.get("state", CircuitBreakerState.CLOSED.value)
+            try:
+                self._cb._state = CircuitBreakerState(state_str)
+            except ValueError:
+                pass  # unknown state value — keep CLOSED
+            self._cb._consecutive_failures = int(data.get("consecutive_failures", 0))
+            opened_at_str = data.get("opened_at", "")
+            if opened_at_str:
+                try:
+                    self._cb._opened_at = float(opened_at_str)
+                except ValueError:
+                    pass
+        except Exception:  # noqa: BLE001
+            pass  # Redis unavailable — in-process CLOSED default is safe
+
+    def _persist(self) -> None:
+        """Fire-and-forget: persist current state to Redis after a state change."""
+        opened_at = self._cb._opened_at
+        fields = {
+            "state": self._cb.state.value,
+            "consecutive_failures": str(self._cb._consecutive_failures),
+            "opened_at": str(opened_at) if opened_at is not None else "",
+        }
+        try:
+            asyncio.ensure_future(self._store.save(fields))
+        except RuntimeError:
+            pass  # no event loop — state change won't be persisted (acceptable)
+
+    async def should_allow(self) -> bool:
+        """Check if a call should proceed. Loads Redis state on first call."""
+        await self._ensure_loaded()
+        return self._cb.should_allow()
+
+    async def record_success(self) -> None:
+        """Record a successful call and persist state change to Redis."""
+        await self._ensure_loaded()
+        self._cb.record_success()
+        self._persist()
+
+    async def record_failure(self) -> None:
+        """Record a failed call and persist state change to Redis."""
+        await self._ensure_loaded()
+        self._cb.record_failure()
+        self._persist()
+
+    @property
+    def consecutive_failures(self) -> int:
+        return self._cb._consecutive_failures
+
+    @property
+    def cooldown_remaining_s(self) -> float:
+        return self._cb.cooldown_remaining_s
+
+    @property
+    def server_name(self) -> str:
+        return self._cb.server_name

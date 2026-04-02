@@ -34,7 +34,11 @@ from langsight.exceptions import (
 from langsight.sdk._ids import _new_session_id
 from langsight.sdk.auto_patch import _agent_ctx, _session_ctx, _trace_ctx
 from langsight.sdk.budget import BudgetConfig, SessionBudget
-from langsight.sdk.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
+from langsight.sdk.circuit_breaker import (
+    AsyncCircuitBreaker,
+    CircuitBreaker,
+    CircuitBreakerConfig,
+)
 from langsight.sdk.loop_detector import LoopAction, LoopDetector, LoopDetectorConfig
 from langsight.sdk.models import ToolCallSpan, ToolCallStatus
 
@@ -95,6 +99,11 @@ class LangSightClient:
         circuit_breaker_threshold: int = 5,
         circuit_breaker_cooldown: float = 60.0,
         circuit_breaker_half_open_max: int = 2,
+        # Optional Redis URL — enables cross-replica circuit breaker state sharing.
+        # When set, all SDK instances pointing at the same Redis converge on the
+        # same OPEN/CLOSED state for each MCP server.
+        # Supports redis://, redis+sentinel://, redis+cluster://
+        redis_url: str | None = None,
     ) -> None:
         import os
 
@@ -154,12 +163,19 @@ class LangSightClient:
             if circuit_breaker
             else None
         )
-        self._circuit_breakers: dict[str, CircuitBreaker] = {}
+        # Redis URL for cross-replica circuit breaker state sharing (opt-in).
+        # When set, AsyncCircuitBreaker is used instead of the in-process one.
+        self._redis_url: str | None = redis_url
+        self._redis_client: object | None = None  # lazy — created on first CB access
+        self._circuit_breakers: dict[str, CircuitBreaker | AsyncCircuitBreaker] = {}
 
     # --- Prevention state accessors ---
 
-    def _get_circuit_breaker(self, server_name: str) -> CircuitBreaker | None:
+    def _get_circuit_breaker(self, server_name: str) -> CircuitBreaker | AsyncCircuitBreaker | None:
         """Return the circuit breaker for a server (creates on first access).
+
+        Returns an AsyncCircuitBreaker backed by Redis when redis_url is configured,
+        otherwise a standard in-process CircuitBreaker.
 
         Evicts the oldest entry when the cap is reached to prevent a rogue agent
         cycling through arbitrary server names from growing the dict without bound.
@@ -169,10 +185,46 @@ class LangSightClient:
         if server_name not in self._circuit_breakers:
             if len(self._circuit_breakers) >= _MAX_SERVER_STATE:
                 self._circuit_breakers.pop(next(iter(self._circuit_breakers)))
-            self._circuit_breakers[server_name] = CircuitBreaker(
-                server_name, self._cb_default_config
-            )
+            if self._redis_url:
+                redis = self._get_redis_client_sync()
+                if redis is not None:
+                    self._circuit_breakers[server_name] = AsyncCircuitBreaker(
+                        server_name, self._cb_default_config, redis
+                    )
+                else:
+                    self._circuit_breakers[server_name] = CircuitBreaker(
+                        server_name, self._cb_default_config
+                    )
+            else:
+                self._circuit_breakers[server_name] = CircuitBreaker(
+                    server_name, self._cb_default_config
+                )
         return self._circuit_breakers[server_name]
+
+    def _get_redis_client_sync(self) -> object | None:
+        """Return a shared Redis client, creating it lazily on first call.
+
+        Uses a synchronous import path so this can be called from a non-async
+        context.  The client itself is async (redis.asyncio.Redis).
+        Returns None if the redis package is not installed or the URL is invalid.
+        """
+        if self._redis_client is not None:
+            return self._redis_client
+        if not self._redis_url:
+            return None
+        try:
+            import redis.asyncio as aioredis  # lazy — only when redis_url provided
+
+            self._redis_client = aioredis.from_url(
+                self._redis_url,
+                decode_responses=True,
+                socket_connect_timeout=2,
+                socket_keepalive=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("sdk.redis_init_failed", error=str(exc))
+            self._redis_client = None
+        return self._redis_client
 
     def _get_loop_detector(self, session_id: str | None) -> LoopDetector | None:
         """Return the loop detector for a session (creates on first access).
@@ -827,7 +879,7 @@ class MCPClientProxy:
         started_at = datetime.now(UTC)
 
         # --- Pre-call prevention checks ---
-        prevented = _check_prevention(
+        prevented = await _check_prevention(
             langsight,
             server_name,
             session_id,
@@ -918,7 +970,7 @@ class MCPClientProxy:
                 project_id=project_id,
             )
             # Post-call prevention updates (fail-open)
-            _post_call_update(
+            await _post_call_update(
                 langsight,
                 server_name,
                 session_id,
@@ -983,7 +1035,7 @@ def _detect_content_error(result: object) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def _check_prevention(
+async def _check_prevention(
     langsight: LangSightClient,
     server_name: str,
     session_id: str | None,
@@ -1018,7 +1070,13 @@ def _check_prevention(
 
     # 1. Circuit breaker
     cb = langsight._get_circuit_breaker(server_name)
-    if cb is not None and not cb.should_allow():
+    if cb is not None:
+        should = (
+            await cb.should_allow() if isinstance(cb, AsyncCircuitBreaker) else cb.should_allow()
+        )
+    else:
+        should = True
+    if cb is not None and not should:
         error_msg = (
             f"circuit_breaker_open: {server_name} disabled after "
             f"{cb.consecutive_failures} consecutive failures"
@@ -1089,7 +1147,7 @@ def _check_prevention(
     return None
 
 
-def _post_call_update(
+async def _post_call_update(
     langsight: LangSightClient,
     server_name: str,
     session_id: str | None,
@@ -1099,13 +1157,19 @@ def _post_call_update(
     status: ToolCallStatus,
 ) -> None:
     """Post-call: update circuit breaker, loop detector, and budget state."""
-    # Circuit breaker
+    # Circuit breaker — async when Redis-backed, sync otherwise
     cb = langsight._get_circuit_breaker(server_name)
     if cb is not None:
-        if status == ToolCallStatus.SUCCESS:
-            cb.record_success()
+        if isinstance(cb, AsyncCircuitBreaker):
+            if status == ToolCallStatus.SUCCESS:
+                await cb.record_success()
+            else:
+                await cb.record_failure()
         else:
-            cb.record_failure()
+            if status == ToolCallStatus.SUCCESS:
+                cb.record_success()
+            else:
+                cb.record_failure()
 
     # Loop detector
     loop_det = langsight._get_loop_detector(session_id)

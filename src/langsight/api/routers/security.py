@@ -120,6 +120,7 @@ async def trigger_security_scan(
                 ),
                 project_id=pid,
                 config=config,
+                redis=getattr(request.app.state, "redis", None),
             )
         elif scan.high_count > 0:
             top_findings = ", ".join(
@@ -137,6 +138,7 @@ async def trigger_security_scan(
                 ),
                 project_id=pid,
                 config=config,
+                redis=getattr(request.app.state, "redis", None),
             )
 
     return [_scan_to_response(s) for s in scans]
