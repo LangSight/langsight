@@ -1113,7 +1113,7 @@ class ClickHouseBackend:
                 lineage_status, schema_version
             FROM mcp_tool_calls
             WHERE {where}
-            ORDER BY started_at ASC
+            ORDER BY started_at ASC, llm_output DESC
             """,
             parameters=params,
         )
