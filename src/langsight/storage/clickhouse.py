@@ -1072,7 +1072,7 @@ class ClickHouseBackend:
                 FROM session_health_tags FINAL
             ) sht ON t.session_id = sht.session_id
             {where}
-            GROUP BY t.project_id, t.session_id
+            GROUP BY t.session_id
             {having}
             ORDER BY first_call_at DESC
             LIMIT {{limit:UInt32}}

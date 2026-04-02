@@ -219,6 +219,7 @@ class ToolCallSpan(BaseModel):
         trace_id: str | None = None,
         session_id: str | None = None,
         parent_span_id: str | None = None,
+        project_id: str | None = None,
     ) -> ToolCallSpan:
         """Create a handoff span when one agent delegates to another.
 
@@ -236,6 +237,7 @@ class ToolCallSpan(BaseModel):
             parent_span_id=parent_span_id,
             span_type="handoff",
             target_agent_name=to_agent,
+            project_id=project_id,
             lineage_provenance="explicit",
             schema_version="1.0",
         )

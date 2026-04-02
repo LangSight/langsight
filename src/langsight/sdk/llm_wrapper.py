@@ -122,6 +122,7 @@ def _maybe_emit_handoffs(
             trace_id=span.trace_id or _trace_ctx.get() or None,
             session_id=span.session_id or _session_ctx.get() or None,
             parent_span_id=span.parent_span_id,
+            project_id=getattr(span, "project_id", None) or None,
         )
         proxy._emit_spans([handoff])
 
