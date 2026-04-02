@@ -264,7 +264,7 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
             <SectionLabel>Input / Output</SectionLabel>
             {rootSpan.llm_input && (
               <div className="mb-3">
-                <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5 text-muted-foreground">Question</p>
+                <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5 text-muted-foreground">Input</p>
                 <p className="text-[12px] text-foreground rounded-lg px-3 py-2.5 leading-relaxed" style={{ background: "hsl(var(--muted))" }}>{rootSpan.llm_input}</p>
               </div>
             )}
@@ -276,14 +276,14 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
             )}
             {rootSpan.llm_output && (
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5 text-muted-foreground">Answer</p>
+                <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5 text-muted-foreground">Output</p>
                 <p className="text-[12px] text-foreground rounded-lg px-3 py-2.5 leading-relaxed line-clamp-6" style={{ background: "hsl(var(--muted))" }}>{rootSpan.llm_output}</p>
                 {rootSpan.llm_output.length > 300 && (
                   <button
-                    onClick={() => onViewPayload?.(`Answer — ${name}`, [{ label: "Text", json: rootSpan.llm_output ?? null }])}
+                    onClick={() => onViewPayload?.(`Output — ${name}`, [{ label: "Text", json: rootSpan.llm_output ?? null }])}
                     className="mt-2 text-[11px] font-medium hover:underline" style={{ color: "hsl(var(--primary))" }}
                   >
-                    View full answer →
+                    View full output →
                   </button>
                 )}
               </div>
