@@ -978,6 +978,7 @@ async def session(
     if input is not None and _global_client is not None:
         from langsight.sdk.models import ToolCallSpan, ToolCallStatus
 
+        _proj = getattr(_global_client, "_project_id", None) or None
         start_span = ToolCallSpan.record(
             server_name=agent_name or "agent",
             tool_name="session",
@@ -989,6 +990,7 @@ async def session(
             span_type="agent",
             llm_input=input,
             llm_output=None,  # output not known yet; updated at close if set_output() called
+            project_id=_proj,
             lineage_provenance="explicit",
             schema_version="1.0",
         )
@@ -1015,6 +1017,7 @@ async def session(
         if _output is not None and _global_client is not None:
             from langsight.sdk.models import ToolCallSpan, ToolCallStatus
 
+            _proj = getattr(_global_client, "_project_id", None) or None
             root_span = ToolCallSpan.record(
                 server_name=agent_name or "agent",
                 tool_name="session",
@@ -1026,6 +1029,7 @@ async def session(
                 span_type="agent",
                 llm_input=_input,
                 llm_output=_output,
+                project_id=_proj,
                 lineage_provenance="explicit",
                 schema_version="1.0",
             )
