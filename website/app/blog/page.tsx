@@ -11,8 +11,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "10 min read",
     tags: ["MCP Monitoring", "Health Checks", "Production"],
-    gradient: "linear-gradient(135deg, #0c4a6e 0%, #0891b2 40%, #22d3ee 100%)",
-    pattern: "radial-gradient(circle at 75% 25%, rgba(255,255,255,0.08) 0%, transparent 50%), radial-gradient(circle at 20% 80%, rgba(255,255,255,0.05) 0%, transparent 40%)",
+    image: "/blog/mcp-monitoring-production.svg",
   },
   {
     slug: "owasp-mcp-top-10-guide",
@@ -22,8 +21,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "12 min read",
     tags: ["OWASP", "MCP Security", "Compliance"],
-    gradient: "linear-gradient(135deg, #7f1d1d 0%, #dc2626 50%, #f97316 100%)",
-    pattern: "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.03) 10px, rgba(255,255,255,0.03) 20px)",
+    image: "/blog/owasp-mcp-top-10-guide.svg",
   },
   {
     slug: "mcp-tool-poisoning",
@@ -33,8 +31,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "9 min read",
     tags: ["Tool Poisoning", "Security", "Attack Vectors"],
-    gradient: "linear-gradient(135deg, #4c0519 0%, #be123c 50%, #fb7185 100%)",
-    pattern: "radial-gradient(ellipse at 30% 70%, rgba(255,255,255,0.06) 0%, transparent 60%), linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.2) 100%)",
+    image: "/blog/mcp-tool-poisoning.svg",
   },
   {
     slug: "ai-agent-cost-attribution",
@@ -44,8 +41,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "8 min read",
     tags: ["Cost Tracking", "Budget", "Production"],
-    gradient: "linear-gradient(135deg, #064e3b 0%, #059669 50%, #34d399 100%)",
-    pattern: "radial-gradient(circle at 80% 20%, rgba(255,255,255,0.07) 0%, transparent 45%), radial-gradient(circle at 10% 90%, rgba(255,255,255,0.04) 0%, transparent 40%)",
+    image: "/blog/ai-agent-cost-attribution.svg",
   },
   {
     slug: "mcp-schema-drift",
@@ -55,8 +51,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "8 min read",
     tags: ["Schema Drift", "MCP Health", "Silent Failures"],
-    gradient: "linear-gradient(135deg, #78350f 0%, #d97706 50%, #fbbf24 100%)",
-    pattern: "repeating-linear-gradient(-45deg, transparent, transparent 8px, rgba(255,255,255,0.04) 8px, rgba(255,255,255,0.04) 16px)",
+    image: "/blog/mcp-schema-drift.svg",
   },
   {
     slug: "circuit-breakers-ai-agents",
@@ -66,8 +61,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "9 min read",
     tags: ["Circuit Breaker", "Reliability", "Fault Tolerance"],
-    gradient: "linear-gradient(135deg, #2e1065 0%, #7c3aed 50%, #a78bfa 100%)",
-    pattern: "radial-gradient(circle at 60% 40%, rgba(255,255,255,0.06) 0%, transparent 50%), radial-gradient(circle at 90% 90%, rgba(255,255,255,0.03) 0%, transparent 30%)",
+    image: "/blog/circuit-breakers-ai-agents.svg",
   },
   {
     slug: "langsight-vs-langfuse",
@@ -77,8 +71,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "7 min read",
     tags: ["Comparison", "Langfuse", "Observability"],
-    gradient: "linear-gradient(135deg, #1e1b4b 0%, #4f46e5 50%, #818cf8 100%)",
-    pattern: "radial-gradient(circle at 50% 50%, rgba(255,255,255,0.05) 0%, transparent 60%)",
+    image: "/blog/langsight-vs-langfuse.svg",
   },
   {
     slug: "self-hosting-ai-observability",
@@ -88,8 +81,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "7 min read",
     tags: ["Self-Hosted", "Data Privacy", "Open Source"],
-    gradient: "linear-gradient(135deg, #134e4a 0%, #0d9488 50%, #5eead4 100%)",
-    pattern: "radial-gradient(circle at 25% 75%, rgba(255,255,255,0.06) 0%, transparent 50%), radial-gradient(circle at 85% 15%, rgba(255,255,255,0.04) 0%, transparent 35%)",
+    image: "/blog/self-hosting-ai-observability.svg",
   },
   {
     slug: "blast-radius-mapping",
@@ -99,8 +91,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "8 min read",
     tags: ["Blast Radius", "Dependencies", "Reliability"],
-    gradient: "linear-gradient(135deg, #7c2d12 0%, #ea580c 50%, #fdba74 100%)",
-    pattern: "repeating-linear-gradient(60deg, transparent, transparent 12px, rgba(255,255,255,0.03) 12px, rgba(255,255,255,0.03) 24px)",
+    image: "/blog/blast-radius-mapping.svg",
   },
   {
     slug: "slos-for-ai-agents",
@@ -110,8 +101,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "9 min read",
     tags: ["SLOs", "Reliability Engineering", "Monitoring"],
-    gradient: "linear-gradient(135deg, #701a75 0%, #d946ef 50%, #f0abfc 100%)",
-    pattern: "radial-gradient(circle at 70% 30%, rgba(255,255,255,0.07) 0%, transparent 45%), radial-gradient(circle at 15% 85%, rgba(255,255,255,0.04) 0%, transparent 40%)",
+    image: "/blog/slos-for-ai-agents.svg",
   },
   {
     slug: "ai-agent-loop-detection",
@@ -121,8 +111,7 @@ const posts = [
     date: "March 22, 2026",
     readTime: "8 min read",
     tags: ["Loop Detection", "Agent Reliability", "Production"],
-    gradient: "linear-gradient(135deg, #172554 0%, #2563eb 50%, #60a5fa 100%)",
-    pattern: "radial-gradient(circle at 40% 60%, rgba(255,255,255,0.06) 0%, transparent 50%)",
+    image: "/blog/ai-agent-loop-detection.svg",
   },
   {
     slug: "mcp-server-security",
@@ -132,8 +121,7 @@ const posts = [
     date: "March 22, 2026",
     readTime: "10 min read",
     tags: ["MCP Security", "OWASP", "CVE"],
-    gradient: "linear-gradient(135deg, #450a0a 0%, #b91c1c 50%, #f87171 100%)",
-    pattern: "repeating-linear-gradient(135deg, transparent, transparent 14px, rgba(255,255,255,0.02) 14px, rgba(255,255,255,0.02) 28px)",
+    image: "/blog/mcp-server-security.svg",
   },
 ];
 
@@ -194,25 +182,14 @@ export default function BlogIndex() {
         >
           <div className="rounded-2xl border border-[var(--border)] overflow-hidden transition-all duration-200 hover:border-[var(--indigo)] hover:shadow-[0_0_0_1px_var(--indigo-dim),0_8px_40px_var(--indigo-glow)] hover:-translate-y-0.5">
             <div className="grid lg:grid-cols-5">
-              {/* Gradient Area */}
-              <div
-                className="lg:col-span-3 h-56 sm:h-64 lg:h-auto lg:min-h-[320px] relative overflow-hidden"
-                style={{ background: featured.gradient }}
-              >
-                <div
-                  className="absolute inset-0"
-                  style={{ background: featured.pattern }}
+              {/* Image Area */}
+              <div className="lg:col-span-3 relative overflow-hidden bg-[#0A0A0C]">
+                <img
+                  src={featured.image}
+                  alt={featured.title}
+                  className="w-full h-full object-cover"
+                  style={{ aspectRatio: "1200/630", minHeight: "220px" }}
                 />
-                {/* Abstract decoration */}
-                <div className="absolute inset-0 flex items-center justify-center opacity-[0.12]">
-                  <svg width="320" height="320" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="160" cy="160" r="120" stroke="white" strokeWidth="1" />
-                    <circle cx="160" cy="160" r="80" stroke="white" strokeWidth="1" />
-                    <circle cx="160" cy="160" r="40" stroke="white" strokeWidth="1" />
-                    <line x1="40" y1="160" x2="280" y2="160" stroke="white" strokeWidth="0.5" />
-                    <line x1="160" y1="40" x2="160" y2="280" stroke="white" strokeWidth="0.5" />
-                  </svg>
-                </div>
                 <div className="absolute bottom-4 left-5">
                   <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-white/15 text-white/90 backdrop-blur-sm">
                     Featured
@@ -263,22 +240,13 @@ export default function BlogIndex() {
               style={{ transitionDelay: `${i * 60}ms` }}
             >
               <div className="rounded-xl border border-[var(--border)] overflow-hidden h-full flex flex-col transition-all duration-200 hover:border-[var(--indigo)] hover:shadow-[0_0_0_1px_var(--indigo-dim),0_8px_40px_var(--indigo-glow)] hover:-translate-y-0.5 bg-[var(--surface)]">
-                {/* Gradient Hero */}
-                <div
-                  className="h-40 relative overflow-hidden flex-shrink-0"
-                  style={{ background: post.gradient }}
-                >
-                  <div
-                    className="absolute inset-0"
-                    style={{ background: post.pattern }}
+                {/* Hero Image */}
+                <div className="relative overflow-hidden flex-shrink-0 bg-[#0A0A0C]" style={{ aspectRatio: "1200/630" }}>
+                  <img
+                    src={post.image}
+                    alt={post.title}
+                    className="w-full h-full object-cover"
                   />
-                  {/* Subtle geometric overlay unique per card */}
-                  <div className="absolute inset-0 flex items-center justify-center opacity-[0.08]">
-                    <svg width="200" height="160" viewBox="0 0 200 160" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <rect x="50" y="30" width="100" height="100" rx="4" stroke="white" strokeWidth="0.5" />
-                      <rect x="70" y="50" width="60" height="60" rx="2" stroke="white" strokeWidth="0.5" />
-                    </svg>
-                  </div>
                 </div>
 
                 {/* Content */}

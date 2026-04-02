@@ -41,6 +41,11 @@ export default function CircuitBreakersAiAgentsPost() {
           </div>
         </div>
 
+        {/* Hero image */}
+        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
+          <img src="/blog/circuit-breakers-ai-agents.svg" alt="Circuit Breakers for AI Agents: Preventing Cascading Failures" className="w-full" />
+        </div>
+
         {/* Content */}
         <div className="prose-custom">
 

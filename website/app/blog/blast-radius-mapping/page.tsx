@@ -41,6 +41,11 @@ export default function BlastRadiusMappingPost() {
           </div>
         </div>
 
+        {/* Hero image */}
+        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
+          <img src="/blog/blast-radius-mapping.svg" alt="Blast Radius Mapping: Understanding AI Agent Dependencies" className="w-full" />
+        </div>
+
         {/* Content */}
         <div className="prose-custom">
 

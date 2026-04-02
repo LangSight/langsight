@@ -41,6 +41,11 @@ export default function SlosForAiAgentsPost() {
           </div>
         </div>
 
+        {/* Hero image */}
+        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
+          <img src="/blog/slos-for-ai-agents.svg" alt="Setting SLOs for AI Agents: A Practical Guide" className="w-full" />
+        </div>
+
         {/* Content */}
         <div className="prose-custom">
 

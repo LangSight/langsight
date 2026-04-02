@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="glow2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#EF4444" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#09090B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#EF4444" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#F97316" stop-opacity="0.1"/>
+    </linearGradient>
+    <filter id="blur2">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="12"/>
+    </filter>
+    <pattern id="dots2" x="0" y="0" width="30" height="30" patternUnits="userSpaceOnUse">
+      <circle cx="15" cy="15" r="0.8" fill="#27272A" opacity="0.5"/>
+    </pattern>
+    <clipPath id="shieldClip">
+      <path d="M600,100 L750,170 L750,350 Q750,430 600,500 Q450,430 450,350 L450,170 Z"/>
+    </clipPath>
+  </defs>
+  <rect width="1200" height="630" fill="#09090B"/>
+  <rect width="1200" height="630" fill="url(#dots2)"/>
+  <rect width="1200" height="630" fill="url(#glow2)"/>
+
+  <!-- Shield outline -->
+  <path d="M600,110 L740,175 L740,345 Q740,420 600,490 Q460,420 460,345 L460,175 Z" fill="none" stroke="#EF4444" stroke-width="2" opacity="0.5"/>
+  <path d="M600,130 L720,185 L720,340 Q720,405 600,465 Q480,405 480,340 L480,185 Z" fill="url(#shieldGrad)" stroke="none" opacity="0.15"/>
+
+  <!-- Grid inside shield -->
+  <g clip-path="url(#shieldClip)" opacity="0.3">
+    <line x1="500" y1="150" x2="500" y2="500" stroke="#EF4444" stroke-width="0.5"/>
+    <line x1="550" y1="150" x2="550" y2="500" stroke="#EF4444" stroke-width="0.5"/>
+    <line x1="600" y1="150" x2="600" y2="500" stroke="#EF4444" stroke-width="0.5"/>
+    <line x1="650" y1="150" x2="650" y2="500" stroke="#EF4444" stroke-width="0.5"/>
+    <line x1="700" y1="150" x2="700" y2="500" stroke="#EF4444" stroke-width="0.5"/>
+    <line x1="440" y1="200" x2="760" y2="200" stroke="#EF4444" stroke-width="0.5"/>
+    <line x1="440" y1="250" x2="760" y2="250" stroke="#EF4444" stroke-width="0.5"/>
+    <line x1="440" y1="300" x2="760" y2="300" stroke="#EF4444" stroke-width="0.5"/>
+    <line x1="440" y1="350" x2="760" y2="350" stroke="#EF4444" stroke-width="0.5"/>
+    <line x1="440" y1="400" x2="760" y2="400" stroke="#EF4444" stroke-width="0.5"/>
+  </g>
+
+  <!-- Lock icon in center of shield -->
+  <rect x="580" y="270" width="40" height="35" rx="4" fill="none" stroke="#EF4444" stroke-width="2" opacity="0.7"/>
+  <path d="M588,270 L588,255 A12,12 0 0,1 612,255 L612,270" fill="none" stroke="#EF4444" stroke-width="2" opacity="0.7"/>
+  <circle cx="600" cy="288" r="4" fill="#EF4444" opacity="0.8"/>
+
+  <!-- Threat nodes around shield -->
+  <circle cx="250" cy="200" r="6" fill="#F97316" opacity="0.6"/>
+  <line x1="256" y1="200" x2="460" y2="240" stroke="#F97316" stroke-width="1" stroke-dasharray="3,6" opacity="0.3"/>
+
+  <circle cx="300" cy="420" r="6" fill="#F97316" opacity="0.5"/>
+  <line x1="306" y1="418" x2="470" y2="360" stroke="#F97316" stroke-width="1" stroke-dasharray="3,6" opacity="0.3"/>
+
+  <circle cx="950" cy="180" r="6" fill="#F97316" opacity="0.6"/>
+  <line x1="944" y1="182" x2="740" y2="230" stroke="#F97316" stroke-width="1" stroke-dasharray="3,6" opacity="0.3"/>
+
+  <circle cx="900" cy="450" r="6" fill="#F97316" opacity="0.5"/>
+  <line x1="894" y1="447" x2="730" y2="370" stroke="#F97316" stroke-width="1" stroke-dasharray="3,6" opacity="0.3"/>
+
+  <circle cx="200" cy="320" r="5" fill="#EF4444" opacity="0.4"/>
+  <line x1="205" y1="320" x2="460" y2="300" stroke="#EF4444" stroke-width="1" stroke-dasharray="3,6" opacity="0.2"/>
+
+  <circle cx="1000" cy="310" r="5" fill="#EF4444" opacity="0.4"/>
+  <line x1="995" y1="310" x2="740" y2="300" stroke="#EF4444" stroke-width="1" stroke-dasharray="3,6" opacity="0.2"/>
+
+  <!-- Warning indicators -->
+  <g transform="translate(150, 140)" opacity="0.4">
+    <polygon points="0,16 9,-2 18,16" fill="none" stroke="#F97316" stroke-width="1.5"/>
+    <line x1="9" y1="4" x2="9" y2="10" stroke="#F97316" stroke-width="1.5"/>
+    <circle cx="9" cy="13" r="1" fill="#F97316"/>
+  </g>
+  <g transform="translate(1010, 440)" opacity="0.35">
+    <polygon points="0,16 9,-2 18,16" fill="none" stroke="#F97316" stroke-width="1.5"/>
+    <line x1="9" y1="4" x2="9" y2="10" stroke="#F97316" stroke-width="1.5"/>
+    <circle cx="9" cy="13" r="1" fill="#F97316"/>
+  </g>
+
+  <!-- Glow behind shield -->
+  <circle cx="600" cy="300" r="120" fill="#EF4444" opacity="0.04" filter="url(#blur2)"/>
+</svg>

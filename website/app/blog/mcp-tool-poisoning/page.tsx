@@ -41,6 +41,11 @@ export default function McpToolPoisoningPost() {
           </div>
         </div>
 
+        {/* Hero image */}
+        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
+          <img src="/blog/mcp-tool-poisoning.svg" alt="MCP Tool Poisoning: How Attackers Hijack AI Agents Through Tool Descriptions" className="w-full" />
+        </div>
+
         {/* Content */}
         <div className="prose-custom">
 

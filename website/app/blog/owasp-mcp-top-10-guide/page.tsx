@@ -41,6 +41,11 @@ export default function OwaspMcpTop10GuidePost() {
           </div>
         </div>
 
+        {/* Hero image */}
+        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
+          <img src="/blog/owasp-mcp-top-10-guide.svg" alt="OWASP MCP Top 10 Explained: A Practical Security Guide" className="w-full" />
+        </div>
+
         {/* Content */}
         <div className="prose-custom">
 

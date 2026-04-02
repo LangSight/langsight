@@ -41,6 +41,11 @@ export default function McpSchemaDriftPost() {
           </div>
         </div>
 
+        {/* Hero image */}
+        <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
+          <img src="/blog/mcp-schema-drift.svg" alt="Schema Drift in MCP: The Silent Failure Your Agents Cannot Detect" className="w-full" />
+        </div>
+
         {/* Content */}
         <div className="prose-custom">
 

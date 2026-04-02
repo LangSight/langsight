@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="glow11" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#EA580C" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#09090B" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="impactGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#EA580C" stop-opacity="0.12"/>
+      <stop offset="30%" stop-color="#EA580C" stop-opacity="0.06"/>
+      <stop offset="60%" stop-color="#F59E0B" stop-opacity="0.03"/>
+      <stop offset="100%" stop-color="#09090B" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blur11">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
+    </filter>
+    <pattern id="dots11" x="0" y="0" width="30" height="30" patternUnits="userSpaceOnUse">
+      <circle cx="15" cy="15" r="0.8" fill="#27272A" opacity="0.5"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="#09090B"/>
+  <rect width="1200" height="630" fill="url(#dots11)"/>
+  <rect width="1200" height="630" fill="url(#glow11)"/>
+
+  <!-- Concentric impact zones -->
+  <circle cx="600" cy="315" r="250" fill="none" stroke="#F59E0B" stroke-width="1" stroke-dasharray="6,6" opacity="0.15"/>
+  <circle cx="600" cy="315" r="180" fill="none" stroke="#EA580C" stroke-width="1" stroke-dasharray="4,4" opacity="0.25"/>
+  <circle cx="600" cy="315" r="110" fill="none" stroke="#EA580C" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.35"/>
+  <circle cx="600" cy="315" r="50" fill="url(#impactGrad)"/>
+
+  <!-- Center failure point -->
+  <circle cx="600" cy="315" r="12" fill="#EF4444" opacity="0.3"/>
+  <circle cx="600" cy="315" r="6" fill="#EF4444" opacity="0.7"/>
+  <circle cx="600" cy="315" r="20" fill="#EF4444" opacity="0.06" filter="url(#blur11)"/>
+
+  <!-- Zone 1 nodes (critical — directly connected) -->
+  <circle cx="540" cy="240" r="8" fill="#111113" stroke="#EA580C" stroke-width="1.5" opacity="0.8"/>
+  <line x1="548" y1="248" x2="594" y2="308" stroke="#EA580C" stroke-width="1.5" opacity="0.4"/>
+
+  <circle cx="680" cy="260" r="8" fill="#111113" stroke="#EA580C" stroke-width="1.5" opacity="0.8"/>
+  <line x1="672" y1="266" x2="608" y2="308" stroke="#EA580C" stroke-width="1.5" opacity="0.4"/>
+
+  <circle cx="650" cy="400" r="8" fill="#111113" stroke="#EA580C" stroke-width="1.5" opacity="0.8"/>
+  <line x1="644" y1="394" x2="606" y2="322" stroke="#EA580C" stroke-width="1.5" opacity="0.4"/>
+
+  <circle cx="520" cy="380" r="8" fill="#111113" stroke="#EA580C" stroke-width="1.5" opacity="0.8"/>
+  <line x1="528" y1="374" x2="594" y2="322" stroke="#EA580C" stroke-width="1.5" opacity="0.4"/>
+
+  <!-- Zone 2 nodes (secondary impact) -->
+  <circle cx="440" cy="200" r="7" fill="#111113" stroke="#F59E0B" stroke-width="1.2" opacity="0.6"/>
+  <line x1="448" y1="207" x2="533" y2="237" stroke="#F59E0B" stroke-width="1" opacity="0.25"/>
+
+  <circle cx="760" cy="220" r="7" fill="#111113" stroke="#F59E0B" stroke-width="1.2" opacity="0.6"/>
+  <line x1="752" y1="226" x2="686" y2="254" stroke="#F59E0B" stroke-width="1" opacity="0.25"/>
+
+  <circle cx="780" cy="360" r="7" fill="#111113" stroke="#F59E0B" stroke-width="1.2" opacity="0.6"/>
+  <line x1="772" y1="358" x2="658" y2="398" stroke="#F59E0B" stroke-width="1" opacity="0.25"/>
+
+  <circle cx="460" cy="440" r="7" fill="#111113" stroke="#F59E0B" stroke-width="1.2" opacity="0.6"/>
+  <line x1="468" y1="434" x2="516" y2="386" stroke="#F59E0B" stroke-width="1" opacity="0.25"/>
+
+  <circle cx="490" cy="160" r="7" fill="#111113" stroke="#F59E0B" stroke-width="1.2" opacity="0.6"/>
+  <line x1="495" y1="167" x2="536" y2="234" stroke="#F59E0B" stroke-width="1" opacity="0.25"/>
+
+  <circle cx="720" cy="420" r="7" fill="#111113" stroke="#F59E0B" stroke-width="1.2" opacity="0.6"/>
+  <line x1="714" y1="415" x2="656" y2="404" stroke="#F59E0B" stroke-width="1" opacity="0.25"/>
+
+  <!-- Zone 3 nodes (tertiary / ripple effect) -->
+  <circle cx="340" cy="160" r="5" fill="#111113" stroke="#27272A" stroke-width="1" opacity="0.5"/>
+  <line x1="347" y1="163" x2="434" y2="196" stroke="#27272A" stroke-width="0.5" opacity="0.2"/>
+
+  <circle cx="850" cy="180" r="5" fill="#111113" stroke="#27272A" stroke-width="1" opacity="0.5"/>
+  <line x1="843" y1="184" x2="766" y2="218" stroke="#27272A" stroke-width="0.5" opacity="0.2"/>
+
+  <circle cx="880" cy="400" r="5" fill="#111113" stroke="#27272A" stroke-width="1" opacity="0.5"/>
+  <line x1="873" y1="398" x2="786" y2="364" stroke="#27272A" stroke-width="0.5" opacity="0.2"/>
+
+  <circle cx="350" cy="480" r="5" fill="#111113" stroke="#27272A" stroke-width="1" opacity="0.5"/>
+  <line x1="357" y1="476" x2="456" y2="444" stroke="#27272A" stroke-width="0.5" opacity="0.2"/>
+
+  <circle cx="300" cy="320" r="5" fill="#111113" stroke="#27272A" stroke-width="1" opacity="0.5"/>
+  <line x1="305" y1="318" x2="434" y2="204" stroke="#27272A" stroke-width="0.5" opacity="0.15"/>
+
+  <circle cx="900" cy="290" r="5" fill="#111113" stroke="#27272A" stroke-width="1" opacity="0.5"/>
+  <line x1="893" y1="292" x2="786" y2="354" stroke="#27272A" stroke-width="0.5" opacity="0.15"/>
+
+  <!-- Zone labels -->
+  <rect x="380" y="100" width="70" height="22" rx="4" fill="#111113" stroke="#EA580C" stroke-width="0.5" opacity="0.4"/>
+  <rect x="780" y="480" width="80" height="22" rx="4" fill="#111113" stroke="#F59E0B" stroke-width="0.5" opacity="0.3"/>
+</svg>
