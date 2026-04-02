@@ -150,3 +150,4 @@ The `langsight sessions` CLI shows a summary. For full session debugging, open t
 - **Input / Output panel** (v0.13.1) — clicking an agent node in the session graph shows the human question and final answer in the right-side inspector panel, when `input=` and `sess.set_output()` were used. See [Capturing user input and agent output](/sdk/python#capturing-user-input-and-agent-output).
 - **Trace tab** — nested span tree with inline payloads and LLM prompt/completion panels
 - **Handoff edges** (v0.13.1) — handoff edges in the session graph are now derived exclusively from explicit `handoff` spans. The previous cross-agent inference heuristic that could inflate edge counts with shared proxies has been removed.
+- **Incomplete badge** (v0.14.1) — sessions where `input=` was not passed to `session()` (LLM-only sessions with no captured human prompt) show a grey **Incomplete** badge in the health tag column instead of appearing as silent successes with 0 tool calls.

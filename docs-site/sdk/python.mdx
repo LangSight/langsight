@@ -148,6 +148,10 @@ async with langsight.session(
 
 `input=` is stored as `llm_input` on the root `agent` span. `set_output()` stores the value as `llm_output` on the same span. Both are visible in the session detail panel in the dashboard and in `langsight sessions --id <id>`.
 
+<Note>
+**v0.14.1 — prompt flushed at open time.** The `input=` value is written to ClickHouse immediately when the `session()` block opens, not just at close. If the agent crashes or `set_output()` is never called, the prompt is still visible in the Sessions page. Sessions that complete normally are unaffected — the close-time span carrying both `input` and `output` is still emitted when the block exits.
+</Note>
+
 ### Level 2: Human-in-the-loop — mid-session human input
 
 ```python

@@ -620,7 +620,7 @@ The Agents page renders in one of three states depending on what is selected:
 
 ### 4.3 Sessions Page
 
-**Session table**: One row per workflow/session with agent, health tag, tool-call count, failures, duration, touched backends, and two timestamp columns (relative "Started" + exact ISO "Timestamp").
+**Session table**: One row per workflow/session with agent, health tag, tool-call count, failures, duration, touched backends, and two timestamp columns (relative "Started" + exact ISO "Timestamp"). Sessions where `input=` was not passed to `session()` (LLM-only sessions with no captured human prompt) show a grey **Incomplete** badge in the health tag column (added v0.14.1); they do not appear as silent successes.
 
 **Date range filter** (added 2026-03-23): The `DateRangeFilter` component appears in the page header to the right of the title. It provides:
 - Five preset buttons: `1h`, `6h`, `24h`, `7d`, `30d` — the active preset is highlighted with the primary teal accent.
@@ -633,7 +633,7 @@ The Agents page renders in one of three states depending on what is selected:
 - Text search: session ID, agent name, or server name
 - Status tabs: All / Clean / Failed — with live counts
 - Agent dropdown (shown only when more than one agent is present)
-- Health tag dropdown: All / Success / Fallback / Loop / Budget / Failure / Circuit Open / Timeout / Schema Drift
+- Health tag dropdown: All / Success / Fallback / Loop / Budget / Failure / Circuit Open / Timeout / Schema Drift / Incomplete (added v0.14.1 — sessions with no captured prompt)
 
 **Pagination**: 20 rows per page; sticky footer with first/previous/next/last controls and `x / total` label.
 
@@ -679,7 +679,7 @@ The Details tab is the visual debugging surface. It has three sub-regions stacke
 - Shows call counts, error rate, avg/p99 latency, tool list, and token usage for the selected element
 - MetricTile sub-component: each metric is a rounded tile with a primary or danger accent border on the left side
 - "View in Catalog" link appears for agent and server nodes
-- **Input / Output section** (added v0.13.1): when an agent node is selected, the panel shows a collapsible "Input / Output" section beneath the metric tiles. It renders `llm_input` (the human question passed as `input=` to `session()`) and `llm_output` (the value passed to `sess.set_output()`). The section is hidden when neither field is present on the root agent span — no empty state is shown.
+- **Input / Output section** (added v0.13.1): when an agent node is selected, the panel shows a collapsible "Input / Output" section beneath the metric tiles. It renders `llm_input` (the human question passed as `input=` to `session()`) and `llm_output` (the value passed to `sess.set_output()`). The section is hidden when neither field is present on the root agent span — no empty state is shown. From v0.14.1, `llm_input` is flushed to ClickHouse immediately when the `session()` block opens, so it appears in this panel even for sessions that crashed or never called `set_output()`.
 
 **Graph builder extraction** (2026-03-23):
 - Session graph construction logic extracted from the session detail page into `dashboard/lib/session-graph.ts`

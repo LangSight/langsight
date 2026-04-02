@@ -11,10 +11,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.14.1] - 2026-04-02
 
-**SDK patch: `session()` now flushes the human prompt to ClickHouse at open time.**
+**SDK prompt capture at open time, dashboard Incomplete badge, proxy 204 fix, project FK guard.**
 
 ### Fixed
 - **`session()` captures human prompt at open time** (`src/langsight/sdk/auto_patch.py`): Previously, the `input=` value passed to `async with langsight.session(input=question)` was only written to ClickHouse when the context manager exited (at `set_output()` or block end). If an agent crashed or `set_output()` was never called, the prompt was silently lost. A `session_start` span is now flushed to ClickHouse immediately when the `session()` block opens, matching the behaviour of Langfuse and LangSmith. The close-time span (carrying both `input` and `output`) is still emitted when `set_output()` is called, so fully-completed sessions are unaffected.
+- **`DELETE /api/projects/{id}` proxy 204 fix** (`dashboard/app/api/projects/[id]/route.ts`): The Next.js proxy route was constructing a `new Response(body, { status: 204 })` with a non-null body, which the browser rejected with `Response constructor: Invalid response status code 204`. The handler now returns `new Response(null, { status: 204 })` for 204 responses.
+- **`POST /api/projects` FK guard** (`src/langsight/api/routers/projects.py`): Creating a project when the session cookie carried a stale `user_id` from a previous database caused a PostgreSQL FK violation and a 500 response. The endpoint now checks whether the requesting user exists before inserting the project row and returns a 401 with a clear message when the user is not found.
+
+### Added
+- **"Incomplete" badge on Sessions page** (`dashboard/app/(dashboard)/sessions/page.tsx`): Sessions where `input=` was not passed to `session()` (LLM-only sessions with no captured human prompt) now display a grey **Incomplete** badge in the health tag column instead of appearing as silent successes with 0 tool calls. This makes it easy to distinguish sessions that were intentionally LLM-only from sessions where instrumentation was incomplete.
 
 ## [0.14.0] - 2026-04-01
 
