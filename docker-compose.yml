@@ -66,6 +66,41 @@ services:
           memory: 512M
           cpus: "1"
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Redis — optional, required for multi-worker mode (LANGSIGHT_WORKERS > 1)
+  #
+  # Enable with:   docker compose --profile redis up -d
+  #
+  # image: redis:7-alpine — BSD 3-Clause license, fully self-hostable.
+  # Bound to loopback (127.0.0.1) only — never exposed to the internet.
+  # Add a volume mount for AOF persistence if you need rate-limit state
+  # to survive restarts (not required — counters reset on each restart).
+  # ─────────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: langsight-redis
+    profiles: [redis]
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD env var is required when using the redis profile}
+      --bind 0.0.0.0
+      --protected-mode no
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks: [langsight-net]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.120.0
     container_name: langsight-otel-collector
@@ -109,6 +144,12 @@ services:
       # Bootstrap admin user — created on first startup when no users exist
       LANGSIGHT_ADMIN_EMAIL: ${LANGSIGHT_ADMIN_EMAIL:-}
       LANGSIGHT_ADMIN_PASSWORD: ${LANGSIGHT_ADMIN_PASSWORD:-}
+      # Redis — optional. Leave empty for single-worker mode (default).
+      # Set LANGSIGHT_REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379 and
+      # LANGSIGHT_WORKERS > 1 to enable multi-worker horizontal scaling.
+      # Requires starting Redis: docker compose --profile redis up -d
+      LANGSIGHT_REDIS_URL: ${LANGSIGHT_REDIS_URL:-}
+      LANGSIGHT_WORKERS: ${LANGSIGHT_WORKERS:-1}
     ports:
       - "127.0.0.1:8000:8000"
     volumes:

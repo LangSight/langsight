@@ -9,20 +9,53 @@ The standard `docker compose up -d` setup binds all services to `localhost` and 
 
 ---
 
-## LANGSIGHT_WORKERS must stay at 1
+## Horizontal scaling with Redis
 
-**Do not set `LANGSIGHT_WORKERS` above `1`.** The API enforces this at startup:
+LangSight supports multiple Uvicorn workers when Redis is configured.
+Redis provides shared state for:
 
-```
-RuntimeError: LANGSIGHT_WORKERS=4 is not safe with the current in-memory rate
-limiter. Each worker gets its own independent counter, so the effective rate
-limit becomes limit×4. Set LANGSIGHT_WORKERS=1 (the default), or replace
-slowapi with a Redis-backed limiter before enabling multi-worker mode.
-```
+- **Rate limiting** — all workers share counters (brute-force protection works correctly)
+- **SSE live view** — events published by any worker reach all connected clients
 
-The in-memory rate limiter (slowapi), SSE live-feed broadcaster, and auth token cache are all in-process state. Running N workers multiplies the effective rate limit by N, which breaks brute-force protection on the login endpoint and allows SSE events to be missed by clients connected to a different worker.
+### Setup
 
-Horizontal scaling requires a Redis-backed rate limiter. Until that is shipped, keep `LANGSIGHT_WORKERS=1` and scale vertically (increase CPU/memory) if needed.
+1. Generate a Redis password and add to `.env`:
+   ```bash
+   echo "REDIS_PASSWORD=$(openssl rand -hex 24)" >> .env
+   ```
+
+2. Start Redis alongside the stack:
+   ```bash
+   docker compose --profile redis up -d
+   ```
+
+3. Configure the API in `.env`:
+   ```bash
+   LANGSIGHT_REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+   LANGSIGHT_WORKERS=4   # CPU count is a good starting point
+   ```
+
+4. Rebuild and restart:
+   ```bash
+   docker compose up -d --force-recreate api
+   ```
+
+### Without Redis (default)
+
+`LANGSIGHT_WORKERS` must remain at `1` when `LANGSIGHT_REDIS_URL` is not set.
+The API enforces this at startup — if you try to run `LANGSIGHT_WORKERS=2` without Redis,
+the process exits immediately with a clear error message.
+
+This is the default behavior and requires no configuration for single-instance deployments.
+
+### Redis port security
+
+Redis must never be internet-accessible. In the default Docker Compose setup,
+Redis is bound to `127.0.0.1:6379` (loopback only) and inside the `langsight-net` network.
+
+| Port | Service | Accessible from |
+|------|---------|-----------------|
+| `6379` | Redis | `127.0.0.1` only |
 
 ---
 
@@ -156,6 +189,7 @@ Only port 443 (HTTPS via Nginx) should be internet-accessible. All other ports m
 | `3003` | Next.js dashboard | `127.0.0.1` only (Nginx proxies to it) |
 | `8000` | FastAPI | `127.0.0.1` only (Next.js proxy + internal tools) |
 | `5432` | PostgreSQL | `127.0.0.1` only |
+| `6379` | Redis (optional) | `127.0.0.1` only |
 | `8123` | ClickHouse HTTP | `127.0.0.1` only |
 | `9000` | ClickHouse native | `127.0.0.1` only |
 

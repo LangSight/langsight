@@ -41,6 +41,14 @@ dependencies = [
     "prometheus-client>=0.21",
 ]
 
+[project.optional-dependencies]
+# Install for multi-worker / horizontal-scale deployments:
+#   pip install "langsight[redis]"   or   uv add "langsight[redis]"
+# Enables: cross-worker rate limiting + cross-worker SSE broadcasting.
+redis = [
+    "redis[hiredis]>=5",
+]
+
 [project.scripts]
 langsight = "langsight.cli.main:cli"
 
@@ -68,6 +76,7 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
     "types-pyyaml>=6.0.12.20250915",
+    "redis[hiredis]>=5",  # for Redis integration tests
 ]
 
 [tool.pytest.ini_options]
@@ -120,4 +129,8 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["google", "google.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["redis", "redis.*"]
 ignore_missing_imports = true

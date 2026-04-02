@@ -318,33 +318,58 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        # ── Multi-worker safety check ─────────────────────────────────────────
-        # The rate limiter (slowapi) is in-memory. Running N workers means each
-        # worker has an independent counter — effective limit becomes limit×N, not
-        # limit. This breaks brute-force protection on /verify and DoS protection
-        # on ingestion endpoints. Hard-fail at startup so operators don't
-        # accidentally deploy a misconfigured stack.
-        #
-        # To safely run multiple workers, replace slowapi with a Redis-backed
-        # limiter (e.g. slowapi + redis storage, or limits + redis). Until then,
-        # LANGSIGHT_WORKERS must stay at 1.
-        _workers = int(os.environ.get("LANGSIGHT_WORKERS", "1"))
-        if _workers > 1:
-            raise RuntimeError(
-                f"LANGSIGHT_WORKERS={_workers} is not safe with the current in-memory rate "
-                "limiter. Each worker gets its own independent counter, so the effective "
-                f"rate limit becomes limit×{_workers}. "
-                "Set LANGSIGHT_WORKERS=1 (the default), or replace slowapi with a "
-                "Redis-backed limiter before enabling multi-worker mode."
-            )
-
+        # ── Settings — resolved early so Redis check can use redis_url ─────────
         config = load_config(config_path)
         # Apply env var overrides (LANGSIGHT_STORAGE_MODE etc.) — used in Docker
         settings = Settings()
         config = config.model_copy(update={"storage": settings.apply_to_storage(config.storage)})
+
+        # ── Multi-worker safety check ─────────────────────────────────────────
+        # Without Redis, the rate limiter (slowapi) is in-memory. Running N
+        # workers means each worker has an independent counter — effective
+        # limit becomes limit×N, breaking brute-force and DoS protection.
+        # With LANGSIGHT_REDIS_URL set, slowapi uses Redis storage so all
+        # workers share a single counter. Hard-fail when Redis is absent and
+        # workers > 1 so operators don't accidentally deploy a broken stack.
+        _workers = int(os.environ.get("LANGSIGHT_WORKERS", "1"))
+        if _workers > 1 and not settings.redis_url:
+            raise RuntimeError(
+                f"LANGSIGHT_WORKERS={_workers} requires LANGSIGHT_REDIS_URL to be set. "
+                "Without Redis, each worker has an independent rate-limit counter and "
+                "SSE events are not shared across workers. "
+                "Set LANGSIGHT_REDIS_URL=redis://redis:6379 (see docker-compose --profile redis), "
+                "or keep LANGSIGHT_WORKERS=1 for single-instance deployments."
+            )
+
         app.state.config = config
         app.state.storage = await open_storage(app.state.config.storage)
-        app.state.broadcaster = SSEBroadcaster()
+
+        # ── Redis — optional, required for multi-worker mode ─────────────────
+        from langsight.api.redis_client import close_redis_client, get_redis_client
+        from langsight.api.rate_limit import limiter as _rate_limiter
+
+        if settings.redis_url:
+            try:
+                app.state.redis = await get_redis_client(settings.redis_url)
+                # Reconfigure rate limiter to use Redis storage
+                _rate_limiter.reconfigure(settings.redis_url)
+                logger.info("redis.rate_limiter_configured")
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(
+                    f"LANGSIGHT_REDIS_URL is set but Redis is unreachable: {exc}. "
+                    "Check that Redis is running and the URL is correct."
+                ) from exc
+        else:
+            app.state.redis = None
+
+        # ── SSE broadcaster — Redis-backed when available, in-memory otherwise
+        from langsight.api.broadcast import RedisBroadcaster, SSEBroadcaster
+
+        if settings.redis_url and app.state.redis is not None:
+            app.state.broadcaster = RedisBroadcaster(app.state.redis)
+            logger.info("sse.redis_broadcaster_active")
+        else:
+            app.state.broadcaster = SSEBroadcaster()
 
         # Auth setup — store parsed keys on app state so the dep can read them
         api_keys = settings.parsed_api_keys()
@@ -434,6 +459,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                 except asyncio.CancelledError:
                     pass
             await app.state.storage.close()
+            await close_redis_client()
             logger.info("api.shutdown")
 
     app = FastAPI(

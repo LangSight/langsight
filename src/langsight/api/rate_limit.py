@@ -16,6 +16,15 @@ Key resolution order (first match wins):
      browser user gets their own bucket instead of sharing the proxy's IP.
   2. X-API-Key header prefix — separates direct SDK callers by their key.
   3. TCP remote address — fallback for direct/unauthed connections.
+
+Single-instance (default):
+  Storage is in-memory (slowapi default). LANGSIGHT_WORKERS must be 1.
+
+Multi-worker (requires Redis):
+  Call ``limiter.reconfigure(redis_url)`` in the lifespan startup after
+  setting LANGSIGHT_REDIS_URL. The ``limits`` library (a slowapi dependency)
+  supports redis://, redis+sentinel://, and redis+cluster:// URIs.
+  All workers then share a single Redis-backed counter.
 """
 
 from __future__ import annotations
@@ -23,6 +32,8 @@ from __future__ import annotations
 from fastapi import Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+_DEFAULT_LIMITS = ["200/minute"]
 
 
 def _rate_limit_key(request: Request) -> str:
@@ -56,4 +67,47 @@ def _rate_limit_key(request: Request) -> str:
     return get_remote_address(request)
 
 
-limiter = Limiter(key_func=_rate_limit_key, default_limits=["200/minute"])
+class _DeferredLimiter:
+    """Thin wrapper around slowapi.Limiter that supports swapping the storage backend.
+
+    The module-level ``limiter`` is an instance of this class. Router files
+    import ``limiter`` at module load time and decorate handlers with
+    ``@limiter.limit()``. The ``limit()`` and ``shared_limit()`` methods
+    forward to the current inner ``Limiter`` so that after ``reconfigure()``
+    is called (in lifespan startup) all routes use the new backend.
+
+    ``SlowAPIMiddleware`` reads ``app.state.limiter`` on each request.
+    ``main.py`` sets ``app.state.limiter = limiter`` (this wrapper), so the
+    middleware always delegates to the current inner limiter.
+    """
+
+    def __init__(self) -> None:
+        self._inner = Limiter(key_func=_rate_limit_key, default_limits=_DEFAULT_LIMITS)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._inner, name)
+
+    def reconfigure(self, redis_url: str | None) -> None:
+        """Swap the storage backend to Redis when a URL is provided.
+
+        Called once from main.py lifespan startup before any requests are
+        processed. Safe to call with ``redis_url=None`` (no-op, keeps the
+        current in-memory backend).
+        """
+        if redis_url:
+            self._inner = Limiter(
+                key_func=_rate_limit_key,
+                default_limits=_DEFAULT_LIMITS,
+                storage_uri=redis_url,
+            )
+
+    def limit(self, *args: object, **kwargs: object) -> object:
+        """Forward @limiter.limit() to the current inner Limiter."""
+        return self._inner.limit(*args, **kwargs)
+
+    def shared_limit(self, *args: object, **kwargs: object) -> object:
+        """Forward @limiter.shared_limit() to the current inner Limiter."""
+        return self._inner.shared_limit(*args, **kwargs)
+
+
+limiter = _DeferredLimiter()

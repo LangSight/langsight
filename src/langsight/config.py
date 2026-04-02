@@ -132,6 +132,11 @@ class Settings(BaseSettings):
     clickhouse_username: str | None = None
     clickhouse_password: str | None = None
     postgres_url: str | None = None
+    # Redis — optional. When set, enables cross-worker rate limiting and SSE
+    # broadcasting, allowing LANGSIGHT_WORKERS > 1.
+    # Supported schemes: redis://, redis+sentinel://, redis+cluster://
+    # Example: redis://:yourpassword@redis:6379/0
+    redis_url: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

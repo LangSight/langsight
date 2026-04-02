@@ -170,3 +170,89 @@ class CircuitBreaker:
             return self._state
 
         return self._state
+
+
+
+# ---------------------------------------------------------------------------
+# Optional Redis-backed state store
+# ---------------------------------------------------------------------------
+
+
+class RedisCircuitBreakerStore:
+    """Optional Redis-backed state store for CircuitBreaker.
+
+    Stores per-server state in a Redis HASH so that multiple SDK replicas
+    monitoring the same server converge on a shared OPEN/CLOSED/HALF_OPEN
+    state, preventing one replica from hammering a broken server while
+    another has already opened the breaker.
+
+    Key:  ``langsight:cb:{server_name}`` (HASH)
+    TTL:  2× cooldown_seconds — auto-expires if the breaker is never
+          triggered again, falling back to the CLOSED default.
+
+    Atomic state transitions use a Lua CAS (compare-and-swap) script to
+    prevent race conditions when two replicas call ``record_failure()``
+    simultaneously.
+
+    Usage (opt-in — not wired into CircuitBreaker automatically)::
+
+        store = RedisCircuitBreakerStore(redis_client, "my-server", cooldown_seconds=60.0)
+        raw = await store.load()         # {'state': 'open', ...} or {}
+        await store.save({'state': 'closed', 'consecutive_failures': '0'})
+        ok = await store.cas_transition('open', 'half_open')
+    """
+
+    # Lua CAS: transition state only if it equals the expected value.
+    # Returns 1 on success, 0 if the state didn't match (another replica won).
+    _LUA_CAS = """
+local current = redis.call('HGET', KEYS[1], 'state')
+if current ~= ARGV[1] and current ~= false then
+    return 0
+end
+redis.call('HSET', KEYS[1], 'state', ARGV[2])
+for i = 4, #ARGV, 2 do
+    redis.call('HSET', KEYS[1], ARGV[i], ARGV[i+1])
+end
+redis.call('EXPIRE', KEYS[1], ARGV[3])
+return 1
+"""
+
+    def __init__(
+        self,
+        redis_client: object,  # redis.asyncio.Redis — typed loosely to avoid import
+        server_name: str,
+        cooldown_seconds: float,
+    ) -> None:
+        self._redis = redis_client
+        self._key = f"langsight:cb:{server_name}"
+        self._ttl = max(int(cooldown_seconds * 2), 1)
+
+    async def load(self) -> dict[str, str]:
+        """Load state from Redis. Returns {} if the key does not exist."""
+        data: dict[str, str] = await self._redis.hgetall(self._key)  # type: ignore[attr-defined]
+        return data
+
+    async def save(self, fields: dict[str, str]) -> None:
+        """Write multiple fields atomically and refresh the TTL."""
+        await self._redis.hset(self._key, mapping=fields)  # type: ignore[attr-defined]
+        await self._redis.expire(self._key, self._ttl)  # type: ignore[attr-defined]
+
+    async def cas_transition(
+        self,
+        expected_state: str,
+        new_state: str,
+        extra_fields: dict[str, str] | None = None,
+    ) -> bool:
+        """Atomically transition state only if it currently equals expected_state.
+
+        Returns True if the transition succeeded, False if another replica
+        already changed the state (safe to retry or ignore).
+        """
+        extra = extra_fields or {}
+        argv: list[str] = [expected_state, new_state, str(self._ttl)]
+        for k, v in extra.items():
+            argv.extend([k, v])
+        result: int = await self._redis.eval(  # type: ignore[attr-defined]
+            self._LUA_CAS, 1, self._key, *argv
+        )
+        return bool(result)

@@ -107,7 +107,8 @@ All settings can be overridden with environment variables using the `LANGSIGHT_`
 | *(proxy trust)* | `LANGSIGHT_TRUSTED_PROXY_CIDRS` | Comma-separated CIDRs for trusted proxy headers (default: `127.0.0.1/32,::1/128`) |
 | *(ClickHouse auth)* | `CLICKHOUSE_USER` | ClickHouse username |
 | *(ClickHouse auth)* | `CLICKHOUSE_PASSWORD` | ClickHouse password |
-| *(API workers)* | `LANGSIGHT_WORKERS` | Number of Uvicorn worker processes (default: `1`). **Must stay at `1`.** See warning below. |
+| *(API workers)* | `LANGSIGHT_WORKERS` | Uvicorn worker processes. Default: `1`. Set > 1 only when `LANGSIGHT_REDIS_URL` is configured — without Redis, multi-worker mode fails at startup. |
+| *(Redis)* | `LANGSIGHT_REDIS_URL` | Redis connection URI. Required for `LANGSIGHT_WORKERS > 1`. Supports `redis://`, `redis+sentinel://`, `redis+cluster://`. Example: `redis://:password@redis:6379`. Leave empty for single-instance mode. |
 | *(Postgres pool)* | `LANGSIGHT_PG_POOL_MAX` | Maximum Postgres connection pool size (default: `50`). Lower this on small instances where Postgres `max_connections` is constrained. |
 | *(Prometheus)* | `LANGSIGHT_METRICS_TOKEN` | Bearer token required to scrape `GET /metrics`. When not set, `/metrics` returns **503** (not open). Generate with `python -c "import secrets; print(secrets.token_hex(32))"`. |
 
@@ -120,18 +121,11 @@ All settings can be overridden with environment variables using the `LANGSIGHT_`
 </Note>
 
 <Warning>
-  **`LANGSIGHT_WORKERS` must stay at `1`.** Setting it higher causes a startup `RuntimeError` that prevents the API from starting:
+  `LANGSIGHT_WORKERS > 1` is supported when `LANGSIGHT_REDIS_URL` is set. Without Redis, the API fails at startup with a `RuntimeError` explaining what to configure.
 
-  ```
-  RuntimeError: LANGSIGHT_WORKERS=4 is not safe with the current in-memory rate
-  limiter. Each worker gets its own independent counter, so the effective rate
-  limit becomes limit×4. Set LANGSIGHT_WORKERS=1 (the default), or replace
-  slowapi with a Redis-backed limiter before enabling multi-worker mode.
-  ```
+  To enable multi-worker mode: set `LANGSIGHT_REDIS_URL` and start Redis (`docker compose --profile redis up -d`).
 
-  The rate limiter (slowapi), SSE live-feed broadcaster, and auth cache are all in-process Python state. Under multi-process Uvicorn each worker holds an independent copy: brute-force protection on `/api/users/verify` becomes ineffective, SSE events published in one worker are not delivered to clients connected to another, and auth cache state diverges.
-
-  To safely run multiple workers you must replace slowapi with a Redis-backed limiter. Until that is shipped, `LANGSIGHT_WORKERS=1` is enforced at startup.
+  When `LANGSIGHT_REDIS_URL` is not set, `LANGSIGHT_WORKERS` must remain at `1`. This is the default behavior and requires no configuration for single-instance deployments.
 </Warning>
 
 ## Global payload redaction (server-side)
