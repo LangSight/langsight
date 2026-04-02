@@ -44,7 +44,7 @@ from langsight.storage.base import StorageBackend
 # limiter's per-IP 10/min already provides strong brute-force protection.
 # ---------------------------------------------------------------------------
 _MAX_FAILURES = 5
-_WINDOW_SECONDS = 300   # 5-minute failure window
+_WINDOW_SECONDS = 300  # 5-minute failure window
 _LOCKOUT_SECONDS = 900  # 15-minute lockout
 _login_failures: dict[str, tuple[int, float]] = {}  # email → (count, first_fail_ts)
 

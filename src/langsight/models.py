@@ -264,7 +264,9 @@ class ApiKeyRecord(BaseModel):
     name: str  # user-given label
     key_prefix: str  # first 8 chars of raw key — shown in UI for identification
     key_hash: str  # sha256(raw_key) — used for lookup
-    role: ApiKeyRole = ApiKeyRole.VIEWER  # default viewer — least-privilege; caller can specify admin
+    role: ApiKeyRole = (
+        ApiKeyRole.VIEWER
+    )  # default viewer — least-privilege; caller can specify admin
     user_id: str | None = None  # owning user — used for project membership checks
     project_id: str | None = None  # when set, all CLI health checks using this key
     # are scoped to this project automatically
