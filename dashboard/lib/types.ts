@@ -81,6 +81,7 @@ export interface SpanNode {
   output_json: string | null;  // P5.1 — tool return value (null when redacted or error)
   llm_input: string | null;    // P5.3 — LLM prompt/messages (agent spans only)
   llm_output: string | null;   // P5.3 — LLM completion text (agent spans only)
+  finish_reason: string | null;  // gen_ai.response.finish_reasons — why LLM stopped
   input_tokens: number | null;  // P7 — LLM input token count
   output_tokens: number | null; // P7 — LLM output token count
   model_id: string | null;      // P7 — model used

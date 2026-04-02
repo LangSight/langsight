@@ -575,6 +575,17 @@ def _parse_otlp_span(span: dict[str, Any]) -> ToolCallSpan | None:
         or attrs.get("gen_ai.response.model")
     )
 
+    # Extract finish_reason — OpenTelemetry GenAI semantic convention
+    raw_finish = attrs.get("gen_ai.response.finish_reasons")
+    if raw_finish:
+        # Spec says it's a list; take first and normalise to lowercase string
+        if isinstance(raw_finish, list):
+            finish_reason: str | None = str(raw_finish[0]).lower() if raw_finish else None
+        else:
+            finish_reason = str(raw_finish).lower()
+    else:
+        finish_reason = None
+
     return ToolCallSpan(
         server_name=server_name,
         tool_name=tool_name,
@@ -592,4 +603,5 @@ def _parse_otlp_span(span: dict[str, Any]) -> ToolCallSpan | None:
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         model_id=extracted_model_id or (model if is_llm_span and not tool_name else None),
+        finish_reason=finish_reason,
     )

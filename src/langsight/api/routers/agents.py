@@ -88,6 +88,7 @@ class SpanNode(BaseModel):
     output_json: str | None = None  # P5.1 payload — None when redacted or on error
     llm_input: str | None = None  # P5.3 — LLM prompt (agent spans only)
     llm_output: str | None = None  # P5.3 — LLM completion (agent spans only)
+    finish_reason: str | None = None  # gen_ai.response.finish_reasons
     children: list[SpanNode] = []
 
 

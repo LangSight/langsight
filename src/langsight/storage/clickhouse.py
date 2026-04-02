@@ -215,6 +215,8 @@ _DDL = [
     "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS lineage_provenance LowCardinality(String) DEFAULT 'explicit'",
     "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS lineage_status LowCardinality(String) DEFAULT 'complete'",
     "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS schema_version String DEFAULT '1.0'",
+    # gen_ai.response.finish_reasons — why LLM stopped (stop, tool_calls, max_tokens, content_filter, etc.)
+    "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS finish_reason String DEFAULT ''",
 ]
 
 
@@ -735,6 +737,7 @@ class ClickHouseBackend:
         "lineage_provenance",
         "lineage_status",
         "schema_version",
+        "finish_reason",
     ]
 
     def _span_row(self, s: ToolCallSpan) -> list[Any]:
@@ -775,6 +778,7 @@ class ClickHouseBackend:
             s.lineage_provenance,
             s.lineage_status,
             s.schema_version,
+            s.finish_reason or "",
         ]
 
     async def save_tool_call_span(self, span: ToolCallSpan) -> None:
@@ -1110,7 +1114,7 @@ class ClickHouseBackend:
                 replay_of, project_id,
                 input_tokens, output_tokens, model_id,
                 target_agent_name, lineage_provenance,
-                lineage_status, schema_version
+                lineage_status, schema_version, finish_reason
             FROM mcp_tool_calls
             WHERE {where}
             ORDER BY started_at ASC, llm_output DESC
@@ -1144,6 +1148,7 @@ class ClickHouseBackend:
             "lineage_provenance",
             "lineage_status",
             "schema_version",
+            "finish_reason",
         ]
         rows = [dict(zip(cols, row, strict=False)) for row in result.result_rows]
         # Ensure timestamps carry UTC timezone — ClickHouse DateTime64('UTC')

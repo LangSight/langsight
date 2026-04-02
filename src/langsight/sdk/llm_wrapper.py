@@ -143,6 +143,28 @@ _FINISH_REASON_ERRORS = frozenset(
 _FINISH_REASON_TRUNCATED = frozenset({"length", "MAX_TOKENS", "max_tokens"})
 
 
+def _extract_finish_reason(response: Any, sdk: str) -> str | None:
+    """Return the raw finish_reason string from an LLM response, normalised to lowercase."""
+    try:
+        if sdk == "openai":
+            choices = getattr(response, "choices", None) or []
+            if choices:
+                fr = getattr(choices[0], "finish_reason", None)
+                return str(fr).lower() if fr is not None else None
+        elif sdk == "anthropic":
+            fr = getattr(response, "stop_reason", None)
+            return str(fr).lower() if fr is not None else None
+        elif sdk == "gemini":
+            candidates = getattr(response, "candidates", None) or []
+            if candidates:
+                fr = getattr(candidates[0], "finish_reason", None)
+                name = getattr(fr, "name", str(fr) if fr is not None else None)
+                return str(name).lower() if name is not None else None
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def _check_finish_reason(
     response: Any,
     status: ToolCallStatus,
@@ -345,6 +367,7 @@ def _process_openai_response(
 
     # Inspect finish_reason / empty choices for silent failures
     status, error = _check_finish_reason(response, status, error, sdk="openai")
+    finish_reason = _extract_finish_reason(response, sdk="openai")
 
     # LLM generation span
     llm_span = ToolCallSpan.record(
@@ -361,6 +384,7 @@ def _process_openai_response(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         model_id=model,
+        finish_reason=finish_reason,
     )
     spans.append(llm_span)
 
@@ -523,6 +547,7 @@ def _process_anthropic_response(
 
     # Inspect stop_reason for silent failures (content_filtered)
     status, error = _check_finish_reason(response, status, error, sdk="anthropic")
+    finish_reason = _extract_finish_reason(response, sdk="anthropic")
 
     # LLM generation span
     llm_span = ToolCallSpan.record(
@@ -539,6 +564,7 @@ def _process_anthropic_response(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         model_id=model,
+        finish_reason=finish_reason,
     )
     spans.append(llm_span)
 
@@ -685,6 +711,7 @@ def _process_gemini_response(
 
     # Inspect finish_reason / empty candidates for silent failures (safety filter)
     status, error = _check_finish_reason(response, status, error, sdk="gemini")
+    finish_reason = _extract_finish_reason(response, sdk="gemini")
 
     # LLM generation span
     llm_span = ToolCallSpan.record(
@@ -701,6 +728,7 @@ def _process_gemini_response(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         model_id=model,
+        finish_reason=finish_reason,
     )
     spans.append(llm_span)
 

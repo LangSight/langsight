@@ -317,13 +317,25 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
               <div className="rounded-lg px-3 py-2.5 text-[11px]" style={{ background: "rgba(239,68,68,0.06)", color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{spans[0].error}</div>
             </div>
           )}
-          {(spans[0].input_tokens || spans[0].output_tokens) && (
+          {(spans[0].input_tokens || spans[0].output_tokens || spans[0].finish_reason) && (
             <div>
               <SectionLabel>Tokens</SectionLabel>
               <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
                 {spans[0].model_id && <span>Model: <code className="text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{spans[0].model_id}</code></span>}
                 {spans[0].input_tokens != null && <span>In: <strong className="text-foreground">{spans[0].input_tokens}</strong></span>}
                 {spans[0].output_tokens != null && <span>Out: <strong className="text-foreground">{spans[0].output_tokens}</strong></span>}
+                {spans[0].finish_reason && (() => {
+                  const fr = spans[0].finish_reason!;
+                  const isError = ["content_filter","safety","recitation","prohibited_content","content_filtered"].includes(fr);
+                  const isWarn = ["max_tokens","length"].includes(fr);
+                  return (
+                    <span style={{ color: isError ? "hsl(var(--danger))" : isWarn ? "#f59e0b" : "inherit" }}>
+                      Stop: <strong style={{ fontFamily: "var(--font-geist-mono)" }}>{fr}</strong>
+                      {isWarn && " ⚠ truncated"}
+                      {isError && " ✗ filtered"}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -385,11 +397,17 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
                       </pre>
                     </div>
                   )}
-                  {(s.input_tokens || s.output_tokens) && (
+                  {(s.input_tokens || s.output_tokens || s.finish_reason) && (
                     <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
                       {s.model_id && <span>Model: <code className="text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{s.model_id}</code></span>}
                       {s.input_tokens != null && <span>In: <strong className="text-foreground">{s.input_tokens.toLocaleString()}</strong></span>}
                       {s.output_tokens != null && <span>Out: <strong className="text-foreground">{s.output_tokens.toLocaleString()}</strong></span>}
+                      {s.finish_reason && (() => {
+                        const fr = s.finish_reason!;
+                        const isError = ["content_filter","safety","recitation","prohibited_content","content_filtered"].includes(fr);
+                        const isWarn = ["max_tokens","length"].includes(fr);
+                        return <span style={{ color: isError ? "hsl(var(--danger))" : isWarn ? "#f59e0b" : "inherit" }}>Stop: <strong style={{ fontFamily: "var(--font-geist-mono)" }}>{fr}</strong>{isWarn && " ⚠"}{isError && " ✗"}</span>;
+                      })()}
                     </div>
                   )}
                 </div>
