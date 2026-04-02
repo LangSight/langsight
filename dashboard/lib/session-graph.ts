@@ -298,6 +298,7 @@ export function buildSessionGraph(
       callCount,
       errorCount,
       avgLatencyMs,
+      isLlmCallCount: !hasDirectCalls,  // true when callCount reflects LLM spans, not MCP calls
     });
   }
 

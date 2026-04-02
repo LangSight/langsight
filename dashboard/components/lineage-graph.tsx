@@ -20,6 +20,7 @@ export interface GraphNode {
   label: string;
   hasError: boolean;
   callCount?: number;
+  isLlmCallCount?: boolean;  // true when callCount reflects LLM spans (no direct MCP calls)
   meta?: Record<string, string | number>;
   errorCount?: number;
   avgLatencyMs?: number;
@@ -468,7 +469,7 @@ export function LineageGraph({
                       {/* Row 2: metric pills */}
                       {hasMet && (
                         <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
-                          {node.callCount != null && node.callCount > 0 && <span className="text-[8px] px-1.5 py-[2px] rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)" }}>{node.callCount} {node.callCount === 1 ? "call" : "calls"}</span>}
+                          {node.callCount != null && node.callCount > 0 && <span className="text-[8px] px-1.5 py-[2px] rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)" }}>{node.callCount} {node.isLlmCallCount ? "LLM" : node.callCount === 1 ? "call" : "calls"}</span>}
                           {node.errorCount != null && node.errorCount > 0 && <span className="text-[8px] px-1.5 py-[2px] rounded-full" style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", fontFamily: "var(--font-geist-mono)" }}>{node.errorCount} err</span>}
                           {node.avgLatencyMs != null && <span className="text-[8px] px-1.5 py-[2px] rounded-full" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", fontFamily: "var(--font-geist-mono)" }}>{Math.round(node.avgLatencyMs)}ms</span>}
                           {errRate > 0 && <div className="h-[3px] rounded-full overflow-hidden" style={{ background: "hsl(var(--muted))", width: 32 }}><div className="h-full rounded-full" style={{ width: `${Math.min(100, errRate * 100)}%`, background: errRate > 0.5 ? "#ef4444" : errRate > 0.1 ? "#f59e0b" : "#10b981" }} /></div>}
