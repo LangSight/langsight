@@ -68,47 +68,66 @@ The wrapper intercepts `client.models.generate_content()` (sync) and `client.aio
 
 The recommended pattern for orchestrator → analyst → procurement workflows:
 
+<Warning>
+**Every agent needs `input=` and `sess.set_output()`** — not just the orchestrator. Without them, the Input/Output panel in the session graph will be empty for that agent's node, even though the session itself is tracked correctly.
+</Warning>
+
 ```python
 import langsight
 from google import genai
 
 langsight.auto_patch()  # patches all Gemini clients + MCP sessions globally
 
-# Each agent uses its own session() block — context flows automatically
 async def orchestrator(question: str):
     async with langsight.session(agent_name="orchestrator", input=question) as sess:
-        client = genai.Client()  # auto-traced, no wrap_llm() needed
-        # Tool named "call_analyst" → handoff span emitted automatically
+        client = genai.Client()
         response = await client.aio.models.generate_content(
             model="gemini-2.5-flash", contents=[question], config=config,
         )
-        sess.set_output(response.text)
-        return response
+        sess.set_output(response.text)  # ← captures final answer in dashboard
+        return response.text
 
-async def analyst(question: str):
-    async with langsight.session(agent_name="analyst", input=question) as sess:
-        client = genai.Client()  # auto-traced
-        # MCP calls auto-traced — no wrap() needed
+async def analyst(question: str, session_id: str):
+    # input= and sess.set_output() required for Input/Output to appear in the
+    # session graph right panel for this agent's node
+    async with langsight.session(agent_name="analyst", session_id=session_id, input=question) as sess:
+        client = genai.Client()
         data = await catalog_mcp_session.call_tool("search", {"q": question})
-        sess.set_output(data)
-        return data
+        result = process(data)
+        sess.set_output(result)  # ← without this, Output is blank in dashboard
+        return result
+
+async def procurement(findings: str, session_id: str):
+    async with langsight.session(agent_name="procurement", session_id=session_id, input=findings) as sess:
+        client = genai.Client()
+        plan = await generate_plan(findings)
+        sess.set_output(plan)
+        return plan
 ```
 
-<Accordion title="Advanced: sharing a single session_id across sub-agents">
-When sub-agents run in separate asyncio tasks (e.g. via `asyncio.create_task()`), the context variable does not propagate automatically. Pass `session_id` explicitly in that case:
+**Rule of thumb:** every `session()` block that represents a meaningful agent turn should have:
+- `input=` — what the agent received (user question, upstream findings, etc.)
+- `sess.set_output(result)` — what the agent produced
+
+This is what populates the **Input / Output** panel in the session detail view for each node.
+
+<Accordion title="Sharing a single session_id across sub-agents">
+Sub-agents that are **awaited directly** (not spawned via `asyncio.create_task()`) inherit the parent session context automatically. But for Input/Output to appear per-agent, pass `session_id` explicitly **and** use `input=` + `sess.set_output()`:
 
 ```python
-async with langsight.session(agent_name="orchestrator") as session_id:
-    # session_id passed explicitly only when sub-agent runs in a separate task
-    await analyst_agent(question, session_id=session_id)
+async with langsight.session(agent_name="orchestrator", input=question) as sess:
+    session_id = str(sess)
+    result = await analyst(question, session_id=session_id)
+    sess.set_output(result)
 
-async def analyst_agent(question: str, session_id: str):
-    async with langsight.session(agent_name="analyst", session_id=session_id):
-        client = genai.Client()  # inherits session_id from context
-        ...
+async def analyst(question: str, session_id: str):
+    async with langsight.session(agent_name="analyst", session_id=session_id, input=question) as sess:
+        answer = await do_work(question)
+        sess.set_output(answer)
+        return answer
 ```
 
-In the common case where sub-agents are awaited directly (not spawned as separate tasks), context propagates automatically and no explicit `session_id` threading is needed.
+If you omit `session_id=session_id`, each sub-agent creates its own independent session and the spans will not appear in the parent session's graph.
 </Accordion>
 
 ## What gets traced

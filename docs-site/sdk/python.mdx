@@ -131,6 +131,10 @@ Before v0.13.1, both calls above would be attributed to whichever agent ran firs
 
 ## Capturing user input and agent output
 
+<Warning>
+**`input=` and `sess.set_output()` apply to every agent, not just the orchestrator.** Without them, the Input/Output panel in the session graph will be empty for that agent's node. This is the most common reason the right panel shows no data after implementing multi-agent tracing.
+</Warning>
+
 `session()` accepts `input=` to record the initial human prompt and returns a `SessionContext` object with methods to capture the agent's final response and any mid-session human messages. These map directly to Langfuse's trace `input`/`output` concepts — if you're familiar with Langfuse, the mental model is the same.
 
 `SessionContext` subclasses `str`, so existing code that assigns it as `session_id = sess` continues to work without changes.
