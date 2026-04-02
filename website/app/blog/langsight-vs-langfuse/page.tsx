@@ -43,7 +43,7 @@ export default function LangsightVsLangfusePost() {
 
         {/* Hero image */}
         <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
-          <img src="/blog/langsight-vs-langfuse.svg" alt="LangSight vs Langfuse: Different Tools for Different Problems" className="w-full" />
+          <img src="/blog/langsight-vs-langfuse.png" alt="LangSight vs Langfuse: Different Tools for Different Problems" className="w-full" />
         </div>
 
         {/* Content */}

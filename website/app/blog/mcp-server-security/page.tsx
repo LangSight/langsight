@@ -43,7 +43,7 @@ export default function McpServerSecurityPost() {
 
         {/* Hero image */}
         <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
-          <img src="/blog/mcp-server-security.svg" alt="MCP Server Security: OWASP Top 10 for Model Context Protocol" className="w-full" />
+          <img src="/blog/mcp-server-security.png" alt="MCP Server Security: OWASP Top 10 for Model Context Protocol" className="w-full" />
         </div>
 
         {/* Content */}

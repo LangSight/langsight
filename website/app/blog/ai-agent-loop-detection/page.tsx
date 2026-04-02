@@ -43,7 +43,7 @@ export default function AgentLoopDetectionPost() {
 
         {/* Hero image */}
         <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
-          <img src="/blog/ai-agent-loop-detection.svg" alt="How to Detect and Stop AI Agent Loops in Production" className="w-full" />
+          <img src="/blog/ai-agent-loop-detection.png" alt="How to Detect and Stop AI Agent Loops in Production" className="w-full" />
         </div>
 
         {/* Content */}

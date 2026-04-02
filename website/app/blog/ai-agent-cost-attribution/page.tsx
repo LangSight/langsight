@@ -43,7 +43,7 @@ export default function AiAgentCostAttributionPost() {
 
         {/* Hero image */}
         <div className="mb-10 rounded-xl overflow-hidden border border-[var(--border)]">
-          <img src="/blog/ai-agent-cost-attribution.svg" alt="AI Agent Cost Attribution: Tracking Spend Per Tool Call" className="w-full" />
+          <img src="/blog/ai-agent-cost-attribution.png" alt="AI Agent Cost Attribution: Tracking Spend Per Tool Call" className="w-full" />
         </div>
 
         {/* Content */}

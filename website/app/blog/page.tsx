@@ -11,7 +11,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "10 min read",
     tags: ["MCP Monitoring", "Health Checks", "Production"],
-    image: "/blog/mcp-monitoring-production.svg",
+    image: "/blog/mcp-monitoring-production.png",
   },
   {
     slug: "owasp-mcp-top-10-guide",
@@ -21,7 +21,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "12 min read",
     tags: ["OWASP", "MCP Security", "Compliance"],
-    image: "/blog/owasp-mcp-top-10-guide.svg",
+    image: "/blog/owasp-mcp-top-10-guide.png",
   },
   {
     slug: "mcp-tool-poisoning",
@@ -31,7 +31,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "9 min read",
     tags: ["Tool Poisoning", "Security", "Attack Vectors"],
-    image: "/blog/mcp-tool-poisoning.svg",
+    image: "/blog/mcp-tool-poisoning.png",
   },
   {
     slug: "ai-agent-cost-attribution",
@@ -41,7 +41,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "8 min read",
     tags: ["Cost Tracking", "Budget", "Production"],
-    image: "/blog/ai-agent-cost-attribution.svg",
+    image: "/blog/ai-agent-cost-attribution.png",
   },
   {
     slug: "mcp-schema-drift",
@@ -51,7 +51,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "8 min read",
     tags: ["Schema Drift", "MCP Health", "Silent Failures"],
-    image: "/blog/mcp-schema-drift.svg",
+    image: "/blog/mcp-schema-drift.png",
   },
   {
     slug: "circuit-breakers-ai-agents",
@@ -61,7 +61,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "9 min read",
     tags: ["Circuit Breaker", "Reliability", "Fault Tolerance"],
-    image: "/blog/circuit-breakers-ai-agents.svg",
+    image: "/blog/circuit-breakers-ai-agents.png",
   },
   {
     slug: "langsight-vs-langfuse",
@@ -71,7 +71,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "7 min read",
     tags: ["Comparison", "Langfuse", "Observability"],
-    image: "/blog/langsight-vs-langfuse.svg",
+    image: "/blog/langsight-vs-langfuse.png",
   },
   {
     slug: "self-hosting-ai-observability",
@@ -81,7 +81,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "7 min read",
     tags: ["Self-Hosted", "Data Privacy", "Open Source"],
-    image: "/blog/self-hosting-ai-observability.svg",
+    image: "/blog/self-hosting-ai-observability.png",
   },
   {
     slug: "blast-radius-mapping",
@@ -91,7 +91,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "8 min read",
     tags: ["Blast Radius", "Dependencies", "Reliability"],
-    image: "/blog/blast-radius-mapping.svg",
+    image: "/blog/blast-radius-mapping.png",
   },
   {
     slug: "slos-for-ai-agents",
@@ -101,7 +101,7 @@ const posts = [
     date: "April 2, 2026",
     readTime: "9 min read",
     tags: ["SLOs", "Reliability Engineering", "Monitoring"],
-    image: "/blog/slos-for-ai-agents.svg",
+    image: "/blog/slos-for-ai-agents.png",
   },
   {
     slug: "ai-agent-loop-detection",
@@ -111,7 +111,7 @@ const posts = [
     date: "March 22, 2026",
     readTime: "8 min read",
     tags: ["Loop Detection", "Agent Reliability", "Production"],
-    image: "/blog/ai-agent-loop-detection.svg",
+    image: "/blog/ai-agent-loop-detection.png",
   },
   {
     slug: "mcp-server-security",
@@ -121,7 +121,7 @@ const posts = [
     date: "March 22, 2026",
     readTime: "10 min read",
     tags: ["MCP Security", "OWASP", "CVE"],
-    image: "/blog/mcp-server-security.svg",
+    image: "/blog/mcp-server-security.png",
   },
 ];
 
@@ -155,7 +155,7 @@ export default function BlogIndex() {
       <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--bg)]/90 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2 font-semibold text-[var(--fg)]">
-            <img src="/logo-icon.svg" alt="LangSight" className="w-7 h-7" />
+            <img src="/logo-icon.png" alt="LangSight" className="w-7 h-7" />
             LangSight
           </a>
           <a href="/" className="text-sm text-[var(--muted)] hover:text-[var(--fg)] transition-colors">
