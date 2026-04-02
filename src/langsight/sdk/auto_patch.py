@@ -971,39 +971,37 @@ async def session(
     )
     tokens = set_context(session_id=sid, agent_name=agent_name, trace_id=trace_id)
 
-    # Emit the session_start span immediately so the prompt is persisted before
-    # the agent runs — matches Langfuse/LangSmith behaviour where input is written
-    # at trace-open time, not at close. This means even if the agent crashes or
-    # set_output() is never called, the human prompt is already in ClickHouse.
-    if input is not None and _global_client is not None:
-        from langsight.sdk.models import ToolCallSpan, ToolCallStatus
-
-        _proj = getattr(_global_client, "_project_id", None) or None
-        start_span = ToolCallSpan.record(
-            server_name=agent_name or "agent",
-            tool_name="session",
-            started_at=started_at,
-            status=ToolCallStatus.SUCCESS,
-            agent_name=agent_name,
-            session_id=sid,
-            trace_id=trace_id,
-            span_type="agent",
-            llm_input=input,
-            llm_output=None,  # output not known yet; updated at close if set_output() called
-            project_id=_proj,
-            lineage_provenance="explicit",
-            schema_version="1.0",
-        )
-        # Post directly — do NOT buffer_span + flush() here.
-        # flush() drains the entire shared buffer, racing with the _flush_loop
-        # background task and causing every buffered span to be sent twice
-        # (duplicate spans in ClickHouse, broken session graph).
-        try:
-            await _global_client._post_spans([start_span])
-        except Exception:  # noqa: BLE001
-            pass  # fail-open — if post fails, prompt is lost but agent still runs
-
     try:
+        # Emit the session_start span immediately so the prompt is persisted before
+        # the agent runs — matches Langfuse/LangSmith behaviour where input is written
+        # at trace-open time, not at close. This means even if the agent crashes or
+        # set_output() is never called, the human prompt is already in ClickHouse.
+        if input is not None and _global_client is not None:
+            from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+
+            _proj = getattr(_global_client, "_project_id", None) or None
+            try:
+                start_span = ToolCallSpan.record(
+                    server_name=agent_name or "agent",
+                    tool_name="session",
+                    started_at=started_at,
+                    status=ToolCallStatus.SUCCESS,
+                    agent_name=agent_name,
+                    session_id=sid,
+                    trace_id=trace_id,
+                    span_type="agent",
+                    llm_input=input,
+                    llm_output=None,  # output not known yet
+                    project_id=_proj,
+                    lineage_provenance="explicit",
+                    schema_version="1.0",
+                )
+                # Post directly — do NOT buffer_span + flush() here.
+                # flush() drains the entire shared buffer, racing with _flush_loop.
+                await _global_client._post_spans([start_span])
+            except Exception:  # noqa: BLE001
+                pass  # fail-open — if post fails, prompt is lost but agent still runs
+
         yield ctx
     finally:
         clear_context(tokens)

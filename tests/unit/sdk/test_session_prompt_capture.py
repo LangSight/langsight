@@ -43,6 +43,7 @@ def mock_client():
     client = MagicMock()
     client.buffer_span = MagicMock()
     client.flush = AsyncMock()
+    client._project_id = None  # must be str|None, not MagicMock
     # _post_spans is used for the start span (direct post, no buffer race)
     client._post_spans = AsyncMock(return_value=True)
     return client
