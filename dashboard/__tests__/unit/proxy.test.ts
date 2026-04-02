@@ -263,6 +263,62 @@ describe("proxy route — upstream error handling", () => {
   });
 });
 
+describe("proxy route — 204/304 no-content responses", () => {
+  it("returns 204 with no body when upstream returns 204 (DELETE success)", async () => {
+    mockAuth({ userId: "u1", userRole: "admin" });
+    // 204 responses have no body — mock text() returning empty string
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      text: jest.fn().mockResolvedValueOnce(""),
+      headers: { get: () => null },
+    } as unknown as Response);
+
+    const { DELETE } = await import("@/app/api/proxy/[...path]/route");
+    const [req, ctx] = makeRequest(["projects", "proj-123"], "DELETE");
+    const response = await DELETE(req, ctx);
+
+    expect(response.status).toBe(204);
+    // Body must be empty — reading it should return empty string or null
+    const text = await response.text();
+    expect(text).toBe("");
+  });
+
+  it("does NOT return 502 when upstream returns 204 (regression for delete bug)", async () => {
+    mockAuth({ userId: "u1", userRole: "admin" });
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      text: jest.fn().mockResolvedValueOnce(""),
+      headers: { get: () => null },
+    } as unknown as Response);
+
+    const { DELETE } = await import("@/app/api/proxy/[...path]/route");
+    const [req, ctx] = makeRequest(["projects", "proj-456"], "DELETE");
+    const response = await DELETE(req, ctx);
+
+    expect(response.status).not.toBe(502);
+    expect(response.status).toBe(204);
+  });
+
+  it("returns 304 with no body when upstream returns 304", async () => {
+    mockAuth({ userId: "u1", userRole: "admin" });
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 304,
+      text: jest.fn().mockResolvedValueOnce(""),
+      headers: { get: () => null },
+    } as unknown as Response);
+
+    const [req, ctx] = makeRequest(["health", "servers"]);
+    const response = await GET(req, ctx);
+
+    expect(response.status).toBe(304);
+    const text = await response.text();
+    expect(text).toBe("");
+  });
+});
+
 describe("proxy route — body forwarding", () => {
   it("forwards request body for POST requests", async () => {
     mockAuth({ userId: "u1", userRole: "admin" });
