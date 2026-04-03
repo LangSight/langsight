@@ -105,6 +105,7 @@ export function makeOversizedTrace(spanCount: number): SessionTrace {
     target_agent_name: null,
     lineage_provenance: "explicit" as const,
     lineage_status: "complete" as const,
+    finish_reason: null,
     schema_version: "1.0",
     children: [],
   }));
@@ -148,6 +149,7 @@ export function makeXssTrace(payload: string): SessionTrace {
         target_agent_name: null,
         lineage_provenance: "explicit" as const,
         lineage_status: "complete" as const,
+        finish_reason: null,
         schema_version: "1.0",
         children: [],
       },
@@ -188,6 +190,7 @@ export function makeNumericEdgeCaseTrace(): SessionTrace {
         target_agent_name: null,
         lineage_provenance: "explicit" as const,
         lineage_status: "complete" as const,
+        finish_reason: null,
         schema_version: "1.0",
         children: [],
       },
