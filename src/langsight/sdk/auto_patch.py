@@ -599,7 +599,9 @@ def _patch_claude_sdk() -> None:
         for event, matchers in existing.items():
             if event not in merged:
                 merged[event] = matchers
-        object.__setattr__(self_sdk, "hooks", merged) if hasattr(type(self_sdk), "__dataclass_fields__") else setattr(self_sdk, "hooks", merged)
+        object.__setattr__(self_sdk, "hooks", merged) if hasattr(
+            type(self_sdk), "__dataclass_fields__"
+        ) else setattr(self_sdk, "hooks", merged)
 
     ClaudeAgentOptions.__init__ = _patched_init  # type: ignore[method-assign]
     _patched_sdks.add("claude_sdk")
@@ -685,7 +687,9 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
                 server_name = parts[1]
 
         try:
-            output_json = _json.dumps(tool_response, default=str) if tool_response is not None else None
+            output_json = (
+                _json.dumps(tool_response, default=str) if tool_response is not None else None
+            )
         except Exception:  # noqa: BLE001
             output_json = str(tool_response) if tool_response is not None else None
 
@@ -780,6 +784,7 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
         if transcript_path:
             try:
                 import json as _jmod
+
                 lines = open(transcript_path).read().splitlines()  # noqa: ASYNC230,PTH123,SIM115
                 # Last assistant message with text content
                 for line in reversed(lines):
@@ -823,11 +828,11 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
 
     return {
         "UserPromptSubmit": [HookMatcher(matcher=None, hooks=[_on_user_prompt])],
-        "PreToolUse":       [HookMatcher(matcher=None, hooks=[_on_pre_tool])],
-        "PostToolUse":      [HookMatcher(matcher=None, hooks=[_on_post_tool])],
+        "PreToolUse": [HookMatcher(matcher=None, hooks=[_on_pre_tool])],
+        "PostToolUse": [HookMatcher(matcher=None, hooks=[_on_post_tool])],
         "PostToolUseFailure": [HookMatcher(matcher=None, hooks=[_on_post_tool_failure])],
-        "SubagentStart":    [HookMatcher(matcher=None, hooks=[_on_subagent_start])],
-        "Stop":             [HookMatcher(matcher=None, hooks=[_on_stop])],
+        "SubagentStart": [HookMatcher(matcher=None, hooks=[_on_subagent_start])],
+        "Stop": [HookMatcher(matcher=None, hooks=[_on_stop])],
     }
 
 
@@ -912,7 +917,14 @@ def auto_patch(
         patched=sorted(_patched_sdks),
         skipped_missing=[
             sdk
-            for sdk in ["openai", "anthropic", "google_genai", "google_generativeai", "mcp", "claude_sdk"]
+            for sdk in [
+                "openai",
+                "anthropic",
+                "google_genai",
+                "google_generativeai",
+                "mcp",
+                "claude_sdk",
+            ]
             if sdk not in _patched_sdks
         ],
     )
