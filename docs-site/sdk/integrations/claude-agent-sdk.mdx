@@ -1,0 +1,90 @@
+---
+title: "Claude Agent SDK"
+description: "Zero-code tracing for claude_agent_sdk — auto_patch() captures tool calls, sessions, and sub-agent handoffs automatically"
+---
+
+## Zero-code setup
+
+```bash
+pip install langsight
+export LANGSIGHT_URL=http://localhost:8000   # API port — NOT the dashboard (3003)
+export LANGSIGHT_API_KEY=ls_your_key
+export LANGSIGHT_PROJECT_ID=your_project_id  # optional
+```
+
+That's it. Call `langsight.auto_patch()` once at startup — **no changes to your agent code required**:
+
+```python
+import langsight
+
+langsight.auto_patch()   # patches ClaudeAgentOptions automatically
+
+# Your existing code — unchanged
+from claude_agent_sdk import ClaudeAgentOptions, query
+
+options = ClaudeAgentOptions(
+    system_prompt="You are a data analyst...",
+    mcp_servers={"analytics": {...}},
+    model="haiku",
+)
+
+async for message in query(prompt="Analyze revenue trends", options=options):
+    ...
+```
+
+LangSight injects tracing hooks into `ClaudeAgentOptions.__init__` at `auto_patch()` time. Every agent run automatically gets full tracing — no `hooks=` parameter needed.
+
+## What gets captured
+
+| Hook | Captured as |
+|------|-------------|
+| `UserPromptSubmit` | `session` span with `llm_input` = human prompt |
+| `PreToolUse` | Tool call start time for accurate latency |
+| `PostToolUse` | `tool_call` span — tool name, args, response, latency |
+| `PostToolUseFailure` | `tool_call` span with `status=error` and error message |
+| `SubagentStart` | `handoff` span to sub-agent |
+| `Stop` | `session` span with `llm_output` from session transcript |
+
+MCP server name is automatically extracted from the tool name:
+- `mcp__analytics__query_warehouse` → `server_name="analytics"`, `tool_name="mcp__analytics__query_warehouse"`
+
+## How it works
+
+`auto_patch()` monkey-patches `ClaudeAgentOptions.__init__` so that every instantiation automatically receives LangSight's async hooks. This is the same zero-code pattern used by:
+- **Datadog ddtrace** — patches Python frameworks at import time
+- **OpenTelemetry auto-instrumentation** — injects via `sitecustomize.py`
+
+Your hooks dict is respected — LangSight prepends its hooks so they always run first, and your own hooks are preserved.
+
+```python
+# This still works — LangSight hooks + your hooks both run
+options = ClaudeAgentOptions(
+    system_prompt="...",
+    hooks={"PostToolUse": [HookMatcher(matcher="Bash", hooks=[my_hook])]},
+)
+```
+
+## Call order matters
+
+`auto_patch()` must be called **before** the first `ClaudeAgentOptions()` instantiation:
+
+```python
+import langsight
+langsight.auto_patch()  # ← must come first
+
+from claude_agent_sdk import ClaudeAgentOptions  # ← patched on import
+
+options = ClaudeAgentOptions(...)  # ← hooks injected automatically
+```
+
+## Viewing traces
+
+Open the dashboard → **Sessions** to see captured runs. Each session shows:
+- The human prompt as **Input**
+- All MCP tool calls with latency and status
+- Sub-agent handoffs as dashed edges in the session graph
+- Final agent response as **Output** (when available from session transcript)
+
+<Note>
+  `LANGSIGHT_URL` must point to the **API** (`http://localhost:8000`), not the dashboard (`http://localhost:3003`). A common mistake is copying the dashboard URL from `docker compose` output.
+</Note>

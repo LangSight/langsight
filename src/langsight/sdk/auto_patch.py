@@ -620,7 +620,8 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
         return None
 
     import json as _json
-    from datetime import UTC, datetime as _dt
+    from datetime import UTC
+    from datetime import datetime as _dt
 
     from langsight.sdk.models import ToolCallSpan, ToolCallStatus
 
@@ -684,11 +685,6 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
                 server_name = parts[1]
 
         try:
-            input_json = _json.dumps(tool_input, default=str) if tool_input else None
-        except Exception:  # noqa: BLE001
-            input_json = str(tool_input)
-
-        try:
             output_json = _json.dumps(tool_response, default=str) if tool_response is not None else None
         except Exception:  # noqa: BLE001
             output_json = str(tool_response) if tool_response is not None else None
@@ -718,7 +714,6 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
         sid = hook_input.get("session_id", "")
         tool_use_id = hook_input.get("tool_use_id", "")
         tool_name = hook_input.get("tool_name", "unknown")
-        tool_input = hook_input.get("tool_input") or {}
         error = hook_input.get("error", "unknown error")
         agent_type = hook_input.get("agent_type") or None
         started = _tool_started.pop(tool_use_id, _dt.now(UTC))
@@ -785,8 +780,7 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
         if transcript_path:
             try:
                 import json as _jmod
-                from pathlib import Path as _Path
-                lines = _Path(transcript_path).read_text().splitlines()
+                lines = open(transcript_path).read().splitlines()  # noqa: ASYNC230,PTH123,SIM115
                 # Last assistant message with text content
                 for line in reversed(lines):
                     try:
