@@ -791,29 +791,40 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
         started = state.get("started_at", _dt.now(UTC))
         prompt = state.get("prompt")
 
-        # Read final response from transcript if available
-        transcript_path = hook_input.get("transcript_path", "")
+        # Capture final output — try last_assistant_message first (fastest, no I/O),
+        # then fall back to the transcript file which is still present when Stop fires.
         final_output: str | None = None
-        if transcript_path:
-            try:
-                import json as _jmod
+        last_msg = hook_input.get("last_assistant_message")
+        if last_msg:
+            # last_assistant_message may be a string (text) or a dict/list of content blocks
+            if isinstance(last_msg, str):
+                final_output = last_msg
+            elif isinstance(last_msg, dict):
+                for block in last_msg.get("content", []):
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        final_output = block.get("text")
+                        break
+        if not final_output:
+            transcript_path = hook_input.get("transcript_path", "")
+            if transcript_path:
+                try:
+                    import json as _jmod
 
-                lines = open(transcript_path).read().splitlines()  # noqa: ASYNC230,PTH123,SIM115
-                # Last assistant message with text content
-                for line in reversed(lines):
-                    try:
-                        entry = _jmod.loads(line)
-                        if entry.get("role") == "assistant":
-                            for block in entry.get("content", []):
-                                if isinstance(block, dict) and block.get("type") == "text":
-                                    final_output = block["text"]
-                                    break
-                        if final_output:
-                            break
-                    except Exception:  # noqa: BLE001
-                        continue
-            except Exception:  # noqa: BLE001
-                pass
+                    lines = open(transcript_path).read().splitlines()  # noqa: ASYNC230,PTH123,SIM115
+                    for line in reversed(lines):
+                        try:
+                            entry = _jmod.loads(line)
+                            if entry.get("role") == "assistant":
+                                for block in entry.get("content", []):
+                                    if isinstance(block, dict) and block.get("type") == "text":
+                                        final_output = block["text"]
+                                        break
+                            if final_output:
+                                break
+                        except Exception:  # noqa: BLE001
+                            continue
+                except Exception:  # noqa: BLE001
+                    pass
 
         if prompt or final_output:
             try:
@@ -823,6 +834,7 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
                     started_at=started,
                     status=ToolCallStatus.SUCCESS,
                     session_id=sid or None,
+                    agent_name=_agent_name_for(hook_input),
                     span_type="agent",
                     llm_input=prompt,
                     llm_output=final_output,
