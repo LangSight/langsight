@@ -45,8 +45,20 @@ LangSight injects tracing hooks into `ClaudeAgentOptions.__init__` at `auto_patc
 | `SubagentStart` | `handoff` span to sub-agent |
 | `Stop` | `session` span — `llm_output` captured from transcript when available |
 
-MCP server name and tool name are automatically extracted:
+Token fields captured on every `tool_call` span (v0.14.7):
+
+| Field | Source | Notes |
+|-------|--------|-------|
+| `input_tokens` | `usage.input_tokens` | Total input tokens including cached |
+| `output_tokens` | `usage.output_tokens` | |
+| `cache_read_tokens` | `usage.cache_read_input_tokens` | `Nullable` — `None` when cache not used |
+| `cache_creation_tokens` | `usage.cache_creation_input_tokens` | `Nullable` — `None` when prompt cache not written |
+
+`cache_read_tokens` and `cache_creation_tokens` are shown in the session detail view as **Cache↗** (green, served from cache) and **Cache+** (cache write) labels.
+
+MCP server name and tool name are automatically extracted. As of v0.14.7, the `mcp__` prefix and double-underscore separator pattern produces short tool names:
 - `mcp__analytics__query_warehouse` → `server_name="analytics"`, `tool_name="query_warehouse"`
+- `mcp__postgres__list_tables` → `server_name="postgres"`, `tool_name="list_tables"`
 
 ## How it works
 

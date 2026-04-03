@@ -9,6 +9,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 - **Docs cleanup**: Removed all stale v0.11.x patterns from public-facing docs. Primary examples in `quickstart.mdx`, `sdk/python.mdx`, `sdk/integrations/langchain.mdx`, `sdk/integrations/langgraph.mdx`, and `sdk/integrations/gemini-sdk.mdx` now consistently use the v0.12.0 `session()` context manager pattern. Manual uuid4 generation, explicit `session_id=` threading, and `set_context`/`clear_context` boilerplate are moved to clearly labeled "Before 0.12.0" migration sections or "Advanced: manual pattern" sections only. The "Combining with MCP tracing" example in gemini-sdk.mdx now shows context-inherited `wrap_llm()` and `wrap()` calls (no explicit `session_id` threading).
 
+## [0.14.7] - 2026-04-03
+
+**Anthropic cache token capture + gen_ai semantic convention alignment.**
+
+### Added
+- **`cache_read_tokens` on `ToolCallSpan`**: Captures `usage.cache_read_input_tokens` from the Anthropic SDK response. Stored as `Nullable(UInt32)` in ClickHouse. Shown in the session detail view as a green **Cache↗** label when non-null.
+- **`cache_creation_tokens` on `ToolCallSpan`**: Captures `usage.cache_creation_input_tokens` from the Anthropic SDK response. Stored as `Nullable(UInt32)` in ClickHouse. Shown in the session detail view as a **Cache+** label when non-null.
+
+### Changed
+- **OTLP ingest — `gen_ai.conversation.id` fallback**: The OTLP ingestion pipeline now reads `gen_ai.conversation.id` as a secondary fallback for `session.id` when the primary attribute is absent. This aligns with the OpenTelemetry GenAI semantic conventions spec.
+- **OTLP ingest — `gen_ai.agent.id` fallback**: The OTLP ingestion pipeline now reads `gen_ai.agent.id` as a fallback for `gen_ai.agent.name` when the primary attribute is absent.
+
 ## [0.14.1] - 2026-04-02
 
 **SDK prompt capture at open time, dashboard Incomplete badge, proxy 204 fix, project FK guard.**
