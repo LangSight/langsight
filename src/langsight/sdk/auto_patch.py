@@ -603,7 +603,7 @@ def _patch_claude_sdk() -> None:
             type(self_sdk), "__dataclass_fields__"
         ) else setattr(self_sdk, "hooks", merged)
 
-    ClaudeAgentOptions.__init__ = _patched_init  # type: ignore[method-assign]
+    ClaudeAgentOptions.__init__ = _patched_init
     _patched_sdks.add("claude_sdk")
     logger.debug("auto_patch.patched", sdk="claude_sdk")
 

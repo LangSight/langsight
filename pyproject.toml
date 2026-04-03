@@ -150,3 +150,7 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["redis", "redis.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["claude_agent_sdk", "claude_agent_sdk.*"]
+ignore_missing_imports = true
