@@ -113,6 +113,8 @@ class ToolCallSpan(BaseModel):
     output_tokens: int | None = None  # P7 — LLM output token count
     model_id: str | None = None  # P7 — model used (gen_ai.request.model)
     finish_reason: str | None = None  # gen_ai.response.finish_reasons — why LLM stopped
+    cache_read_tokens: int | None = None  # Anthropic: gen_ai.usage.cache_read_input_tokens
+    cache_creation_tokens: int | None = None  # Anthropic: gen_ai.usage.cache_creation_input_tokens
 
     # --- Lineage protocol v1.0 fields ---
     target_agent_name: str | None = None  # explicit handoff destination (handoff spans only)
@@ -150,6 +152,8 @@ class ToolCallSpan(BaseModel):
         output_tokens: int | None = None,
         model_id: str | None = None,
         finish_reason: str | None = None,
+        cache_read_tokens: int | None = None,
+        cache_creation_tokens: int | None = None,
         target_agent_name: str | None = None,
         lineage_provenance: LineageProvenance = "explicit",
         lineage_status: LineageStatus = "complete",
@@ -181,6 +185,8 @@ class ToolCallSpan(BaseModel):
             output_tokens=output_tokens,
             model_id=model_id,
             finish_reason=finish_reason,
+            cache_read_tokens=cache_read_tokens,
+            cache_creation_tokens=cache_creation_tokens,
             target_agent_name=target_agent_name,
             lineage_provenance=lineage_provenance,
             lineage_status=lineage_status,

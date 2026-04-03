@@ -217,6 +217,9 @@ _DDL = [
     "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS schema_version String DEFAULT '1.0'",
     # gen_ai.response.finish_reasons — why LLM stopped (stop, tool_calls, max_tokens, content_filter, etc.)
     "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS finish_reason String DEFAULT ''",
+    # Anthropic prompt caching token counts (gen_ai.usage.cache_read_input_tokens etc.)
+    "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS cache_read_tokens Nullable(UInt32)",
+    "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS cache_creation_tokens Nullable(UInt32)",
 ]
 
 
@@ -738,6 +741,8 @@ class ClickHouseBackend:
         "lineage_status",
         "schema_version",
         "finish_reason",
+        "cache_read_tokens",
+        "cache_creation_tokens",
     ]
 
     def _span_row(self, s: ToolCallSpan) -> list[Any]:
@@ -779,6 +784,8 @@ class ClickHouseBackend:
             s.lineage_status,
             s.schema_version,
             s.finish_reason or "",
+            s.cache_read_tokens,
+            s.cache_creation_tokens,
         ]
 
     async def save_tool_call_span(self, span: ToolCallSpan) -> None:
@@ -1114,7 +1121,8 @@ class ClickHouseBackend:
                 replay_of, project_id,
                 input_tokens, output_tokens, model_id,
                 target_agent_name, lineage_provenance,
-                lineage_status, schema_version, finish_reason
+                lineage_status, schema_version, finish_reason,
+                cache_read_tokens, cache_creation_tokens
             FROM mcp_tool_calls
             WHERE {where}
             ORDER BY started_at ASC, llm_output DESC
@@ -1149,6 +1157,8 @@ class ClickHouseBackend:
             "lineage_status",
             "schema_version",
             "finish_reason",
+            "cache_read_tokens",
+            "cache_creation_tokens",
         ]
         rows = [dict(zip(cols, row, strict=False)) for row in result.result_rows]
         # Ensure timestamps carry UTC timezone — ClickHouse DateTime64('UTC')

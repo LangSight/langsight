@@ -576,6 +576,22 @@ def _parse_otlp_span(span: dict[str, Any]) -> ToolCallSpan | None:
     )
 
     # Extract finish_reason — OpenTelemetry GenAI semantic convention
+    # Anthropic prompt caching tokens (OTel GenAI spec)
+    raw_cache_read = attrs.get("gen_ai.usage.cache_read_input_tokens")
+    raw_cache_creation = attrs.get("gen_ai.usage.cache_creation_input_tokens")
+    otlp_cache_read: int | None = None
+    otlp_cache_creation: int | None = None
+    if raw_cache_read is not None:
+        try:
+            otlp_cache_read = int(raw_cache_read)
+        except (ValueError, TypeError):
+            pass
+    if raw_cache_creation is not None:
+        try:
+            otlp_cache_creation = int(raw_cache_creation)
+        except (ValueError, TypeError):
+            pass
+
     raw_finish = attrs.get("gen_ai.response.finish_reasons")
     if raw_finish:
         # Spec says it's a list; take first and normalise to lowercase string
@@ -595,8 +611,8 @@ def _parse_otlp_span(span: dict[str, Any]) -> ToolCallSpan | None:
         status=status,
         error=error_msg if status != ToolCallStatus.SUCCESS else None,
         trace_id=span.get("traceId"),
-        session_id=attrs.get("session.id"),
-        agent_name=attrs.get("gen_ai.agent.name"),
+        session_id=attrs.get("session.id") or attrs.get("gen_ai.conversation.id"),
+        agent_name=attrs.get("gen_ai.agent.name") or attrs.get("gen_ai.agent.id"),
         span_type="agent" if is_llm_span else "tool_call",
         llm_input=llm_input,
         llm_output=llm_output,
@@ -604,4 +620,6 @@ def _parse_otlp_span(span: dict[str, Any]) -> ToolCallSpan | None:
         output_tokens=output_tokens,
         model_id=extracted_model_id or (model if is_llm_span and not tool_name else None),
         finish_reason=finish_reason,
+        cache_read_tokens=otlp_cache_read,
+        cache_creation_tokens=otlp_cache_creation,
     )

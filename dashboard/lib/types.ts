@@ -82,6 +82,8 @@ export interface SpanNode {
   llm_input: string | null;    // P5.3 — LLM prompt/messages (agent spans only)
   llm_output: string | null;   // P5.3 — LLM completion text (agent spans only)
   finish_reason: string | null;  // gen_ai.response.finish_reasons — why LLM stopped
+  cache_read_tokens: number | null;   // Anthropic prompt caching: cache_read_input_tokens
+  cache_creation_tokens: number | null; // Anthropic prompt caching: cache_creation_input_tokens
   input_tokens: number | null;  // P7 — LLM input token count
   output_tokens: number | null; // P7 — LLM output token count
   model_id: string | null;      // P7 — model used

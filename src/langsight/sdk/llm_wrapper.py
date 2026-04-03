@@ -542,6 +542,10 @@ def _process_anthropic_response(
     usage = getattr(response, "usage", None) if response is not None else None
     input_tokens = getattr(usage, "input_tokens", None) if usage else None
     output_tokens = getattr(usage, "output_tokens", None) if usage else None
+    # Anthropic prompt caching — gen_ai.usage.cache_read_input_tokens /
+    # gen_ai.usage.cache_creation_input_tokens (OTel GenAI spec)
+    cache_read_tokens = getattr(usage, "cache_read_input_tokens", None) if usage else None
+    cache_creation_tokens = getattr(usage, "cache_creation_input_tokens", None) if usage else None
 
     spans: list[ToolCallSpan] = []
 
@@ -565,6 +569,8 @@ def _process_anthropic_response(
         output_tokens=output_tokens,
         model_id=model,
         finish_reason=finish_reason,
+        cache_read_tokens=cache_read_tokens,
+        cache_creation_tokens=cache_creation_tokens,
     )
     spans.append(llm_span)
 

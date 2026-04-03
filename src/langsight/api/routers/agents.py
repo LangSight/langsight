@@ -89,6 +89,8 @@ class SpanNode(BaseModel):
     llm_input: str | None = None  # P5.3 — LLM prompt (agent spans only)
     llm_output: str | None = None  # P5.3 — LLM completion (agent spans only)
     finish_reason: str | None = None  # gen_ai.response.finish_reasons
+    cache_read_tokens: int | None = None  # Anthropic: gen_ai.usage.cache_read_input_tokens
+    cache_creation_tokens: int | None = None  # Anthropic: gen_ai.usage.cache_creation_input_tokens
     children: list[SpanNode] = []
 
 

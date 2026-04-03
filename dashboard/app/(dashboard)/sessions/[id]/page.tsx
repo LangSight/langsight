@@ -324,6 +324,8 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
                 {spans[0].model_id && <span>Model: <code className="text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{spans[0].model_id}</code></span>}
                 {spans[0].input_tokens != null && <span>In: <strong className="text-foreground">{spans[0].input_tokens}</strong></span>}
                 {spans[0].output_tokens != null && <span>Out: <strong className="text-foreground">{spans[0].output_tokens}</strong></span>}
+                {spans[0].cache_read_tokens != null && <span title="Anthropic cached read tokens (10× cheaper)">Cache↗: <strong className="text-foreground" style={{ color: "#34d399" }}>{spans[0].cache_read_tokens}</strong></span>}
+                {spans[0].cache_creation_tokens != null && <span title="Anthropic cache creation tokens">Cache+: <strong className="text-foreground">{spans[0].cache_creation_tokens}</strong></span>}
                 {spans[0].finish_reason && (() => {
                   const fr = spans[0].finish_reason!;
                   const isError = ["content_filter","safety","recitation","prohibited_content","content_filtered"].includes(fr);
