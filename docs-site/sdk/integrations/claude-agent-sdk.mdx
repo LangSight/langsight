@@ -43,10 +43,10 @@ LangSight injects tracing hooks into `ClaudeAgentOptions.__init__` at `auto_patc
 | `PostToolUse` | `tool_call` span — tool name, args, response, latency |
 | `PostToolUseFailure` | `tool_call` span with `status=error` and error message |
 | `SubagentStart` | `handoff` span to sub-agent |
-| `Stop` | `session` span with `llm_output` from session transcript |
+| `Stop` | `session` span — `llm_output` captured from transcript when available |
 
-MCP server name is automatically extracted from the tool name:
-- `mcp__analytics__query_warehouse` → `server_name="analytics"`, `tool_name="mcp__analytics__query_warehouse"`
+MCP server name and tool name are automatically extracted:
+- `mcp__analytics__query_warehouse` → `server_name="analytics"`, `tool_name="query_warehouse"`
 
 ## How it works
 
@@ -77,13 +77,41 @@ from claude_agent_sdk import ClaudeAgentOptions  # ← patched on import
 options = ClaudeAgentOptions(...)  # ← hooks injected automatically
 ```
 
+## Capturing the final answer (Output)
+
+By default LangSight captures the **Input** (human prompt) automatically. The **Output** (final agent answer) is read from the session transcript file — if the SDK cleans it up before the `Stop` hook fires, the Output field will show *"No answer captured"*.
+
+To always capture the output, wrap `query()` in a `langsight.session()` block and call `sess.set_output()` with the final response:
+
+```python
+import langsight
+from claude_agent_sdk import ClaudeAgentOptions, query, AssistantMessage, ResultMessage
+
+langsight.auto_patch()
+
+async def run(prompt: str) -> None:
+    options = ClaudeAgentOptions(...)
+
+    async with langsight.session(agent_name="coordinator", input=prompt) as sess:
+        final_text = None
+        async for message in query(prompt=prompt, options=options):
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if hasattr(block, "text") and block.text:
+                        final_text = block.text  # last text block = final answer
+        if final_text:
+            sess.set_output(final_text)
+```
+
+This gives you full Input + Output visibility for every session.
+
 ## Viewing traces
 
-Open the dashboard → **Sessions** to see captured runs. Each session shows:
+Open the dashboard → **Sessions** → select your project. Each session shows:
 - The human prompt as **Input**
-- All MCP tool calls with latency and status
+- All MCP tool calls with latency, input args, and output
 - Sub-agent handoffs as dashed edges in the session graph
-- Final agent response as **Output** (when available from session transcript)
+- The agent name as the coordinator node (defaults to `"coordinator"`, override via `LANGSIGHT_AGENT_NAME`)
 
 <Note>
   `LANGSIGHT_URL` must point to the **API** (`http://localhost:8000`), not the dashboard (`http://localhost:3003`). A common mistake is copying the dashboard URL from `docker compose` output.
