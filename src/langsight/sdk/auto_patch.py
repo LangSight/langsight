@@ -633,8 +633,19 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
     # Maps tool_use_id → started_at (for latency computation)
     _tool_started: dict[str, _dt] = {}
 
+    import os as _os
+
     def _project_id() -> str | None:
         return getattr(_global_client, "_project_id", None) or None
+
+    def _agent_name_for(hook_input: Any, fallback: str = "coordinator") -> str:
+        """Derive agent name: hook agent_type > context var > env var > fallback."""
+        return (
+            hook_input.get("agent_type")
+            or _agent_ctx.get()
+            or _os.environ.get("LANGSIGHT_AGENT_NAME")
+            or fallback
+        )
 
     async def _on_user_prompt(hook_input: Any, _tid: Any, _ctx: Any) -> Any:
         """Capture human prompt → session start span."""
@@ -650,6 +661,7 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
                 started_at=started,
                 status=ToolCallStatus.SUCCESS,
                 session_id=sid or None,
+                agent_name=_agent_name_for(hook_input),
                 span_type="agent",
                 llm_input=prompt,
                 llm_output=None,
@@ -673,18 +685,20 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
         """Capture tool call completion → tool_call span."""
         sid = hook_input.get("session_id", "")
         tool_use_id = hook_input.get("tool_use_id", "")
-        tool_name = hook_input.get("tool_name", "unknown")
+        raw_tool_name = hook_input.get("tool_name", "unknown")
         tool_input = hook_input.get("tool_input") or {}
         tool_response = hook_input.get("tool_response")
-        agent_type = hook_input.get("agent_type") or None
         started = _tool_started.pop(tool_use_id, _dt.now(UTC))
 
-        # Derive server_name from MCP tool name (mcp__server__tool → server)
+        # mcp__server__tool_name → server_name="server", tool_name="tool_name"
         server_name = "claude-sdk"
-        if tool_name.startswith("mcp__"):
-            parts = tool_name.split("__", 2)
+        tool_name = raw_tool_name
+        if raw_tool_name.startswith("mcp__"):
+            parts = raw_tool_name.split("__", 2)
             if len(parts) >= 2:
                 server_name = parts[1]
+            if len(parts) == 3:
+                tool_name = parts[2]  # just the tool name, not the full mcp__server__tool
 
         try:
             output_json = (
@@ -700,7 +714,7 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
                 started_at=started,
                 status=ToolCallStatus.SUCCESS,
                 session_id=sid or None,
-                agent_name=agent_type,
+                agent_name=_agent_name_for(hook_input),
                 span_type="tool_call",
                 input_args=tool_input or None,
                 output_result=output_json,
@@ -719,7 +733,6 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
         tool_use_id = hook_input.get("tool_use_id", "")
         tool_name = hook_input.get("tool_name", "unknown")
         error = hook_input.get("error", "unknown error")
-        agent_type = hook_input.get("agent_type") or None
         started = _tool_started.pop(tool_use_id, _dt.now(UTC))
 
         server_name = "claude-sdk"
@@ -736,7 +749,7 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
                 status=ToolCallStatus.ERROR,
                 error=error,
                 session_id=sid or None,
-                agent_name=agent_type,
+                agent_name=_agent_name_for(hook_input),
                 span_type="tool_call",
                 project_id=_project_id(),
                 lineage_provenance="explicit",
@@ -759,7 +772,7 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
                 started_at=started,
                 status=ToolCallStatus.SUCCESS,
                 session_id=sid or None,
-                agent_name="coordinator",
+                agent_name=_agent_name_for(hook_input, fallback="coordinator"),
                 span_type="handoff",
                 target_agent_name=agent_type,
                 project_id=_project_id(),
