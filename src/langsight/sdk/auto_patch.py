@@ -548,6 +548,295 @@ def _patch_google_generativeai() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _patch_claude_sdk() -> None:
+    """Patch ``claude_agent_sdk.ClaudeAgentOptions.__init__`` to auto-inject
+    LangSight hooks into every agent run — zero user code changes required.
+
+    When ``auto_patch()`` is called, this function patches the ``ClaudeAgentOptions``
+    dataclass so that every instantiation automatically receives LangSight's
+    tracing hooks.  The hooks capture:
+
+    - ``UserPromptSubmit``  → session span with ``llm_input`` (human prompt)
+    - ``PreToolUse``        → tool_call span start (name + args)
+    - ``PostToolUse``       → tool_call span complete (name + args + response)
+    - ``PostToolUseFailure``→ tool_call span with status=error
+    - ``SubagentStart``     → handoff span (agent_type = sub-agent name)
+    - ``Stop``              → session span with ``llm_output`` (final response)
+
+    The user does nothing — no hooks dict, no code changes.  Just:
+        ``LANGSIGHT_URL=http://localhost:8000 python app.py``
+
+    Safe to call multiple times (idempotent via ``_patched_sdks``).
+    No-op when ``claude_agent_sdk`` is not installed.
+    """
+    if "claude_sdk" in _patched_sdks:
+        return
+
+    try:
+        import claude_agent_sdk as _csdk  # noqa: F401 — import check only
+        from claude_agent_sdk import ClaudeAgentOptions
+    except ImportError:
+        return
+
+    orig_init = ClaudeAgentOptions.__init__
+    _originals["claude_sdk_init"] = orig_init
+
+    def _patched_init(self_sdk: Any, *args: Any, **kw: Any) -> None:
+        # Call original __init__ first so all fields are set
+        orig_init(self_sdk, *args, **kw)
+
+        # Build our hooks and merge with any the user already configured
+        ls_hooks = _build_claude_sdk_hooks()
+        if not ls_hooks:
+            return  # no global client yet — skip
+
+        existing: dict[Any, list[Any]] = self_sdk.hooks or {}
+        merged: dict[Any, list[Any]] = {}
+        for event, matchers in ls_hooks.items():
+            # Prepend LangSight matchers so we always fire, regardless of user hooks
+            merged[event] = matchers + list(existing.get(event, []))
+        # Carry over any user hook events we don't handle
+        for event, matchers in existing.items():
+            if event not in merged:
+                merged[event] = matchers
+        object.__setattr__(self_sdk, "hooks", merged) if hasattr(type(self_sdk), "__dataclass_fields__") else setattr(self_sdk, "hooks", merged)
+
+    ClaudeAgentOptions.__init__ = _patched_init  # type: ignore[method-assign]
+    _patched_sdks.add("claude_sdk")
+    logger.debug("auto_patch.patched", sdk="claude_sdk")
+
+
+def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
+    """Build the hooks dict for ``ClaudeAgentOptions`` using the global client.
+
+    Returns ``None`` when the global client is not yet initialised.
+    """
+    if _global_client is None:
+        return None
+
+    try:
+        from claude_agent_sdk.types import HookMatcher
+    except ImportError:
+        return None
+
+    import json as _json
+    from datetime import UTC, datetime as _dt
+
+    from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+
+    # Per-session state: keyed by session_id
+    # Maps session_id → { "started_at": datetime, "prompt": str }
+    _session_state: dict[str, dict[str, Any]] = {}
+    # Maps tool_use_id → started_at (for latency computation)
+    _tool_started: dict[str, _dt] = {}
+
+    def _project_id() -> str | None:
+        return getattr(_global_client, "_project_id", None) or None
+
+    async def _on_user_prompt(hook_input: Any, _tid: Any, _ctx: Any) -> Any:
+        """Capture human prompt → session start span."""
+        sid = hook_input.get("session_id", "")
+        prompt = hook_input.get("prompt", "")
+        started = _dt.now(UTC)
+        _session_state[sid] = {"started_at": started, "prompt": prompt}
+        # Emit start span with llm_input immediately
+        try:
+            span = ToolCallSpan.record(
+                server_name="claude-sdk",
+                tool_name="session",
+                started_at=started,
+                status=ToolCallStatus.SUCCESS,
+                session_id=sid or None,
+                span_type="agent",
+                llm_input=prompt,
+                llm_output=None,
+                project_id=_project_id(),
+                lineage_provenance="explicit",
+                schema_version="1.0",
+            )
+            await _global_client._post_spans([span])
+        except Exception:  # noqa: BLE001
+            pass
+        return {"continue_": True}
+
+    async def _on_pre_tool(hook_input: Any, _tid: Any, _ctx: Any) -> Any:
+        """Record tool call start time."""
+        tool_use_id = hook_input.get("tool_use_id", "")
+        if tool_use_id:
+            _tool_started[tool_use_id] = _dt.now(UTC)
+        return {"continue_": True}
+
+    async def _on_post_tool(hook_input: Any, _tid: Any, _ctx: Any) -> Any:
+        """Capture tool call completion → tool_call span."""
+        sid = hook_input.get("session_id", "")
+        tool_use_id = hook_input.get("tool_use_id", "")
+        tool_name = hook_input.get("tool_name", "unknown")
+        tool_input = hook_input.get("tool_input") or {}
+        tool_response = hook_input.get("tool_response")
+        agent_type = hook_input.get("agent_type") or None
+        started = _tool_started.pop(tool_use_id, _dt.now(UTC))
+
+        # Derive server_name from MCP tool name (mcp__server__tool → server)
+        server_name = "claude-sdk"
+        if tool_name.startswith("mcp__"):
+            parts = tool_name.split("__", 2)
+            if len(parts) >= 2:
+                server_name = parts[1]
+
+        try:
+            input_json = _json.dumps(tool_input, default=str) if tool_input else None
+        except Exception:  # noqa: BLE001
+            input_json = str(tool_input)
+
+        try:
+            output_json = _json.dumps(tool_response, default=str) if tool_response is not None else None
+        except Exception:  # noqa: BLE001
+            output_json = str(tool_response) if tool_response is not None else None
+
+        try:
+            span = ToolCallSpan.record(
+                server_name=server_name,
+                tool_name=tool_name,
+                started_at=started,
+                status=ToolCallStatus.SUCCESS,
+                session_id=sid or None,
+                agent_name=agent_type,
+                span_type="tool_call",
+                input_args=tool_input or None,
+                output_result=output_json,
+                project_id=_project_id(),
+                lineage_provenance="explicit",
+                schema_version="1.0",
+            )
+            _global_client.buffer_span(span)
+        except Exception:  # noqa: BLE001
+            pass
+        return {"continue_": True}
+
+    async def _on_post_tool_failure(hook_input: Any, _tid: Any, _ctx: Any) -> Any:
+        """Capture tool call failure → tool_call span with error."""
+        sid = hook_input.get("session_id", "")
+        tool_use_id = hook_input.get("tool_use_id", "")
+        tool_name = hook_input.get("tool_name", "unknown")
+        tool_input = hook_input.get("tool_input") or {}
+        error = hook_input.get("error", "unknown error")
+        agent_type = hook_input.get("agent_type") or None
+        started = _tool_started.pop(tool_use_id, _dt.now(UTC))
+
+        server_name = "claude-sdk"
+        if tool_name.startswith("mcp__"):
+            parts = tool_name.split("__", 2)
+            if len(parts) >= 2:
+                server_name = parts[1]
+
+        try:
+            span = ToolCallSpan.record(
+                server_name=server_name,
+                tool_name=tool_name,
+                started_at=started,
+                status=ToolCallStatus.ERROR,
+                error=error,
+                session_id=sid or None,
+                agent_name=agent_type,
+                span_type="tool_call",
+                project_id=_project_id(),
+                lineage_provenance="explicit",
+                schema_version="1.0",
+            )
+            _global_client.buffer_span(span)
+        except Exception:  # noqa: BLE001
+            pass
+        return {"continue_": True}
+
+    async def _on_subagent_start(hook_input: Any, _tid: Any, _ctx: Any) -> Any:
+        """Emit handoff span when a sub-agent starts."""
+        sid = hook_input.get("session_id", "")
+        agent_type = hook_input.get("agent_type", "unknown")
+        started = _dt.now(UTC)
+        try:
+            span = ToolCallSpan.record(
+                server_name="claude-sdk",
+                tool_name=f"→ {agent_type}",
+                started_at=started,
+                status=ToolCallStatus.SUCCESS,
+                session_id=sid or None,
+                agent_name="coordinator",
+                span_type="handoff",
+                target_agent_name=agent_type,
+                project_id=_project_id(),
+                lineage_provenance="explicit",
+                schema_version="1.0",
+            )
+            _global_client.buffer_span(span)
+        except Exception:  # noqa: BLE001
+            pass
+        return {"continue_": True}
+
+    async def _on_stop(hook_input: Any, _tid: Any, _ctx: Any) -> Any:
+        """Emit close-time session span on agent stop."""
+        sid = hook_input.get("session_id", "")
+        state = _session_state.pop(sid, {})
+        started = state.get("started_at", _dt.now(UTC))
+        prompt = state.get("prompt")
+
+        # Read final response from transcript if available
+        transcript_path = hook_input.get("transcript_path", "")
+        final_output: str | None = None
+        if transcript_path:
+            try:
+                import json as _jmod
+                from pathlib import Path as _Path
+                lines = _Path(transcript_path).read_text().splitlines()
+                # Last assistant message with text content
+                for line in reversed(lines):
+                    try:
+                        entry = _jmod.loads(line)
+                        if entry.get("role") == "assistant":
+                            for block in entry.get("content", []):
+                                if isinstance(block, dict) and block.get("type") == "text":
+                                    final_output = block["text"]
+                                    break
+                        if final_output:
+                            break
+                    except Exception:  # noqa: BLE001
+                        continue
+            except Exception:  # noqa: BLE001
+                pass
+
+        if prompt or final_output:
+            try:
+                span = ToolCallSpan.record(
+                    server_name="claude-sdk",
+                    tool_name="session",
+                    started_at=started,
+                    status=ToolCallStatus.SUCCESS,
+                    session_id=sid or None,
+                    span_type="agent",
+                    llm_input=prompt,
+                    llm_output=final_output,
+                    project_id=_project_id(),
+                    lineage_provenance="explicit",
+                    schema_version="1.0",
+                )
+                _global_client.buffer_span(span)
+                try:
+                    await _global_client.flush()
+                except Exception:  # noqa: BLE001
+                    pass
+            except Exception:  # noqa: BLE001
+                pass
+        return {"continue_": True}
+
+    return {
+        "UserPromptSubmit": [HookMatcher(matcher=None, hooks=[_on_user_prompt])],
+        "PreToolUse":       [HookMatcher(matcher=None, hooks=[_on_pre_tool])],
+        "PostToolUse":      [HookMatcher(matcher=None, hooks=[_on_post_tool])],
+        "PostToolUseFailure": [HookMatcher(matcher=None, hooks=[_on_post_tool_failure])],
+        "SubagentStart":    [HookMatcher(matcher=None, hooks=[_on_subagent_start])],
+        "Stop":             [HookMatcher(matcher=None, hooks=[_on_stop])],
+    }
+
+
 def auto_patch(
     url: str | None = None,
     api_key: str | None = None,
@@ -622,13 +911,14 @@ def auto_patch(
     _patch_google_genai()
     _patch_google_generativeai()
     _patch_mcp()
+    _patch_claude_sdk()
 
     logger.info(
         "auto_patch.complete",
         patched=sorted(_patched_sdks),
         skipped_missing=[
             sdk
-            for sdk in ["openai", "anthropic", "google_genai", "google_generativeai", "mcp"]
+            for sdk in ["openai", "anthropic", "google_genai", "google_generativeai", "mcp", "claude_sdk"]
             if sdk not in _patched_sdks
         ],
     )
