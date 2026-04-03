@@ -88,7 +88,6 @@ function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
     total_input_tokens: null,
     total_output_tokens: null,
     model_id: null,
-    finish_reason: null,
     est_cost_usd: null,
     has_prompt: false,
     ...overrides,

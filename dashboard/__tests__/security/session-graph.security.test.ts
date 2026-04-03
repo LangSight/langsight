@@ -296,6 +296,7 @@ describe("buildSessionGraph — structural edge cases", () => {
       input_tokens: null,
       output_tokens: null,
       model_id: null,
+      finish_reason: null,
       target_agent_name: null,
       lineage_provenance: "explicit" as const,
       lineage_status: "complete" as const,
