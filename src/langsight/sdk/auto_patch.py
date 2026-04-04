@@ -691,6 +691,11 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
         started = _tool_started.pop(tool_use_id, _dt.now(UTC))
 
         # mcp__server__tool_name → server_name="server", tool_name="tool_name"
+        # Skip the Claude internal Agent tool — it spawns sub-agents, not an MCP call.
+        # Capturing it creates phantom "claude-sdk · Agent" tool_call nodes in the graph.
+        if raw_tool_name == "Agent":
+            return {"continue_": True}
+
         server_name = "claude-sdk"
         tool_name = raw_tool_name
         if raw_tool_name.startswith("mcp__"):
@@ -766,13 +771,19 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
         agent_type = hook_input.get("agent_type", "unknown")
         started = _dt.now(UTC)
         try:
+            # agent_name = who is DOING the handoff (coordinator), NOT the target.
+            # _agent_name_for reads agent_type first which would be the sub-agent name —
+            # use the context var fallback directly to get the orchestrator's name.
+            from_agent = (
+                _agent_ctx.get() or _os.environ.get("LANGSIGHT_AGENT_NAME") or "coordinator"
+            )
             span = ToolCallSpan.record(
                 server_name="claude-sdk",
                 tool_name=f"→ {agent_type}",
                 started_at=started,
                 status=ToolCallStatus.SUCCESS,
                 session_id=sid or None,
-                agent_name=_agent_name_for(hook_input, fallback="coordinator"),
+                agent_name=from_agent,
                 span_type="handoff",
                 target_agent_name=agent_type,
                 project_id=_project_id(),
