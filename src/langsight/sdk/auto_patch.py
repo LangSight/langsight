@@ -560,7 +560,8 @@ def _patch_claude_sdk() -> None:
     - ``PreToolUse``        → tool_call span start (name + args)
     - ``PostToolUse``       → tool_call span complete (name + args + response)
     - ``PostToolUseFailure``→ tool_call span with status=error
-    - ``SubagentStart``     → handoff span (agent_type = sub-agent name)
+    - ``SubagentStart``     → handoff span + marks sub-agent as active for session
+    - ``SubagentStop``      → clears sub-agent active state (reverts to coordinator)
     - ``Stop``              → session span with ``llm_output`` (final response)
 
     The user does nothing — no hooks dict, no code changes.  Just:
@@ -632,6 +633,11 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
     _session_state: dict[str, dict[str, Any]] = {}
     # Maps tool_use_id → started_at (for latency computation)
     _tool_started: dict[str, _dt] = {}
+    # Tracks which sub-agent is currently active per session.
+    # Set by SubagentStart, cleared by SubagentStop.
+    # Used to correctly attribute tool calls made by sub-agents.
+    # Maps session_id → agent_type (e.g. "sql_analyst")
+    _active_subagent: dict[str, str] = {}
 
     import os as _os
 
@@ -639,13 +645,24 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
         return getattr(_global_client, "_project_id", None) or None
 
     def _agent_name_for(hook_input: Any, fallback: str = "coordinator") -> str:
-        """Derive agent name: hook agent_type > context var > env var > fallback."""
-        return (
-            hook_input.get("agent_type")
-            or _agent_ctx.get()
-            or _os.environ.get("LANGSIGHT_AGENT_NAME")
-            or fallback
-        )
+        """Derive agent name for a hook event.
+
+        Priority order:
+          1. Explicit agent_type in hook_input (set by SDK for some hook types)
+          2. Active sub-agent for this session (set by SubagentStart/SubagentStop)
+          3. Top-level agent from context var (set by langsight.session())
+          4. LANGSIGHT_AGENT_NAME env var
+          5. Hardcoded fallback
+        """
+        # (1) SDK may provide agent_type directly in hook input (sub-agent events)
+        if hook_input.get("agent_type"):
+            return str(hook_input["agent_type"])
+        # (2) Sub-agent lifecycle tracking — most reliable method
+        sid = hook_input.get("session_id", "")
+        if sid and sid in _active_subagent:
+            return _active_subagent[sid]
+        # (3) Context var set by langsight.session(agent_name=...)
+        return _agent_ctx.get() or _os.environ.get("LANGSIGHT_AGENT_NAME") or fallback
 
     async def _on_user_prompt(hook_input: Any, _tid: Any, _ctx: Any) -> Any:
         """Capture human prompt → session start span."""
@@ -766,17 +783,25 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
         return {"continue_": True}
 
     async def _on_subagent_start(hook_input: Any, _tid: Any, _ctx: Any) -> Any:
-        """Emit handoff span when a sub-agent starts."""
+        """Emit handoff span and mark sub-agent as active for this session."""
         sid = hook_input.get("session_id", "")
         agent_type = hook_input.get("agent_type", "unknown")
         started = _dt.now(UTC)
+
+        # Record the active sub-agent BEFORE deriving from_agent so that
+        # _agent_name_for uses the PREVIOUS value (the handoff source).
+        # from_agent = whoever was active before this sub-agent started.
+        from_agent = (
+            (sid and _active_subagent.get(sid))  # nested sub-agent case
+            or _agent_ctx.get()
+            or _os.environ.get("LANGSIGHT_AGENT_NAME")
+            or "coordinator"
+        )
+        # Now mark this sub-agent as active so subsequent tool calls are attributed to it.
+        if sid:
+            _active_subagent[sid] = agent_type
+
         try:
-            # agent_name = who is DOING the handoff (coordinator), NOT the target.
-            # _agent_name_for reads agent_type first which would be the sub-agent name —
-            # use the context var fallback directly to get the orchestrator's name.
-            from_agent = (
-                _agent_ctx.get() or _os.environ.get("LANGSIGHT_AGENT_NAME") or "coordinator"
-            )
             span = ToolCallSpan.record(
                 server_name="claude-sdk",
                 tool_name=f"→ {agent_type}",
@@ -793,6 +818,13 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
             _global_client.buffer_span(span)
         except Exception:  # noqa: BLE001
             pass
+        return {"continue_": True}
+
+    async def _on_subagent_stop(hook_input: Any, _tid: Any, _ctx: Any) -> Any:
+        """Clear sub-agent active state so subsequent calls revert to coordinator."""
+        sid = hook_input.get("session_id", "")
+        if sid and sid in _active_subagent:
+            del _active_subagent[sid]
         return {"continue_": True}
 
     async def _on_stop(hook_input: Any, _tid: Any, _ctx: Any) -> Any:
@@ -868,6 +900,7 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
         "PostToolUse": [HookMatcher(matcher=None, hooks=[_on_post_tool])],
         "PostToolUseFailure": [HookMatcher(matcher=None, hooks=[_on_post_tool_failure])],
         "SubagentStart": [HookMatcher(matcher=None, hooks=[_on_subagent_start])],
+        "SubagentStop": [HookMatcher(matcher=None, hooks=[_on_subagent_stop])],
         "Stop": [HookMatcher(matcher=None, hooks=[_on_stop])],
     }
 

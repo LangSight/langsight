@@ -6,8 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### Changed
-- **Docs cleanup**: Removed all stale v0.11.x patterns from public-facing docs. Primary examples in `quickstart.mdx`, `sdk/python.mdx`, `sdk/integrations/langchain.mdx`, `sdk/integrations/langgraph.mdx`, and `sdk/integrations/gemini-sdk.mdx` now consistently use the v0.12.0 `session()` context manager pattern. Manual uuid4 generation, explicit `session_id=` threading, and `set_context`/`clear_context` boilerplate are moved to clearly labeled "Before 0.12.0" migration sections or "Advanced: manual pattern" sections only. The "Combining with MCP tracing" example in gemini-sdk.mdx now shows context-inherited `wrap_llm()` and `wrap()` calls (no explicit `session_id` threading).
+## [0.14.8] - 2026-04-04
+
+**Sub-agent attribution fix + NULL token coercion to prevent dashboard HTTP 500.**
+
+### Fixed
+- **Sub-agent tool call attribution** (`src/langsight/sdk/auto_patch.py`): Tool calls made by named sub-agents (e.g. `sql_analyst`, `data_quality`, `reporter`) were always attributed to `"coordinator"` in the session timeline. A `SubagentStop` hook handler and `_active_subagent` dict now track the active sub-agent per session, so each agent's tool calls are attributed correctly. `_agent_name_for()` now checks the sub-agent lifecycle dict (priority 2) before falling back to the context var.
+- **NULL token aggregation causing HTTP 500** (`src/langsight/storage/clickhouse.py`): `get_monitoring_timeseries()` and `get_monitoring_models()` used bare `sum(input_tokens)`, which returns NULL for projects that have no LLM token spans. `coalesce(sum(input_tokens), 0)` is now applied to all token aggregation columns, eliminating the downstream serialisation error.
+- **Blank dashboard on zero-token projects** (`src/langsight/api/routers/monitoring.py`): `TimeseriesBucket`, `ModelMetrics`, and `ToolMetrics` Pydantic models now carry `field_validator` validators with `mode="before"` that coerce `None → 0` for all numeric fields. This is a belt-and-suspenders guard: even if a storage backend returns NULL through a code path that bypasses the ClickHouse `coalesce()`, the API layer will never forward `null` JSON to the dashboard.
 
 ## [0.14.7] - 2026-04-03
 

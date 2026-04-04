@@ -9,8 +9,10 @@ Provides hourly-bucketed metrics for the dashboard monitoring page:
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from langsight.api.dependencies import get_active_project_id, get_storage
 from langsight.storage.base import StorageBackend
@@ -38,6 +40,23 @@ class TimeseriesBucket(BaseModel):
     session_error_rate: float = 0.0  # Agent: failed_sessions / sessions
     session_p99_ms: float = 0.0  # Agent: p99 of agent span duration
 
+    @field_validator("input_tokens", "output_tokens", "agents", "failed_sessions", mode="before")
+    @classmethod
+    def coerce_none_int(cls, v: Any) -> int:
+        return int(v) if v is not None else 0
+
+    @field_validator(
+        "avg_latency_ms",
+        "p99_latency_ms",
+        "error_rate",
+        "session_error_rate",
+        "session_p99_ms",
+        mode="before",
+    )
+    @classmethod
+    def coerce_none_float(cls, v: Any) -> float:
+        return float(v) if v is not None else 0.0
+
 
 class ModelMetrics(BaseModel):
     model_id: str
@@ -47,6 +66,16 @@ class ModelMetrics(BaseModel):
     avg_latency_ms: float = 0.0
     error_count: int = 0
     est_cost_usd: float | None = None
+
+    @field_validator("input_tokens", "output_tokens", "calls", "error_count", mode="before")
+    @classmethod
+    def coerce_none_int(cls, v: Any) -> int:
+        return int(v) if v is not None else 0
+
+    @field_validator("avg_latency_ms", mode="before")
+    @classmethod
+    def coerce_none_float(cls, v: Any) -> float:
+        return float(v) if v is not None else 0.0
 
 
 class ToolMetrics(BaseModel):
@@ -59,6 +88,18 @@ class ToolMetrics(BaseModel):
     success_rate: float = 100.0
     calls_per_session: float = 0.0
     content_errors: int = 0
+
+    @field_validator(
+        "avg_latency_ms", "p99_latency_ms", "success_rate", "calls_per_session", mode="before"
+    )
+    @classmethod
+    def coerce_none_float(cls, v: Any) -> float:
+        return float(v) if v is not None else 0.0
+
+    @field_validator("calls", "errors", "content_errors", mode="before")
+    @classmethod
+    def coerce_none_int(cls, v: Any) -> int:
+        return int(v) if v is not None else 0
 
 
 class ErrorCategory(BaseModel):
