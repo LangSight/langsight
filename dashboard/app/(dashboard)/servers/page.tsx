@@ -18,6 +18,56 @@ import { toast } from "sonner";
 import { EditableTextarea, EditableText, EditableTags, EditableUrl } from "@/components/editable-field";
 import type { HealthResult, ServerMetadata, LineageGraph, ToolReliability, SchemaDriftEvent, DriftImpact, BlastRadius, BlastRadiusAgent, ServerLogEntry } from "@/lib/types";
 
+/* ── Markdown renderer (no external deps) ───────────────────── */
+function renderMarkdown(md: string): string {
+  let html = md
+    // Escape HTML first to prevent XSS
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    // Headings
+    .replace(/^### (.+)$/gm, '<h3 class="rca-h3">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="rca-h2">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="rca-h1">$1</h1>')
+    // Bold / italic
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Inline code
+    .replace(/`(.+?)`/g, '<code class="rca-code">$1</code>')
+    // Horizontal rule
+    .replace(/^---$/gm, '<hr class="rca-hr" />')
+    // Blockquote
+    .replace(/^&gt; (.+)$/gm, '<blockquote class="rca-bq">$1</blockquote>')
+    // Unordered list items
+    .replace(/^- (.+)$/gm, '<li class="rca-li">$1</li>')
+    .replace(/(<li[^>]*>[\s\S]*?<\/li>\n?)+/g, (m) => `<ul class="rca-ul">${m}</ul>`)
+    // Ordered list items
+    .replace(/^\d+\. (.+)$/gm, '<li class="rca-li">$1</li>');
+
+  // Tables
+  html = html.replace(/(\|.+\|\n)+/g, (table) => {
+    const rows = table.trim().split("\n");
+    const header = rows[0];
+    const body = rows.slice(2); // skip separator row
+    const thCells = header.split("|").filter(Boolean).map(c =>
+      `<th class="rca-th">${c.trim()}</th>`).join("");
+    const bodyRows = body.map(row => {
+      const cells = row.split("|").filter(Boolean).map(c =>
+        `<td class="rca-td">${c.trim()}</td>`).join("");
+      return `<tr>${cells}</tr>`;
+    }).join("");
+    return `<table class="rca-table"><thead><tr>${thCells}</tr></thead><tbody>${bodyRows}</tbody></table>`;
+  });
+
+  // Paragraphs — wrap remaining plain lines
+  html = html.split("\n\n").map(block => {
+    if (/^<(h[1-3]|ul|ol|table|blockquote|hr)/.test(block.trim())) return block;
+    const trimmed = block.trim();
+    if (!trimmed) return "";
+    return `<p class="rca-p">${trimmed}</p>`;
+  }).join("\n");
+
+  return html;
+}
+
 /* ── Helpers ────────────────────────────────────────────────── */
 const STATUS_COLOR: Record<string, string> = { up: "#22c55e", degraded: "#eab308", down: "#ef4444", stale: "#6b7280" };
 
@@ -1037,12 +1087,10 @@ function InvestigatePanel({ serverName, projectId }: { serverName: string; proje
               Root Cause Analysis · {providerUsed}
             </span>
           </div>
-          <pre
-            className="text-foreground whitespace-pre-wrap break-words"
-            style={{ fontSize: 12, lineHeight: 1.7, fontFamily: "var(--font-geist-sans)" }}
-          >
-            {report}
-          </pre>
+          <div
+            className="prose-rca text-[12px] leading-relaxed text-foreground"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(report) }}
+          />
         </div>
       )}
       {!report && !loading && !error && (

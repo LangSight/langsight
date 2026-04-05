@@ -33,26 +33,29 @@ _MAX_HISTORY = 20
 _SYSTEM_PROMPT = (
     "You are an expert SRE specialising in MCP (Model Context Protocol) server reliability. "
     "You analyse health check data and schema drift events to identify root causes of failures. "
-    "Be concise, specific, and actionable. Format your response as Markdown."
+    "Be concise, specific, and actionable. Format your response as Markdown.\n\n"
+    "IMPORTANT CONTEXT:\n"
+    "- MCP servers use two transport types: stdio (subprocess, only alive during agent runs) and SSE/HTTP (long-running).\n"
+    "- 'No health check data' for a stdio server is NORMAL — stdio servers only exist while an agent is running them. "
+    "They cannot be actively pinged. Instead, look at trace/invocation data to understand their usage and health.\n"
+    "- If a server has trace activity but no health checks, it is likely a healthy stdio server — NOT an outage.\n"
+    "- Only flag an issue if there is evidence of actual errors, failures, or anomalies."
 )
 
-_USER_PROMPT_TEMPLATE = """Analyse the following MCP server health evidence and produce a root cause analysis report.
+_USER_PROMPT_TEMPLATE = """Analyse the following MCP server evidence and produce a concise root cause analysis.
 
 ## Evidence
 
 {evidence}
 
-## Required output format
+## Instructions
 
-For each server with issues, provide:
+- If a server has NO health checks but HAS recent trace activity: state it is a healthy stdio server, briefly explain what stdio means, and confirm no action needed.
+- If a server has NO health checks AND NO trace activity: note it has never been used in this project.
+- If a server has health check failures or errors: provide Root Cause, Evidence, Impact, and Recommended Actions.
+- If all servers are healthy: one short paragraph confirming this.
 
-1. **Root Cause** — The most likely cause of the failure or degradation
-2. **Evidence** — Specific data points that support your conclusion
-3. **Impact** — What this means for agents using this server
-4. **Recommended Actions** — Prioritised list of remediation steps
-
-If all servers are healthy, confirm this with a brief summary.
-Keep the report concise — use bullet points where possible."""
+Be brief. Use bullet points. No invented scenarios — only report what the data shows."""
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +112,20 @@ async def _gather_evidence(
     latencies = [r.latency_ms for r in recent if r.latency_ms is not None]
     avg_latency = sum(latencies) / len(latencies) if latencies else None
 
+    # Fetch invocation stats from traces — tells us if server is actively used
+    # even when there are no health checks (stdio servers)
+    invocation_stats: dict[str, Any] = {}
+    try:
+        inv_fn = getattr(storage, "get_server_invocation_stats", None)
+        if inv_fn:
+            inv_list = await inv_fn(project_id=project_id, hours=int(window_hours) or 24)
+            for inv in inv_list:
+                if inv.get("server_name") == server_name:
+                    invocation_stats = inv
+                    break
+    except Exception:  # noqa: BLE001
+        pass
+
     return {
         "server_name": server_name,
         "window_hours": window_hours,
@@ -129,6 +146,10 @@ async def _gather_evidence(
             for r in recent
             if r.error and r.status != ServerStatus.DEGRADED
         ][:5],
+        # Trace-based activity (present even for stdio servers with no health checks)
+        "trace_total_calls": invocation_stats.get("total_calls", 0),
+        "trace_last_called_at": invocation_stats.get("last_called_at"),
+        "trace_last_call_ok": invocation_stats.get("last_call_ok"),
     }
 
 
@@ -136,8 +157,20 @@ def _format_evidence(evidence_map: dict[str, dict[str, Any]]) -> str:
     parts: list[str] = []
     for server_name, ev in evidence_map.items():
         total = ev["total_checks"]
+        trace_calls = ev.get("trace_total_calls", 0)
+        trace_last = ev.get("trace_last_called_at")
+        trace_ok = ev.get("trace_last_call_ok")
         if total == 0:
-            parts.append(f"### {server_name}\nNo data in the look-back window.\n")
+            if trace_calls:
+                parts.append(
+                    f"### {server_name}\n"
+                    f"- Transport: **stdio** (subprocess — no active health checks possible)\n"
+                    f"- Trace activity: {trace_calls} calls in look-back window\n"
+                    f"- Last called: {trace_last or 'unknown'}\n"
+                    f"- Last call succeeded: {trace_ok}\n"
+                )
+            else:
+                parts.append(f"### {server_name}\nNo health check data and no trace activity in the look-back window.\n")
             continue
         avg = f"{ev['avg_latency_ms']:.0f}ms" if ev["avg_latency_ms"] else "n/a"
         parts.append(

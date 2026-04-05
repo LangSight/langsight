@@ -1502,41 +1502,54 @@ function AIProvidersSection() {
 
               {/* Expanded config panel */}
               {isOpen && (
-                <div className="px-4 pb-4 pt-1 space-y-3" style={{ background: "hsl(var(--card-raised))" }}>
+                <div className="px-4 pb-4 pt-2 space-y-3 border-t" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--background))" }}>
                   <p className="text-[11px] text-muted-foreground">{provider.description}
                     <a href={provider.docsUrl} target="_blank" rel="noreferrer" className="ml-1.5 inline-flex items-center gap-0.5 hover:underline" style={{ color: "hsl(var(--primary))" }}>
                       Get key <ExternalLink size={10} />
                     </a>
                   </p>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
+                  <div className="space-y-2">
+                    {/* API Key row */}
+                    <div>
+                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">
+                        {provider.keyLabel}
+                      </label>
                       <input
-                        type="password"
+                        type="text"
                         value={draft.key}
                         onChange={e => setDraft(provider.id, { key: e.target.value })}
                         placeholder={isConfigured ? "Enter new key to update…" : provider.keyPlaceholder}
-                        className="input-base h-[32px] text-[12px] w-full"
+                        className="input-base h-[34px] text-[12px] font-mono"
+                        style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
                         autoComplete="off"
+                        autoCorrect="off"
+                        spellCheck={false}
                       />
                     </div>
-                    <select
-                      value={currentModel}
-                      onChange={e => setDraft(provider.id, { model: e.target.value })}
-                      className="input-base h-[32px] text-[12px]"
-                      style={{ minWidth: 160 }}
-                    >
-                      {provider.models.map(m => <option key={m} value={m}>{m}</option>)}
-                      {!(provider.models as readonly string[]).includes(currentModel) && (
-                        <option value={currentModel}>{currentModel}</option>
-                      )}
-                    </select>
-                    <button
-                      onClick={() => saveProvider(provider.id)}
-                      disabled={saving === provider.id || (!draft.key && currentModel === (status?.model || provider.defaultModel))}
-                      className="px-3 h-[32px] rounded-lg text-[12px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors flex-shrink-0"
-                    >
-                      {saving === provider.id ? "Saving…" : "Save"}
-                    </button>
+                    {/* Model + Save row */}
+                    <div className="flex gap-2 items-center">
+                      <div className="flex-1">
+                        <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">Model</label>
+                        <select
+                          value={currentModel}
+                          onChange={e => setDraft(provider.id, { model: e.target.value })}
+                          className="input-base h-[34px] text-[12px]"
+                          style={{ background: "hsl(var(--card))" }}
+                        >
+                          {provider.models.map(m => <option key={m} value={m}>{m}</option>)}
+                          {!(provider.models as readonly string[]).includes(currentModel) && (
+                            <option value={currentModel}>{currentModel}</option>
+                          )}
+                        </select>
+                      </div>
+                      <button
+                        onClick={() => saveProvider(provider.id)}
+                        disabled={saving === provider.id || (!draft.key && currentModel === (status?.model || provider.defaultModel))}
+                        className="px-4 h-[34px] rounded-lg text-[12px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors flex-shrink-0 self-end"
+                      >
+                        {saving === provider.id ? "Saving…" : "Save"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
