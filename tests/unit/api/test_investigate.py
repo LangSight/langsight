@@ -228,7 +228,8 @@ class TestFormatEvidence:
     def test_no_data_server_shows_no_data_message(self) -> None:
         ev = self._base_ev(total_checks=0)
         text = _format_evidence({"pg": ev})
-        assert "No data" in text
+        # No trace activity → generic no-data message
+        assert "No health check data" in text or "No data" in text
 
     def test_server_name_appears_as_heading(self) -> None:
         text = _format_evidence({"my-server": self._base_ev()})

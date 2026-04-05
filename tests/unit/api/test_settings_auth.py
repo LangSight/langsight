@@ -178,7 +178,8 @@ class TestGetSettingsAuthEnforcement:
             )
 
         assert response.status_code == 200
-        assert response.json() == {"redact_payloads": True}
+        # Response now includes ai_providers alongside redact_payloads
+        assert response.json().get("redact_payloads") is True
 
     async def test_get_settings_with_viewer_key_returns_200(
         self, tmp_path: Path
@@ -283,7 +284,8 @@ class TestPutSettingsAuthEnforcement:
 
         storage.save_instance_settings.assert_called_once()
         call_args = storage.save_instance_settings.call_args[0]
-        assert call_args[0] == {"redact_payloads": True}
+        # Payload now includes ai_providers alongside redact_payloads
+        assert call_args[0].get("redact_payloads") is True
 
     async def test_put_settings_returns_updated_settings_body(
         self, tmp_path: Path
