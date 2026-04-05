@@ -322,7 +322,7 @@ function GroupedSidebar({ agents, metaByName, selectedAgent, onSelect, search, o
   agents: AgentSummary[]; metaByName: Map<string, AgentMetadata>; selectedAgent: string | null;
   onSelect: (n: string) => void; search: string; onSearchChange: (v: string) => void;
 }) {
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(["healthy"]));
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const toggleGroup = (g: string) => setCollapsedGroups((p) => { const n = new Set(p); n.has(g) ? n.delete(g) : n.add(g); return n; });
 
   const groups = useMemo(() => {

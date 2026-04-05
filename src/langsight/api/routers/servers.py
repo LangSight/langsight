@@ -124,7 +124,7 @@ async def discover_servers_from_spans(
     for name in sorted(new_servers):
         await storage.upsert_server_metadata(
             server_name=name,
-            description="Auto-discovered from traces",
+            description="",
             project_id=project_id,
         )
         registered.append(name)

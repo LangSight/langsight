@@ -86,7 +86,7 @@ async def _auto_discover_servers(
             *(
                 upsert_fn(
                     server_name=name,
-                    description="Auto-discovered from traces",
+                    description="",
                     project_id=project_id,
                 )
                 for name in new_names

@@ -347,7 +347,7 @@ async def discover_agents_from_spans(
     for name in sorted(new_agents):
         await storage.upsert_agent_metadata(
             agent_name=name,
-            description="Auto-discovered from traces",
+            description="",
             owner="",
             tags=[],
             status="active",

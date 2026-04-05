@@ -325,7 +325,7 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
             try:
                 await storage.upsert_agent_metadata(
                     agent_name=agent,
-                    description="Auto-discovered from traces",
+                    description="",
                     owner="",
                     tags=[],
                     status="active",
@@ -345,7 +345,7 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                 try:
                     await storage.upsert_server_metadata(
                         server_name=server,
-                        description="Auto-discovered from traces",
+                        description="",
                         project_id=project_id,
                     )
                     logger.debug("trace.server_auto_registered", server=server)
