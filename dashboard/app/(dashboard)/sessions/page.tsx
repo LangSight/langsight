@@ -8,7 +8,7 @@ import useSWR from "swr";
 import {
   ChevronRight, GitBranch, Clock, Zap, AlertCircle,
   Search, Filter, ChevronLeft, ChevronsLeft, ChevronsRight,
-  ArrowUp, ArrowDown, ArrowUpDown,
+  ArrowUp, ArrowDown, ArrowUpDown, RefreshCw,
 } from "lucide-react";
 import { fetcher } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
@@ -19,6 +19,14 @@ import type { AgentSession, HealthTag } from "@/lib/types";
 import { HealthTagBadge } from "@/components/health-tag-badge";
 
 const PAGE_SIZE = 20;
+
+const REFRESH_OPTIONS = [
+  { label: "Off",   ms: 0 },
+  { label: "30s",   ms: 30_000 },
+  { label: "1 min", ms: 60_000 },
+  { label: "5 min", ms: 300_000 },
+  { label: "15 min",ms: 900_000 },
+] as const;
 
 /* ── Sortable column header ───────────────────────────────── */
 type SortDir = "asc" | "desc" | null;
@@ -123,6 +131,7 @@ export default function SessionsPage() {
     const v = searchParams.get("dir");
     return (v === "asc" || v === "desc") ? v : "desc";
   });
+  const [refreshMs, setRefreshMs] = useState<number>(30_000);
 
   // Sync filter state → URL (replaces history entry so back-button works correctly)
   useEffect(() => {
@@ -142,10 +151,10 @@ export default function SessionsPage() {
   const { activeProject } = useProject();
   const p = activeProject ? `&project_id=${activeProject.id}` : "";
 
-  const { data: sessions, isLoading, error } = useSWR<AgentSession[]>(
+  const { data: sessions, isLoading, error, mutate } = useSWR<AgentSession[]>(
     `/api/agents/sessions?hours=${hours}&limit=500${p}`,
     fetcher,
-    { refreshInterval: 30_000 }
+    { refreshInterval: refreshMs || undefined }
   );
 
   // Reset to page 0 when filters change (but not on initial mount)
@@ -250,10 +259,37 @@ export default function SessionsPage() {
               {totalFailed > 0 && <span style={{ color: "hsl(var(--danger))" }}> · {totalFailed} failures</span>}
             </p>
           </div>
-          <DateRangeFilter
-            activeHours={hours}
-            onPreset={(h) => setHours(h)}
-          />
+          <div className="flex items-center gap-2">
+            {/* Manual refresh */}
+            <button
+              onClick={() => mutate()}
+              title="Refresh now"
+              className="p-1.5 rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <RefreshCw size={13} className={isLoading ? "animate-spin" : ""} />
+            </button>
+            {/* Auto-refresh picker */}
+            <div className="flex items-center gap-1 rounded-lg border border-border bg-card px-1 h-[34px]">
+              {REFRESH_OPTIONS.map((opt) => (
+                <button
+                  key={opt.ms}
+                  onClick={() => setRefreshMs(opt.ms)}
+                  className={cn(
+                    "px-2 py-1 rounded text-[11px] font-medium transition-colors",
+                    refreshMs === opt.ms
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <DateRangeFilter
+              activeHours={hours}
+              onPreset={(h) => setHours(h)}
+            />
+          </div>
         </div>
 
         {/* ── Filters ───────────────────────────────────────────── */}

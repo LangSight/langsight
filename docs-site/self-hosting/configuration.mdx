@@ -8,7 +8,11 @@ description: "Complete .langsight.yaml schema"
 ```yaml
 # .langsight.yaml
 
-# MCP servers to monitor
+# MCP servers to monitor — GLOBAL (admin view only)
+# These servers are monitored by the embedded health check loop and visible
+# to admins when no project is selected in the dashboard.
+# Per-project servers are registered via the dashboard UI or PUT /api/servers/metadata/{name}
+# and are NOT defined here. See mcp/mcp-servers-dashboard for per-project server management.
 servers:
   - name: postgres-mcp             # required — unique identifier
     transport: stdio                # stdio | sse | streamable_http

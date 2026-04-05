@@ -826,6 +826,7 @@ class ClickHouseBackend:
             FROM mcp_tool_calls
             WHERE server_name != ''
               AND span_type = 'tool_call'
+              AND server_name NOT IN ('claude-sdk', 'coordinator')
               {project_filter}
             ORDER BY server_name
             LIMIT 100
@@ -1065,7 +1066,7 @@ class ClickHouseBackend:
                 countIf(t.span_type = 'tool_call')                   AS tool_calls,
                 countIf(t.status != 'success' AND t.span_type = 'tool_call') AS failed_calls,
                 sum(t.latency_ms)                                    AS total_latency_ms,
-                groupUniqArray(t.server_name)                        AS servers_used,
+                groupUniqArrayIf(t.server_name, t.span_type = 'tool_call') AS servers_used,
                 dateDiff('millisecond', min(t.started_at), max(t.ended_at)) AS duration_ms,
                 any(sht.health_tag)                                  AS health_tag,
                 sum(t.input_tokens)                                  AS total_input_tokens,

@@ -2,14 +2,15 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import {
   Server, ChevronRight, Search, RefreshCw, ChevronDown,
-  ChevronUp, ChevronLast, AlertTriangle, X, Bot, Cpu, Loader2,
+  ChevronUp, ChevronLast, AlertTriangle, X, Bot, Cpu, Loader2, Plus, Trash2,
 } from "lucide-react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
-import { fetcher, triggerHealthCheck, getServerHistory, listServerMetadata, upsertServerMetadata, discoverServers, getDriftHistory, getDriftImpact, getBlastRadius, getServerLogs } from "@/lib/api";
+import { fetcher, triggerHealthCheck, getServerHistory, listServerMetadata, upsertServerMetadata, deleteServerMetadata, discoverServers, getDriftHistory, getDriftImpact, getBlastRadius, getServerLogs } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { cn, timeAgo, formatLatency, STATUS_BG, formatExact } from "@/lib/utils";
 import { Timestamp } from "@/components/timestamp";
@@ -82,9 +83,10 @@ function ThCell({ col, label, sortCol, sortDir, onSort, className }: { col: Sort
 }
 
 /* ── Server table (State 1) ─────────────────────────────────── */
-function ServerTable({ servers, metaByName, historyCache, invByName, onSelect, onRunCheck, checking }: {
+function ServerTable({ servers, metaByName, historyCache, invByName, onSelect, onRunCheck, checking, onRemove, projectId }: {
   servers: HealthResult[]; metaByName: Map<string, ServerMetadata>; historyCache: Map<string, HealthResult[]>;
   invByName: Map<string, InvocationStat>; onSelect: (name: string) => void; onRunCheck: () => void; checking: boolean;
+  onRemove?: (name: string) => void; projectId?: string | null;
 }) {
   const [sortCol, setSortCol] = useState<SortCol>("status");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -204,7 +206,7 @@ function ServerTable({ servers, metaByName, historyCache, invByName, onSelect, o
               const upPct = hist.length > 0 ? (hist.filter((h) => h.status === "up").length / hist.length * 100) : null;
               return (
                 <tr key={server.server_name} onClick={() => onSelect(server.server_name)}
-                  className="cursor-pointer hover:bg-accent/20 transition-colors border-b" style={{ borderColor: "hsl(var(--border))" }}>
+                  className="group cursor-pointer hover:bg-accent/20 transition-colors border-b" style={{ borderColor: "hsl(var(--border))" }}>
                   <td className="px-3 py-2.5"><StatusDot status={server.status} pulse /></td>
                   <td className="px-3 py-2.5">
                     <span className="text-[12px] font-semibold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{server.server_name}</span>
@@ -227,6 +229,17 @@ function ServerTable({ servers, metaByName, historyCache, invByName, onSelect, o
                   </td>
                   <td className="px-3 py-2.5 text-[11px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{server.tools_count ?? "—"}</td>
                   <td className="px-3 py-2.5 text-[11px] text-muted-foreground"><Timestamp iso={server.checked_at} compact /></td>
+                  <td className="px-3 py-2.5 w-8">
+                    {projectId && onRemove && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onRemove(server.server_name); }}
+                        title="Remove from this project"
+                        className="p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}
@@ -1030,6 +1043,119 @@ function InvestigatePanel({ serverName, projectId }: { serverName: string; proje
 /* ── Page ───────────────────────────────────────────────────── */
 type DetailTab = "about" | "tools" | "health" | "consumers" | "drift" | "schema" | "logs";
 
+/* ── Add Server Modal ───────────────────────────────────────── */
+function AddServerModal({ projectId, onSaved }: { projectId: string; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [transport, setTransport] = useState("stdio");
+  const [url, setUrl] = useState("");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  function reset() { setName(""); setTransport("stdio"); setUrl(""); setDescription(""); }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    if ((transport === "sse" || transport === "streamable_http") && !url.trim()) {
+      toast.error("URL is required for SSE / HTTP servers");
+      return;
+    }
+    setSaving(true);
+    try {
+      await upsertServerMetadata(name.trim(), { transport, url: url.trim(), description: description.trim() }, projectId);
+      toast.success(`Server "${name.trim()}" registered`);
+      setOpen(false);
+      reset();
+      onSaved();
+    } catch {
+      toast.error("Failed to register server");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog.Root open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
+      <Dialog.Trigger asChild>
+        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+          <Plus size={12} /> Add Server
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" />
+        <Dialog.Content
+          className="fixed z-50 rounded-xl p-6 flex flex-col gap-4"
+          style={{ top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 420, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", boxShadow: "0 16px 48px rgba(0,0,0,0.25)" }}
+          onOpenAutoFocus={() => nameRef.current?.focus()}
+        >
+          <div className="flex items-center justify-between">
+            <Dialog.Title className="text-sm font-semibold text-foreground">Register MCP Server</Dialog.Title>
+            <Dialog.Close asChild>
+              <button className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"><X size={14} /></button>
+            </Dialog.Close>
+          </div>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Name *</label>
+              <input
+                ref={nameRef}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. analytics"
+                required
+                className="input-base h-[34px] text-[13px]"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Transport</label>
+              <select
+                value={transport}
+                onChange={(e) => setTransport(e.target.value)}
+                className="input-base h-[34px] text-[13px]"
+              >
+                <option value="stdio">stdio (subprocess)</option>
+                <option value="sse">SSE (HTTP)</option>
+                <option value="streamable_http">Streamable HTTP</option>
+              </select>
+            </div>
+            {(transport === "sse" || transport === "streamable_http") && (
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">URL *</label>
+                <input
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://mcp.example.com/sse"
+                  required
+                  className="input-base h-[34px] text-[13px]"
+                />
+              </div>
+            )}
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Description</label>
+              <input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Optional description"
+                className="input-base h-[34px] text-[13px]"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Dialog.Close asChild>
+                <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">Cancel</button>
+              </Dialog.Close>
+              <button type="submit" disabled={saving || !name.trim()} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                {saving ? "Saving…" : "Register"}
+              </button>
+            </div>
+          </form>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
 export default function ServersPage() {
   const { activeProject } = useProject();
   const pid = activeProject?.id ?? null;
@@ -1112,6 +1238,18 @@ export default function ServersPage() {
 
   function selectServer(name: string) { setSelectedServer(selectedServer === name ? null : name); setActiveTab("about"); }
 
+  async function removeServer(name: string) {
+    if (!window.confirm(`Remove "${name}" from this project? It can be re-added later.`)) return;
+    try {
+      await deleteServerMetadata(name, pid);
+      if (selectedServer === name) setSelectedServer(null);
+      await Promise.all([mutate(), mutateMetadata()]);
+      toast.success(`${name} removed`);
+    } catch {
+      toast.error("Remove failed");
+    }
+  }
+
   return (
     <div className="flex flex-col page-in" style={{ height: "calc(100vh - 8rem)" }}>
       {/* Header */}
@@ -1122,6 +1260,7 @@ export default function ServersPage() {
             {isLoading ? "Loading…" : `${servers?.length ?? 0} server${(servers?.length ?? 0) !== 1 ? "s" : ""} · catalog + health`}
           </p>
         </div>
+        {pid && <AddServerModal projectId={pid} onSaved={() => { mutate(); mutateMetadata(); }} />}
       </div>
 
       {/* Content */}
@@ -1146,7 +1285,7 @@ export default function ServersPage() {
           {/* State 1: Full-width table */}
           {!selectedServer && (
             <div className="flex-1 min-h-0">
-              <ServerTable servers={servers} metaByName={metaByName} historyCache={historyCache} invByName={invByName} onSelect={selectServer} onRunCheck={runCheck} checking={checking} />
+              <ServerTable servers={servers} metaByName={metaByName} historyCache={historyCache} invByName={invByName} onSelect={selectServer} onRunCheck={runCheck} checking={checking} onRemove={pid ? removeServer : undefined} projectId={pid} />
             </div>
           )}
 

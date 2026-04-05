@@ -325,6 +325,7 @@ export interface ServerMetadata {
   owner: string;
   tags: string[];
   transport: string;
+  url: string;
   runbook_url: string;
   project_id: string | null;
   created_at: string;

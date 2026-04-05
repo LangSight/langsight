@@ -50,6 +50,7 @@ Editable metadata stored in the `server_metadata` table:
 | Owner | Team or person responsible for this server |
 | Tags | Labels for filtering and grouping (e.g. `production`, `data`) |
 | Transport | Transport type: `stdio`, `sse`, or `streamable_http` |
+| URL | SSE or HTTP endpoint — required for active health checks via Run Check |
 | Runbook URL | Link to operational runbook |
 
 All edits save on blur via `PUT /api/servers/metadata/{name}`.
@@ -115,7 +116,7 @@ async with client.mcp_session("postgres-mcp") as session:
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/servers/metadata` | List all server metadata records |
-| `PUT` | `/api/servers/metadata/{name}` | Upsert metadata for a server (description, owner, tags, transport, runbook_url) |
+| `GET` | `/api/servers/metadata` | List server metadata records — scoped to active project when `project_id` is set |
+| `PUT` | `/api/servers/metadata/{name}` | Upsert metadata for a server (description, owner, tags, transport, url, runbook_url) — registers the server in the active project's catalog |
 | `GET` | `/api/servers/{name}/tools` | List declared tools for a server |
 | `PUT` | `/api/servers/{name}/tools` | Bulk-upsert tool declarations (used by SDK; also callable directly) |

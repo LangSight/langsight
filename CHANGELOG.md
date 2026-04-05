@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Per-project MCP server catalog**: The MCP Servers page now supports project-scoped server management. When a project is active, only servers belonging to that project are shown.
+- **Auto-discovery**: Opening the MCP Servers page with a project selected automatically registers any MCP servers seen in that project's traces into the project's server catalog — no manual steps required.
+- **Add Server modal**: A **+ Add Server** button (visible when a project is active) allows manual registration of a server with name, transport, URL, and description.
+- **Remove Server**: Trash icon on hover in the server table removes a server from the project catalog.
+- **`url` field on server metadata**: SSE and `streamable_http` servers now store a `url` field used for active health checks via the Run Check button.
+
+### Changed
+- **Run Check scoping**: Run Check now only pings servers with a URL (SSE/`streamable_http`). stdio servers appear in the catalog via trace auto-discovery but cannot be actively health-checked from the API container.
+- **`.langsight.yaml` `servers:` = global only**: Servers defined in `.langsight.yaml` are global, monitored by the embedded health check loop, and visible only in the admin/no-project view. Per-project servers are managed entirely via the dashboard.
+
 ## [0.14.9] - 2026-04-04
 
 **Claude Agent SDK usage capture via `SessionContext.set_usage()`.**

@@ -51,6 +51,46 @@ async def _health_server_names(
     return set()
 
 
+async def _auto_discover_servers(
+    storage: StorageBackend,
+    project_id: str,
+) -> list[dict[str, Any]]:
+    """Auto-register MCP servers seen in traces into server_metadata.
+
+    Fetches servers from ClickHouse tool call spans and upserts any that are
+    not yet registered in Postgres server_metadata for this project.
+    Returns the up-to-date server_metadata list (avoids a second round-trip).
+    """
+    span_fn = getattr(storage, "get_distinct_span_server_names", None)
+    upsert_fn = getattr(storage, "upsert_server_metadata", None)
+    get_meta_fn = getattr(storage, "get_all_server_metadata", None)
+
+    if not (span_fn and asyncio.iscoroutinefunction(span_fn) and
+            upsert_fn and asyncio.iscoroutinefunction(upsert_fn) and
+            get_meta_fn and asyncio.iscoroutinefunction(get_meta_fn)):
+        return []
+
+    span_names, existing_meta = await asyncio.gather(
+        span_fn(project_id=project_id),
+        get_meta_fn(project_id=project_id),
+    )
+    existing_names = {m["server_name"] for m in existing_meta}
+    new_names = set(span_names) - existing_names
+    if new_names:
+        await asyncio.gather(
+            *(
+                upsert_fn(
+                    server_name=name,
+                    description="Auto-discovered from traces",
+                    project_id=project_id,
+                )
+                for name in new_names
+            )
+        )
+        return list(await get_meta_fn(project_id=project_id))
+    return list(existing_meta)
+
+
 @router.get(
     "/servers",
     response_model=list[HealthCheckResult],
@@ -63,27 +103,23 @@ async def list_servers_health(
 ) -> list[HealthCheckResult]:
     """Return the most recent health check result for each configured server.
 
-    When a project is active, only returns health for servers visible to
-    that project (based on server_metadata). Admins see all servers.
+    When a project is active:
+      - Auto-discovers servers from traces and registers them in server_metadata
+      - Only shows servers registered to this project (no global config bleed)
+    When no project is active (admin/global view):
+      - Shows servers from config.servers + any with health data in ClickHouse
     """
-    # Collect server names from three sources (union):
-    #   1. ClickHouse health data  — servers the CLI has ever checked
-    #   2. config.servers          — servers in this container's config
-    #   3. server_metadata         — servers explicitly registered via API
-    # This ensures CLI-monitored servers always appear in the dashboard,
-    # even when the API container has a different (or empty) config.
     ch_names = await _health_server_names(storage, project_id)
-    config_names = {s.name for s in config.servers}
-    meta_names = await _project_server_names(storage, project_id) if project_id else set()
 
-    all_names = ch_names | config_names | meta_names
-
-    # When project scoping is active, only show servers that have health data
-    # scoped to this project (already filtered by ClickHouse project_id above).
-    # Servers from config/metadata without any health data in this project are
-    # excluded to avoid ghost entries.
-    if project_id and ch_names:
-        all_names = ch_names | (config_names & meta_names)
+    if project_id:
+        # Auto-discover from traces → upsert into server_metadata → get full list
+        meta = await _auto_discover_servers(storage, project_id)
+        meta_names = {m["server_name"] for m in meta}
+        all_names = ch_names | meta_names
+    else:
+        # Global/admin view: include config.servers (no project filter)
+        config_names = {s.name for s in config.servers}
+        all_names = ch_names | config_names
 
     if not all_names:
         return []
@@ -94,7 +130,24 @@ async def list_servers_health(
             for name in sorted(all_names)
         )
     )
-    return [h[0] for h in histories if h]
+    results = [h[0] for h in histories if h]
+
+    # Servers registered in metadata but never health-checked → synthetic UNKNOWN
+    from datetime import UTC, datetime
+
+    from langsight.models import ServerStatus
+
+    checked_names = {r.server_name for r in results}
+    for name in sorted(all_names - checked_names):
+        results.append(
+            HealthCheckResult(
+                server_name=name,
+                status=ServerStatus.UNKNOWN,
+                checked_at=datetime.now(UTC),
+                project_id=project_id or "",
+            )
+        )
+    return results
 
 
 @router.get("/servers/invocations")
@@ -171,12 +224,43 @@ async def get_server_history(
 async def trigger_health_check(
     storage: StorageBackend = Depends(get_storage),
     config: LangSightConfig = Depends(get_config),
+    project_id: str | None = Depends(get_active_project_id),
     _: None = Depends(require_admin),
 ) -> list[HealthCheckResult]:
     """Run a health check against all configured servers immediately.
 
-    Results are persisted and returned. Schema drift detection is active.
+    When project is active: checks SSE/HTTP servers registered to that project.
+    stdio servers cannot be pinged from the API container (subprocess env missing).
+    When no project: checks global config.servers (admin/CLI-managed servers).
     """
+    if project_id:
+        from langsight.models import MCPServer as MCPServerModel, TransportType
+
+        meta_fn = getattr(storage, "get_all_server_metadata", None)
+        if not meta_fn or not asyncio.iscoroutinefunction(meta_fn):
+            return []
+        meta_rows = await meta_fn(project_id=project_id)
+        checkable: list[MCPServerModel] = []
+        for row in meta_rows:
+            transport_str = row.get("transport", "")
+            url = row.get("url", "")
+            if transport_str in ("sse", "streamable_http") and url:
+                try:
+                    checkable.append(
+                        MCPServerModel(
+                            name=row["server_name"],
+                            transport=TransportType(transport_str),
+                            url=url,
+                        )
+                    )
+                except (ValueError, KeyError):
+                    continue
+        if not checkable:
+            return []
+        checker = HealthChecker(storage=storage, project_id=project_id)
+        return await checker.check_many(checkable)
+
+    # Global/admin view — use config.servers
     if not config.servers:
         return []
     checker = HealthChecker(storage=storage)

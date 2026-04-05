@@ -119,6 +119,19 @@ These commands create and manage your local `.langsight.yaml`. Project scoping i
 
 ---
 
+## Per-project MCP server catalog
+
+Each project has its own MCP server catalog, separate from the global `.langsight.yaml` server list.
+
+- **Global servers** (`.langsight.yaml` `servers:` list) — monitored by the embedded health check loop. Visible to admins in the no-project view only.
+- **Project servers** — registered in the dashboard when a project is active, either automatically via trace auto-discovery or manually via **+ Add Server**. Visible only within that project.
+
+When you open the MCP Servers page with a project selected, any servers seen in that project's traces are automatically registered into the project's catalog. SSE and `streamable_http` servers with a URL can be actively health-checked via the **Run Check** button. stdio servers discovered from traces appear in the catalog but require `langsight monitor --once` from the CLI for active health checks.
+
+See [MCP Servers Dashboard](/mcp/mcp-servers-dashboard) for full details on the Add Server modal and per-project server management.
+
+---
+
 ## When you do not need this
 
 - Solo developer on a single-tenant instance — skip projects entirely.

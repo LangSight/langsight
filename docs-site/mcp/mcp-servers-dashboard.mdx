@@ -114,6 +114,42 @@ Which agents have called this server in the last 24 hours, derived from trace li
 
 ---
 
+## Per-project server catalog
+
+When a project is selected in the dashboard, the MCP Servers page switches to that project's server catalog — only servers belonging to the active project are shown.
+
+### Auto-discovery
+
+When you open the MCP Servers page with a project selected, LangSight automatically registers any MCP servers seen in that project's traces into the project's server catalog. No manual steps are needed — servers appear as soon as instrumented agents have run.
+
+### Add Server
+
+A **+ Add Server** button appears in the top-right corner when a project is active. Clicking it opens a modal to register a server manually:
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| Name | Yes | Unique identifier for this project |
+| Transport | Yes | `stdio`, `sse`, or `streamable_http` |
+| URL | When transport is `sse` or `streamable_http` | Used for active health checks |
+| Description | No | Free-text description |
+
+Servers registered via the modal are stored in the project's server catalog via `PUT /api/servers/metadata/{name}`.
+
+### Remove Server
+
+A trash icon appears on hover in the server table row. Clicking it removes the server from the project's catalog.
+
+### Global vs project servers
+
+| Server type | Where defined | Visibility |
+|-------------|---------------|------------|
+| Global servers | `.langsight.yaml` `servers:` list | Shown only in the admin/no-project view |
+| Project servers | Registered via UI or `PUT /api/servers/metadata/{name}` | Scoped to the active project |
+
+Servers in `.langsight.yaml` are global — they are monitored by the embedded health check loop and visible to admins when no project is selected. They are not shown inside individual project views.
+
+---
+
 ## Run Check button
 
 The **Run Check** button in the detail panel header triggers an immediate health check for the selected server. Results appear in the Health tab within a few seconds.
@@ -124,12 +160,20 @@ The embedded monitor (v0.9.0+) runs automatically every 60 seconds — the Run C
 - You are debugging a server and want immediate feedback
 
 <Note>
+  Run Check only pings servers that have a URL configured (SSE and
+  `streamable_http` transports). stdio servers are discovered from traces and
+  appear in the catalog, but cannot be actively health-checked from the API
+  container — there is no subprocess available. To health-check stdio servers,
+  use `langsight monitor --once` from the CLI on a machine where the server
+  command is installed.
+</Note>
+
+<Note>
   The Run Check button calls `POST /api/health/check` with the server config
   from the API container's `.langsight.yaml`. For OAuth-backed stdio servers
   (e.g. Atlassian via `mcp-remote`) that require a token cache at
   `~/.mcp-auth`, the check is most reliable when run via `langsight monitor
-  --once` from the CLI, since that uses the local token cache. The Run Check
-  button works for HTTP servers and non-OAuth stdio servers.
+  --once` from the CLI, since that uses the local token cache.
 </Note>
 
 ---

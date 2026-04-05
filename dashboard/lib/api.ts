@@ -333,7 +333,9 @@ export const getMonitoringTrends = (projectId?: string | null) =>
 // ── Server Metadata (Catalog) ─────────────────────────────────────────────────
 export const listServerMetadata = (projectId?: string | null) =>
   get<ServerMetadata[]>(withProject("/servers/metadata", projectId));
-export const upsertServerMetadata = (name: string, body: { description?: string; owner?: string; tags?: string[]; transport?: string; runbook_url?: string }, projectId?: string | null) =>
+export const upsertServerMetadata = (name: string, body: { description?: string; owner?: string; tags?: string[]; transport?: string; url?: string; runbook_url?: string }, projectId?: string | null) =>
   put<ServerMetadata>(withProject(`/servers/metadata/${encodeURIComponent(name)}`, projectId), body);
+export const deleteServerMetadata = (name: string, projectId?: string | null) =>
+  del(withProject(`/servers/metadata/${encodeURIComponent(name)}`, projectId));
 export const discoverServers = (projectId?: string | null) =>
   post<{ discovered: number; servers: string[] }>(withProject("/servers/discover", projectId));

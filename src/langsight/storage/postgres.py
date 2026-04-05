@@ -280,6 +280,16 @@ _DDL_STATEMENTS = [
     END $$
     """,
     """
+    DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'server_metadata' AND column_name = 'url'
+        ) THEN
+            ALTER TABLE server_metadata ADD COLUMN url TEXT NOT NULL DEFAULT '';
+        END IF;
+    END $$
+    """,
+    """
     CREATE TABLE IF NOT EXISTS server_tools (
         id           TEXT        PRIMARY KEY,
         server_name  TEXT        NOT NULL,
@@ -1334,6 +1344,7 @@ class PostgresBackend:
         owner: str = "",
         tags: list[str] | None = None,
         transport: str = "",
+        url: str = "",
         runbook_url: str = "",
         project_id: str | None = None,
     ) -> dict[str, Any]:
@@ -1346,8 +1357,9 @@ class PostgresBackend:
                     owner = $3,
                     tags = $4::jsonb,
                     transport = $5,
-                    runbook_url = $6,
-                    updated_at = $7
+                    url = $6,
+                    runbook_url = $7,
+                    updated_at = $8
                 WHERE server_name = $1 AND project_id IS NULL
                 RETURNING *
                 """,
@@ -1356,6 +1368,7 @@ class PostgresBackend:
                 owner,
                 json.dumps(tags or []),
                 transport,
+                url,
                 runbook_url,
                 now,
             )
@@ -1364,8 +1377,8 @@ class PostgresBackend:
 
             row = await self._pool.fetchrow(
                 """
-                INSERT INTO server_metadata (id, server_name, description, owner, tags, transport, runbook_url, project_id, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, NULL, $8, $8)
+                INSERT INTO server_metadata (id, server_name, description, owner, tags, transport, url, runbook_url, project_id, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, NULL, $9, $9)
                 RETURNING *
                 """,
                 uuid.uuid4().hex,
@@ -1374,6 +1387,7 @@ class PostgresBackend:
                 owner,
                 json.dumps(tags or []),
                 transport,
+                url,
                 runbook_url,
                 now,
             )
@@ -1381,13 +1395,14 @@ class PostgresBackend:
 
         row = await self._pool.fetchrow(
             """
-            INSERT INTO server_metadata (id, server_name, description, owner, tags, transport, runbook_url, project_id, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $9)
+            INSERT INTO server_metadata (id, server_name, description, owner, tags, transport, url, runbook_url, project_id, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $10)
             ON CONFLICT (server_name, project_id) DO UPDATE SET
                 description = EXCLUDED.description,
                 owner = EXCLUDED.owner,
                 tags = EXCLUDED.tags,
                 transport = EXCLUDED.transport,
+                url = EXCLUDED.url,
                 runbook_url = EXCLUDED.runbook_url,
                 updated_at = EXCLUDED.updated_at
             RETURNING *
@@ -1398,6 +1413,7 @@ class PostgresBackend:
             owner,
             json.dumps(tags or []),
             transport,
+            url,
             runbook_url,
             project_id,
             now,

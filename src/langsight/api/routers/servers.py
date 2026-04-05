@@ -20,6 +20,7 @@ class ServerMetadataUpdate(BaseModel):
     owner: str = ""
     tags: list[str] = []
     transport: str = ""
+    url: str = ""
     runbook_url: str = ""
 
 
@@ -30,6 +31,7 @@ class ServerMetadataResponse(BaseModel):
     owner: str
     tags: list[str]
     transport: str
+    url: str = ""
     runbook_url: str
     project_id: str | None
     created_at: str
@@ -83,6 +85,7 @@ async def upsert_server_metadata(
         owner=body.owner,
         tags=body.tags,
         transport=body.transport,
+        url=body.url,
         runbook_url=body.runbook_url,
         project_id=project_id,
     )
