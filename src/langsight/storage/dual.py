@@ -427,6 +427,7 @@ class DualStorage:
         owner: str = "",
         tags: list[str] | None = None,
         transport: str = "",
+        url: str = "",
         runbook_url: str = "",
         project_id: str | None = None,
     ) -> dict[str, Any]:
@@ -436,6 +437,7 @@ class DualStorage:
             owner=owner,
             tags=tags,
             transport=transport,
+            url=url,
             runbook_url=runbook_url,
             project_id=project_id,
         )

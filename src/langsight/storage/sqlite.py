@@ -439,6 +439,7 @@ class SQLiteBackend(StorageBackend):
         owner: str = "",
         tags: list[str] | None = None,
         transport: str = "",
+        url: str = "",
         runbook_url: str = "",
         project_id: str | None = None,
     ) -> dict[str, Any]:
