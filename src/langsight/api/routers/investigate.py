@@ -170,7 +170,9 @@ def _format_evidence(evidence_map: dict[str, dict[str, Any]]) -> str:
                     f"- Last call succeeded: {trace_ok}\n"
                 )
             else:
-                parts.append(f"### {server_name}\nNo health check data and no trace activity in the look-back window.\n")
+                parts.append(
+                    f"### {server_name}\nNo health check data and no trace activity in the look-back window.\n"
+                )
             continue
         avg = f"{ev['avg_latency_ms']:.0f}ms" if ev["avg_latency_ms"] else "n/a"
         parts.append(
