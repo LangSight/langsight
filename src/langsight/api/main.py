@@ -727,7 +727,6 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     )
     async def save_settings(body: InstanceSettings) -> dict[str, Any]:
         """Update global instance settings. Admin only."""
-        import os as _os
         storage = getattr(app.state, "storage", None)
 
         # Merge new provider config with existing saved config
@@ -759,7 +758,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             result = cast(dict[str, Any], await storage.get_instance_settings())
             # Mask keys in response
             if "ai_providers" in result:
-                for p, cfg in result["ai_providers"].items():
+                for _p, cfg in result["ai_providers"].items():
                     if isinstance(cfg, dict) and cfg.get("api_key"):
                         cfg["api_key"] = _mask_key(cfg["api_key"])
             return result
