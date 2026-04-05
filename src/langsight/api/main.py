@@ -48,10 +48,50 @@ from langsight.storage.factory import open_storage
 logger = structlog.get_logger()
 
 
+class AIProviderConfig(BaseModel):
+    api_key: str = ""       # empty = keep existing; "*masked*" = no-op; otherwise update
+    model: str = ""         # preferred model for RCA investigation
+    base_url: str = ""      # for ollama / custom OpenAI-compat endpoints
+
+
 class InstanceSettings(BaseModel):
     """Typed request body for PUT /api/settings."""
 
     redact_payloads: bool
+    ai_providers: dict[str, AIProviderConfig] = {}
+
+
+# Env-var names for each provider
+_PROVIDER_ENV: dict[str, str] = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai":    "OPENAI_API_KEY",
+    "gemini":    "GEMINI_API_KEY",
+    "ollama":    "OLLAMA_BASE_URL",  # ollama uses base_url not api_key
+}
+
+_MASK = "*masked*"
+
+
+def _mask_key(key: str) -> str:
+    """Return a masked version of an API key for display."""
+    if not key:
+        return ""
+    if len(key) <= 8:
+        return _MASK
+    return key[:4] + "..." + key[-4:]
+
+
+def _apply_provider_envs(providers: dict[str, Any]) -> None:
+    """Write saved provider config into os.environ so providers.py picks it up."""
+    import os as _os
+    for provider, cfg in providers.items():
+        api_key = cfg.get("api_key", "") if isinstance(cfg, dict) else getattr(cfg, "api_key", "")
+        base_url = cfg.get("base_url", "") if isinstance(cfg, dict) else getattr(cfg, "base_url", "")
+        env_key = _PROVIDER_ENV.get(provider)
+        if env_key and api_key and api_key != _MASK:
+            _os.environ[env_key] = api_key
+        if provider == "ollama" and base_url:
+            _os.environ["OLLAMA_BASE_URL"] = base_url
 
 
 try:
@@ -349,6 +389,21 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         app.state.config = config
         app.state.storage = await open_storage(app.state.config.storage)
 
+        # ── Load saved AI provider keys into os.environ ───────────────────────
+        # Keys saved via PUT /api/settings are persisted in Postgres settings_json.
+        # On startup, load them into os.environ so providers.py picks them up.
+        try:
+            if app.state.storage and hasattr(app.state.storage, "get_instance_settings"):
+                _saved = await app.state.storage.get_instance_settings()
+                _saved_providers = _saved.get("ai_providers") or {}
+                if _saved_providers:
+                    _apply_provider_envs(_saved_providers)
+                    logger.info("api.startup.ai_providers_loaded",
+                                providers=[p for p, c in _saved_providers.items()
+                                           if isinstance(c, dict) and c.get("api_key")])
+        except Exception:  # noqa: BLE001
+            pass  # non-fatal — env vars still work as fallback
+
         # ── Redis — optional, required for multi-worker mode ─────────────────
         from langsight.api.rate_limit import limiter as _rate_limiter
         from langsight.api.redis_client import close_redis_client, get_redis_client
@@ -633,10 +688,37 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     )
     async def get_settings() -> dict[str, Any]:
         """Return global instance settings. Requires authentication."""
+        import os as _os
         storage = getattr(app.state, "storage", None)
+        base: dict[str, Any] = {"redact_payloads": False}
         if storage and hasattr(storage, "get_instance_settings"):
-            return cast(dict[str, Any], await storage.get_instance_settings())
-        return {"redact_payloads": False}
+            base = cast(dict[str, Any], await storage.get_instance_settings())
+
+        # Build ai_providers status — merge DB-saved config + live env vars
+        # Keys from DB take precedence; env vars fill in gaps (e.g. set in .env)
+        saved_providers: dict[str, Any] = base.pop("ai_providers", {}) or {}
+        providers_out: dict[str, Any] = {}
+        for provider, env_key in _PROVIDER_ENV.items():
+            saved = saved_providers.get(provider, {})
+            if isinstance(saved, dict):
+                saved_key = saved.get("api_key", "")
+                saved_model = saved.get("model", "")
+                saved_url = saved.get("base_url", "")
+            else:
+                saved_key = saved_model = saved_url = ""
+            # Prefer DB-saved key; fall back to env var
+            live_key = saved_key or _os.environ.get(env_key, "")
+            live_url = saved_url or (
+                _os.environ.get("OLLAMA_BASE_URL", "") if provider == "ollama" else ""
+            )
+            providers_out[provider] = {
+                "api_key": _mask_key(live_key),       # never return raw key
+                "configured": bool(live_key or (provider == "ollama" and live_url)),
+                "model": saved_model,
+                "base_url": live_url if provider == "ollama" else "",
+            }
+        base["ai_providers"] = providers_out
+        return base
 
     @app.put(
         "/api/settings",
@@ -645,10 +727,42 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     )
     async def save_settings(body: InstanceSettings) -> dict[str, Any]:
         """Update global instance settings. Admin only."""
+        import os as _os
         storage = getattr(app.state, "storage", None)
+
+        # Merge new provider config with existing saved config
+        # (preserves keys for providers not included in the PUT body)
+        existing: dict[str, Any] = {}
+        if storage and hasattr(storage, "get_instance_settings"):
+            existing = cast(dict[str, Any], await storage.get_instance_settings())
+        saved_providers: dict[str, Any] = existing.get("ai_providers", {}) or {}
+
+        merged_providers: dict[str, Any] = dict(saved_providers)
+        for provider, cfg in body.ai_providers.items():
+            prev = saved_providers.get(provider, {})
+            prev_key = prev.get("api_key", "") if isinstance(prev, dict) else ""
+            # If client sends "*masked*" or empty, keep existing key
+            new_key = cfg.api_key if (cfg.api_key and cfg.api_key != _MASK) else prev_key
+            merged_providers[provider] = {
+                "api_key": new_key,
+                "model": cfg.model or (prev.get("model", "") if isinstance(prev, dict) else ""),
+                "base_url": cfg.base_url or (prev.get("base_url", "") if isinstance(prev, dict) else ""),
+            }
+
+        # Apply to os.environ immediately so current process uses them
+        _apply_provider_envs(merged_providers)
+
+        payload = body.model_dump()
+        payload["ai_providers"] = merged_providers
         if storage and hasattr(storage, "save_instance_settings"):
-            await storage.save_instance_settings(body.model_dump())
-            return cast(dict[str, Any], await storage.get_instance_settings())
-        return {"redact_payloads": False}
+            await storage.save_instance_settings(payload)
+            result = cast(dict[str, Any], await storage.get_instance_settings())
+            # Mask keys in response
+            if "ai_providers" in result:
+                for p, cfg in result["ai_providers"].items():
+                    if isinstance(cfg, dict) and cfg.get("api_key"):
+                        cfg["api_key"] = _mask_key(cfg["api_key"])
+            return result
+        return {"redact_payloads": False, "ai_providers": {}}
 
     return app

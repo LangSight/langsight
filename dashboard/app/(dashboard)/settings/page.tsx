@@ -9,7 +9,7 @@ import {
   Info, AlertTriangle, Eye, EyeOff, Users, UserPlus, UserX, ShieldCheck,
   DollarSign, Pencil, X, Folder, ChevronDown, ChevronRight,
   Bell, ClipboardList, Server, Settings2, AlertCircle, ShieldAlert, Palette,
-  Sun, Moon, Monitor,
+  Sun, Moon, Monitor, Bot,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { fetcher, getApiKeys, createApiKey, revokeApiKey, listUsers, inviteUser, deactivateUser, updateUserRole, listModelPricing, createModelPricing, updateModelPricing, deactivateModelPricing, listProjects, createProject, deleteProject, listProjectMembers, addProjectMember, removeProjectMember, getAlertsConfig, saveAlertsConfig, testSlackWebhook, getAuditLogs, listPreventionConfigs, savePreventionConfig, deletePreventionConfig, saveProjectPreventionConfig, listAgentMetadata } from "@/lib/api";
@@ -1359,6 +1359,188 @@ function AboutSection() {
   );
 }
 
+// ─── AI Providers Section ──────────────────────────────────────────────────────
+
+const AI_PROVIDERS = [
+  {
+    id: "anthropic",
+    label: "Anthropic",
+    keyLabel: "API Key",
+    keyPlaceholder: "sk-ant-...",
+    defaultModel: "claude-haiku-4-5-20251001",
+    models: ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-6"],
+    description: "Used for AI Root Cause Analysis in the MCP Servers page.",
+    docsUrl: "https://console.anthropic.com/account/keys",
+  },
+  {
+    id: "openai",
+    label: "OpenAI",
+    keyLabel: "API Key",
+    keyPlaceholder: "sk-...",
+    defaultModel: "gpt-4o-mini",
+    models: ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
+    description: "Alternative LLM provider for AI investigation features.",
+    docsUrl: "https://platform.openai.com/api-keys",
+  },
+  {
+    id: "gemini",
+    label: "Google Gemini",
+    keyLabel: "API Key",
+    keyPlaceholder: "AIza...",
+    defaultModel: "gemini-1.5-flash",
+    models: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
+    description: "Google Gemini for AI investigation features.",
+    docsUrl: "https://aistudio.google.com/app/apikey",
+  },
+  {
+    id: "ollama",
+    label: "Ollama",
+    keyLabel: "Base URL",
+    keyPlaceholder: "http://localhost:11434",
+    defaultModel: "llama3",
+    models: ["llama3", "mistral", "codellama", "phi3"],
+    description: "Self-hosted local LLM via Ollama. No API key required.",
+    docsUrl: "https://ollama.ai",
+  },
+] as const;
+
+type AIProviderStatus = {
+  api_key: string;
+  configured: boolean;
+  model: string;
+  base_url: string;
+};
+
+function AIProvidersSection() {
+  const { data: settings, mutate } = useSWR<{ redact_payloads: boolean; ai_providers?: Record<string, AIProviderStatus> }>(
+    "/api/settings", fetcher, { refreshInterval: 0 }
+  );
+
+  // Local draft state per provider
+  const [drafts, setDrafts] = useState<Record<string, { key: string; model: string; baseUrl: string; editing: boolean }>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+
+  function getDraft(id: string) {
+    return drafts[id] ?? { key: "", model: "", baseUrl: "", editing: false };
+  }
+
+  function setDraft(id: string, patch: Partial<{ key: string; model: string; baseUrl: string; editing: boolean }>) {
+    setDrafts(prev => ({ ...prev, [id]: { ...getDraft(id), ...patch } }));
+  }
+
+  async function saveProvider(providerId: string) {
+    const draft = getDraft(providerId);
+    const provider = AI_PROVIDERS.find(p => p.id === providerId);
+    if (!provider) return;
+    setSaving(prev => ({ ...prev, [providerId]: true }));
+    try {
+      const body: Record<string, unknown> = {
+        redact_payloads: settings?.redact_payloads ?? false,
+        ai_providers: {
+          [providerId]: {
+            api_key: draft.key || "*masked*",
+            model: draft.model || provider.defaultModel,
+            base_url: draft.baseUrl || "",
+          },
+        },
+      };
+      await fetch("/api/proxy/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      mutate();
+      setDraft(providerId, { editing: false, key: "" });
+      toast.success(`${provider.label} configured`);
+    } catch {
+      toast.error("Failed to save");
+    } finally {
+      setSaving(prev => ({ ...prev, [providerId]: false }));
+    }
+  }
+
+  return (
+    <Section title="AI Providers" description="Configure LLM provider API keys for AI-powered Root Cause Analysis and investigation features.">
+      <div className="space-y-4">
+        {AI_PROVIDERS.map(provider => {
+          const status = settings?.ai_providers?.[provider.id];
+          const draft = getDraft(provider.id);
+          const isConfigured = status?.configured ?? false;
+          const currentModel = draft.model || status?.model || provider.defaultModel;
+
+          return (
+            <div key={provider.id} className="rounded-xl border p-4" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card))" }}>
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-semibold text-foreground">{provider.label}</span>
+                    <span className={cn(
+                      "text-[9px] px-1.5 py-0.5 rounded-full border font-semibold",
+                      isConfigured
+                        ? "bg-green-500/10 border-green-500/30 text-green-400"
+                        : "bg-muted border-border text-muted-foreground"
+                    )}>
+                      {isConfigured ? "configured" : "not set"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{provider.description}</p>
+                </div>
+                <a href={provider.docsUrl} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
+                  <ExternalLink size={13} />
+                </a>
+              </div>
+
+              {/* Key/URL input */}
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type={draft.editing ? "text" : "password"}
+                      value={draft.editing ? draft.key : (isConfigured ? status?.api_key ?? "" : "")}
+                      onChange={e => setDraft(provider.id, { key: e.target.value, editing: true })}
+                      onFocus={() => setDraft(provider.id, { editing: true, key: "" })}
+                      placeholder={isConfigured ? "••••••••••••••••" : provider.keyPlaceholder}
+                      className="input-base h-[34px] text-[12px] pr-8 w-full"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setDraft(provider.id, { editing: !draft.editing })}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {draft.editing ? <EyeOff size={13} /> : <Eye size={13} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Model selector */}
+                <div className="flex gap-2 items-center">
+                  <select
+                    value={currentModel}
+                    onChange={e => setDraft(provider.id, { model: e.target.value })}
+                    className="input-base h-[30px] text-[12px] flex-1"
+                  >
+                    {provider.models.map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                    <option value={currentModel}>{currentModel}</option>
+                  </select>
+                  <button
+                    onClick={() => saveProvider(provider.id)}
+                    disabled={saving[provider.id] || (!draft.key && currentModel === (status?.model || provider.defaultModel))}
+                    className="px-3 h-[30px] rounded-lg text-[12px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors flex-shrink-0"
+                  >
+                    {saving[provider.id] ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
 // ─── General Section ───────────────────────────────────────────────────────────
 
 function GeneralSection() {
@@ -2068,11 +2250,11 @@ function AppearanceSection() {
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
-type SettingsSection = "general" | "api-keys" | "model-pricing" | "members" | "projects" | "notifications" | "prevention" | "audit-logs" | "appearance" | "instance";
+type SettingsSection = "general" | "api-keys" | "model-pricing" | "members" | "projects" | "notifications" | "prevention" | "audit-logs" | "appearance" | "instance" | "ai-providers";
 
 const VALID_SECTIONS: SettingsSection[] = [
   "general", "api-keys", "model-pricing", "members",
-  "projects", "notifications", "prevention", "audit-logs", "appearance", "instance",
+  "projects", "notifications", "prevention", "audit-logs", "appearance", "instance", "ai-providers",
 ];
 
 function isValidSection(s: string): s is SettingsSection {
@@ -2105,6 +2287,7 @@ export default function SettingsPage() {
     { id: "prevention",    label: "Prevention",     icon: ShieldAlert },
     { id: "audit-logs",    label: "Audit Logs",     icon: ClipboardList },
     { id: "appearance",    label: "Appearance",     icon: Palette },
+    { id: "ai-providers",  label: "AI Providers",   icon: Bot },
     { id: "instance",      label: "Instance",       icon: Server },
   ];
 
@@ -2143,6 +2326,12 @@ export default function SettingsPage() {
         {active === "prevention"     && <PreventionSection />}
         {active === "audit-logs"     && <AuditLogsSection />}
         {active === "appearance"     && <AppearanceSection />}
+        {active === "ai-providers"   && (
+          <div className="space-y-5 max-w-2xl">
+            <SectionHeader title="AI Providers" description="Configure LLM providers for AI-powered investigation and root cause analysis." />
+            <AIProvidersSection />
+          </div>
+        )}
         {active === "instance"       && (
           <div className="space-y-5 max-w-2xl">
             <SectionHeader title="Instance" description="Current LangSight backend configuration and version info." />
