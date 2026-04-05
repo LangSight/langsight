@@ -49,9 +49,9 @@ logger = structlog.get_logger()
 
 
 class AIProviderConfig(BaseModel):
-    api_key: str = ""       # empty = keep existing; "*masked*" = no-op; otherwise update
-    model: str = ""         # preferred model for RCA investigation
-    base_url: str = ""      # for ollama / custom OpenAI-compat endpoints
+    api_key: str = ""  # empty = keep existing; "*masked*" = no-op; otherwise update
+    model: str = ""  # preferred model for RCA investigation
+    base_url: str = ""  # for ollama / custom OpenAI-compat endpoints
 
 
 class InstanceSettings(BaseModel):
@@ -64,9 +64,9 @@ class InstanceSettings(BaseModel):
 # Env-var names for each provider
 _PROVIDER_ENV: dict[str, str] = {
     "anthropic": "ANTHROPIC_API_KEY",
-    "openai":    "OPENAI_API_KEY",
-    "gemini":    "GEMINI_API_KEY",
-    "ollama":    "OLLAMA_BASE_URL",  # ollama uses base_url not api_key
+    "openai": "OPENAI_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "ollama": "OLLAMA_BASE_URL",  # ollama uses base_url not api_key
 }
 
 _MASK = "*masked*"
@@ -84,9 +84,12 @@ def _mask_key(key: str) -> str:
 def _apply_provider_envs(providers: dict[str, Any]) -> None:
     """Write saved provider config into os.environ so providers.py picks it up."""
     import os as _os
+
     for provider, cfg in providers.items():
         api_key = cfg.get("api_key", "") if isinstance(cfg, dict) else getattr(cfg, "api_key", "")
-        base_url = cfg.get("base_url", "") if isinstance(cfg, dict) else getattr(cfg, "base_url", "")
+        base_url = (
+            cfg.get("base_url", "") if isinstance(cfg, dict) else getattr(cfg, "base_url", "")
+        )
         env_key = _PROVIDER_ENV.get(provider)
         if env_key and api_key and api_key != _MASK:
             _os.environ[env_key] = api_key
@@ -398,9 +401,14 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                 _saved_providers = _saved.get("ai_providers") or {}
                 if _saved_providers:
                     _apply_provider_envs(_saved_providers)
-                    logger.info("api.startup.ai_providers_loaded",
-                                providers=[p for p, c in _saved_providers.items()
-                                           if isinstance(c, dict) and c.get("api_key")])
+                    logger.info(
+                        "api.startup.ai_providers_loaded",
+                        providers=[
+                            p
+                            for p, c in _saved_providers.items()
+                            if isinstance(c, dict) and c.get("api_key")
+                        ],
+                    )
         except Exception:  # noqa: BLE001
             pass  # non-fatal — env vars still work as fallback
 
@@ -689,6 +697,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     async def get_settings() -> dict[str, Any]:
         """Return global instance settings. Requires authentication."""
         import os as _os
+
         storage = getattr(app.state, "storage", None)
         base: dict[str, Any] = {"redact_payloads": False}
         if storage and hasattr(storage, "get_instance_settings"):
@@ -712,7 +721,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                 _os.environ.get("OLLAMA_BASE_URL", "") if provider == "ollama" else ""
             )
             providers_out[provider] = {
-                "api_key": _mask_key(live_key),       # never return raw key
+                "api_key": _mask_key(live_key),  # never return raw key
                 "configured": bool(live_key or (provider == "ollama" and live_url)),
                 "model": saved_model,
                 "base_url": live_url if provider == "ollama" else "",
@@ -745,7 +754,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             merged_providers[provider] = {
                 "api_key": new_key,
                 "model": cfg.model or (prev.get("model", "") if isinstance(prev, dict) else ""),
-                "base_url": cfg.base_url or (prev.get("base_url", "") if isinstance(prev, dict) else ""),
+                "base_url": cfg.base_url
+                or (prev.get("base_url", "") if isinstance(prev, dict) else ""),
             }
 
         # Apply to os.environ immediately so current process uses them
