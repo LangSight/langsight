@@ -207,7 +207,7 @@ class TestAutoDiscoverServers:
         await _auto_discover_servers(storage, project_id="proj-x")
 
         kwargs = storage.upsert_server_metadata.call_args[1]
-        assert kwargs["description"] == "Auto-discovered from traces"
+        assert kwargs["description"] == ""  # empty — no noisy auto-discovered default
 
     @pytest.mark.asyncio
     async def test_returns_refreshed_metadata_after_upsert(self) -> None:
