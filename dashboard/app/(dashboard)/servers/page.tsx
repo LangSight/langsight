@@ -1002,8 +1002,14 @@ function InvestigatePanel({ serverName, projectId }: { serverName: string; proje
   const [report, setReport] = useState<string | null>(null);
   const [providerUsed, setProviderUsed] = useState<string>("");
   const [window, setWindow] = useState<"1" | "6" | "24">("1");
-  const [provider, setProvider] = useState<"anthropic" | "openai" | "ollama">("anthropic");
   const [error, setError] = useState<string | null>(null);
+
+  // Detect which provider is configured — use the first one that's set up
+  const { data: aiSettings } = useSWR<{ ai_providers?: Record<string, { configured: boolean }> }>(
+    "/api/settings", fetcher, { refreshInterval: 0 }
+  );
+  const configuredProvider = Object.entries(aiSettings?.ai_providers ?? {})
+    .find(([, v]) => v.configured)?.[0] ?? "anthropic";
 
   async function runInvestigation() {
     setLoading(true);
@@ -1016,7 +1022,7 @@ function InvestigatePanel({ serverName, projectId }: { serverName: string; proje
         body: JSON.stringify({
           server_names: [serverName],
           window_hours: parseFloat(window),
-          provider,
+          provider: configuredProvider,
           project_id: projectId,
         }),
       });
@@ -1049,17 +1055,8 @@ function InvestigatePanel({ serverName, projectId }: { serverName: string; proje
             )}
           >{w}h</button>
         ))}
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide ml-3">Provider</span>
-        {(["anthropic", "openai", "ollama"] as const).map(p => (
-          <button
-            key={p}
-            onClick={() => setProvider(p)}
-            className={cn(
-              "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
-              provider === p ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-accent/40",
-            )}
-          >{p}</button>
-        ))}
+        {/* Show which provider will be used — no manual picker */}
+        <span className="text-[10px] text-muted-foreground ml-3">via <span className="text-foreground font-medium">{configuredProvider}</span></span>
         <button
           onClick={runInvestigation}
           disabled={loading}
@@ -1096,7 +1093,7 @@ function InvestigatePanel({ serverName, projectId }: { serverName: string; proje
       {!report && !loading && !error && (
         <p className="text-[11px] text-muted-foreground">
           Click <strong>Run Investigation</strong> to analyse health history and get an AI-generated root cause report.
-          {" "}Configure <code className="bg-muted px-1 rounded text-[10px]">ANTHROPIC_API_KEY</code> for Claude-powered analysis.
+          {" "}Add an API key in <a href="/settings#ai-providers" className="underline" style={{ color: "hsl(var(--primary))" }}>Settings → AI Providers</a> for AI-powered analysis.
         </p>
       )}
     </div>
