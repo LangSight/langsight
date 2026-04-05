@@ -1415,16 +1415,14 @@ function AIProvidersSection() {
   const { data: settings, mutate } = useSWR<{ redact_payloads: boolean; ai_providers?: Record<string, AIProviderStatus> }>(
     "/api/settings", fetcher, { refreshInterval: 0 }
   );
-
-  // Local draft state per provider
-  const [drafts, setDrafts] = useState<Record<string, { key: string; model: string; baseUrl: string; editing: boolean }>>({});
-  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, { key: string; model: string; baseUrl: string }>>({});
+  const [saving, setSaving] = useState<string | null>(null);
 
   function getDraft(id: string) {
-    return drafts[id] ?? { key: "", model: "", baseUrl: "", editing: false };
+    return drafts[id] ?? { key: "", model: "", baseUrl: "" };
   }
-
-  function setDraft(id: string, patch: Partial<{ key: string; model: string; baseUrl: string; editing: boolean }>) {
+  function setDraft(id: string, patch: Partial<{ key: string; model: string; baseUrl: string }>) {
     setDrafts(prev => ({ ...prev, [id]: { ...getDraft(id), ...patch } }));
   }
 
@@ -1432,107 +1430,116 @@ function AIProvidersSection() {
     const draft = getDraft(providerId);
     const provider = AI_PROVIDERS.find(p => p.id === providerId);
     if (!provider) return;
-    setSaving(prev => ({ ...prev, [providerId]: true }));
+    setSaving(providerId);
     try {
-      const body: Record<string, unknown> = {
-        redact_payloads: settings?.redact_payloads ?? false,
-        ai_providers: {
-          [providerId]: {
-            api_key: draft.key || "*masked*",
-            model: draft.model || provider.defaultModel,
-            base_url: draft.baseUrl || "",
-          },
-        },
-      };
       await fetch("/api/proxy/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          redact_payloads: settings?.redact_payloads ?? false,
+          ai_providers: {
+            [providerId]: {
+              api_key: draft.key || "*masked*",
+              model: draft.model || provider.defaultModel,
+              base_url: draft.baseUrl || "",
+            },
+          },
+        }),
       });
       mutate();
-      setDraft(providerId, { editing: false, key: "" });
-      toast.success(`${provider.label} configured`);
+      setDraft(providerId, { key: "" });
+      setExpanded(null);
+      toast.success(`${provider.label} saved`);
     } catch {
       toast.error("Failed to save");
     } finally {
-      setSaving(prev => ({ ...prev, [providerId]: false }));
+      setSaving(null);
     }
   }
 
   return (
     <Section title="AI Providers" description="Configure LLM provider API keys for AI-powered Root Cause Analysis and investigation features.">
-      <div className="space-y-4">
-        {AI_PROVIDERS.map(provider => {
+      <div className="rounded-xl border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
+        {AI_PROVIDERS.map((provider, idx) => {
           const status = settings?.ai_providers?.[provider.id];
-          const draft = getDraft(provider.id);
           const isConfigured = status?.configured ?? false;
+          const isOpen = expanded === provider.id;
+          const draft = getDraft(provider.id);
           const currentModel = draft.model || status?.model || provider.defaultModel;
+          const isLast = idx === AI_PROVIDERS.length - 1;
 
           return (
-            <div key={provider.id} className="rounded-xl border p-4" style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--card))" }}>
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[13px] font-semibold text-foreground">{provider.label}</span>
-                    <span className={cn(
-                      "text-[9px] px-1.5 py-0.5 rounded-full border font-semibold",
-                      isConfigured
-                        ? "bg-green-500/10 border-green-500/30 text-green-400"
-                        : "bg-muted border-border text-muted-foreground"
-                    )}>
-                      {isConfigured ? "configured" : "not set"}
+            <div key={provider.id} style={{ borderBottom: isLast ? "none" : "1px solid hsl(var(--border))" }}>
+              {/* Row — always visible */}
+              <button
+                onClick={() => setExpanded(isOpen ? null : provider.id)}
+                className="w-full flex items-center justify-between px-4 py-3 hover:bg-accent/30 transition-colors text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <span className={cn(
+                    "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                    isConfigured ? "bg-green-400" : "bg-muted-foreground opacity-30"
+                  )} />
+                  <span className="text-[13px] font-medium text-foreground">{provider.label}</span>
+                  {isConfigured && status?.model && (
+                    <span className="text-[10px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>
+                      {status.model}
                     </span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">{provider.description}</p>
+                  )}
                 </div>
-                <a href={provider.docsUrl} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
-                  <ExternalLink size={13} />
-                </a>
-              </div>
+                <div className="flex items-center gap-2">
+                  <span className={cn(
+                    "text-[9px] px-1.5 py-0.5 rounded-full border font-semibold",
+                    isConfigured
+                      ? "bg-green-500/10 border-green-500/30 text-green-400"
+                      : "bg-muted border-border text-muted-foreground"
+                  )}>
+                    {isConfigured ? "configured" : "not set"}
+                  </span>
+                  {isOpen ? <ChevronDown size={13} className="text-muted-foreground" /> : <ChevronRight size={13} className="text-muted-foreground" />}
+                </div>
+              </button>
 
-              {/* Key/URL input */}
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      type={draft.editing ? "text" : "password"}
-                      value={draft.editing ? draft.key : (isConfigured ? status?.api_key ?? "" : "")}
-                      onChange={e => setDraft(provider.id, { key: e.target.value, editing: true })}
-                      onFocus={() => setDraft(provider.id, { editing: true, key: "" })}
-                      placeholder={isConfigured ? "••••••••••••••••" : provider.keyPlaceholder}
-                      className="input-base h-[34px] text-[12px] pr-8 w-full"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setDraft(provider.id, { editing: !draft.editing })}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              {/* Expanded config panel */}
+              {isOpen && (
+                <div className="px-4 pb-4 pt-1 space-y-3" style={{ background: "hsl(var(--card-raised))" }}>
+                  <p className="text-[11px] text-muted-foreground">{provider.description}
+                    <a href={provider.docsUrl} target="_blank" rel="noreferrer" className="ml-1.5 inline-flex items-center gap-0.5 hover:underline" style={{ color: "hsl(var(--primary))" }}>
+                      Get key <ExternalLink size={10} />
+                    </a>
+                  </p>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="password"
+                        value={draft.key}
+                        onChange={e => setDraft(provider.id, { key: e.target.value })}
+                        placeholder={isConfigured ? "Enter new key to update…" : provider.keyPlaceholder}
+                        className="input-base h-[32px] text-[12px] w-full"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <select
+                      value={currentModel}
+                      onChange={e => setDraft(provider.id, { model: e.target.value })}
+                      className="input-base h-[32px] text-[12px]"
+                      style={{ minWidth: 160 }}
                     >
-                      {draft.editing ? <EyeOff size={13} /> : <Eye size={13} />}
+                      {provider.models.map(m => <option key={m} value={m}>{m}</option>)}
+                      {!(provider.models as readonly string[]).includes(currentModel) && (
+                        <option value={currentModel}>{currentModel}</option>
+                      )}
+                    </select>
+                    <button
+                      onClick={() => saveProvider(provider.id)}
+                      disabled={saving === provider.id || (!draft.key && currentModel === (status?.model || provider.defaultModel))}
+                      className="px-3 h-[32px] rounded-lg text-[12px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors flex-shrink-0"
+                    >
+                      {saving === provider.id ? "Saving…" : "Save"}
                     </button>
                   </div>
                 </div>
-
-                {/* Model selector */}
-                <div className="flex gap-2 items-center">
-                  <select
-                    value={currentModel}
-                    onChange={e => setDraft(provider.id, { model: e.target.value })}
-                    className="input-base h-[30px] text-[12px] flex-1"
-                  >
-                    {provider.models.map(m => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                    <option value={currentModel}>{currentModel}</option>
-                  </select>
-                  <button
-                    onClick={() => saveProvider(provider.id)}
-                    disabled={saving[provider.id] || (!draft.key && currentModel === (status?.model || provider.defaultModel))}
-                    className="px-3 h-[30px] rounded-lg text-[12px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors flex-shrink-0"
-                  >
-                    {saving[provider.id] ? "Saving…" : "Save"}
-                  </button>
-                </div>
-              </div>
+              )}
             </div>
           );
         })}
