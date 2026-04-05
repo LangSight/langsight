@@ -65,9 +65,14 @@ async def _auto_discover_servers(
     upsert_fn = getattr(storage, "upsert_server_metadata", None)
     get_meta_fn = getattr(storage, "get_all_server_metadata", None)
 
-    if not (span_fn and asyncio.iscoroutinefunction(span_fn) and
-            upsert_fn and asyncio.iscoroutinefunction(upsert_fn) and
-            get_meta_fn and asyncio.iscoroutinefunction(get_meta_fn)):
+    if not (
+        span_fn
+        and asyncio.iscoroutinefunction(span_fn)
+        and upsert_fn
+        and asyncio.iscoroutinefunction(upsert_fn)
+        and get_meta_fn
+        and asyncio.iscoroutinefunction(get_meta_fn)
+    ):
         return []
 
     span_names, existing_meta = await asyncio.gather(
