@@ -159,7 +159,12 @@ function ServerTable({ servers, metaByName, historyCache, invByName, onSelect, o
 
   const sorted = useMemo(() => {
     const statusOrder: Record<string, number> = { down: 0, degraded: 1, stale: 2, up: 3 };
-    const base = servers.filter((s) => (statusFilter === "all" || s.status === statusFilter) && (!search || s.server_name.toLowerCase().includes(search.toLowerCase())));
+    const base = servers.filter((s) => {
+      const matchesFilter = statusFilter === "all"
+        || s.status === statusFilter
+        || (statusFilter === "up" && s.status === "unknown"); // unknown = healthy stdio
+      return matchesFilter && (!search || s.server_name.toLowerCase().includes(search.toLowerCase()));
+    });
     return [...base].sort((a, b) => {
       let diff = 0;
       if (sortCol === "name") diff = a.server_name.localeCompare(b.server_name);
@@ -326,7 +331,7 @@ function GroupedSidebar({ servers, metaByName, selectedServer, onSelect, search,
 
   const groups = useMemo(() => {
     const f = search ? servers.filter((s) => s.server_name.toLowerCase().includes(search.toLowerCase())) : servers;
-    return { down: f.filter((s) => s.status === "down"), degraded: f.filter((s) => s.status === "degraded"), up: f.filter((s) => s.status === "up" || s.status === "stale") };
+    return { down: f.filter((s) => s.status === "down"), degraded: f.filter((s) => s.status === "degraded"), up: f.filter((s) => s.status === "up" || s.status === "stale" || s.status === "unknown") };
   }, [servers, search]);
 
   function Group({ name, items, label }: { name: string; items: HealthResult[]; label: string }) {
@@ -1370,7 +1375,7 @@ export default function ServersPage() {
                       <div className="flex items-center gap-2 mt-0.5">
                         <StatusDot status={selected.status} pulse />
                         <span className="text-[11px]" style={{ color: STATUS_COLOR[selected.status] }}>{selected.status}</span>
-                        <span className="text-[10px] text-muted-foreground">· {selected.tools_count ?? 0} tools · last checked <Timestamp iso={selected.checked_at} compact /></span>
+                        <span className="text-[10px] text-muted-foreground">· {selected.tools_count ?? 0} tools{selected.status !== "unknown" && <> · last checked <Timestamp iso={selected.checked_at} compact /></>}</span>
                         {selected.latency_ms && <span className="text-[10px] font-semibold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{Math.round(selected.latency_ms)}ms</span>}
                       </div>
                     </div>
@@ -1406,7 +1411,7 @@ export default function ServersPage() {
                         <div><p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Description</p><EditableTextarea value={meta?.description ?? ""} onSave={(v) => save("description", v)} placeholder="What does this server do? Click to add..." /></div>
                         <div><p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Owner</p><EditableText value={meta?.owner ?? ""} onSave={(v) => save("owner", v)} placeholder="Team or person name" /></div>
                         <div><p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Tags</p><EditableTags tags={meta?.tags ?? []} onSave={(v) => save("tags", v)} /></div>
-                        <div><p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Transport</p><EditableText value={meta?.transport ?? ""} onSave={(v) => save("transport", v)} placeholder="stdio / sse / streamable_http" /></div>
+                        <div><p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Transport</p><EditableText value={meta?.transport ?? ""} onSave={(v) => save("transport", v)} placeholder="stdio, sse, or streamable_http" /></div>
                         <div><p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Runbook / Docs</p><EditableUrl value={meta?.runbook_url ?? ""} onSave={(v) => save("runbook_url", v)} placeholder="https://..." /></div>
                         {/* Activity from traces */}
                         {(() => {
