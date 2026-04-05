@@ -234,7 +234,8 @@ async def trigger_health_check(
     When no project: checks global config.servers (admin/CLI-managed servers).
     """
     if project_id:
-        from langsight.models import MCPServer as MCPServerModel, TransportType
+        from langsight.models import MCPServer as MCPServerModel
+        from langsight.models import TransportType
 
         meta_fn = getattr(storage, "get_all_server_metadata", None)
         if not meta_fn or not asyncio.iscoroutinefunction(meta_fn):
