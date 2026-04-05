@@ -574,10 +574,94 @@ def _patch_claude_sdk() -> None:
         return
 
     try:
-        import claude_agent_sdk as _csdk  # noqa: F401 — import check only
+        import claude_agent_sdk as _csdk
         from claude_agent_sdk import ClaudeAgentOptions
     except ImportError:
         return
+
+    # ── Patch query() to capture ResultMessage (tokens + cost) ──────────────
+    # ResultMessage has: total_cost_usd, usage{input_tokens, output_tokens,
+    # cache_read_input_tokens, cache_creation_input_tokens}, num_turns.
+    # This is the only place the SDK exposes per-session token counts.
+    _orig_query = _csdk.query
+    _originals["claude_sdk_query"] = _orig_query
+
+    async def _patched_query(*args: Any, **kw: Any) -> Any:
+        async for message in _orig_query(*args, **kw):
+            yield message
+            # Intercept ResultMessage to emit a token-usage span
+            try:
+                from claude_agent_sdk import ResultMessage as _ResultMessage
+            except ImportError:
+                continue
+            if not isinstance(message, _ResultMessage):
+                continue
+            if _global_client is None:
+                continue
+            try:
+                from datetime import UTC
+                from datetime import datetime as _dt2
+
+                usage = getattr(message, "usage", None) or {}
+                input_tokens = usage.get("input_tokens") or usage.get("inputTokens")
+                output_tokens = usage.get("output_tokens") or usage.get("outputTokens")
+                cache_read = usage.get("cache_read_input_tokens") or usage.get("cacheReadInputTokens")
+                cache_creation = usage.get("cache_creation_input_tokens") or usage.get("cacheCreationInputTokens")
+                cost_usd = getattr(message, "total_cost_usd", None)
+                sid = getattr(message, "session_id", None) or _session_ctx.get()
+                agent = _agent_ctx.get() or "coordinator"
+                pid = getattr(_global_client, "_project_id", None) or None
+
+                if input_tokens or output_tokens or cost_usd:
+                    now = _dt2.now(UTC)
+                    span = ToolCallSpan.record(
+                        server_name="claude-sdk",
+                        tool_name="llm",
+                        started_at=now,
+                        status=ToolCallStatus.SUCCESS,
+                        session_id=sid,
+                        agent_name=agent,
+                        span_type="llm",
+                        input_tokens=int(input_tokens) if input_tokens is not None else None,
+                        output_tokens=int(output_tokens) if output_tokens is not None else None,
+                        cache_read_tokens=int(cache_read) if cache_read is not None else None,
+                        cache_creation_tokens=int(cache_creation) if cache_creation is not None else None,
+                        model_id=getattr(message, "model", None) or "",
+                        project_id=pid,
+                        lineage_provenance="explicit",
+                        schema_version="1.0",
+                    )
+                    # store cost as metadata in output_json for now
+                    if cost_usd is not None:
+                        import json as _j
+                        span = span.model_copy(update={"output_json": _j.dumps({"cost_usd": cost_usd})})
+                    await _global_client._post_spans([span])
+            except Exception:  # noqa: BLE001
+                pass
+
+    # Patch every location the query function may be bound — users import it via
+    # different paths (from claude_agent_sdk import query  vs  csdk.query(...))
+    # and Python binds the name at import time so we must patch all locations.
+    _csdk.query = _patched_query
+    try:
+        import claude_agent_sdk.query as _qmod
+        _originals["claude_sdk_query_mod"] = _qmod.query
+        _qmod.query = _patched_query
+    except (ImportError, AttributeError):
+        pass
+    try:
+        import sys as _sys
+        # Patch already-imported modules that bound the original function
+        for _mod in list(_sys.modules.values()):
+            if _mod is None:
+                continue
+            try:
+                if getattr(_mod, "query", None) is _orig_query:
+                    setattr(_mod, "query", _patched_query)
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception:  # noqa: BLE001
+        pass
 
     orig_init = ClaudeAgentOptions.__init__
     _originals["claude_sdk_init"] = orig_init
@@ -1239,6 +1323,7 @@ class SessionContext(str):
         object.__setattr__(self, "_started_at", started_at or datetime.now(UTC))
         object.__setattr__(self, "_input_text", input_text)
         object.__setattr__(self, "_output_text", None)
+        object.__setattr__(self, "_usage", None)
         object.__setattr__(self, "_session_id", session_id)
 
     def set_output(self, output: str) -> None:
@@ -1251,6 +1336,41 @@ class SessionContext(str):
                 sess.set_output(result)
         """
         object.__setattr__(self, "_output_text", str(output))
+
+    def set_usage(
+        self,
+        *,
+        cost_usd: float | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        cache_read_tokens: int | None = None,
+        cache_creation_tokens: int | None = None,
+        model_id: str | None = None,
+    ) -> None:
+        """Record token usage and cost for the session.
+
+        Call this when you receive a ``ResultMessage`` from the Claude Agent SDK::
+
+            async with langsight.session(agent_name="coordinator") as sess:
+                async for msg in query(prompt=prompt, options=options):
+                    if isinstance(msg, ResultMessage):
+                        usage = msg.usage or {}
+                        sess.set_usage(
+                            cost_usd=msg.total_cost_usd,
+                            input_tokens=usage.get("input_tokens"),
+                            output_tokens=usage.get("output_tokens"),
+                            cache_read_tokens=usage.get("cache_read_input_tokens"),
+                            cache_creation_tokens=usage.get("cache_creation_input_tokens"),
+                        )
+        """
+        object.__setattr__(self, "_usage", {
+            "cost_usd": cost_usd,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cache_read_tokens": cache_read_tokens,
+            "cache_creation_tokens": cache_creation_tokens,
+            "model_id": model_id,
+        })
 
     def record_user_message(self, text: str) -> None:
         """Record a human message mid-session — HITL, clarification, approval.
@@ -1401,6 +1521,38 @@ async def session(
             # No input or output at all — nothing to emit (keep previous behaviour
             # of not cluttering ClickHouse with empty session spans).
             pass
+
+        # Emit token usage span if set_usage() was called
+        _usage = object.__getattribute__(ctx, "_usage")
+        if _usage and _global_client is not None:
+            try:
+                import json as _j2
+                from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+
+                _proj = getattr(_global_client, "_project_id", None) or None
+                _cost = _usage.get("cost_usd")
+                usage_span = ToolCallSpan.record(
+                    server_name="claude-sdk",
+                    tool_name="usage",
+                    started_at=started_at,
+                    status=ToolCallStatus.SUCCESS,
+                    agent_name=agent_name or "coordinator",
+                    session_id=sid,
+                    trace_id=trace_id,
+                    span_type="agent",
+                    input_tokens=_usage.get("input_tokens"),
+                    output_tokens=_usage.get("output_tokens"),
+                    cache_read_tokens=_usage.get("cache_read_tokens"),
+                    cache_creation_tokens=_usage.get("cache_creation_tokens"),
+                    model_id=_usage.get("model_id") or "",
+                    output_result=_j2.dumps({"cost_usd": _cost}) if _cost is not None else None,
+                    project_id=_proj,
+                    lineage_provenance="explicit",
+                    schema_version="1.0",
+                )
+                _global_client.buffer_span(usage_span)
+            except Exception:  # noqa: BLE001
+                pass
 
         if _global_client is not None:
             try:

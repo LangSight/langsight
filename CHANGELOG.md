@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.14.9] - 2026-04-04
+
+**Claude Agent SDK usage capture via `SessionContext.set_usage()`.**
+
+### Added
+- **`SessionContext.set_usage()`** (`src/langsight/sdk/auto_patch.py`): New method on `SessionContext` that captures `cost_usd`, `input_tokens`, `output_tokens`, `cache_read_tokens`, and `cache_creation_tokens` directly from a `ResultMessage` returned by the Claude Agent SDK. A usage span is emitted in the session `finally` block, so token counts and cost appear in the dashboard even when `wrap_llm()` never fires. This solves the critical gap for Claude Agent SDK users: the SDK manages LLM calls internally, meaning the `wrap_llm()` hook is never triggered — `set_usage()` is the correct instrumentation point, following the same approach used by Langfuse.
+
+### Fixed
+- **Removed non-functional `_patched_query` wrapper** (`src/langsight/sdk/auto_patch.py`): Debug-only wrapper code that attempted to monkey-patch query execution but did not work due to Python import binding semantics has been removed. The wrapper captured a module-level reference at import time, so the patch target was never the function actually called at runtime. Removing it eliminates dead code and prevents future confusion.
+
 ## [0.14.8] - 2026-04-04
 
 **Sub-agent attribution fix + NULL token coercion to prevent dashboard HTTP 500.**
