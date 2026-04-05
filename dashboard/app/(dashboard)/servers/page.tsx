@@ -204,6 +204,8 @@ function ServerTable({ servers, metaByName, historyCache, invByName, onSelect, o
               const meta = metaByName.get(server.server_name);
               const hist = historyCache.get(server.server_name) ?? [];
               const upPct = hist.length > 0 ? (hist.filter((h) => h.status === "up").length / hist.length * 100) : null;
+              const inv = invByName.get(server.server_name);
+              const isUnknown = server.status === "unknown";
               return (
                 <tr key={server.server_name} onClick={() => onSelect(server.server_name)}
                   className="group cursor-pointer hover:bg-accent/20 transition-colors border-b" style={{ borderColor: "hsl(var(--border))" }}>
@@ -220,15 +222,28 @@ function ServerTable({ servers, metaByName, historyCache, invByName, onSelect, o
                     </div>
                   </td>
                   <td className="px-3 py-2.5">
-                    <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full border font-semibold", STATUS_BG[server.status as keyof typeof STATUS_BG])}>{server.status}</span>
+                    {isUnknown && inv?.last_called_at ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full border font-semibold self-start", STATUS_BG[server.status as keyof typeof STATUS_BG])}>stdio</span>
+                        <span className="text-[9px] text-muted-foreground">last seen <Timestamp iso={inv.last_called_at} compact /></span>
+                      </div>
+                    ) : (
+                      <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full border font-semibold", STATUS_BG[server.status as keyof typeof STATUS_BG])}>{server.status}</span>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 text-[11px] font-semibold text-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{formatLatency(server.latency_ms)}</td>
                   <td className="px-3 py-2.5"><SparkLine history={hist} /></td>
                   <td className="px-3 py-2.5">
                     {upPct !== null ? <span className="text-[11px] font-semibold" style={{ fontFamily: "var(--font-geist-mono)", color: upPct > 95 ? "#22c55e" : upPct > 80 ? "#eab308" : "#ef4444" }}>{upPct.toFixed(0)}%</span> : <span className="text-[11px] text-muted-foreground">—</span>}
                   </td>
-                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>{server.tools_count ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground"><Timestamp iso={server.checked_at} compact /></td>
+                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground" style={{ fontFamily: "var(--font-geist-mono)" }}>
+                    {isUnknown && inv ? inv.total_calls.toLocaleString() : (server.tools_count ?? "—")}
+                  </td>
+                  <td className="px-3 py-2.5 text-[11px] text-muted-foreground">
+                    {isUnknown && inv?.last_called_at
+                      ? <Timestamp iso={inv.last_called_at} compact />
+                      : <Timestamp iso={server.checked_at} compact />}
+                  </td>
                   <td className="px-3 py-2.5 w-8">
                     {projectId && onRemove && (
                       <button
