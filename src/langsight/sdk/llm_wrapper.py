@@ -369,6 +369,24 @@ def _process_openai_response(
     status, error = _check_finish_reason(response, status, error, sdk="openai")
     finish_reason = _extract_finish_reason(response, sdk="openai")
 
+    # Extract prompt (llm_input) and completion (llm_output) unless redacted
+    llm_input: str | None = None
+    llm_output: str | None = None
+    if not redact:
+        messages = kwargs.get("messages")
+        if messages:
+            user_msgs = [m for m in messages if isinstance(m, dict) and m.get("role") == "user"]
+            if user_msgs:
+                content = user_msgs[-1].get("content", "")
+                llm_input = str(content)[:4000] if content else None
+
+        if response is not None:
+            choices = getattr(response, "choices", []) or []
+            if choices:
+                msg = getattr(choices[0], "message", None)
+                if msg:
+                    llm_output = str(getattr(msg, "content", "") or "")[:4000]
+
     # LLM generation span
     llm_span = ToolCallSpan.record(
         server_name="openai",
@@ -385,6 +403,8 @@ def _process_openai_response(
         output_tokens=output_tokens,
         model_id=model,
         finish_reason=finish_reason,
+        llm_input=llm_input,
+        llm_output=llm_output,
     )
     spans.append(llm_span)
 
@@ -553,6 +573,42 @@ def _process_anthropic_response(
     status, error = _check_finish_reason(response, status, error, sdk="anthropic")
     finish_reason = _extract_finish_reason(response, sdk="anthropic")
 
+    # Extract prompt (llm_input) and completion (llm_output) unless redacted
+    llm_input: str | None = None
+    llm_output: str | None = None
+    if not redact:
+        # Prompt — extract from kwargs["messages"] (Anthropic format)
+        messages = kwargs.get("messages")
+        if messages:
+            # Take last user/human message for brevity
+            user_msgs = [
+                m for m in messages if isinstance(m, dict) and m.get("role") in ("user", "human")
+            ]
+            if user_msgs:
+                content = user_msgs[-1].get("content", "")
+                if isinstance(content, list):
+                    # Multi-modal: extract text blocks
+                    text_parts = [
+                        b.get("text", "")
+                        for b in content
+                        if isinstance(b, dict) and b.get("type") == "text"
+                    ]
+                    llm_input = "\n".join(text_parts) if text_parts else str(content)
+                else:
+                    llm_input = str(content) if content else None
+            if llm_input:
+                llm_input = llm_input[:4000]
+
+        # Completion — extract text from response content blocks
+        if response is not None:
+            resp_content = getattr(response, "content", None) or []
+            text_parts = []
+            for block in resp_content:
+                if getattr(block, "type", None) == "text":
+                    text_parts.append(getattr(block, "text", ""))
+            if text_parts:
+                llm_output = "\n".join(text_parts)[:4000]
+
     # LLM generation span
     llm_span = ToolCallSpan.record(
         server_name="anthropic",
@@ -571,6 +627,8 @@ def _process_anthropic_response(
         finish_reason=finish_reason,
         cache_read_tokens=cache_read_tokens,
         cache_creation_tokens=cache_creation_tokens,
+        llm_input=llm_input,
+        llm_output=llm_output,
     )
     spans.append(llm_span)
 
@@ -719,6 +777,30 @@ def _process_gemini_response(
     status, error = _check_finish_reason(response, status, error, sdk="gemini")
     finish_reason = _extract_finish_reason(response, sdk="gemini")
 
+    # Extract prompt (llm_input) and completion (llm_output) unless redacted
+    llm_input: str | None = None
+    llm_output: str | None = None
+    if not redact:
+        # Gemini: kwargs may have "contents" (list of Content objects or dicts)
+        contents = kwargs.get("contents")
+        if contents:
+            if isinstance(contents, str):
+                llm_input = contents[:4000]
+            elif isinstance(contents, list) and contents:
+                last = contents[-1]
+                if isinstance(last, str):
+                    llm_input = last[:4000]
+                elif isinstance(last, dict):
+                    llm_input = str(last.get("parts", last))[:4000]
+                else:
+                    # Content object
+                    llm_input = str(getattr(last, "parts", last))[:4000]
+
+        if response is not None:
+            text = getattr(response, "text", None)
+            if text:
+                llm_output = str(text)[:4000]
+
     # LLM generation span
     llm_span = ToolCallSpan.record(
         server_name="gemini",
@@ -735,6 +817,8 @@ def _process_gemini_response(
         output_tokens=output_tokens,
         model_id=model,
         finish_reason=finish_reason,
+        llm_input=llm_input,
+        llm_output=llm_output,
     )
     spans.append(llm_span)
 

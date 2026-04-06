@@ -340,6 +340,10 @@ class LangSightCrewAIEventListener:
         self._crew_started_at = event.timestamp
         self._crew_name = getattr(event, "crew_name", None) or "crew"
 
+        # Capture crew inputs as human prompt (llm_input)
+        inputs = getattr(event, "inputs", None)
+        self._crew_inputs = str(inputs)[:4000] if inputs else None
+
         # Auto-generate session_id if none is active
         session = self._get_session_id()
         if not session:
@@ -376,8 +380,11 @@ class LangSightCrewAIEventListener:
             agent_name=crew_name,
             output_result=output_str,
             input_tokens=total_tokens if total_tokens else None,
+            llm_input=self._crew_inputs,
+            llm_output=output_str,
         )
         self._buffer_span(span)
+        self._crew_inputs = None
 
         # Flush all buffered spans
         client = self._resolve_client()
