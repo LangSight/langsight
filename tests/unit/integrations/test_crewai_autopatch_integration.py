@@ -55,6 +55,10 @@ def _install_fake_crewai(monkeypatch) -> tuple[types.ModuleType, type, type]:
     class FakeCrew:
         def __init__(self, **kw):
             self.callbacks: list = []
+            self.agents: list = []
+
+        def kickoff(self, *args, **kw):  # required for auto_patch kickoff patch
+            return "done"
 
     class FakeAgent:
         def __init__(self, **kw):

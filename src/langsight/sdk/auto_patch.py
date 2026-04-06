@@ -725,6 +725,54 @@ def _patch_crewai() -> None:
 
     CrewAgent.__init__ = _patched_agent_init
 
+    # ------------------------------------------------------------------
+    # Patch Crew.kickoff — auto-create a session_id when none is active.
+    # This means users get session grouping in the dashboard with zero code.
+    # ------------------------------------------------------------------
+    orig_kickoff = getattr(Crew, "kickoff", None)
+    if orig_kickoff is None:
+        _patched_sdks.add("crewai")
+        logger.debug("auto_patch.patched", sdk="crewai")
+        return  # Crew.kickoff not present (older version or stub)
+    _originals["crewai_kickoff"] = orig_kickoff
+
+    def _patched_kickoff(self_crew: Any, *args: Any, **kw: Any) -> Any:
+        # If already inside a langsight.session(), use that session_id.
+        # Otherwise auto-generate one so all spans from this kickoff are grouped.
+        if _session_ctx.get():
+            return orig_kickoff(self_crew, *args, **kw)
+
+        import uuid as _uuid
+
+        auto_sid = _uuid.uuid4().hex
+        token = _session_ctx.set(auto_sid)
+        # Update session_id on any callbacks already attached to agents
+        for agent in getattr(self_crew, "agents", []):
+            for cb in getattr(agent, "callbacks", []):
+                if isinstance(cb, LangSightCrewAICallback) and cb._session_id is None:
+                    cb._session_id = auto_sid
+        for cb in getattr(self_crew, "callbacks", []):
+            if isinstance(cb, LangSightCrewAICallback) and cb._session_id is None:
+                cb._session_id = auto_sid
+        try:
+            return orig_kickoff(self_crew, *args, **kw)
+        finally:
+            _session_ctx.reset(token)
+            # Flush spans after kickoff completes
+            client = _resolve_client()
+            if client is not None:
+                import asyncio as _asyncio
+                try:
+                    loop = _asyncio.get_event_loop()
+                    if loop.is_running():
+                        _asyncio.ensure_future(client.flush())
+                    else:
+                        loop.run_until_complete(client.flush())
+                except Exception:  # noqa: BLE001
+                    pass
+
+    Crew.kickoff = _patched_kickoff
+
     _patched_sdks.add("crewai")
     logger.debug("auto_patch.patched", sdk="crewai")
 
@@ -1296,6 +1344,8 @@ def unpatch() -> None:
             _crewai_mod.Crew.__init__ = _originals.pop("crewai_crew_init")
         if "crewai_agent_init" in _originals:
             _crewai_mod.Agent.__init__ = _originals.pop("crewai_agent_init")
+        if "crewai_kickoff" in _originals:
+            _crewai_mod.Crew.kickoff = _originals.pop("crewai_kickoff")
     except (ImportError, AttributeError):
         pass
 

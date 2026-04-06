@@ -225,6 +225,10 @@ class TestPatchCrewAI:
         class FakeCrew:
             def __init__(self, **kw):
                 self.callbacks = []
+                self.agents = []
+
+            def kickoff(self, *args, **kw):
+                return "done"
 
         class FakeAgent:
             def __init__(self, **kw):
