@@ -6,12 +6,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.14.10] - 2026-04-04
+
+**CrewAI zero-code auto-patch, per-project MCP server catalog, sessions auto-refresh, token/cost capture for Claude Agent SDK, AI Providers settings, and multiple bug fixes.**
+
 ### Added
+- **CrewAI zero-code auto-patch** (`src/langsight/sdk/auto_patch.py`, `src/langsight/integrations/crewai.py`): `auto_patch()` now patches `Crew` and `Agent` constructors so every tool call is traced with zero code changes. MCP tool names in `mcp__server__tool` format are parsed into `server_name` + `tool_name`. Agent name is sourced from the `role` field. Session context is inherited from the active `langsight.session()` context.
 - **Per-project MCP server catalog**: The MCP Servers page now supports project-scoped server management. When a project is active, only servers belonging to that project are shown.
 - **Auto-discovery**: Opening the MCP Servers page with a project selected automatically registers any MCP servers seen in that project's traces into the project's server catalog — no manual steps required.
 - **Add Server modal**: A **+ Add Server** button (visible when a project is active) allows manual registration of a server with name, transport, URL, and description.
 - **Remove Server**: Trash icon on hover in the server table removes a server from the project catalog.
 - **`url` field on server metadata**: SSE and `streamable_http` servers now store a `url` field used for active health checks via the Run Check button.
+- **Sessions page auto-refresh**: Interval picker (Off / 30s / 1m / 5m / 15m) on the Sessions page — page auto-refreshes at the selected cadence without a full reload.
+- **Token/cost capture for Claude Agent SDK** (`src/langsight/sdk/auto_patch.py`): `SessionContext.set_usage()` captures `cost_usd`, `input_tokens`, `output_tokens`, `cache_read_tokens`, and `cache_creation_tokens` directly from a Claude Agent SDK `ResultMessage`. Solves the critical instrumentation gap for SDK-managed LLM calls where `wrap_llm()` is never triggered.
+- **AI Providers settings page**: Configure Anthropic, OpenAI, Gemini, and Ollama API keys and endpoints via the dashboard Settings UI — no config file edits required.
+
+### Fixed
+- **Dashboard monitoring NULL fix** (`src/langsight/storage/clickhouse.py`): `coalesce()` applied to all token aggregation columns in `get_monitoring_timeseries()` and `get_monitoring_models()` — eliminates HTTP 500 for projects with no LLM token spans.
+- **Markdown RCA report rendering**: Investigation reports from the `langsight investigate` command now render as formatted markdown in the dashboard rather than raw text.
+- **stdio-aware RCA investigation**: The investigator no longer reports false "outage" alerts for stdio MCP servers that are not reachable from the API container by design.
+- **`servers_used` attribution bug**: Tool calls from named sub-agents were always attributed to the top-level coordinator; `SubagentStop` lifecycle tracking now attributes each span to the correct agent.
+- **`SubagentStop` unhandled event**: `SubagentStop` events from the Claude Agent SDK no longer raise an unhandled exception in the span processor.
+- **Duplicate sessions**: A race condition in `session()` context manager open/close sequencing that produced duplicate session rows in ClickHouse has been resolved.
 
 ### Changed
 - **Run Check scoping**: Run Check now only pings servers with a URL (SSE/`streamable_http`). stdio servers appear in the catalog via trace auto-discovery but cannot be actively health-checked from the API container.

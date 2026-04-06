@@ -10,13 +10,14 @@ callback into every `Crew` and `Agent` you create. No other changes needed.
 
 ```python
 import langsight
-langsight.auto_patch()  # patches CrewAI automatically
+langsight.auto_patch()  # zero-code — patches CrewAI automatically
 
 # Your existing CrewAI code unchanged:
-from crewai import Agent, Crew, Task
+from crewai import Agent, Task, Crew
 
-analyst = Agent(role="SQL Analyst", tools=[my_mcp_tool])
-crew = Crew(agents=[analyst], tasks=[...])
+analyst = Agent(role="SQL Analyst", goal="...", backstory="...")
+task = Task(description="Analyze revenue", agent=analyst)
+crew = Crew(agents=[analyst], tasks=[task])
 result = crew.kickoff()
 ```
 
@@ -24,19 +25,46 @@ Every tool call made by every agent in the crew is automatically traced in
 LangSight. The agent's `role` field is used as the `agent_name` on each span
 (e.g. "SQL Analyst"), so you see meaningful labels in the dashboard.
 
-### What gets traced automatically
+### What gets captured automatically
 
-- All tool calls on `Crew` and `Agent` instances created after `auto_patch()`
-- `agent_name` set from the CrewAI agent `role` field
-- `server_name` extracted from `mcp__<server>__<tool>` tool names
-- `session_id` inherited from the active `langsight.session()` context
+| Signal | How it's captured |
+|--------|-------------------|
+| Tool calls | Name, input, output, latency, and status for every tool call |
+| MCP tool attribution | `mcp__server__tool` names are parsed into `server_name` + `tool_name` breakdown |
+| Agent name | Set from the CrewAI agent `role` field |
+| Session grouping | Inherited from the active `langsight.session()` context when present |
+
+### Session grouping and prompt/response capture
+
+`auto_patch()` captures tool calls automatically, but **prompt and response
+capture, plus session grouping, require a `langsight.session()` wrapper**:
+
+```python
+import langsight
+langsight.auto_patch()
+
+from crewai import Agent, Task, Crew
+
+analyst = Agent(role="SQL Analyst", goal="...", backstory="...")
+task = Task(description="Analyze revenue", agent=analyst)
+crew = Crew(agents=[analyst], tasks=[task])
+
+async with langsight.session(input="Analyze Q1 revenue") as session:
+    result = crew.kickoff()
+    session.set_output(str(result))
+```
+
+Without the `session()` wrapper, tool call spans are still captured but are not
+grouped into a named session and the human prompt and final response are not
+recorded.
 
 ---
 
-## Advanced / legacy: manual callback registration
+## Advanced: manual callback
 
-Use manual registration when you need custom per-callback configuration
-(e.g. a specific `server_name`, a fixed `session_id`, or `redact_payloads`).
+Use the manual callback when you need per-agent configuration — for example, a
+specific `server_name`, a fixed `session_id`, or payload redaction on a single
+agent.
 
 ```python
 from langsight.sdk import LangSightClient
@@ -62,7 +90,7 @@ agent = Agent(
 )
 ```
 
-Every tool call made by this agent is automatically traced in LangSight.
+Every tool call made by this agent is traced in LangSight.
 
 ## Callback methods
 
