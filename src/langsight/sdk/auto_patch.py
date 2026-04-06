@@ -762,6 +762,7 @@ def _patch_crewai() -> None:
             client = _resolve_client()
             if client is not None:
                 import asyncio as _asyncio
+
                 try:
                     loop = _asyncio.get_event_loop()
                     if loop.is_running():
