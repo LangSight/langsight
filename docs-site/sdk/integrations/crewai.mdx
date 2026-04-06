@@ -1,9 +1,42 @@
 ---
 title: "CrewAI"
-description: "Trace MCP tool calls from CrewAI agents with one line"
+description: "Trace MCP tool calls from CrewAI agents with zero code changes"
 ---
 
-## Setup
+## Zero-code setup (recommended)
+
+Call `auto_patch()` once at startup — LangSight automatically injects its
+callback into every `Crew` and `Agent` you create. No other changes needed.
+
+```python
+import langsight
+langsight.auto_patch()  # patches CrewAI automatically
+
+# Your existing CrewAI code unchanged:
+from crewai import Agent, Crew, Task
+
+analyst = Agent(role="SQL Analyst", tools=[my_mcp_tool])
+crew = Crew(agents=[analyst], tasks=[...])
+result = crew.kickoff()
+```
+
+Every tool call made by every agent in the crew is automatically traced in
+LangSight. The agent's `role` field is used as the `agent_name` on each span
+(e.g. "SQL Analyst"), so you see meaningful labels in the dashboard.
+
+### What gets traced automatically
+
+- All tool calls on `Crew` and `Agent` instances created after `auto_patch()`
+- `agent_name` set from the CrewAI agent `role` field
+- `server_name` extracted from `mcp__<server>__<tool>` tool names
+- `session_id` inherited from the active `langsight.session()` context
+
+---
+
+## Advanced / legacy: manual callback registration
+
+Use manual registration when you need custom per-callback configuration
+(e.g. a specific `server_name`, a fixed `session_id`, or `redact_payloads`).
 
 ```python
 from langsight.sdk import LangSightClient
@@ -19,7 +52,7 @@ client = LangSightClient(
 callback = LangSightCrewAICallback(
     client=client,
     server_name="my-mcp-server",
-    agent_name="support-agent",   # optional
+    agent_name="support-agent",   # optional — overrides role-based auto-detection
 )
 
 agent = Agent(
@@ -37,6 +70,6 @@ The `LangSightCrewAICallback` hooks into three CrewAI events:
 
 | Event | Fires when | Records |
 |-------|-----------|---------|
-| `on_tool_start` | Tool call begins | Start timestamp |
-| `on_tool_end` | Tool call succeeds | Latency + SUCCESS status |
+| `on_tool_start` | Tool call begins | Start timestamp, agent name from context |
+| `on_tool_end` | Tool call succeeds | Latency + SUCCESS status + server name |
 | `on_tool_error` | Tool call fails | Latency + ERROR status + error message |

@@ -181,3 +181,142 @@ class TestTopLevelImport:
         assert hasattr(langsight, "set_context")
         assert hasattr(langsight, "clear_context")
         assert hasattr(langsight, "unpatch")
+
+
+# =============================================================================
+# _patch_crewai() — zero-code CrewAI auto-patching
+# =============================================================================
+
+
+class TestPatchCrewAI:
+    """Tests for _patch_crewai() auto-injection of LangSightCrewAICallback."""
+
+    def test_patch_crewai_noop_without_global_client(self) -> None:
+        """_patch_crewai() is a no-op when no global client is set."""
+        import importlib
+
+        ap_mod = importlib.import_module("langsight.sdk.auto_patch")
+
+        # Ensure global client is None and crewai not in patched set
+        unpatch()
+        assert ap_mod._global_client is None
+        ap_mod._patch_crewai()
+        assert "crewai" not in ap_mod._patched_sdks
+
+    def _setup_fake_crewai(self, monkeypatch):
+        """Helper: install a fake crewai module and set _global_client.
+
+        Returns (fake_crewai_mod, FakeCrew, FakeAgent, ls_client, ap_module).
+        ``ap_module`` is the real ``langsight.sdk.auto_patch`` module object
+        (not the re-exported function from ``langsight.sdk``).
+        """
+        import importlib
+        import sys
+        import types
+
+        # Import the REAL module object (not the function alias in langsight.sdk)
+        ap_mod = importlib.import_module("langsight.sdk.auto_patch")
+
+        fake_crewai = types.ModuleType("crewai")
+
+        class FakeCrew:
+            def __init__(self, **kw):
+                self.callbacks = []
+
+        class FakeAgent:
+            def __init__(self, **kw):
+                self.callbacks = []
+                self.role = kw.get("role", "")
+
+        fake_crewai.Crew = FakeCrew  # type: ignore[attr-defined]
+        fake_crewai.Agent = FakeAgent  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "crewai", fake_crewai)
+
+        ls = LangSightClient(url="http://localhost:8000")
+        ap_mod._global_client = ls
+        return fake_crewai, FakeCrew, FakeAgent, ls, ap_mod
+
+    def test_patch_crewai_idempotent(self, monkeypatch) -> None:
+        """Calling _patch_crewai() twice does not double-patch."""
+        import importlib
+
+        ap_mod = importlib.import_module("langsight.sdk.auto_patch")
+        _, FakeCrew, _, _, _ = self._setup_fake_crewai(monkeypatch)
+
+        ap_mod._patch_crewai()
+        first_init = FakeCrew.__init__
+
+        ap_mod._patch_crewai()  # second call — should be idempotent
+        assert FakeCrew.__init__ is first_init  # not re-patched
+
+    def test_patch_crewai_injects_callback_into_crew(self, monkeypatch) -> None:
+        """Patched Crew.__init__ injects LangSightCrewAICallback."""
+        import importlib
+
+        from langsight.integrations.crewai import LangSightCrewAICallback
+
+        ap_mod = importlib.import_module("langsight.sdk.auto_patch")
+        _, FakeCrew, _, _, _ = self._setup_fake_crewai(monkeypatch)
+
+        ap_mod._patch_crewai()
+
+        crew = FakeCrew()
+        assert any(isinstance(c, LangSightCrewAICallback) for c in crew.callbacks)
+
+    def test_patch_crewai_injects_callback_into_agent(self, monkeypatch) -> None:
+        """Patched Agent.__init__ injects callback with role as agent_name."""
+        import importlib
+
+        from langsight.integrations.crewai import LangSightCrewAICallback
+
+        ap_mod = importlib.import_module("langsight.sdk.auto_patch")
+        _, _, FakeAgent, _, _ = self._setup_fake_crewai(monkeypatch)
+
+        ap_mod._patch_crewai()
+
+        agent = FakeAgent(role="SQL Analyst")
+        ls_cbs = [c for c in agent.callbacks if isinstance(c, LangSightCrewAICallback)]
+        assert len(ls_cbs) == 1
+        assert ls_cbs[0]._agent_name == "SQL Analyst"
+
+    def test_patch_crewai_no_duplicate_callbacks(self, monkeypatch) -> None:
+        """Creating multiple agents does not add more than one callback each."""
+        import importlib
+
+        from langsight.integrations.crewai import LangSightCrewAICallback
+
+        ap_mod = importlib.import_module("langsight.sdk.auto_patch")
+        _, _, FakeAgent, _, _ = self._setup_fake_crewai(monkeypatch)
+
+        ap_mod._patch_crewai()
+
+        agent = FakeAgent(role="Analyst")
+        ls_count = sum(1 for c in agent.callbacks if isinstance(c, LangSightCrewAICallback))
+        assert ls_count == 1
+
+    def test_patch_crewai_skipped_in_skipped_missing_list(
+        self, monkeypatch
+    ) -> None:
+        """When crewai is absent, auto_patch does not add 'crewai' to patched_sdks."""
+        import importlib
+        import sys
+
+        ap_mod = importlib.import_module("langsight.sdk.auto_patch")
+
+        # Remove crewai from sys.modules if present, ensure it fails to import
+        monkeypatch.delitem(sys.modules, "crewai", raising=False)
+
+        import builtins
+
+        real_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "crewai":
+                raise ImportError("no module named crewai")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+        monkeypatch.setenv("LANGSIGHT_URL", "http://localhost:8000")
+
+        auto_patch()
+        assert "crewai" not in ap_mod._patched_sdks

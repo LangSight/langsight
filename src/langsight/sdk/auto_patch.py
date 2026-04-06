@@ -609,6 +609,90 @@ def _patch_claude_sdk() -> None:
     logger.debug("auto_patch.patched", sdk="claude_sdk")
 
 
+def _patch_crewai() -> None:
+    """Patch ``crewai.Crew.__init__`` and ``crewai.Agent.__init__`` to
+    auto-inject :class:`~langsight.integrations.crewai.LangSightCrewAICallback`
+    into every Crew and Agent created after this call — zero user code changes.
+
+    When ``auto_patch()`` is called, every subsequent ``Crew(...)`` or
+    ``Agent(...)`` instantiation automatically receives a LangSight callback
+    that traces all tool calls.  For ``Agent``, the ``role`` field is used as
+    the ``agent_name`` so tool spans carry a meaningful identity (e.g.
+    "SQL Analyst" instead of a generic string).
+
+    Safe to call multiple times (idempotent via ``_patched_sdks``).
+    No-op when ``crewai`` is not installed or ``_global_client`` is not set.
+    """
+    if "crewai" in _patched_sdks:
+        return
+
+    if _global_client is None:
+        return
+
+    try:
+        import crewai as _crewai  # noqa: F401 — import check
+        from crewai import Agent as CrewAgent
+        from crewai import Crew
+    except ImportError:
+        return
+
+    from langsight.integrations.crewai import LangSightCrewAICallback
+
+    def _make_callback() -> LangSightCrewAICallback:
+        """Build a fresh callback bound to the current global client."""
+        return LangSightCrewAICallback(
+            client=_global_client,
+            agent_name=_agent_ctx.get(),
+            session_id=_session_ctx.get(),
+        )
+
+    # ------------------------------------------------------------------
+    # Patch Crew.__init__
+    # ------------------------------------------------------------------
+    orig_crew_init = Crew.__init__
+    _originals["crewai_crew_init"] = orig_crew_init
+
+    def _patched_crew_init(self_crew: Any, *args: Any, **kw: Any) -> None:
+        orig_crew_init(self_crew, *args, **kw)
+        cb = _make_callback()
+        existing: list[Any] = list(getattr(self_crew, "callbacks", None) or [])
+        # Avoid duplicate injection if already present
+        if not any(isinstance(c, LangSightCrewAICallback) for c in existing):
+            existing.append(cb)
+            try:
+                self_crew.callbacks = existing
+            except Exception:  # noqa: BLE001
+                pass
+
+    Crew.__init__ = _patched_crew_init
+
+    # ------------------------------------------------------------------
+    # Patch Agent.__init__
+    # ------------------------------------------------------------------
+    orig_agent_init = CrewAgent.__init__
+    _originals["crewai_agent_init"] = orig_agent_init
+
+    def _patched_agent_init(self_agent: Any, *args: Any, **kw: Any) -> None:
+        orig_agent_init(self_agent, *args, **kw)
+        cb = _make_callback()
+        # Extract agent_name from the 'role' field (CrewAI convention)
+        role: str | None = getattr(self_agent, "role", None)
+        if role:
+            cb.set_agent_name(str(role))
+        existing: list[Any] = list(getattr(self_agent, "callbacks", None) or [])
+        if not any(isinstance(c, LangSightCrewAICallback) for c in existing):
+            existing.append(cb)
+            try:
+                self_agent.callbacks = existing
+            except Exception:  # noqa: BLE001
+                pass
+
+    CrewAgent.__init__ = _patched_agent_init
+
+    _patched_sdks.add("crewai")
+    logger.debug("auto_patch.patched", sdk="crewai")
+
+
 def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
     """Build the hooks dict for ``ClaudeAgentOptions`` using the global client.
 
@@ -980,6 +1064,7 @@ def auto_patch(
     _patch_google_generativeai()
     _patch_mcp()
     _patch_claude_sdk()
+    _patch_crewai()
 
     logger.info(
         "auto_patch.complete",
@@ -993,6 +1078,7 @@ def auto_patch(
                 "google_generativeai",
                 "mcp",
                 "claude_sdk",
+                "crewai",
             ]
             if sdk not in _patched_sdks
         ],
@@ -1152,6 +1238,16 @@ def unpatch() -> None:
 
         if "mcp_call_tool" in _originals:
             ClientSession.call_tool = _originals.pop("mcp_call_tool")  # type: ignore[method-assign]
+    except (ImportError, AttributeError):
+        pass
+
+    try:
+        import crewai as _crewai_mod
+
+        if "crewai_crew_init" in _originals:
+            _crewai_mod.Crew.__init__ = _originals.pop("crewai_crew_init")
+        if "crewai_agent_init" in _originals:
+            _crewai_mod.Agent.__init__ = _originals.pop("crewai_agent_init")
     except (ImportError, AttributeError):
         pass
 
