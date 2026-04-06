@@ -34,7 +34,9 @@ class BaseIntegration:
         agent_name: str | None = None,
         session_id: str | None = None,
     ) -> None:
-        self._client: LangSightClient | None = client  # may be None if auto_patch() called before .env loaded
+        self._client: LangSightClient | None = (
+            client  # may be None if auto_patch() called before .env loaded
+        )
         self._server_name = server_name
         self._agent_name = agent_name
         self._session_id = session_id
