@@ -682,7 +682,7 @@ def _patch_crewai() -> None:
     try:
         from crewai.tools.base_tool import BaseTool
     except ImportError:
-        BaseTool = None  # type: ignore[misc]
+        BaseTool = None  # noqa: F841
 
     if BaseTool is not None:
         orig_base_tool_run = BaseTool._run
@@ -754,7 +754,7 @@ def _patch_crewai() -> None:
     try:
         from crewai.agent.core import Agent as _CrewAgentCore
     except ImportError:
-        _CrewAgentCore = None  # type: ignore[misc]
+        _CrewAgentCore = None  # noqa: F841
 
     if _CrewAgentCore is not None:
         orig_agent_kickoff = getattr(_CrewAgentCore, "kickoff", None)
