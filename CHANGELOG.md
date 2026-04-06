@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.14.12] - 2026-04-04
+
+**Auto session grouping for CrewAI via `Crew.kickoff()` patch.**
+
+### Added
+- **Auto session grouping for CrewAI** (`src/langsight/integrations/crewai.py`, `src/langsight/sdk/auto_patch.py`): `auto_patch()` now patches `Crew.kickoff()` to auto-generate a UUID `session_id` when no session is active. All spans produced during that kickoff are grouped into a single session in the dashboard with zero user code changes. Spans are flushed automatically after kickoff completes.
+
 ## [0.14.11] - 2026-04-04
 
 **Lazy client init for `auto_patch()`, `None`-safe `BaseIntegration`, CrewAI docs update, and 30 new CrewAI auto-patch integration tests.**
