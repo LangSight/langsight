@@ -34,11 +34,11 @@ class BaseIntegration:
         agent_name: str | None = None,
         session_id: str | None = None,
     ) -> None:
-        self._client = client
+        self._client = client  # may be None if auto_patch() called before .env loaded
         self._server_name = server_name
         self._agent_name = agent_name
         self._session_id = session_id
-        self._redact = getattr(client, "_redact_payloads", False)
+        self._redact = getattr(client, "_redact_payloads", False) if client else False
 
     @staticmethod
     def _parse_input(input_str: str) -> dict[str, Any] | None:
@@ -86,7 +86,7 @@ class BaseIntegration:
             agent_name=effective_agent,
             session_id=self._session_id,
             trace_id=trace_id,
-            project_id=getattr(self._client, "_project_id", None) or "",
+            project_id=getattr(self._client or {}, "_project_id", None) or "",
             input_args=None if redact else self._parse_input(input_str or ""),
             output_result=None if redact else (str(output) if output is not None else None),
             parent_span_id=parent_span_id,
@@ -104,7 +104,21 @@ class BaseIntegration:
             )
         else:
             span = ToolCallSpan.record(**common)  # type: ignore[arg-type]
-        self._client.buffer_span(span)
+        # Lazy client resolution — handles case where auto_patch() was called
+        # before .env was loaded and _client was None at construction time.
+        client = self._client
+        if client is None:
+            try:
+                from langsight.sdk.auto_patch import _resolve_client
+
+                client = _resolve_client()
+                if client is not None:
+                    self._client = client  # cache for subsequent calls
+            except ImportError:
+                pass
+        if client is None:
+            return  # still no client — drop span silently
+        client.buffer_span(span)
         logger.debug(
             "integration.span_recorded",
             tool=tool_name,

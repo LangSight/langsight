@@ -110,20 +110,23 @@ class TestAutoPatchEndToEnd:
             "Exactly one LangSightCrewAICallback must be injected into Crew.callbacks"
         )
 
-    def test_auto_patch_without_url_is_noop_for_crewai(self, monkeypatch) -> None:
-        """When LANGSIGHT_URL is not set, auto_patch returns None and crewai
-        is not patched — Crew instances remain unmodified."""
+    def test_auto_patch_without_url_still_patches_crewai(self, monkeypatch) -> None:
+        """When LANGSIGHT_URL is not set, auto_patch returns None but CrewAI IS
+        patched (deferred init). The callback has a None client and will lazily
+        resolve it on first span once env is available."""
         _, FakeCrew, _ = _install_fake_crewai(monkeypatch)
         monkeypatch.delenv("LANGSIGHT_URL", raising=False)
 
         import langsight
 
         result = langsight.auto_patch()
-        assert result is None
+        assert result is None  # no client yet
 
         crew = FakeCrew()
+        # Crew IS patched — callback present with None client (lazy init)
         ls_callbacks = [c for c in crew.callbacks if isinstance(c, LangSightCrewAICallback)]
-        assert len(ls_callbacks) == 0
+        assert len(ls_callbacks) == 1
+        assert ls_callbacks[0]._client is None  # will be resolved on first span
 
     def test_auto_patch_returns_client_instance(self, monkeypatch) -> None:
         """auto_patch returns a LangSightClient, not None, when URL is set."""

@@ -104,10 +104,13 @@ class TestContextVariables:
 
 class TestAutoPatch:
     def test_returns_none_when_url_not_set(self, monkeypatch) -> None:
+        """auto_patch() without URL returns None but still installs patches
+        (deferred init — client will be created on first span once env is set)."""
         monkeypatch.delenv("LANGSIGHT_URL", raising=False)
         result = auto_patch()
         assert result is None
-        assert len(_patched_sdks) == 0
+        # Patches are installed even without URL — deferred lazy init
+        assert len(_patched_sdks) > 0
 
     def test_returns_client_when_url_set(self, monkeypatch) -> None:
         monkeypatch.setenv("LANGSIGHT_URL", "http://localhost:8000")

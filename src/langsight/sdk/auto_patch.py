@@ -123,6 +123,38 @@ _originals: dict[str, Any] = {}  # original SDK methods, keyed by SDK name
 _patched_sdks: set[str] = set()  # set of patched SDK names
 _global_client: Any | None = None  # LangSightClient singleton (avoids circular import)
 
+# Deferred init params — stored when auto_patch() is called without LANGSIGHT_URL.
+# On first span, _resolve_client() tries to create the client using these + env vars.
+_deferred_init: dict[str, Any] | None = None
+
+
+def _resolve_client() -> Any | None:
+    """Return the global client, initialising it lazily if env vars are now available.
+
+    Called on every span emit.  If auto_patch() was called before the .env was
+    loaded, the client will be None.  This function re-attempts initialisation
+    once env vars become available — transparent to the user.
+    """
+    global _global_client, _deferred_init
+    if _global_client is not None:
+        return _global_client
+    if _deferred_init is None:
+        return None
+    import os
+
+    from langsight.sdk import init  # lazy
+
+    # Check if env vars are now available
+    if not (os.environ.get("LANGSIGHT_URL") or _deferred_init.get("url")):
+        return None
+
+    ls = init(**_deferred_init)
+    if ls is not None:
+        _global_client = ls
+        _deferred_init = None  # clear — no longer needed
+        logger.info("auto_patch.lazy_init", message="LangSight client initialised on first span.")
+    return _global_client
+
 
 # ---------------------------------------------------------------------------
 # Minimal proxy shim — satisfies the duck-typing expected by
@@ -626,8 +658,8 @@ def _patch_crewai() -> None:
     if "crewai" in _patched_sdks:
         return
 
-    if _global_client is None:
-        return
+    # Allow deferred init — patches install even if client not ready yet.
+    # _resolve_client() will retry when first span fires.
 
     try:
         import crewai as _crewai  # noqa: F401 — import check only
@@ -639,9 +671,13 @@ def _patch_crewai() -> None:
     from langsight.integrations.crewai import LangSightCrewAICallback
 
     def _make_callback() -> LangSightCrewAICallback:
-        """Build a fresh callback bound to the current global client."""
+        """Build a fresh callback with lazy client resolution.
+
+        Uses _resolve_client() so that if auto_patch() was called before the
+        .env was loaded, the client is created on first span instead.
+        """
         return LangSightCrewAICallback(
-            client=_global_client,
+            client=_resolve_client(),
             agent_name=_agent_ctx.get(),
             session_id=_session_ctx.get(),
         )
@@ -1054,7 +1090,19 @@ def auto_patch(
 
     ls = init(url=url, api_key=api_key, project_id=project_id, **kwargs)
     if ls is None:
-        return None
+        # URL not set yet — likely .env not loaded. Store params for lazy init:
+        # when the first span fires, _resolve_client() will retry with env vars.
+        global _deferred_init
+        _deferred_init = {"url": url, "api_key": api_key, "project_id": project_id, **kwargs}
+        logger.info(
+            "auto_patch.deferred",
+            message=(
+                "LANGSIGHT_URL not set at auto_patch() time — will init on first span. "
+                "Patches are active. If traces never appear, ensure LANGSIGHT_URL is set "
+                "in your environment before the first tool call."
+            ),
+        )
+        # Fall through — still install all patches so they fire when spans arrive
 
     _global_client = ls
 
