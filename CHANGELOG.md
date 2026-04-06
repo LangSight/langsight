@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.14.11] - 2026-04-04
+
+**Lazy client init for `auto_patch()`, `None`-safe `BaseIntegration`, CrewAI docs update, and 30 new CrewAI auto-patch integration tests.**
+
+### Fixed
+- **Lazy client init in `auto_patch()`** (`src/langsight/sdk/auto_patch.py`): `auto_patch()` now works even when `.env` is loaded after the call. Patches install immediately; the LangSight client is created on the first span via `_resolve_client()`. This fixes the most common integration failure: users importing modules before calling `load_dotenv()`.
+- **`BaseIntegration` accepts `None` client** (`src/langsight/integrations/`): `LangSightCrewAICallback` and all integration subclasses now accept `None` as the `client` argument. The client is resolved lazily on the first span emission, so integrations initialised before env vars are set continue to work without raising at construction time.
+
+### Added
+- **30 new CrewAI auto-patch integration tests** (`tests/unit/integrations/test_crewai_auto_patch.py`): Covers lazy init, `None`-client construction, first-span client resolution, and ordering-independent `load_dotenv()` behaviour.
+
+### Changed
+- **CrewAI docs** (`docs-site/sdk/integrations/crewai.mdx`): Load-dotenv ordering note updated from a hard requirement to a best-practice recommendation. The `<Warning>` block is replaced with a `<Note>` — LangSight will lazily initialise on the first span if env vars are set by then.
+- **Python SDK docs** (`docs-site/sdk/python.mdx`): `auto_patch()` reference updated to document deferred init behaviour.
+
 ## [0.14.10] - 2026-04-04
 
 **CrewAI zero-code auto-patch, per-project MCP server catalog, sessions auto-refresh, token/cost capture for Claude Agent SDK, AI Providers settings, and multiple bug fixes.**

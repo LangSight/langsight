@@ -55,6 +55,14 @@ export LANGSIGHT_PROJECT_ID=my-project
 
 `auto_patch()` reads these automatically. It returns `None` if `LANGSIGHT_URL` is not set — safe to call unconditionally.
 
+<Note>
+**Deferred init (v0.14.11):** `auto_patch()` installs patches immediately, but defers
+LangSight client creation until the first span is emitted. This means you can call
+`auto_patch()` before `load_dotenv()` — as long as env vars are set by the time the
+first tool call fires, traces will be captured correctly. Loading `.env` before
+`auto_patch()` is still recommended when possible.
+</Note>
+
 ## Multi-agent without any boilerplate
 
 Before v0.12.0, instrumenting a multi-agent system required 15+ lines: manual session IDs, explicit wraps, and handoff spans for every agent. Now:

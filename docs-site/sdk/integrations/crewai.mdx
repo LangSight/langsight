@@ -8,18 +8,19 @@ description: "Trace MCP tool calls from CrewAI agents with zero code changes"
 Call `auto_patch()` once at startup — LangSight automatically injects its
 callback into every `Crew` and `Agent` you create. No other changes needed.
 
-<Warning>
+<Note>
 `auto_patch()` reads `LANGSIGHT_URL`, `LANGSIGHT_API_KEY`, and `LANGSIGHT_PROJECT_ID`
-from environment at call time. **Load your `.env` file before calling `auto_patch()`**,
-otherwise the client will not initialise and no traces will be sent.
-</Warning>
+from the environment. For best results, load your `.env` file before calling `auto_patch()`.
+If env vars are not set at call time, LangSight will lazily initialise the client on the
+first span — traces will still be sent as long as the env vars are available by then.
+</Note>
 
 ```python
-# 1. Load environment variables FIRST
+# Recommended: load environment variables before auto_patch()
 from dotenv import load_dotenv
-load_dotenv()  # reads .env — must come before auto_patch()
+load_dotenv()  # should come before auto_patch() for best results
 
-# 2. Then patch
+# Patch CrewAI
 import langsight
 langsight.auto_patch()  # zero-code — patches CrewAI automatically
 
