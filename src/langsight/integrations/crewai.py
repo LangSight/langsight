@@ -75,7 +75,7 @@ class LangSightCrewAICallback(BaseIntegration):
 
     def __init__(
         self,
-        client: LangSightClient,
+        client: LangSightClient | None,
         server_name: str = "crewai-mcp",
         agent_name: str | None = None,
         session_id: str | None = None,

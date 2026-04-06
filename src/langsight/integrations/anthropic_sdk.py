@@ -120,7 +120,7 @@ class AnthropicToolTracer(BaseIntegration):
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                 )
-                self._client.buffer_span(span)
+                self._client.buffer_span(span)  # type: ignore[union-attr]
                 logger.debug("anthropic.tool_use_traced", tool=tool_name)
         except Exception:  # noqa: BLE001
             logger.debug("anthropic.trace_response_failed")
@@ -176,7 +176,7 @@ class AnthropicToolTracer(BaseIntegration):
                     input_args=None if self._redact else tool_input,
                     output_result=None if self._redact else output,
                 )
-                self._client.buffer_span(span)
+                self._client.buffer_span(span)  # type: ignore[union-attr]
             except Exception:  # noqa: BLE001
                 pass  # fail-open: tracing must never break tool calls
 
@@ -284,7 +284,7 @@ class LangSightClaudeAgentHooks(BaseIntegration):
                 session_id=self._session_id,
                 parent_span_id=parent_span_id,
             )
-            self._client.buffer_span(handoff)
+            self._client.buffer_span(handoff)  # type: ignore[union-attr]
 
             # Store for child tool calls to link to
             self._current_handoff_span_id = handoff.span_id

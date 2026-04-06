@@ -414,7 +414,7 @@ class LangSightLangChainCallback(BaseIntegration):
             span_type="agent",
             project_id=getattr(self._client, "_project_id", None) or "",
         )
-        self._client.buffer_span(span)
+        self._client.buffer_span(span)  # type: ignore[union-attr]
         _try_flush(self._client)
         logger.debug(
             "integration.agent_span_emitted",
@@ -451,7 +451,7 @@ class LangSightLangChainCallback(BaseIntegration):
             span_type="agent",
             project_id=getattr(self._client, "_project_id", None) or "",
         )
-        self._client.buffer_span(span)
+        self._client.buffer_span(span)  # type: ignore[union-attr]
         _try_flush(self._client)
 
     # -----------------------------------------------------------------------
@@ -665,7 +665,7 @@ class LangSightLangChainCallback(BaseIntegration):
             output_tokens=output_tokens,
             model_id=model_id,
         )
-        self._client.buffer_span(span)
+        self._client.buffer_span(span)  # type: ignore[union-attr]
         _try_flush(self._client)
         logger.debug(
             "integration.llm_span_emitted",

@@ -116,7 +116,7 @@ class LangSightOpenAIHooks(BaseIntegration):
                 session_id=self._session_id,
                 parent_span_id=parent_span_id,
             )
-            self._client.buffer_span(span)
+            self._client.buffer_span(span)  # type: ignore[union-attr]  # type: ignore[union-attr]
             # Track so on_handoff can link to this span
             self._active_agent_spans[id(agent)] = span.span_id
         except Exception:  # noqa: BLE001
@@ -201,7 +201,7 @@ class LangSightOpenAIHooks(BaseIntegration):
                 session_id=self._session_id,
                 parent_span_id=parent_span_id,
             )
-            self._client.buffer_span(handoff)
+            self._client.buffer_span(handoff)  # type: ignore[union-attr]
 
             # Store so child agent's on_agent_start + on_tool_* link to handoff
             self._active_handoffs[id(to_agent)] = handoff.span_id

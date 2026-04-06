@@ -29,12 +29,12 @@ class BaseIntegration:
 
     def __init__(
         self,
-        client: LangSightClient,
+        client: LangSightClient | None,
         server_name: str = "unknown",
         agent_name: str | None = None,
         session_id: str | None = None,
     ) -> None:
-        self._client = client  # may be None if auto_patch() called before .env loaded
+        self._client: LangSightClient | None = client  # may be None if auto_patch() called before .env loaded
         self._server_name = server_name
         self._agent_name = agent_name
         self._session_id = session_id
