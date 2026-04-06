@@ -685,7 +685,10 @@ def _patch_crewai() -> None:
         BaseTool = None  # noqa: F841
 
     if BaseTool is not None:
-        orig_base_tool_run = BaseTool._run
+        # Patch BaseTool.run (public method) not _run (overridden by subclasses).
+        # BaseTool.run always calls self._run() internally — it's the correct
+        # interception point regardless of how subclasses override _run.
+        orig_base_tool_run = BaseTool.run
         _originals["crewai_base_tool_run"] = orig_base_tool_run
 
         def _patched_base_tool_run(self_tool: Any, *args: Any, **kw: Any) -> Any:
@@ -745,7 +748,7 @@ def _patch_crewai() -> None:
                     client.buffer_span(span)
                 raise
 
-        BaseTool._run = _patched_base_tool_run
+        BaseTool.run = _patched_base_tool_run
 
     # ------------------------------------------------------------------
     # Patch Agent.kickoff — sets _agent_ctx to agent's role so all tool
@@ -1397,7 +1400,7 @@ def unpatch() -> None:
             try:
                 from crewai.tools.base_tool import BaseTool as _BT
 
-                _BT._run = _originals.pop("crewai_base_tool_run")
+                _BT.run = _originals.pop("crewai_base_tool_run")
             except ImportError:
                 _originals.pop("crewai_base_tool_run", None)
         if "crewai_agent_kickoff" in _originals:
