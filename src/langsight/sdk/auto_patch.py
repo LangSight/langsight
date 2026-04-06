@@ -663,67 +663,114 @@ def _patch_crewai() -> None:
 
     try:
         import crewai as _crewai  # noqa: F401 — import check only
-        from crewai import Agent as CrewAgent
         from crewai import Crew
     except ImportError:
         return
 
-    from langsight.integrations.crewai import LangSightCrewAICallback
+    from datetime import UTC
+    from datetime import datetime as _dt_crewai
 
-    def _make_callback() -> LangSightCrewAICallback:
-        """Build a fresh callback with lazy client resolution.
-
-        Uses _resolve_client() so that if auto_patch() was called before the
-        .env was loaded, the client is created on first span instead.
-        """
-        return LangSightCrewAICallback(
-            client=_resolve_client(),
-            agent_name=_agent_ctx.get(),
-            session_id=_session_ctx.get(),
-        )
+    from langsight.sdk.models import ToolCallSpan as _ToolCallSpan
+    from langsight.sdk.models import ToolCallStatus as _ToolCallStatus
 
     # ------------------------------------------------------------------
-    # Patch Crew.__init__
+    # Patch BaseTool._run — captures ALL tool calls regardless of transport.
+    # This is the correct interception point: every CrewAI tool (built-in,
+    # custom, MCP-backed) goes through BaseTool._run().
+    # Same approach used by OpenInference/Arize Phoenix.
     # ------------------------------------------------------------------
-    orig_crew_init = Crew.__init__
-    _originals["crewai_crew_init"] = orig_crew_init
+    try:
+        from crewai.tools.base_tool import BaseTool
+    except ImportError:
+        BaseTool = None  # type: ignore[assignment]
 
-    def _patched_crew_init(self_crew: Any, *args: Any, **kw: Any) -> None:
-        orig_crew_init(self_crew, *args, **kw)
-        cb = _make_callback()
-        existing: list[Any] = list(getattr(self_crew, "callbacks", None) or [])
-        # Avoid duplicate injection if already present
-        if not any(isinstance(c, LangSightCrewAICallback) for c in existing):
-            existing.append(cb)
+    if BaseTool is not None:
+        orig_base_tool_run = BaseTool._run
+        _originals["crewai_base_tool_run"] = orig_base_tool_run
+
+        def _patched_base_tool_run(self_tool: Any, *args: Any, **kw: Any) -> Any:
+            import uuid as _uuid2
+
+            raw_name: str = getattr(self_tool, "name", "unknown") or "unknown"
+            # Parse MCP tool names: mcp__server__tool_name → server/tool_name
+            server_name = "crewai"
+            tool_name = raw_name
+            if "__" in raw_name:
+                parts = raw_name.split("__", 2)
+                if len(parts) >= 2:
+                    server_name = parts[1]
+                if len(parts) == 3:
+                    tool_name = parts[2]
+
+            agent_name: str = _agent_ctx.get() or ""
+            session_id: str | None = _session_ctx.get()
+            started = _dt_crewai.now(UTC)
+            _ = _uuid2  # uuid imported for session generation elsewhere
+
             try:
-                self_crew.callbacks = existing
-            except Exception:  # noqa: BLE001
-                pass
+                result = orig_base_tool_run(self_tool, *args, **kw)
+                client = _resolve_client()
+                if client is not None:
+                    span = _ToolCallSpan.record(
+                        server_name=server_name,
+                        tool_name=tool_name,
+                        started_at=started,
+                        status=_ToolCallStatus.SUCCESS,
+                        agent_name=agent_name or None,
+                        session_id=session_id,
+                        span_type="tool_call",
+                        output_result=str(result)[:2000] if result is not None else None,
+                        project_id=getattr(client, "_project_id", None) or None,
+                        lineage_provenance="explicit",
+                        schema_version="1.0",
+                    )
+                    client.buffer_span(span)
+                return result
+            except Exception as _exc:
+                client = _resolve_client()
+                if client is not None:
+                    span = _ToolCallSpan.record(
+                        server_name=server_name,
+                        tool_name=tool_name,
+                        started_at=started,
+                        status=_ToolCallStatus.ERROR,
+                        error=str(_exc),
+                        agent_name=agent_name or None,
+                        session_id=session_id,
+                        span_type="tool_call",
+                        project_id=getattr(client, "_project_id", None) or None,
+                        lineage_provenance="explicit",
+                        schema_version="1.0",
+                    )
+                    client.buffer_span(span)
+                raise
 
-    Crew.__init__ = _patched_crew_init
+        BaseTool._run = _patched_base_tool_run
 
     # ------------------------------------------------------------------
-    # Patch Agent.__init__
+    # Patch Agent.kickoff — sets _agent_ctx to agent's role so all tool
+    # spans during that agent's execution carry the correct agent_name.
     # ------------------------------------------------------------------
-    orig_agent_init = CrewAgent.__init__
-    _originals["crewai_agent_init"] = orig_agent_init
+    try:
+        from crewai.agent.core import Agent as _CrewAgentCore
+    except ImportError:
+        _CrewAgentCore = None  # type: ignore[assignment]
 
-    def _patched_agent_init(self_agent: Any, *args: Any, **kw: Any) -> None:
-        orig_agent_init(self_agent, *args, **kw)
-        cb = _make_callback()
-        # Extract agent_name from the 'role' field (CrewAI convention)
-        role: str | None = getattr(self_agent, "role", None)
-        if role:
-            cb.set_agent_name(str(role))
-        existing: list[Any] = list(getattr(self_agent, "callbacks", None) or [])
-        if not any(isinstance(c, LangSightCrewAICallback) for c in existing):
-            existing.append(cb)
-            try:
-                self_agent.callbacks = existing
-            except Exception:  # noqa: BLE001
-                pass
+    if _CrewAgentCore is not None:
+        orig_agent_kickoff = getattr(_CrewAgentCore, "kickoff", None)
+        if orig_agent_kickoff is not None:
+            _originals["crewai_agent_kickoff"] = orig_agent_kickoff
 
-    CrewAgent.__init__ = _patched_agent_init
+            def _patched_agent_kickoff(self_agent: Any, *args: Any, **kw: Any) -> Any:
+                role: str = getattr(self_agent, "role", None) or ""
+                token = _agent_ctx.set(role) if role else None
+                try:
+                    return orig_agent_kickoff(self_agent, *args, **kw)
+                finally:
+                    if token is not None:
+                        _agent_ctx.reset(token)
+
+            _CrewAgentCore.kickoff = _patched_agent_kickoff
 
     # ------------------------------------------------------------------
     # Patch Crew.kickoff — auto-create a session_id when none is active.
@@ -746,14 +793,6 @@ def _patch_crewai() -> None:
 
         auto_sid = _uuid.uuid4().hex
         token = _session_ctx.set(auto_sid)
-        # Update session_id on any callbacks already attached to agents
-        for agent in getattr(self_crew, "agents", []):
-            for cb in getattr(agent, "callbacks", []):
-                if isinstance(cb, LangSightCrewAICallback) and cb._session_id is None:
-                    cb._session_id = auto_sid
-        for cb in getattr(self_crew, "callbacks", []):
-            if isinstance(cb, LangSightCrewAICallback) and cb._session_id is None:
-                cb._session_id = auto_sid
         try:
             return orig_kickoff(self_crew, *args, **kw)
         finally:
@@ -1131,27 +1170,34 @@ def auto_patch(
 
     from langsight.sdk import init  # lazy to avoid circular
 
-    global _global_client
+    global _global_client, _deferred_init
 
     resolved_agent = agent_name or os.environ.get("LANGSIGHT_AGENT_NAME")
     if resolved_agent:
         _agent_ctx.set(resolved_agent)
 
+    # Auto-load .env if LANGSIGHT_URL is not set — covers the common pattern where
+    # users call auto_patch() at module import time, before load_dotenv().
+    # Same approach used by AgentOps and Langfuse integrations.
+    if not (url or os.environ.get("LANGSIGHT_URL")):
+        try:
+            from dotenv import load_dotenv as _ld
+
+            _ld()
+        except ImportError:
+            pass  # python-dotenv not installed — env vars must be set explicitly
+
     ls = init(url=url, api_key=api_key, project_id=project_id, **kwargs)
     if ls is None:
-        # URL not set yet — likely .env not loaded. Store params for lazy init:
-        # when the first span fires, _resolve_client() will retry with env vars.
-        global _deferred_init
+        # Still no URL after dotenv attempt — store for lazy retry on first span.
         _deferred_init = {"url": url, "api_key": api_key, "project_id": project_id, **kwargs}
         logger.info(
             "auto_patch.deferred",
             message=(
-                "LANGSIGHT_URL not set at auto_patch() time — will init on first span. "
-                "Patches are active. If traces never appear, ensure LANGSIGHT_URL is set "
-                "in your environment before the first tool call."
+                "LANGSIGHT_URL not set — patches active, spans sent when URL becomes available."
             ),
         )
-        # Fall through — still install all patches so they fire when spans arrive
+        # Fall through — install all patches so they fire when spans arrive
 
     _global_client = ls
 
@@ -1347,6 +1393,20 @@ def unpatch() -> None:
             _crewai_mod.Agent.__init__ = _originals.pop("crewai_agent_init")
         if "crewai_kickoff" in _originals:
             _crewai_mod.Crew.kickoff = _originals.pop("crewai_kickoff")
+        if "crewai_base_tool_run" in _originals:
+            try:
+                from crewai.tools.base_tool import BaseTool as _BT
+
+                _BT._run = _originals.pop("crewai_base_tool_run")
+            except ImportError:
+                _originals.pop("crewai_base_tool_run", None)
+        if "crewai_agent_kickoff" in _originals:
+            try:
+                from crewai.agent.core import Agent as _CAC
+
+                _CAC.kickoff = _originals.pop("crewai_agent_kickoff")
+            except ImportError:
+                _originals.pop("crewai_agent_kickoff", None)
     except (ImportError, AttributeError):
         pass
 

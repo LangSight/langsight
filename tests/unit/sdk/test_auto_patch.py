@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 
 import pytest
 
@@ -256,50 +257,58 @@ class TestPatchCrewAI:
         ap_mod._patch_crewai()  # second call — should be idempotent
         assert FakeCrew.__init__ is first_init  # not re-patched
 
-    def test_patch_crewai_injects_callback_into_crew(self, monkeypatch) -> None:
-        """Patched Crew.__init__ injects LangSightCrewAICallback."""
+    def test_patch_crewai_patches_base_tool_run(self, monkeypatch) -> None:
+        """_patch_crewai() patches BaseTool._run to capture tool calls."""
         import importlib
 
-        from langsight.integrations.crewai import LangSightCrewAICallback
+        ap_mod = importlib.import_module("langsight.sdk.auto_patch")
+        _, FakeCrew, _, _, _ = self._setup_fake_crewai(monkeypatch)
+
+        # Install a fake BaseTool in sys.modules for the test
+        import types
+
+        fake_base_tool_mod = types.ModuleType("crewai.tools.base_tool")
+
+        class FakeBaseTool:
+            def _run(self, *args, **kw):
+                return "result"
+
+        fake_base_tool_mod.BaseTool = FakeBaseTool  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "crewai.tools.base_tool", fake_base_tool_mod)
+        monkeypatch.setitem(sys.modules, "crewai.tools", fake_base_tool_mod)
+        monkeypatch.setitem(sys.modules, "crewai.agent.core", types.ModuleType("crewai.agent.core"))
+
+        ap_mod._patch_crewai()
+
+        # BaseTool._run should be patched
+        assert "crewai_base_tool_run" in ap_mod._originals
+        assert FakeBaseTool._run is not ap_mod._originals["crewai_base_tool_run"]
+
+    def test_patch_crewai_patches_crew_kickoff(self, monkeypatch) -> None:
+        """_patch_crewai() patches Crew.kickoff for auto session_id."""
+        import importlib
 
         ap_mod = importlib.import_module("langsight.sdk.auto_patch")
         _, FakeCrew, _, _, _ = self._setup_fake_crewai(monkeypatch)
 
         ap_mod._patch_crewai()
 
-        crew = FakeCrew()
-        assert any(isinstance(c, LangSightCrewAICallback) for c in crew.callbacks)
+        assert "crewai_kickoff" in ap_mod._originals
+        assert FakeCrew.kickoff is not ap_mod._originals["crewai_kickoff"]
 
-    def test_patch_crewai_injects_callback_into_agent(self, monkeypatch) -> None:
-        """Patched Agent.__init__ injects callback with role as agent_name."""
+    def test_patch_crewai_no_duplicate_patches(self, monkeypatch) -> None:
+        """Calling _patch_crewai() twice does not double-patch."""
         import importlib
 
-        from langsight.integrations.crewai import LangSightCrewAICallback
-
         ap_mod = importlib.import_module("langsight.sdk.auto_patch")
-        _, _, FakeAgent, _, _ = self._setup_fake_crewai(monkeypatch)
+        _, FakeCrew, _, _, _ = self._setup_fake_crewai(monkeypatch)
 
         ap_mod._patch_crewai()
+        kickoff_after_first = FakeCrew.kickoff
 
-        agent = FakeAgent(role="SQL Analyst")
-        ls_cbs = [c for c in agent.callbacks if isinstance(c, LangSightCrewAICallback)]
-        assert len(ls_cbs) == 1
-        assert ls_cbs[0]._agent_name == "SQL Analyst"
-
-    def test_patch_crewai_no_duplicate_callbacks(self, monkeypatch) -> None:
-        """Creating multiple agents does not add more than one callback each."""
-        import importlib
-
-        from langsight.integrations.crewai import LangSightCrewAICallback
-
-        ap_mod = importlib.import_module("langsight.sdk.auto_patch")
-        _, _, FakeAgent, _, _ = self._setup_fake_crewai(monkeypatch)
-
+        # Second call must be idempotent — crewai already in _patched_sdks
         ap_mod._patch_crewai()
-
-        agent = FakeAgent(role="Analyst")
-        ls_count = sum(1 for c in agent.callbacks if isinstance(c, LangSightCrewAICallback))
-        assert ls_count == 1
+        assert FakeCrew.kickoff is kickoff_after_first  # not re-patched
 
     def test_patch_crewai_skipped_in_skipped_missing_list(
         self, monkeypatch

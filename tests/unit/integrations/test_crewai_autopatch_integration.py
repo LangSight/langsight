@@ -97,40 +97,37 @@ def _reset(monkeypatch):
 # ===========================================================================
 
 class TestAutoPatchEndToEnd:
-    def test_auto_patch_injects_callback_into_crew_instance(
-        self, monkeypatch
-    ) -> None:
-        """After langsight.auto_patch(), constructing a Crew adds the callback."""
+    def test_auto_patch_patches_crew_kickoff(self, monkeypatch) -> None:
+        """After langsight.auto_patch(), Crew.kickoff is patched for session grouping."""
         _, FakeCrew, _ = _install_fake_crewai(monkeypatch)
         monkeypatch.setenv("LANGSIGHT_URL", "http://localhost:8000")
+
+        ap = _ap_mod()
+        orig_kickoff = FakeCrew.kickoff
 
         import langsight
 
         langsight.auto_patch()
 
-        crew = FakeCrew()
-        ls_callbacks = [c for c in crew.callbacks if isinstance(c, LangSightCrewAICallback)]
-        assert len(ls_callbacks) == 1, (
-            "Exactly one LangSightCrewAICallback must be injected into Crew.callbacks"
-        )
+        # Crew.kickoff must be replaced by the patched version
+        assert FakeCrew.kickoff is not orig_kickoff
+        assert "crewai_kickoff" in ap._originals
 
     def test_auto_patch_without_url_still_patches_crewai(self, monkeypatch) -> None:
         """When LANGSIGHT_URL is not set, auto_patch returns None but CrewAI IS
-        patched (deferred init). The callback has a None client and will lazily
-        resolve it on first span once env is available."""
+        patched (deferred init) — Crew.kickoff is still replaced."""
         _, FakeCrew, _ = _install_fake_crewai(monkeypatch)
         monkeypatch.delenv("LANGSIGHT_URL", raising=False)
+
+        ap = _ap_mod()
 
         import langsight
 
         result = langsight.auto_patch()
         assert result is None  # no client yet
 
-        crew = FakeCrew()
-        # Crew IS patched — callback present with None client (lazy init)
-        ls_callbacks = [c for c in crew.callbacks if isinstance(c, LangSightCrewAICallback)]
-        assert len(ls_callbacks) == 1
-        assert ls_callbacks[0]._client is None  # will be resolved on first span
+        # Crew.kickoff IS patched — will use _resolve_client() lazily
+        assert "crewai_kickoff" in ap._originals
 
     def test_auto_patch_returns_client_instance(self, monkeypatch) -> None:
         """auto_patch returns a LangSightClient, not None, when URL is set."""
@@ -162,54 +159,94 @@ class TestAutoPatchEndToEnd:
 # ===========================================================================
 
 class TestAgentRoleToAgentName:
-    def test_role_becomes_agent_name_on_callback(self, monkeypatch) -> None:
-        """Agent(role='SQL Analyst') → callback._agent_name == 'SQL Analyst'."""
+    def test_agent_kickoff_sets_agent_ctx(self, monkeypatch) -> None:
+        """Patched Agent.kickoff sets _agent_ctx to agent role during execution."""
+        import types
+
         _, _, FakeAgent = _install_fake_crewai(monkeypatch)
+        # Install fake crewai.agent.core with Agent.kickoff
+        fake_core = types.ModuleType("crewai.agent.core")
+        roles_seen: list = []
+
+        class FakeAgentCore:
+            def __init__(self, role=""):
+                self.role = role
+
+            def kickoff(self, *a, **kw):
+                # Capture _agent_ctx.get() during kickoff
+                from langsight.sdk.auto_patch import _agent_ctx
+
+                roles_seen.append(_agent_ctx.get())
+
+        fake_core.Agent = FakeAgentCore  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "crewai.agent.core", fake_core)
+        monkeypatch.setenv("LANGSIGHT_URL", "http://localhost:8000")
+
+        import langsight
+
+        langsight.auto_patch()
+        agent = FakeAgentCore(role="SQL Analyst")
+        agent.kickoff()
+
+        assert roles_seen == ["SQL Analyst"]
+
+    def test_empty_role_not_set_in_agent_ctx(self, monkeypatch) -> None:
+        """Agent with empty role does not set _agent_ctx."""
+        import types
+
+        _, _, FakeAgent = _install_fake_crewai(monkeypatch)
+        fake_core = types.ModuleType("crewai.agent.core")
+        roles_seen: list = []
+
+        class FakeAgentCore2:
+            def __init__(self, role=""):
+                self.role = role
+
+            def kickoff(self, *a, **kw):
+                from langsight.sdk.auto_patch import _agent_ctx
+
+                roles_seen.append(_agent_ctx.get())
+
+        fake_core.Agent = FakeAgentCore2  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "crewai.agent.core", fake_core)
+        monkeypatch.setenv("LANGSIGHT_URL", "http://localhost:8000")
+
+        import langsight
+
+        langsight.auto_patch()
+        agent = FakeAgentCore2(role="")
+        agent.kickoff()
+        assert roles_seen == [None]  # empty role — context not set
+
+    def test_different_agent_roles_isolated_in_context(self, monkeypatch) -> None:
+        """Each agent's role is set via _agent_ctx and reset after kickoff."""
+        import types
+
+        _, _, FakeAgent = _install_fake_crewai(monkeypatch)
+        fake_core = types.ModuleType("crewai.agent.core")
+        executed: list = []
+
+        class FakeAgentCore3:
+            def __init__(self, role=""):
+                self.role = role
+
+            def kickoff(self, *a, **kw):
+                from langsight.sdk.auto_patch import _agent_ctx
+
+                executed.append(_agent_ctx.get())
+
+        fake_core.Agent = FakeAgentCore3  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "crewai.agent.core", fake_core)
         monkeypatch.setenv("LANGSIGHT_URL", "http://localhost:8000")
 
         import langsight
 
         langsight.auto_patch()
 
-        agent = FakeAgent(role="SQL Analyst")
-        ls_cbs = [c for c in agent.callbacks if isinstance(c, LangSightCrewAICallback)]
-        assert len(ls_cbs) == 1
-        assert ls_cbs[0]._agent_name == "SQL Analyst"
+        FakeAgentCore3(role="Data Analyst").kickoff()
+        FakeAgentCore3(role="Data Engineer").kickoff()
 
-    def test_empty_role_leaves_agent_name_as_none(self, monkeypatch) -> None:
-        """Agent with no role leaves callback._agent_name as None (not set_agent_name
-        on an empty string, since the patcher guards with `if role`)."""
-        _, _, FakeAgent = _install_fake_crewai(monkeypatch)
-        monkeypatch.setenv("LANGSIGHT_URL", "http://localhost:8000")
-
-        import langsight
-
-        langsight.auto_patch()
-
-        agent = FakeAgent(role="")
-        ls_cbs = [c for c in agent.callbacks if isinstance(c, LangSightCrewAICallback)]
-        assert len(ls_cbs) == 1
-        # Empty role must NOT be set — _agent_name stays None
-        assert ls_cbs[0]._agent_name is None
-
-    def test_different_agents_get_independent_callbacks(self, monkeypatch) -> None:
-        """Each Agent instance gets its own callback with its own role."""
-        _, _, FakeAgent = _install_fake_crewai(monkeypatch)
-        monkeypatch.setenv("LANGSIGHT_URL", "http://localhost:8000")
-
-        import langsight
-
-        langsight.auto_patch()
-
-        analyst = FakeAgent(role="Data Analyst")
-        engineer = FakeAgent(role="Data Engineer")
-
-        analyst_cb = next(c for c in analyst.callbacks if isinstance(c, LangSightCrewAICallback))
-        engineer_cb = next(c for c in engineer.callbacks if isinstance(c, LangSightCrewAICallback))
-
-        assert analyst_cb._agent_name == "Data Analyst"
-        assert engineer_cb._agent_name == "Data Engineer"
-        assert analyst_cb is not engineer_cb
+        assert executed == ["Data Analyst", "Data Engineer"]
 
 
 # ===========================================================================
@@ -354,45 +391,49 @@ class TestSessionContextInheritance:
 # ===========================================================================
 
 class TestNoDuplicateCallbacks:
-    def test_auto_patch_twice_injects_callback_once_into_crew(
+    def test_auto_patch_twice_does_not_double_patch_kickoff(
         self, monkeypatch
     ) -> None:
-        """Calling auto_patch() twice must not create duplicate callbacks.
-
-        The second call is idempotent because _patch_crewai() guards on
-        'crewai' in _patched_sdks, so the original Crew.__init__ is not
-        re-patched. A single Crew() call must result in exactly one callback.
-        """
+        """Calling auto_patch() twice must not double-patch Crew.kickoff."""
         _, FakeCrew, _ = _install_fake_crewai(monkeypatch)
         monkeypatch.setenv("LANGSIGHT_URL", "http://localhost:8000")
 
         import langsight
 
         langsight.auto_patch()
-        langsight.auto_patch()  # second call — must be idempotent
+        kickoff_after_first = FakeCrew.kickoff
 
-        crew = FakeCrew()
-        ls_callbacks = [c for c in crew.callbacks if isinstance(c, LangSightCrewAICallback)]
-        assert len(ls_callbacks) == 1, (
-            f"Expected 1 callback, got {len(ls_callbacks)}. "
-            "Duplicate injection detected — idempotency guard is broken."
+        langsight.auto_patch()  # second call — must be idempotent
+        assert FakeCrew.kickoff is kickoff_after_first, (
+            "Crew.kickoff was replaced a second time — idempotency guard is broken."
         )
 
-    def test_auto_patch_twice_injects_callback_once_into_agent(
+    def test_auto_patch_twice_idempotent_for_base_tool(
         self, monkeypatch
     ) -> None:
-        """Same idempotency guarantee for Agent instances."""
-        _, _, FakeAgent = _install_fake_crewai(monkeypatch)
+        """Same idempotency guarantee for BaseTool._run."""
+        import types
+
+        _, FakeCrew, _ = _install_fake_crewai(monkeypatch)
+        fake_bt = types.ModuleType("crewai.tools.base_tool")
+
+        class FakeBT:
+            def _run(self, *a, **kw):
+                return "ok"
+
+        fake_bt.BaseTool = FakeBT  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "crewai.tools.base_tool", fake_bt)
+        monkeypatch.setitem(sys.modules, "crewai.agent.core", types.ModuleType("crewai.agent.core"))
         monkeypatch.setenv("LANGSIGHT_URL", "http://localhost:8000")
 
+        ap = _ap_mod()
         import langsight
 
         langsight.auto_patch()
-        langsight.auto_patch()
+        run_after_first = FakeBT._run
 
-        agent = FakeAgent(role="Analyst")
-        ls_callbacks = [c for c in agent.callbacks if isinstance(c, LangSightCrewAICallback)]
-        assert len(ls_callbacks) == 1
+        langsight.auto_patch()
+        assert FakeBT._run is run_after_first
 
     def test_patch_crewai_direct_idempotency(self, monkeypatch) -> None:
         """Calling _patch_crewai() directly twice leaves Crew.__init__ identical.
@@ -576,19 +617,28 @@ class TestEdgeCases:
         cb = LangSightCrewAICallback(client=client, server_name="my-mcp")
         assert cb._server_name == "my-mcp"
 
-    def test_crew_callback_client_is_global_client(self, monkeypatch) -> None:
-        """The callback injected into Crew uses the _global_client set by auto_patch."""
+    def test_global_client_set_after_auto_patch(self, monkeypatch) -> None:
+        """auto_patch() sets _global_client used by _resolve_client() in BaseTool patch."""
+        import types
+
         _, FakeCrew, _ = _install_fake_crewai(monkeypatch)
+        fake_bt = types.ModuleType("crewai.tools.base_tool")
+
+        class FakeBT2:
+            def _run(self, *a, **kw):
+                return "ok"
+
+        fake_bt.BaseTool = FakeBT2  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "crewai.tools.base_tool", fake_bt)
+        monkeypatch.setitem(sys.modules, "crewai.agent.core", types.ModuleType("crewai.agent.core"))
         monkeypatch.setenv("LANGSIGHT_URL", "http://localhost:8000")
 
+        ap = _ap_mod()
         import langsight
 
         client = langsight.auto_patch()
-
-        crew = FakeCrew()
-        ls_cb = next(c for c in crew.callbacks if isinstance(c, LangSightCrewAICallback))
-        # The callback's _client must be the same instance returned by auto_patch
-        assert ls_cb._client is client
+        # _global_client should be the returned client
+        assert ap._global_client is client
 
     async def test_multiple_concurrent_tool_calls_isolated(self) -> None:
         """Overlapping tool calls tracked independently in _pending by name."""
