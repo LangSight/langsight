@@ -791,6 +791,27 @@ def _patch_crewai() -> None:
             _CrewAgentCore.kickoff = _patched_agent_kickoff
 
     # ------------------------------------------------------------------
+    # Also patch Agent.execute_task — CrewAI 1.6+ calls execute_task
+    # directly from Crew._run_sequential_process(), bypassing kickoff.
+    # This is the MAIN codepath for setting _agent_ctx during crew runs.
+    # ------------------------------------------------------------------
+    if _CrewAgentCore is not None:
+        orig_execute_task = getattr(_CrewAgentCore, "execute_task", None)
+        if orig_execute_task is not None:
+            _originals["crewai_agent_execute_task"] = orig_execute_task
+
+            def _patched_execute_task(self_agent: Any, *args: Any, **kw: Any) -> Any:
+                role: str = getattr(self_agent, "role", None) or ""
+                token = _agent_ctx.set(role) if role else None
+                try:
+                    return orig_execute_task(self_agent, *args, **kw)
+                finally:
+                    if token is not None:
+                        _agent_ctx.reset(token)
+
+            _CrewAgentCore.execute_task = _patched_execute_task
+
+    # ------------------------------------------------------------------
     # Always patch Crew.kickoff — auto-create a session_id when none is
     # active, and flush buffered spans after kickoff completes.
     # The event bus listener also handles session + flush, but this patch

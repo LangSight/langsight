@@ -589,60 +589,22 @@ class LangSightCrewAIEventListener:
     # ── LLM call handlers ──────────────────────────────────────────────
 
     def _handle_llm_started(self, event: Any) -> None:
-        # LLM calls don't have a unique ID, so we track by agent_id + timestamp
-        # The completed event carries its own timing, so we just log here
-        pass  # No state to track — LLM completed events are self-contained
+        # No-op: SDK patches (Anthropic/OpenAI/Google) capture LLM calls
+        # with tokens, finish_reason, and agent_name (via execute_task patch).
+        # Creating spans here would duplicate them.
+        pass
 
     def _handle_llm_completed(self, event: Any) -> None:
-        model = getattr(event, "model", None)
-        agent_role = getattr(event, "agent_role", None)
-        response = getattr(event, "response", None)
-        messages = getattr(event, "messages", None)
-
-        # Build llm_input from messages
-        llm_input = None
-        if messages is not None:
-            if isinstance(messages, str):
-                llm_input = messages
-            elif isinstance(messages, list):
-                # Extract last user message for brevity
-                user_msgs = [m for m in messages if isinstance(m, dict) and m.get("role") == "user"]
-                if user_msgs:
-                    last = user_msgs[-1]
-                    content = last.get("content", "")
-                    llm_input = str(content) if content else None
-
-        llm_output = str(response) if response is not None else None
-
-        span = self._make_span(
-            server_name="crewai",
-            tool_name=f"llm:{model or 'unknown'}",
-            started_at=event.timestamp,
-            status=ToolCallStatus.SUCCESS,
-            span_type="agent",
-            agent_name=agent_role,
-            llm_input=llm_input,
-            llm_output=llm_output,
-            model_id=model,
-        )
-        self._buffer_span(span)
+        # No-op: suppressed to avoid duplicate LLM spans.
+        # The Anthropic/OpenAI/Google SDK patches already capture this call
+        # with full token counts and finish_reason. Agent attribution comes
+        # from the Agent.execute_task patch which sets _agent_ctx.
+        pass
 
     def _handle_llm_failed(self, event: Any) -> None:
-        model = getattr(event, "model", None)
-        agent_role = getattr(event, "agent_role", None)
-        error_msg = getattr(event, "error", None) or "LLM call failed"
-
-        span = self._make_span(
-            server_name="crewai",
-            tool_name=f"llm:{model or 'unknown'}",
-            started_at=event.timestamp,
-            status=ToolCallStatus.ERROR,
-            span_type="agent",
-            agent_name=agent_role,
-            error=str(error_msg),
-            model_id=model,
-        )
-        self._buffer_span(span)
+        # No-op: suppressed to avoid duplicate LLM spans.
+        # SDK patches capture errors with full detail.
+        pass
 
     # ── A2A delegation (agent handoff) handlers ──────────────────────
 

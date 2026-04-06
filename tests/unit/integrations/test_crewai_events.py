@@ -620,7 +620,13 @@ class TestToolUsage:
 
 
 class TestLLMCalls:
-    def test_llm_completed_creates_span(self):
+    """LLM event handlers are intentionally no-ops — SDK patches handle LLM spans.
+
+    These tests verify the handlers don't create duplicate spans.
+    """
+
+    def test_llm_completed_does_not_create_span(self):
+        """LLM completed events are suppressed to avoid duplicating SDK patch spans."""
         listener, spans, _ = _make_listener()
         bus = _setup_and_get_bus(listener)
 
@@ -630,25 +636,14 @@ class TestLLMCalls:
                 LLMCallCompletedEvent,
                 model="anthropic/claude-haiku-4-5",
                 agent_role="Content Writer",
-                task_name="write_copy",
-                response="Here is your marketing copy...",
-                messages=[
-                    {"role": "system", "content": "You are a writer"},
-                    {"role": "user", "content": "Write marketing copy for AI tool"},
-                ],
+                response="marketing copy",
+                messages=[{"role": "user", "content": "Write copy"}],
             ),
         )
 
-        assert len(spans) == 1
-        span = spans[0]
-        assert span.tool_name == "llm:anthropic/claude-haiku-4-5"
-        assert span.agent_name == "Content Writer"
-        assert span.model_id == "anthropic/claude-haiku-4-5"
-        assert span.span_type == "agent"
-        assert "marketing copy" in span.llm_input
-        assert "marketing copy" in span.llm_output
+        assert len(spans) == 0  # No span — SDK patch handles it
 
-    def test_llm_failed_creates_error_span(self):
+    def test_llm_failed_does_not_create_span(self):
         listener, spans, _ = _make_listener()
         bus = _setup_and_get_bus(listener)
 
@@ -662,29 +657,7 @@ class TestLLMCalls:
             ),
         )
 
-        assert len(spans) == 1
-        assert spans[0].status == ToolCallStatus.ERROR
-        assert "rate limit" in spans[0].error
-
-    def test_llm_with_string_messages(self):
-        """LLM events with string messages (not list) are handled."""
-        listener, spans, _ = _make_listener()
-        bus = _setup_and_get_bus(listener)
-
-        bus.emit(
-            None,
-            _make_event(
-                LLMCallCompletedEvent,
-                model="gpt-4o",
-                agent_role=None,
-                task_name=None,
-                response="42",
-                messages="What is the answer?",
-            ),
-        )
-
-        assert len(spans) == 1
-        assert spans[0].llm_input == "What is the answer?"
+        assert len(spans) == 0  # No span — SDK patch handles it
 
 
 # ===========================================================================
@@ -1081,15 +1054,18 @@ class TestFullFlow:
             ),
         )
 
-        # Verify: tool_call + llm + agent + task + crew = 5 spans
-        assert len(spans) == 5
+        # Verify: tool_call + agent + task + crew = 4 spans
+        # (LLM spans suppressed — handled by SDK patches instead)
+        assert len(spans) == 4
 
         span_names = [s.tool_name for s in spans]
         assert "scrape_website" in span_names
-        assert "llm:anthropic/claude-haiku-4-5" in span_names
         assert "agent:Lead Analyst" in span_names
         assert "task:research_task" in span_names
         assert "crew:marketing-crew" in span_names
+
+        # LLM spans NOT created by event bus (SDK patches handle them)
+        assert not any(s.tool_name.startswith("llm:") for s in spans)
 
         # All should have the same session_id
         session_ids = {s.session_id for s in spans}
@@ -1104,4 +1080,4 @@ class TestFullFlow:
         tool_spans = [s for s in spans if s.span_type == "tool_call"]
         agent_spans = [s for s in spans if s.span_type == "agent"]
         assert len(tool_spans) == 1
-        assert len(agent_spans) == 4  # llm + agent + task + crew
+        assert len(agent_spans) == 3  # agent + task + crew
