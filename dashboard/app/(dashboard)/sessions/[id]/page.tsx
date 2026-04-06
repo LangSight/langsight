@@ -249,15 +249,19 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
       )}
 
       {/* Session Input / Output — shown when clicking an agent node that has a
-          root session span (emitted by session(input=...) / sess.set_output()) */}
+          root session span (emitted by session(input=...) / sess.set_output()),
+          OR a crew/agent span with llm_input/llm_output (e.g. CrewAI event bus). */}
       {isAgent && (() => {
-        // Prefer the span that has both input+output (close-time span).
-        // Fall back to the start-time span that has only llm_input (emitted before
-        // the agent runs so the prompt is never lost even if set_output() is skipped).
+        // 1. Traditional session spans (from langsight.session())
         const sessionSpans = trace.spans_flat.filter(
           (s: SpanNode) => s.span_type === "agent" && s.tool_name === "session" && s.agent_name === name
         );
-        const rootSpan = sessionSpans.find((s: SpanNode) => s.llm_output) ?? sessionSpans[0];
+        // 2. CrewAI crew/agent spans that carry llm_input/llm_output
+        const crewSpans = trace.spans_flat.filter(
+          (s: SpanNode) => s.span_type === "agent" && s.agent_name === name && (s.llm_input || s.llm_output) && s.tool_name !== "session"
+        );
+        const candidates = [...sessionSpans, ...crewSpans];
+        const rootSpan = candidates.find((s: SpanNode) => s.llm_output) ?? candidates[0];
         if (!rootSpan?.llm_input && !rootSpan?.llm_output) return null;
         return (
           <div className="px-5 py-4 border-t" style={{ borderColor: "hsl(var(--border))" }}>
@@ -265,7 +269,15 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
             {rootSpan.llm_input && (
               <div className="mb-3">
                 <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5 text-muted-foreground">Input</p>
-                <p className="text-[12px] text-foreground rounded-lg px-3 py-2.5 leading-relaxed" style={{ background: "hsl(var(--muted))" }}>{rootSpan.llm_input}</p>
+                <p className="text-[12px] text-foreground rounded-lg px-3 py-2.5 leading-relaxed line-clamp-6" style={{ background: "hsl(var(--muted))" }}>{rootSpan.llm_input}</p>
+                {rootSpan.llm_input.length > 300 && (
+                  <button
+                    onClick={() => onViewPayload?.(`Input — ${name}`, [{ label: "Text", json: rootSpan.llm_input ?? null }])}
+                    className="mt-2 text-[11px] font-medium hover:underline" style={{ color: "hsl(var(--primary))" }}
+                  >
+                    View full input →
+                  </button>
+                )}
               </div>
             )}
             {!rootSpan.llm_output && rootSpan.llm_input && (
@@ -308,6 +320,39 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
               <SectionLabel>Output</SectionLabel>
               <pre className="text-[11px] text-foreground rounded-lg p-3 whitespace-pre-wrap break-all max-h-48 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
                 {(() => { try { return JSON.stringify(JSON.parse(spans[0].output_json!), null, 2); } catch { return spans[0].output_json; } })()}
+              </pre>
+            </div>
+          )}
+          {/* LLM prompt/completion — shown on agent-type spans (LLM calls) */}
+          {spans[0].llm_input && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-1">
+                <SectionLabel>Prompt</SectionLabel>
+                {spans[0].llm_input.length > 300 && (
+                  <button
+                    onClick={() => onViewPayload?.(`Prompt — ${spans[0].tool_name}`, [{ label: "Text", json: spans[0].llm_input ?? null }])}
+                    className="text-[9px] text-primary hover:underline flex items-center gap-1 font-medium"
+                  ><ExternalLink size={9} />View full</button>
+                )}
+              </div>
+              <pre className="text-[11px] text-foreground rounded-lg p-3 whitespace-pre-wrap break-all max-h-48 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
+                {spans[0].llm_input}
+              </pre>
+            </div>
+          )}
+          {spans[0].llm_output && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-1">
+                <SectionLabel>Completion</SectionLabel>
+                {spans[0].llm_output.length > 300 && (
+                  <button
+                    onClick={() => onViewPayload?.(`Completion — ${spans[0].tool_name}`, [{ label: "Text", json: spans[0].llm_output ?? null }])}
+                    className="text-[9px] text-primary hover:underline flex items-center gap-1 font-medium"
+                  ><ExternalLink size={9} />View full</button>
+                )}
+              </div>
+              <pre className="text-[11px] text-foreground rounded-lg p-3 whitespace-pre-wrap break-all max-h-48 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
+                {spans[0].llm_output}
               </pre>
             </div>
           )}
@@ -396,6 +441,35 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
                       </div>
                       <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-36 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
                         {(() => { try { return JSON.stringify(JSON.parse(s.output_json), null, 2); } catch { return s.output_json; } })()}
+                      </pre>
+                    </div>
+                  )}
+                  {/* LLM prompt/completion — shown on agent-type spans in the Calls list */}
+                  {s.llm_input && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-semibold">Prompt</p>
+                        <button
+                          className="text-[9px] text-primary hover:underline flex items-center gap-1 font-medium"
+                          onClick={(e) => { e.stopPropagation(); onViewPayload?.(`Prompt — ${s.tool_name}`, [{ label: "Text", json: s.llm_input }]); }}
+                        ><ExternalLink size={9} />View</button>
+                      </div>
+                      <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-36 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
+                        {s.llm_input}
+                      </pre>
+                    </div>
+                  )}
+                  {s.llm_output && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-semibold">Completion</p>
+                        <button
+                          className="text-[9px] text-primary hover:underline flex items-center gap-1 font-medium"
+                          onClick={(e) => { e.stopPropagation(); onViewPayload?.(`Completion — ${s.tool_name}`, [{ label: "Text", json: s.llm_output }]); }}
+                        ><ExternalLink size={9} />View</button>
+                      </div>
+                      <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-36 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
+                        {s.llm_output}
                       </pre>
                     </div>
                   )}
