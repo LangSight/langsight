@@ -630,7 +630,7 @@ def _patch_crewai() -> None:
         return
 
     try:
-        import crewai as _crewai  # noqa: F401 — import check
+        import crewai as _crewai  # noqa: F401 — import check only
         from crewai import Agent as CrewAgent
         from crewai import Crew
     except ImportError:
