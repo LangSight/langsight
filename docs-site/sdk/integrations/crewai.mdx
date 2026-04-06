@@ -1,55 +1,67 @@
 ---
 title: "CrewAI"
-description: "Trace MCP tool calls from CrewAI agents with zero code changes"
+description: "Full observability for CrewAI agents — crew, task, agent, tool, and LLM spans with zero code changes"
 ---
 
 ## Zero-code setup (recommended)
 
-Call `auto_patch()` once at startup — LangSight automatically injects its
-callback into every `Crew` and `Agent` you create. No other changes needed.
+Call `auto_patch()` once at startup — LangSight automatically subscribes to
+CrewAI's native event bus (CrewAI 1.5+) to capture the full execution lifecycle.
+No other changes needed.
 
 <Note>
 `auto_patch()` reads `LANGSIGHT_URL`, `LANGSIGHT_API_KEY`, and `LANGSIGHT_PROJECT_ID`
-from the environment. For best results, load your `.env` file before calling `auto_patch()`.
-If env vars are not set at call time, LangSight will lazily initialise the client on the
-first span — traces will still be sent as long as the env vars are available by then.
+from the environment. If env vars are not set at call time, LangSight will lazily
+initialise the client on the first span — traces are still sent as long as the env vars
+are available by then. LangSight also auto-loads `.env` if present.
 </Note>
 
 ```python
-# Recommended: load environment variables before auto_patch()
-from dotenv import load_dotenv
-load_dotenv()  # should come before auto_patch() for best results
-
-# Patch CrewAI
 import langsight
-langsight.auto_patch()  # zero-code — patches CrewAI automatically
+langsight.auto_patch()  # zero-code — subscribes to CrewAI event bus automatically
 
-# 3. Your existing CrewAI code unchanged:
 from crewai import Agent, Task, Crew
 
 analyst = Agent(role="SQL Analyst", goal="...", backstory="...")
 task = Task(description="Analyze revenue", agent=analyst)
 crew = Crew(agents=[analyst], tasks=[task])
 result = crew.kickoff()
+# That's it! Session grouping, agent attribution, and flush happen automatically.
 ```
-
-Every tool call made by every agent in the crew is automatically traced in
-LangSight. The agent's `role` field is used as the `agent_name` on each span
-(e.g. "SQL Analyst"), so you see meaningful labels in the dashboard.
 
 ### What gets captured automatically
 
-| Signal | How it's captured |
-|--------|-------------------|
-| Tool calls | Name, input, output, latency, and status for every tool call |
-| MCP tool attribution | `mcp__server__tool` names are parsed into `server_name` + `tool_name` breakdown |
-| Agent name | Set from the CrewAI agent `role` field |
-| Session grouping | Inherited from the active `langsight.session()` context when present |
+LangSight subscribes to CrewAI's native event bus (the same mechanism CrewAI
+uses for its own telemetry). This captures the **full execution hierarchy**:
 
-### Session grouping and prompt/response capture
+| Signal | How it's captured | Span type |
+|--------|-------------------|-----------|
+| **Crew lifecycle** | `CrewKickoffStarted/Completed/Failed` events | `agent` — `crew:<name>` |
+| **Task lifecycle** | `TaskStarted/Completed/Failed` events | `agent` — `task:<name>` |
+| **Agent execution** | `AgentExecutionStarted/Completed/Error` events | `agent` — `agent:<role>` |
+| **Tool calls** | `ToolUsageStarted/Finished/Error` events — includes tool args, output, cache status | `tool_call` |
+| **LLM calls** | `LLMCallStarted/Completed/Failed` events — includes model, messages, response | `agent` — `llm:<model>` |
+| **MCP tool attribution** | `mcp__server__tool` names are parsed into `server_name` + `tool_name` | `tool_call` |
+| **Agent attribution** | Every event carries `agent_role` and `task_name` pre-populated by CrewAI | All spans |
+| **Session grouping** | Auto-generated UUID per `Crew.kickoff()`, or inherited from `langsight.session()` | All spans |
 
-`auto_patch()` captures tool calls automatically, but **prompt and response
-capture, plus session grouping, require a `langsight.session()` wrapper**:
+### How it works
+
+On CrewAI 1.5+, LangSight registers a `LangSightCrewAIEventListener` on CrewAI's
+singleton event bus. This is the same mechanism that AgentOps and CrewAI's own
+telemetry use — it's forward-compatible and doesn't rely on monkey-patching
+internal methods.
+
+On older CrewAI versions, LangSight falls back to monkey-patching `BaseTool.run`,
+`Agent.kickoff`, and `Crew.kickoff`.
+
+In both cases, the Anthropic/OpenAI SDK patches remain active so LLM calls get
+full token and cost attribution.
+
+### Optional: explicit session name
+
+If you want to name your sessions (instead of auto-generated UUIDs), wrap the
+kickoff in a `langsight.session()`:
 
 ```python
 import langsight
@@ -61,14 +73,9 @@ analyst = Agent(role="SQL Analyst", goal="...", backstory="...")
 task = Task(description="Analyze revenue", agent=analyst)
 crew = Crew(agents=[analyst], tasks=[task])
 
-async with langsight.session(input="Analyze Q1 revenue") as session:
+with langsight.session(session_id="q1-revenue-analysis"):
     result = crew.kickoff()
-    session.set_output(str(result))
 ```
-
-Without the `session()` wrapper, tool call spans are still captured but are not
-grouped into a named session and the human prompt and final response are not
-recorded.
 
 ---
 
@@ -85,31 +92,43 @@ from crewai import Agent
 
 client = LangSightClient(
     url="http://localhost:8000",
-    project_id="my-project",      # scope traces to a project
-    redact_payloads=True,          # redact tool args/outputs — recommended if tool args contain PII
+    project_id="my-project",
+    redact_payloads=True,          # redact tool args/outputs
 )
 
 callback = LangSightCrewAICallback(
     client=client,
     server_name="my-mcp-server",
-    agent_name="support-agent",   # optional — overrides role-based auto-detection
+    agent_name="support-agent",
 )
 
 agent = Agent(
     role="Support Agent",
     tools=[my_mcp_tool],
-    callbacks=[callback],          # ← one line added
+    callbacks=[callback],
 )
 ```
 
-Every tool call made by this agent is traced in LangSight.
+---
 
-## Callback methods
+## Troubleshooting
 
-The `LangSightCrewAICallback` hooks into three CrewAI events:
+### No spans appearing in the dashboard
 
-| Event | Fires when | Records |
-|-------|-----------|---------|
-| `on_tool_start` | Tool call begins | Start timestamp, agent name from context |
-| `on_tool_end` | Tool call succeeds | Latency + SUCCESS status + server name |
-| `on_tool_error` | Tool call fails | Latency + ERROR status + error message |
+1. **Is the LangSight server running?** Check `curl http://localhost:8000/health`
+2. **Are env vars set?** Verify `LANGSIGHT_URL`, `LANGSIGHT_API_KEY`, and `LANGSIGHT_PROJECT_ID`
+3. **Check logs**: LangSight logs `auto_patch.crewai.event_bus status=active` when the event bus is connected. If you see `event_bus_failed`, check the error message.
+4. **CrewAI version**: Run `python -c "import crewai; print(crewai.__version__)"`. Event bus requires 1.5+.
+
+### Duplicate spans
+
+If you see duplicate tool call spans, you may have both `auto_patch()` AND a
+manual `LangSightCrewAICallback` active. Use one or the other — `auto_patch()`
+is recommended for most use cases.
+
+### LLM calls missing agent attribution
+
+The Anthropic/OpenAI SDK patches use Python `contextvars` to read the active
+agent name. If CrewAI runs agents in separate threads, the context may not
+propagate. The event bus LLM events always carry `agent_role` — check those
+spans instead.

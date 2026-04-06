@@ -54,6 +54,9 @@ def init(
     Reads ``LANGSIGHT_URL``, ``LANGSIGHT_API_KEY``, and ``LANGSIGHT_PROJECT_ID``
     from the environment.  Explicit keyword arguments override env vars.
 
+    If ``auto_patch()`` was already called, returns the same global client so
+    that ``flush()`` drains the spans buffered by auto-instrumentation.
+
     Returns ``None`` if ``LANGSIGHT_URL`` is not set — safe for unconditional use::
 
         ls = langsight.init()
@@ -63,6 +66,13 @@ def init(
     All extra ``**kwargs`` are forwarded to :class:`LangSightClient` (e.g.
     ``loop_detection=True``, ``max_steps=25``).
     """
+    # If auto_patch() already created a global client, return it so callers can
+    # flush() the same buffer that holds the auto-instrumented spans.
+    from langsight.sdk.auto_patch import _global_client as _gc
+
+    if _gc is not None and not url and not api_key and not project_id and not kwargs:
+        return _gc  # type: ignore[return-value]
+
     resolved_url = url or os.environ.get("LANGSIGHT_URL")
     if not resolved_url:
         _logger.debug("langsight.init.skipped", reason="LANGSIGHT_URL not set")

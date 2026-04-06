@@ -411,7 +411,7 @@ class TestNoDuplicateCallbacks:
     def test_auto_patch_twice_idempotent_for_base_tool(
         self, monkeypatch
     ) -> None:
-        """Same idempotency guarantee for BaseTool._run."""
+        """Same idempotency guarantee for BaseTool.run."""
         import types
 
         _, FakeCrew, _ = _install_fake_crewai(monkeypatch)
@@ -420,6 +420,9 @@ class TestNoDuplicateCallbacks:
         class FakeBT:
             def _run(self, *a, **kw):
                 return "ok"
+
+            def run(self, *a, **kw):
+                return self._run(*a, **kw)
 
         fake_bt.BaseTool = FakeBT  # type: ignore[attr-defined]
         monkeypatch.setitem(sys.modules, "crewai.tools.base_tool", fake_bt)
@@ -430,10 +433,10 @@ class TestNoDuplicateCallbacks:
         import langsight
 
         langsight.auto_patch()
-        run_after_first = FakeBT._run
+        run_after_first = FakeBT.run
 
         langsight.auto_patch()
-        assert FakeBT._run is run_after_first
+        assert FakeBT.run is run_after_first
 
     def test_patch_crewai_direct_idempotency(self, monkeypatch) -> None:
         """Calling _patch_crewai() directly twice leaves Crew.__init__ identical.
@@ -627,6 +630,9 @@ class TestEdgeCases:
         class FakeBT2:
             def _run(self, *a, **kw):
                 return "ok"
+
+            def run(self, *a, **kw):
+                return self._run(*a, **kw)
 
         fake_bt.BaseTool = FakeBT2  # type: ignore[attr-defined]
         monkeypatch.setitem(sys.modules, "crewai.tools.base_tool", fake_bt)

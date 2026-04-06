@@ -273,6 +273,9 @@ class TestPatchCrewAI:
             def _run(self, *args, **kw):
                 return "result"
 
+            def run(self, *args, **kw):
+                return self._run(*args, **kw)
+
         fake_base_tool_mod.BaseTool = FakeBaseTool  # type: ignore[attr-defined]
         monkeypatch.setitem(sys.modules, "crewai.tools.base_tool", fake_base_tool_mod)
         monkeypatch.setitem(sys.modules, "crewai.tools", fake_base_tool_mod)
@@ -280,9 +283,9 @@ class TestPatchCrewAI:
 
         ap_mod._patch_crewai()
 
-        # BaseTool._run should be patched
+        # BaseTool.run (public method) should be patched
         assert "crewai_base_tool_run" in ap_mod._originals
-        assert FakeBaseTool._run is not ap_mod._originals["crewai_base_tool_run"]
+        assert FakeBaseTool.run is not ap_mod._originals["crewai_base_tool_run"]
 
     def test_patch_crewai_patches_crew_kickoff(self, monkeypatch) -> None:
         """_patch_crewai() patches Crew.kickoff for auto session_id."""

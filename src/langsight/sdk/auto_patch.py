@@ -642,24 +642,29 @@ def _patch_claude_sdk() -> None:
 
 
 def _patch_crewai() -> None:
-    """Patch ``crewai.Crew.__init__`` and ``crewai.Agent.__init__`` to
-    auto-inject :class:`~langsight.integrations.crewai.LangSightCrewAICallback`
-    into every Crew and Agent created after this call — zero user code changes.
+    """Instrument CrewAI for LangSight observability.
 
-    When ``auto_patch()`` is called, every subsequent ``Crew(...)`` or
-    ``Agent(...)`` instantiation automatically receives a LangSight callback
-    that traces all tool calls.  For ``Agent``, the ``role`` field is used as
-    the ``agent_name`` so tool spans carry a meaningful identity (e.g.
-    "SQL Analyst" instead of a generic string).
+    **Primary path (CrewAI >= 1.5 with event bus)**:
+    Registers a :class:`~langsight.integrations.crewai_events.LangSightCrewAIEventListener`
+    on the native ``crewai_event_bus``.  This captures crew / task / agent /
+    tool / LLM lifecycle spans with full attribution (agent_role, task_name,
+    task_id) — richer and more forward-compatible than monkey-patching.
+
+    **Fallback path (older CrewAI)**:
+    Monkey-patches ``BaseTool.run``, ``Agent.kickoff``, and ``Crew.kickoff``
+    to capture tool calls and agent context.
+
+    **Always installed (both paths)**:
+    - ``Agent.kickoff`` patch — sets ``_agent_ctx`` so the Anthropic/OpenAI
+      SDK patches attribute LLM calls to the active CrewAI agent role.
+    - ``Crew.kickoff`` patch — auto-generates ``session_id`` and flushes
+      buffered spans after kickoff completes.
 
     Safe to call multiple times (idempotent via ``_patched_sdks``).
-    No-op when ``crewai`` is not installed or ``_global_client`` is not set.
+    No-op when ``crewai`` is not installed.
     """
     if "crewai" in _patched_sdks:
         return
-
-    # Allow deferred init — patches install even if client not ready yet.
-    # _resolve_client() will retry when first span fires.
 
     try:
         import crewai as _crewai  # noqa: F401 — import check only
@@ -667,92 +672,102 @@ def _patch_crewai() -> None:
     except ImportError:
         return
 
-    from datetime import UTC
-    from datetime import datetime as _dt_crewai
-
-    from langsight.sdk.models import ToolCallSpan as _ToolCallSpan
-    from langsight.sdk.models import ToolCallStatus as _ToolCallStatus
-
     # ------------------------------------------------------------------
-    # Patch BaseTool._run — captures ALL tool calls regardless of transport.
-    # This is the correct interception point: every CrewAI tool (built-in,
-    # custom, MCP-backed) goes through BaseTool._run().
-    # Same approach used by OpenInference/Arize Phoenix.
+    # Try event bus first (CrewAI >= 1.5).  If available, this replaces
+    # the BaseTool.run monkey-patch with richer event-driven spans.
     # ------------------------------------------------------------------
+    _event_bus_active = False
     try:
-        from crewai.tools.base_tool import BaseTool
-    except ImportError:
-        BaseTool = None  # noqa: F841
+        from langsight.integrations.crewai_events import LangSightCrewAIEventListener
 
-    if BaseTool is not None:
-        # Patch BaseTool.run (public method) not _run (overridden by subclasses).
-        # BaseTool.run always calls self._run() internally — it's the correct
-        # interception point regardless of how subclasses override _run.
-        orig_base_tool_run = BaseTool.run
-        _originals["crewai_base_tool_run"] = orig_base_tool_run
-
-        def _patched_base_tool_run(self_tool: Any, *args: Any, **kw: Any) -> Any:
-            import uuid as _uuid2
-
-            raw_name: str = getattr(self_tool, "name", "unknown") or "unknown"
-            # Parse MCP tool names: mcp__server__tool_name → server/tool_name
-            server_name = "crewai"
-            tool_name = raw_name
-            if "__" in raw_name:
-                parts = raw_name.split("__", 2)
-                if len(parts) >= 2:
-                    server_name = parts[1]
-                if len(parts) == 3:
-                    tool_name = parts[2]
-
-            agent_name: str = _agent_ctx.get() or ""
-            session_id: str | None = _session_ctx.get()
-            started = _dt_crewai.now(UTC)
-            _ = _uuid2  # uuid imported for session generation elsewhere
-
-            try:
-                result = orig_base_tool_run(self_tool, *args, **kw)
-                client = _resolve_client()
-                if client is not None:
-                    span = _ToolCallSpan.record(
-                        server_name=server_name,
-                        tool_name=tool_name,
-                        started_at=started,
-                        status=_ToolCallStatus.SUCCESS,
-                        agent_name=agent_name or None,
-                        session_id=session_id,
-                        span_type="tool_call",
-                        output_result=str(result)[:2000] if result is not None else None,
-                        project_id=getattr(client, "_project_id", None) or None,
-                        lineage_provenance="explicit",
-                        schema_version="1.0",
-                    )
-                    client.buffer_span(span)
-                return result
-            except Exception as _exc:
-                client = _resolve_client()
-                if client is not None:
-                    span = _ToolCallSpan.record(
-                        server_name=server_name,
-                        tool_name=tool_name,
-                        started_at=started,
-                        status=_ToolCallStatus.ERROR,
-                        error=str(_exc),
-                        agent_name=agent_name or None,
-                        session_id=session_id,
-                        span_type="tool_call",
-                        project_id=getattr(client, "_project_id", None) or None,
-                        lineage_provenance="explicit",
-                        schema_version="1.0",
-                    )
-                    client.buffer_span(span)
-                raise
-
-        BaseTool.run = _patched_base_tool_run
+        _listener = LangSightCrewAIEventListener(client_resolver=_resolve_client)
+        _event_bus_active = _listener.setup()
+        if _event_bus_active:
+            logger.info("auto_patch.crewai.event_bus", status="active")
+    except Exception as _eb_exc:  # noqa: BLE001
+        logger.debug("auto_patch.crewai.event_bus_failed", error=str(_eb_exc))
 
     # ------------------------------------------------------------------
-    # Patch Agent.kickoff — sets _agent_ctx to agent's role so all tool
-    # spans during that agent's execution carry the correct agent_name.
+    # Fallback: Patch BaseTool.run — only when event bus is NOT active.
+    # Event bus ToolUsageFinishedEvent is richer (has agent_role, task_name,
+    # tool_args, started_at/finished_at, from_cache).
+    # ------------------------------------------------------------------
+    if not _event_bus_active:
+        from datetime import UTC
+        from datetime import datetime as _dt_crewai
+
+        from langsight.sdk.models import ToolCallSpan as _ToolCallSpan
+        from langsight.sdk.models import ToolCallStatus as _ToolCallStatus
+
+        try:
+            from crewai.tools.base_tool import BaseTool
+        except ImportError:
+            BaseTool = None  # noqa: F841
+
+        if BaseTool is not None:
+            orig_base_tool_run = BaseTool.run
+            _originals["crewai_base_tool_run"] = orig_base_tool_run
+
+            def _patched_base_tool_run(self_tool: Any, *args: Any, **kw: Any) -> Any:
+                raw_name: str = getattr(self_tool, "name", "unknown") or "unknown"
+                server_name = "crewai"
+                tool_name = raw_name
+                if "__" in raw_name:
+                    parts = raw_name.split("__", 2)
+                    if len(parts) >= 2:
+                        server_name = parts[1]
+                    if len(parts) == 3:
+                        tool_name = parts[2]
+
+                agent_name: str = _agent_ctx.get() or ""
+                session_id: str | None = _session_ctx.get()
+                started = _dt_crewai.now(UTC)
+
+                try:
+                    result = orig_base_tool_run(self_tool, *args, **kw)
+                    client = _resolve_client()
+                    if client is not None:
+                        span = _ToolCallSpan.record(
+                            server_name=server_name,
+                            tool_name=tool_name,
+                            started_at=started,
+                            status=_ToolCallStatus.SUCCESS,
+                            agent_name=agent_name or None,
+                            session_id=session_id,
+                            span_type="tool_call",
+                            output_result=str(result)[:2000] if result is not None else None,
+                            project_id=getattr(client, "_project_id", None) or None,
+                            lineage_provenance="explicit",
+                            schema_version="1.0",
+                        )
+                        client.buffer_span(span)
+                    return result
+                except Exception as _exc:
+                    client = _resolve_client()
+                    if client is not None:
+                        span = _ToolCallSpan.record(
+                            server_name=server_name,
+                            tool_name=tool_name,
+                            started_at=started,
+                            status=_ToolCallStatus.ERROR,
+                            error=str(_exc),
+                            agent_name=agent_name or None,
+                            session_id=session_id,
+                            span_type="tool_call",
+                            project_id=getattr(client, "_project_id", None) or None,
+                            lineage_provenance="explicit",
+                            schema_version="1.0",
+                        )
+                        client.buffer_span(span)
+                    raise
+
+            BaseTool.run = _patched_base_tool_run
+
+    # ------------------------------------------------------------------
+    # Always patch Agent.kickoff — sets _agent_ctx to agent's role so the
+    # Anthropic/OpenAI SDK patches attribute LLM calls to the active agent.
+    # This is needed even when the event bus is active because the SDK
+    # patches read _agent_ctx from the calling thread's context.
     # ------------------------------------------------------------------
     try:
         from crewai.agent.core import Agent as _CrewAgentCore
@@ -776,31 +791,31 @@ def _patch_crewai() -> None:
             _CrewAgentCore.kickoff = _patched_agent_kickoff
 
     # ------------------------------------------------------------------
-    # Patch Crew.kickoff — auto-create a session_id when none is active.
-    # This means users get session grouping in the dashboard with zero code.
+    # Always patch Crew.kickoff — auto-create a session_id when none is
+    # active, and flush buffered spans after kickoff completes.
+    # The event bus listener also handles session + flush, but this patch
+    # ensures it works even if the event bus setup partially failed.
     # ------------------------------------------------------------------
     orig_kickoff = getattr(Crew, "kickoff", None)
     if orig_kickoff is None:
         _patched_sdks.add("crewai")
         logger.debug("auto_patch.patched", sdk="crewai")
-        return  # Crew.kickoff not present (older version or stub)
+        return
     _originals["crewai_kickoff"] = orig_kickoff
 
     def _patched_kickoff(self_crew: Any, *args: Any, **kw: Any) -> Any:
-        # If already inside a langsight.session(), use that session_id.
-        # Otherwise auto-generate one so all spans from this kickoff are grouped.
-        if _session_ctx.get():
-            return orig_kickoff(self_crew, *args, **kw)
+        preexisting_session = bool(_session_ctx.get())
+        token = None
+        if not preexisting_session:
+            import uuid as _uuid
 
-        import uuid as _uuid
-
-        auto_sid = _uuid.uuid4().hex
-        token = _session_ctx.set(auto_sid)
+            auto_sid = _uuid.uuid4().hex
+            token = _session_ctx.set(auto_sid)
         try:
             return orig_kickoff(self_crew, *args, **kw)
         finally:
-            _session_ctx.reset(token)
-            # Flush spans after kickoff completes
+            if token is not None:
+                _session_ctx.reset(token)
             client = _resolve_client()
             if client is not None:
                 import asyncio as _asyncio
@@ -811,13 +826,17 @@ def _patch_crewai() -> None:
                         _asyncio.ensure_future(client.flush())
                     else:
                         loop.run_until_complete(client.flush())
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as _flush_exc:  # noqa: BLE001
+                    logger.warning("auto_patch.crewai.flush_error", error=str(_flush_exc))
 
     Crew.kickoff = _patched_kickoff
 
     _patched_sdks.add("crewai")
-    logger.debug("auto_patch.patched", sdk="crewai")
+    logger.debug(
+        "auto_patch.patched",
+        sdk="crewai",
+        event_bus=_event_bus_active,
+    )
 
 
 def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
