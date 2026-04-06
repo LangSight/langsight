@@ -1,3 +1,4 @@
+# mypy: disable-error-code="untyped-decorator"
 """
 CrewAI Event Bus integration for LangSight.
 

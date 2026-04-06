@@ -71,7 +71,7 @@ def init(
     from langsight.sdk.auto_patch import _global_client as _gc
 
     if _gc is not None and not url and not api_key and not project_id and not kwargs:
-        return _gc  # type: ignore[return-value]
+        return _gc  # type: ignore[no-any-return]
 
     resolved_url = url or os.environ.get("LANGSIGHT_URL")
     if not resolved_url:

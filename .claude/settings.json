@@ -4,7 +4,8 @@
       "Bash(docker exec:*)",
       "Bash(xargs sed:*)",
       "WebFetch(domain:www.langsight.dev)",
-      "mcp__ruflo__*"
+      "mcp__ruflo__*",
+      "Bash(.venv/bin/python -c ':*)"
     ]
   }
 }
