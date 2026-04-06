@@ -109,7 +109,9 @@ export default function LivePage() {
           const next = new Map(prev);
           for (const s of sessions) {
             const firstMs = toUTCMs(s.first_call_at);
-            const lastMs  = firstMs + (s.duration_ms ?? 0);
+            // Use last_call_at (actual wall-clock end) when available,
+            // NOT first + duration (which can span hours if session_id is reused).
+            const lastMs  = s.last_call_at ? toUTCMs(s.last_call_at) : firstMs + (s.duration_ms ?? 0);
             if (lastMs < cutoff) continue;
             if (next.has(s.session_id)) continue;  // SSE already has a fresher version
             next.set(s.session_id, {
