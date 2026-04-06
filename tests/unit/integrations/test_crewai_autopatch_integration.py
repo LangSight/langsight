@@ -556,14 +556,14 @@ class TestEdgeCases:
             cb.on_tool_start(name, {})
             assert name in cb._pending
 
-        # Drive them all to completion using a simple sync-compatible approach
+        # Drive them all to completion
         import asyncio
 
         async def _drain():
             for i in range(3):
                 await cb.on_tool_end(f"tool_{i}", f"result_{i}")
 
-        asyncio.get_event_loop().run_until_complete(_drain())
+        asyncio.run(_drain())
 
         assert len(cb._pending) == 0
 
