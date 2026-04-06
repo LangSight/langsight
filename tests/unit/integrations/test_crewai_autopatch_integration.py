@@ -542,7 +542,8 @@ class TestEdgeCases:
         cb.set_agent_name("overridden")
         assert cb._agent_name == "overridden"
 
-    def test_pending_dict_cleared_after_tool_end(self) -> None:
+    @pytest.mark.asyncio
+    async def test_pending_dict_cleared_after_tool_end(self) -> None:
         """_pending entry removed after on_tool_end — no memory leak on repeated calls."""
         client = _make_client()
         captured: list = []
@@ -557,13 +558,8 @@ class TestEdgeCases:
             assert name in cb._pending
 
         # Drive them all to completion
-        import asyncio
-
-        async def _drain():
-            for i in range(3):
-                await cb.on_tool_end(f"tool_{i}", f"result_{i}")
-
-        asyncio.run(_drain())
+        for i in range(3):
+            await cb.on_tool_end(f"tool_{i}", f"result_{i}")
 
         assert len(cb._pending) == 0
 
