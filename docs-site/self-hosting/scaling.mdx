@@ -1,0 +1,243 @@
+---
+title: "Scaling Guide"
+description: "Current performance benchmarks, tunable settings, and a clear upgrade path from single-node pilot to production-scale deployment."
+---
+
+## What we measured
+
+All numbers below come from load tests on a single MacBook Pro M-series running the full Docker stack locally. A properly provisioned cloud server will be faster.
+
+| Scenario | Spans in DB | Window queried | Sessions list | Session trace |
+|---|---|---|---|---|
+| Pilot (30k spans) | 30k | 24h | **127ms** | **~50ms** |
+| 1M spans, 24h window | 1M | 24h | **127ms** | **~50ms** |
+| 1M spans, 7-day window | 1M | 7 days | **135ms** | **~50ms** |
+| 1M spans, 30-day window | 1M | 30 days | **530ms** | **~50ms** |
+
+The sessions list scales with **rows in the time window**, not total table size. ClickHouse's MinMax index on `started_at` prunes partitions before any row is read. The 24h default window stays fast regardless of historical data volume.
+
+---
+
+## Current default settings
+
+### API workers
+
+| Setting | Default | Env var |
+|---|---|---|
+| Worker processes | `1` | `LANGSIGHT_WORKERS` |
+| Requires Redis when > 1 | yes | `LANGSIGHT_REDIS_URL` |
+
+Single-worker is correct for pilots and small teams. Rate limiting, SSE broadcasting, and the auth cache are all in-process and work correctly without Redis.
+
+### Postgres connection pool
+
+| Setting | Default | Env var |
+|---|---|---|
+| Min connections per worker | `2` | `LANGSIGHT_PG_POOL_MIN` |
+| Max connections per worker | `50` | `LANGSIGHT_PG_POOL_MAX` |
+| Postgres `max_connections` | `300` (docker-compose) | postgres `command:` flag |
+
+With 4 workers at the default `50` max per worker: `4 × 50 = 200` connections. The docker-compose sets `max_connections=300` to leave headroom.
+
+**Rule of thumb**: `max_connections` ≥ `LANGSIGHT_WORKERS × LANGSIGHT_PG_POOL_MAX × 1.2`
+
+### ClickHouse
+
+| Setting | Default | Where |
+|---|---|---|
+| Container memory | `4G` | `docker-compose.yml` → ClickHouse `deploy.resources.limits.memory` |
+| Per-query memory cap (session trace) | `500 MB` | hardcoded in `clickhouse.py` |
+| Concurrent span inserts per worker | `20 ÷ LANGSIGHT_WORKERS` | `traces.py` `_INSERT_SEM_LIMIT` |
+| Span retention TTL | 90 days | ClickHouse `TTL` clause in table DDL |
+
+The concurrent insert semaphore divides the budget evenly across workers so total ClickHouse insert pressure stays constant regardless of worker count.
+
+### Redis (multi-worker only)
+
+| What Redis provides | Fallback (no Redis) |
+|---|---|
+| Cross-worker rate limiting | Per-worker limit (weaker) |
+| Cross-worker SSE broadcasting | Only clients on same worker see events |
+| Distributed login lockout | Per-worker only |
+
+---
+
+## Scaling tiers
+
+### Tier 1 — Pilot / small team (default)
+
+Up to ~50 concurrent dashboard users, ~20 simultaneous agent runs.
+
+```bash
+# .env — no changes needed from defaults
+LANGSIGHT_WORKERS=1
+# LANGSIGHT_REDIS_URL not set
+```
+
+```yaml
+# docker-compose.yml — defaults
+clickhouse: memory: 4G
+postgres:   memory: 1G
+api:        memory: 512M
+```
+
+**When to move to Tier 2**: sessions list > 500ms, or you see SSE events missing on some dashboard tabs.
+
+---
+
+### Tier 2 — Team deployment (Redis + 4 workers)
+
+Up to ~200 concurrent users, ~100 simultaneous agent runs.
+
+```bash
+# .env
+LANGSIGHT_WORKERS=4
+REDIS_PASSWORD=<generate with: python3 -c "import secrets; print(secrets.token_hex(32))">
+LANGSIGHT_REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+```
+
+```bash
+# Start with Redis profile
+docker compose --profile redis up -d
+```
+
+Redis enables:
+- **Rate limiter** shared across all 4 workers (consistent limits)
+- **SSE broadcaster** via Redis pub/sub (all workers deliver live events to all clients)
+- **Login lockout** persists across restarts
+
+**When to move to Tier 3**: ClickHouse query time > 1s, or you're ingesting > 500k spans/day.
+
+---
+
+### Tier 3 — High-volume (dedicated ClickHouse)
+
+> 1M spans/day, > 500 concurrent users.
+
+The bottleneck at this scale is ClickHouse, not the API. Options:
+
+**Option A — Scale vertically**: Give ClickHouse more memory and CPU.
+```yaml
+# docker-compose.yml
+clickhouse:
+  deploy:
+    resources:
+      limits:
+        memory: 16G   # was 4G
+        cpus: "8"     # was 2
+```
+
+**Option B — ClickHouse Cloud or dedicated server**: Point `LANGSIGHT_CLICKHOUSE_URL` at an external ClickHouse instance. The API never connects to ClickHouse directly from user requests — all writes are async and reads have per-query memory caps.
+
+```bash
+# .env
+LANGSIGHT_CLICKHOUSE_URL=https://your-instance.clickhouse.cloud:8443
+LANGSIGHT_CLICKHOUSE_USERNAME=default
+LANGSIGHT_CLICKHOUSE_PASSWORD=<password>
+LANGSIGHT_CLICKHOUSE_DATABASE=langsight
+```
+
+**Option C — Add a materialized view for sessions**: At 10M+ spans, even with time-window pruning the GROUP BY aggregation for the sessions list becomes slow. A pre-aggregated `AggregatingMergeTree` view would keep the sessions list at <100ms regardless of volume. This is planned for a future release.
+
+---
+
+## Performance knobs reference
+
+### API
+
+```bash
+# Number of Uvicorn worker processes. Requires Redis when > 1.
+LANGSIGHT_WORKERS=4
+
+# Postgres pool size per worker. Total connections = WORKERS × this value.
+LANGSIGHT_PG_POOL_MAX=20   # reduce from default 50 when running 4+ workers
+
+# Redis URL (required for WORKERS > 1)
+LANGSIGHT_REDIS_URL=redis://:password@redis:6379
+```
+
+### ClickHouse
+
+```yaml
+# docker-compose.yml
+services:
+  clickhouse:
+    deploy:
+      resources:
+        limits:
+          memory: 4G    # minimum for production; increase for high volume
+          cpus: "2"
+```
+
+```bash
+# Span data retention (default: 90 days). Set in ClickHouse TTL clause.
+# Reduce to lower storage costs: ALTER TABLE mcp_tool_calls MODIFY TTL started_at + INTERVAL 30 DAY
+```
+
+### Postgres
+
+```yaml
+# docker-compose.yml
+services:
+  postgres:
+    command: postgres -c max_connections=300 -c shared_buffers=256MB
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+```
+
+---
+
+## Load test results summary
+
+These numbers come from k6 tests against a local Docker stack (MacBook Pro M-series, all containers on one machine). Cloud deployments will perform better due to dedicated resources.
+
+### Dashboard reads (100 concurrent users)
+
+| Configuration | p95 latency | Error rate |
+|---|---|---|
+| 1 worker, no Redis | 359ms | 0% |
+| 4 workers + Redis (tuned) | ~200ms | 0% |
+
+Sessions list, health check, and lineage all stay under 400ms at 100 VUs with the default 24h window.
+
+### Span ingestion (100 concurrent agent flushes)
+
+| Configuration | p95 latency | Error rate | Throughput |
+|---|---|---|---|
+| 1 worker, semaphore=20 | 229ms | 0.54% (cold ramp only) | 274 spans/s |
+| 4 workers, semaphore=5/worker | 229ms | <0.5% | ~1,000 spans/s |
+
+The semaphore caps concurrent ClickHouse inserts at 20 total (regardless of worker count) to prevent memory exhaustion.
+
+<Note>
+  Running 100 concurrent dashboard users **and** 100 simultaneous agent flushes from the same IP saturates single-node ClickHouse. In real deployments these loads are staggered: agents flush after runs complete (bursts, not continuous) and dashboard users poll at 30–300s intervals.
+</Note>
+
+---
+
+## Bottleneck decision tree
+
+```
+Sessions list slow? (> 500ms)
+  └─ Check: how many spans in the time window?
+       > 500k → increase ClickHouse memory or reduce TTL
+       < 500k → check if session_health_tags has many unmerged parts:
+                SELECT count() FROM session_health_tags (should be < 100k)
+
+Span ingestion returning 429?
+  └─ Rate limit: 10,000 req/min per IP
+       Multiple agent hosts? → each has its own limit, no issue
+       Single host? → distribute agents across IPs or increase limit in traces.py
+
+Span ingestion returning 503?
+  └─ ClickHouse OOM: increase container memory from 4G → 8G
+
+SSE live view missing events?
+  └─ LANGSIGHT_WORKERS > 1 without Redis → add LANGSIGHT_REDIS_URL
+
+Dashboard login lockout not working after restart?
+  └─ Expected: lockout state is now Postgres-backed and survives restarts
+       If still resetting → check login_failures table exists in Postgres
+```

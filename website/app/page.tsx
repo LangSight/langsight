@@ -157,7 +157,7 @@ function Hero() {
               style={{ background: "var(--indigo-dim)", border: "1px solid rgba(45,212,191,0.25)", color: "var(--indigo)" }}
             >
               <span className="w-1.5 h-1.5 rounded-full pulse-dot" style={{ background: "var(--indigo)" }} />
-              v0.14.0 · Self-host free · Apache 2.0
+              v0.14.15 · Self-host free · Apache 2.0
             </div>
 
             {/* Headline — lead with pain */}
@@ -236,7 +236,7 @@ function Hero() {
             >
               <span>LangChain · CrewAI · Pydantic AI</span>
               <span>Postgres + ClickHouse</span>
-              <span>2,885 tests · 75% coverage</span>
+              <span>2,933 tests · 75% coverage</span>
             </div>
           </div>
 
@@ -603,11 +603,6 @@ const FEATURES = [
     title: "Multi-Agent Call Trees",
     desc: "parent_span_id links sub-agent calls across any depth. See the path from orchestrator to leaf tool.",
     badge: "Core",
-  },
-  {
-    title: "Session Replay",
-    desc: "Re-execute any session against live MCP servers. Compare two runs side-by-side to see what changed.",
-    badge: "v0.14",
   },
   {
     title: "Anomaly Detection",

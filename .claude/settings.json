@@ -5,7 +5,10 @@
       "Bash(xargs sed:*)",
       "WebFetch(domain:www.langsight.dev)",
       "mcp__ruflo__*",
-      "Bash(.venv/bin/python -c ':*)"
+      "Bash(.venv/bin/python -c ':*)",
+      "Bash(docker restart:*)",
+      "Bash(python3 -c ':*)",
+      "Bash(time curl:*)"
     ]
   }
 }

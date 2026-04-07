@@ -20,7 +20,7 @@ RUN uv sync --frozen --no-dev
 
 # Test MCP servers executed by the health checker need these runtime deps.
 # Install them after the final sync so uv does not remove them again.
-RUN uv pip install --python /app/.venv/bin/python fastmcp boto3
+RUN uv pip install --python /app/.venv/bin/python fastmcp boto3 "redis[hiredis]>=5"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2: runtime — minimal image with only what's needed to run
