@@ -115,6 +115,10 @@ def test_liveness_works_with_monitor_enabled(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """API is reachable while the embedded monitor loop is active."""
+    # Patch Settings to disable Redis — pydantic-settings re-reads .env at
+    # construction time, so monkeypatch.delenv is not sufficient.
+    monkeypatch.setenv("LANGSIGHT_REDIS_URL", "")
+    monkeypatch.setenv("LANGSIGHT_WORKERS", "1")
     monkeypatch.setenv("LANGSIGHT_MONITOR_ENABLED", "true")
     monkeypatch.setenv("LANGSIGHT_MONITOR_INTERVAL_SECONDS", "9999")
 
@@ -139,6 +143,10 @@ def test_liveness_works_with_monitor_disabled(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """API is reachable when embedded monitor is disabled."""
+    # Patch Settings to disable Redis — pydantic-settings re-reads .env at
+    # construction time, so monkeypatch.delenv is not sufficient.
+    monkeypatch.setenv("LANGSIGHT_REDIS_URL", "")
+    monkeypatch.setenv("LANGSIGHT_WORKERS", "1")
     monkeypatch.setenv("LANGSIGHT_MONITOR_ENABLED", "false")
 
     cfg = _make_config_file(tmp_path, with_servers=True)
@@ -153,10 +161,12 @@ def test_liveness_works_with_monitor_disabled(
             assert resp.status_code == 200
 
 
-def test_liveness_works_with_no_servers(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_liveness_works_with_no_servers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """API is reachable and monitor is skipped when config has no servers."""
+    # Patch Settings to disable Redis — pydantic-settings re-reads .env at
+    # construction time, so monkeypatch.delenv is not sufficient.
+    monkeypatch.setenv("LANGSIGHT_REDIS_URL", "")
+    monkeypatch.setenv("LANGSIGHT_WORKERS", "1")
     monkeypatch.setenv("LANGSIGHT_MONITOR_ENABLED", "true")
 
     cfg = _make_config_file(tmp_path, with_servers=False)
@@ -175,6 +185,10 @@ def test_monitor_calls_check_many_when_enabled(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """When enabled + servers present, the monitor loop calls check_many."""
+    # Patch Settings to disable Redis — pydantic-settings re-reads .env at
+    # construction time, so monkeypatch.delenv is not sufficient.
+    monkeypatch.setenv("LANGSIGHT_REDIS_URL", "")
+    monkeypatch.setenv("LANGSIGHT_WORKERS", "1")
     monkeypatch.setenv("LANGSIGHT_MONITOR_ENABLED", "true")
     monkeypatch.setenv("LANGSIGHT_MONITOR_INTERVAL_SECONDS", "9999")
 
@@ -195,6 +209,7 @@ def test_monitor_calls_check_many_when_enabled(
         app = create_app(config_path=cfg)
         with TestClient(app) as client:
             import time  # noqa: PLC0415
+
             time.sleep(0.1)  # give monitor loop one iteration
             resp = client.get("/api/liveness")
             assert resp.status_code == 200
@@ -203,10 +218,12 @@ def test_monitor_calls_check_many_when_enabled(
     assert check_many_calls[0] == 1, "called with 1 server from config"
 
 
-def test_monitor_not_called_when_disabled(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_monitor_not_called_when_disabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """When monitor is disabled, check_many is never called."""
+    # Patch Settings to disable Redis — pydantic-settings re-reads .env at
+    # construction time, so monkeypatch.delenv is not sufficient.
+    monkeypatch.setenv("LANGSIGHT_REDIS_URL", "")
+    monkeypatch.setenv("LANGSIGHT_WORKERS", "1")
     monkeypatch.setenv("LANGSIGHT_MONITOR_ENABLED", "false")
 
     cfg = _make_config_file(tmp_path, with_servers=True)
@@ -226,6 +243,7 @@ def test_monitor_not_called_when_disabled(
         app = create_app(config_path=cfg)
         with TestClient(app) as client:
             import time  # noqa: PLC0415
+
             time.sleep(0.05)
             client.get("/api/liveness")
 
@@ -236,6 +254,10 @@ def test_monitor_not_called_when_no_servers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """When config has no servers, check_many is never called."""
+    # Patch Settings to disable Redis — pydantic-settings re-reads .env at
+    # construction time, so monkeypatch.delenv is not sufficient.
+    monkeypatch.setenv("LANGSIGHT_REDIS_URL", "")
+    monkeypatch.setenv("LANGSIGHT_WORKERS", "1")
     monkeypatch.setenv("LANGSIGHT_MONITOR_ENABLED", "true")
 
     cfg = _make_config_file(tmp_path, with_servers=False)
@@ -255,6 +277,7 @@ def test_monitor_not_called_when_no_servers(
         app = create_app(config_path=cfg)
         with TestClient(app) as client:
             import time  # noqa: PLC0415
+
             time.sleep(0.05)
             client.get("/api/liveness")
 

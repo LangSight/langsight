@@ -71,8 +71,9 @@ def _validate_server_url(url: str) -> str:
         try:
             resolved = socket.getaddrinfo(hostname, None)
             addresses = [ipaddress.ip_address(r[4][0]) for r in resolved]
-        except socket.gaierror:
-            # Cannot resolve — allow through; connection will fail at runtime
+        except OSError:
+            # Cannot resolve (gaierror, ConnectionError, etc.) —
+            # allow through; the real connection will fail at runtime.
             addresses = []
 
     for addr in addresses:
