@@ -207,7 +207,7 @@ Sessions list, health check, and lineage all stay under 400ms at 100 VUs with th
 | Configuration | p95 latency | Error rate | Throughput |
 |---|---|---|---|
 | 1 worker, semaphore=20 | 229ms | 0.54% (cold ramp only) | 274 spans/s |
-| 4 workers, semaphore=5/worker | 229ms | <0.5% | ~1,000 spans/s |
+| 4 workers, semaphore=5/worker | 229ms | &lt;0.5% | ~1,000 spans/s |
 
 The semaphore caps concurrent ClickHouse inserts at 20 total (regardless of worker count) to prevent memory exhaustion.
 
