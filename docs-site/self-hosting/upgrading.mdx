@@ -1,0 +1,153 @@
+---
+title: "Upgrading"
+description: "How to upgrade LangSight between versions without data loss — standard steps, version-specific notes, and rollback procedure"
+---
+
+## Standard upgrade procedure
+
+Every upgrade follows the same four steps:
+
+```bash
+# 1. Pull the latest images
+docker compose pull
+
+# 2. Restart containers (zero data loss — data lives in named volumes)
+docker compose up -d
+
+# 3. Apply any new PostgreSQL schema migrations
+docker compose exec api uv run alembic upgrade head
+
+# 4. Verify the API is healthy
+curl http://localhost:8000/api/readiness
+```
+
+ClickHouse schema changes are applied automatically on API startup. PostgreSQL changes require the explicit `alembic upgrade head` step.
+
+<Note>
+  Named Docker volumes (`langsight_postgres_data`, `langsight_clickhouse_data`) persist across `docker compose down` and `docker compose pull`. Your data is not affected by image updates.
+</Note>
+
+---
+
+## Before you upgrade
+
+**Back up first.** Especially for production deployments:
+
+```bash
+# PostgreSQL — pg_dump
+docker compose exec postgres pg_dump -U langsight langsight > backup_$(date +%Y%m%d).sql
+
+# ClickHouse — freeze all partitions
+docker compose exec clickhouse clickhouse-client \
+  --query "ALTER TABLE mcp_tool_calls FREEZE"
+```
+
+See [Backup & Restore](/self-hosting/backup-restore) for the full procedure.
+
+---
+
+## Version-specific notes
+
+### Upgrading to v0.14.x (current)
+
+No breaking changes. Standard procedure applies.
+
+**New env vars introduced across v0.14.x:**
+
+| Variable | Default | What it does |
+|----------|---------|-------------|
+| `LANGSIGHT_WORKERS` | `1` | Uvicorn worker count; requires Redis if > 1 |
+| `LANGSIGHT_REDIS_URL` | — | Redis connection string for multi-worker mode |
+| `LANGSIGHT_TRUSTED_PROXY_CIDRS` | `127.0.0.1/32,::1/128` | CIDRs of trusted reverse proxies |
+| `LANGSIGHT_METRICS_TOKEN` | — | Bearer token for `/metrics` (Prometheus) |
+
+All new variables are optional. Existing deployments continue to work without them.
+
+---
+
+### Upgrading to v0.7.0
+
+Schema changes are applied automatically on restart — no manual SQL required. The `alembic upgrade head` step handles them idempotently.
+
+**PostgreSQL changes (auto-applied via `IF NOT EXISTS`):**
+
+| Table | Change |
+|-------|--------|
+| `health_results` | `project_id TEXT NOT NULL DEFAULT ''` column added |
+| `audit_logs` | `project_id TEXT NOT NULL DEFAULT ''` column added |
+
+Existing rows retain `project_id = ''` (unscoped / global).
+
+**ClickHouse changes (auto-applied on startup):**
+
+| Object | Change |
+|--------|--------|
+| `mv_agent_sessions` | Materialized view rebuilt to include `project_id`; backfilled from `mcp_tool_calls` |
+
+The backfill runs in the background. Sessions data returns to normal once it completes (usually seconds on small datasets, a few minutes at high volume).
+
+---
+
+### Upgrading from SQLite to dual (Postgres + ClickHouse)
+
+If you started with `mode: sqlite` for evaluation and want to move to production storage:
+
+1. Export your current server configs from the UI (**Settings → MCP Servers**)
+2. Start the full stack: `docker compose up -d`
+3. Update `.env` / `.langsight.yaml`:
+
+```yaml
+storage:
+  mode: dual
+  postgres_url: postgresql://langsight:${POSTGRES_PASSWORD}@postgres:5432/langsight
+  clickhouse_url: http://clickhouse:8123
+```
+
+4. Apply migrations: `docker compose exec api uv run alembic upgrade head`
+5. Re-create your API keys and users via the dashboard (SQLite users are not migrated)
+
+Historical span data from SQLite is not migrated (it was stored in memory or SQLite files). New spans start flowing to ClickHouse immediately.
+
+---
+
+## Rollback procedure
+
+If an upgrade causes issues, roll back the image and reverse the migration:
+
+```bash
+# 1. Pin to the previous image version
+# Edit docker-compose.yml: image: langsight/api:0.14.11
+
+# 2. Reverse the last Alembic migration (if any was applied)
+docker compose exec api uv run alembic downgrade -1
+
+# 3. Restart
+docker compose up -d
+```
+
+<Warning>
+  Alembic downgrade reverses schema changes but cannot restore deleted data. Always back up before upgrading.
+</Warning>
+
+---
+
+## Checking your current version
+
+```bash
+# From the CLI
+langsight --version
+
+# From the API
+curl http://localhost:8000/api/version
+```
+
+The API response also includes the active storage mode and whether Redis is connected.
+
+---
+
+## Related
+
+- [Backup & Restore](/self-hosting/backup-restore) — full backup and restore procedure
+- [Configuration Reference](/self-hosting/configuration) — all environment variables
+- [Feature Matrix](/self-hosting/feature-matrix) — which features require which backends
+- [Docker Compose](/self-hosting/docker-compose) — full stack setup reference

@@ -1,0 +1,162 @@
+---
+title: "LangChain RAG + LangSight"
+description: "Trace every retrieval and LLM call in a LangChain RAG pipeline — see which tool call failed, how long retrieval took, and what each step cost"
+---
+
+This guide wires LangSight into a LangChain retrieval-augmented generation (RAG) pipeline. By the end you will see every retrieval call, LLM call, and tool call in the LangSight sessions dashboard with latency, status, and cost.
+
+## What you need
+
+- LangSight running locally (`./scripts/quickstart.sh` or `docker compose up -d`)
+- Python 3.11+
+- An OpenAI API key (or swap for any LangChain-supported LLM)
+
+## Install
+
+```bash
+pip install langsight langchain langchain-openai langchain-community
+```
+
+## 1. Create a project and get your API key
+
+1. Open `http://localhost:3003` and log in
+2. Go to **Settings → Projects** and copy your project ID
+3. Go to **Settings → API Keys** and create a key
+
+Add to `.env`:
+
+```bash
+LANGSIGHT_URL=http://localhost:8000
+LANGSIGHT_API_KEY=ls_your_key_here
+LANGSIGHT_PROJECT_ID=your_project_id
+```
+
+## 2. Build a RAG chain with tracing
+
+```python
+import os
+from dotenv import load_dotenv
+
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.schema.runnable import RunnablePassthrough
+from langchain.prompts import ChatPromptTemplate
+
+import langsight
+from langsight.sdk import LangSightClient
+from langsight.integrations.langchain import LangSightLangChainCallback
+
+load_dotenv()
+
+# --- LangSight setup ---
+client = LangSightClient(
+    url=os.environ["LANGSIGHT_URL"],
+    api_key=os.environ["LANGSIGHT_API_KEY"],
+    project_id=os.environ["LANGSIGHT_PROJECT_ID"],
+)
+callback = LangSightLangChainCallback(
+    client=client,
+    agent_name="rag-agent",
+)
+
+# --- Build a minimal FAISS vector store from sample docs ---
+docs = [
+    "LangSight monitors AI agent tool calls in production.",
+    "The circuit breaker disables a failing tool after 5 consecutive errors.",
+    "Loop detection fires when the same tool is called 3 times with identical arguments.",
+    "Cost attribution shows which MCP server is consuming the most budget.",
+]
+splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=0)
+chunks = splitter.create_documents(docs)
+vectorstore = FAISS.from_documents(chunks, OpenAIEmbeddings())
+retriever = vectorstore.as_retriever(search_kwargs={"k": 2})
+
+# --- Build the RAG chain ---
+prompt = ChatPromptTemplate.from_template(
+    "Answer based on this context:\n\n{context}\n\nQuestion: {question}"
+)
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+def format_docs(docs):
+    return "\n\n".join(d.page_content for d in docs)
+
+rag_chain = (
+    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    | prompt
+    | llm
+)
+
+# --- Run with tracing ---
+with langsight.session(agent_name="rag-agent") as session_id:
+    callback.session_id = session_id
+    response = rag_chain.invoke(
+        "How does LangSight detect agent loops?",
+        config={"callbacks": [callback]},
+    )
+    print(response.content)
+```
+
+## 3. View the trace
+
+```bash
+langsight sessions
+```
+
+```
+Session          Agent        Calls   Failed   Duration   Cost
+sess-abc123      rag-agent    3       0        1.2s       $0.0004
+```
+
+```bash
+langsight sessions --id sess-abc123
+```
+
+```
+Trace: sess-abc123  (rag-agent)
+├── rag-agent (agent)
+│   ├── VectorStoreRetriever    340ms   success
+│   └── ChatOpenAI              820ms   success
+```
+
+Or open `http://localhost:3003` → **Sessions** → click the session row → **Trace** tab for the full nested call tree.
+
+## What gets traced
+
+| Span | What it captures |
+|------|-----------------|
+| Retriever call | Tool name, latency, status |
+| LLM call | Model, input/output tokens, cost, latency |
+| Agent span | Wraps all calls in the session |
+
+The callback captures the question as the session input and the LLM response as the session output — both visible in the session detail view.
+
+## Using a different LLM
+
+Swap `ChatOpenAI` for any LangChain-compatible model. The callback is LLM-agnostic — it traces at the LangChain callback layer, not the model SDK layer.
+
+```python
+from langchain_anthropic import ChatAnthropic
+llm = ChatAnthropic(model="claude-3-5-haiku-20241022")
+```
+
+## Loop detection and budget guardrails
+
+If the retriever is called in a loop (e.g. a retry chain that keeps fetching), LangSight can stop the session automatically. Add to your client:
+
+```python
+client = LangSightClient(
+    url=os.environ["LANGSIGHT_URL"],
+    api_key=os.environ["LANGSIGHT_API_KEY"],
+    project_id=os.environ["LANGSIGHT_PROJECT_ID"],
+    loop_detection=True,   # stop if same tool called 3x with same args
+    max_cost_usd=0.10,     # hard budget cap per session
+)
+```
+
+## Next steps
+
+- [LangChain integration reference](/sdk/integrations/langchain) — full callback options, auto-detect mode, LangGraph multi-agent trees
+- [Session health tags](/session-health) — understand `loop_detected`, `budget_exceeded`, `tool_failure`
+- [Costs dashboard](/costs-model-pricing) — see cost by tool, agent, and model
+- [MCP health monitoring](/mcp/health-monitoring) — if your RAG pipeline calls MCP servers

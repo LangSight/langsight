@@ -96,7 +96,8 @@
     {
       "group": "Guides",
       "pages": [
-        "guides/auto-discovery"
+        "guides/auto-discovery",
+        "guides/langchain-rag"
       ]
     },
     {
@@ -149,6 +150,8 @@
         "self-hosting/production",
         "self-hosting/production-hardening",
         "self-hosting/scaling",
+        "self-hosting/upgrading",
+        "self-hosting/feature-matrix",
         "self-hosting/redis",
         "self-hosting/configuration",
         "self-hosting/storage",

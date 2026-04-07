@@ -1,0 +1,173 @@
+---
+title: "Feature Matrix"
+description: "Which features require PostgreSQL, ClickHouse, or both — at a glance"
+---
+
+LangSight uses two storage backends with distinct responsibilities. This page maps every feature to the backend(s) it requires so you can choose a deployment topology with confidence.
+
+## Quick summary
+
+| Mode | PostgreSQL | ClickHouse | Use case |
+|------|-----------|-----------|---------|
+| `dual` (default) | Required | Required | Production — all features available |
+| `postgres` | Required | — | User management, security scanning, alerts — no span analytics |
+| `clickhouse` | — | Required | Span analytics, sessions, costs — no user management |
+| `sqlite` | — | — | Local evaluation only; not for production |
+
+---
+
+## Full feature matrix
+
+### Agent tracing & sessions
+
+| Feature | PostgreSQL | ClickHouse | Notes |
+|---------|-----------|-----------|-------|
+| Ingest spans via SDK | — | Required | Written to `mcp_tool_calls` |
+| `langsight sessions` CLI | — | Required | Aggregated from `mv_agent_sessions` |
+| Sessions dashboard page | — | Required | |
+| Session trace / call tree | — | Required | |
+| Session health tags | — | Required | `success`, `loop_detected`, `budget_exceeded`, etc. |
+| Token & cost per session | — | Required | |
+| `langsight costs` CLI | — | Required | |
+| Costs dashboard page | — | Required | |
+| Anomaly detection | — | Required | Uses `mv_tool_reliability` materialized view |
+| Blast radius (lineage DAG) | — | Required | |
+| Loop detection (runtime) | — | — | In-process SDK check; no storage needed |
+| Budget guardrails (runtime) | — | — | In-process SDK check; no storage needed |
+| Circuit breaker | — | — | In-process; Redis optional for multi-worker state sharing |
+
+---
+
+### MCP health monitoring
+
+| Feature | PostgreSQL | ClickHouse | Notes |
+|---------|-----------|-----------|-------|
+| `langsight mcp-health` CLI | — | Required | Health results stored in ClickHouse |
+| Health dashboard page | — | Required | |
+| Schema drift detection | Either | Either | `schema_snapshots` (Postgres/SQLite) or `mcp_schema_snapshots` (ClickHouse); whichever backend is active |
+| Uptime / latency history | — | Required | |
+| MCP server registry (config) | Required | — | Server metadata stored in PostgreSQL |
+| Per-project server scoping | Required | — | |
+
+---
+
+### Security scanning
+
+| Feature | PostgreSQL | ClickHouse | Notes |
+|---------|-----------|-----------|-------|
+| `langsight security-scan` CLI | Required | — | Reads server config from PostgreSQL |
+| CVE scanning (OSV) | Required | — | |
+| OWASP MCP Top 10 checks | Required | — | |
+| Tool poisoning / prompt injection detection | Required | — | |
+| Auth configuration audit | Required | — | |
+| Security dashboard page | Required | — | |
+
+---
+
+### SLOs & alerting
+
+| Feature | PostgreSQL | ClickHouse | Notes |
+|---------|-----------|-----------|-------|
+| SLO definitions | Required | — | Stored in `agent_slos` |
+| SLO evaluation | Required | Required | Config from PostgreSQL; span stats from ClickHouse |
+| Alert rules | Required | — | |
+| Alert history & deduplication | Required | — | |
+| Slack alerts | Required | — | Config in PostgreSQL; payload built at runtime |
+| Webhook alerts | Required | — | |
+| Live view (SSE) | — | Required | Stream built from ClickHouse spans |
+
+---
+
+### User management & access control
+
+| Feature | PostgreSQL | ClickHouse | Notes |
+|---------|-----------|-----------|-------|
+| User accounts | Required | — | `users` table; passwords hashed with bcrypt |
+| Invite flow | Required | — | `invite_tokens` table |
+| RBAC (admin / viewer) | Required | — | Enforced on all write endpoints |
+| Projects | Required | — | `projects` + `project_members` |
+| API keys (admin / viewer scopes) | Required | — | SHA-256 hash stored; never plaintext |
+| Login lockout | Required | — | `login_failures` table; 5 failures → 15 min lockout |
+| Audit log | Required | — | `audit_logs` table |
+
+---
+
+### Dashboard & CLI infrastructure
+
+| Feature | PostgreSQL | ClickHouse | Notes |
+|---------|-----------|-----------|-------|
+| Dashboard login | Required | — | NextAuth session backed by PostgreSQL users |
+| Model pricing config | Required | — | `model_pricing` table; editable in dashboard |
+| OTLP span ingestion endpoint | — | Required | `/api/traces/otlp` |
+| Prometheus metrics (`/metrics`) | — | — | In-process counters; no storage |
+| Liveness / readiness probes | — | — | `/api/liveness`, `/api/readiness` |
+
+---
+
+## Choosing a topology
+
+### All features → `dual` (default)
+
+```yaml
+storage:
+  mode: dual
+```
+
+```bash
+docker compose up -d
+```
+
+Both backends start automatically. No further config needed.
+
+---
+
+### Metadata only (no tracing yet) → `postgres`
+
+```yaml
+storage:
+  mode: postgres
+  postgres_url: postgresql://user:pass@localhost:5432/langsight
+```
+
+Available: users, projects, API keys, security scanning, alert config, schema drift.
+Not available: span ingestion, sessions, costs, anomaly detection, health history, live view.
+
+Switch to `dual` when ready — existing users and projects are preserved.
+
+---
+
+### Analytics only (no auth yet) → `clickhouse`
+
+```yaml
+storage:
+  mode: clickhouse
+  clickhouse_url: http://localhost:8123
+  clickhouse_database: langsight
+```
+
+Available: span ingestion, sessions, costs, health checks, live view.
+Not available: user management, RBAC, API keys in DB, SLOs, alerts, security scanning.
+
+---
+
+### Local evaluation → `sqlite`
+
+```yaml
+storage:
+  mode: sqlite
+```
+
+No Docker needed. Metadata features work. No span analytics.
+
+<Warning>
+  SQLite is not supported for production. Use `dual` mode for any shared or persistent deployment.
+</Warning>
+
+---
+
+## Related
+
+- [Storage Backends](/self-hosting/storage) — configuration reference for each mode
+- [Docker Compose](/self-hosting/docker-compose) — full stack setup
+- [Scaling](/self-hosting/scaling) — deployment sizing by user count
+- [Upgrading](/self-hosting/upgrading) — upgrade between versions without data loss

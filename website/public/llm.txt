@@ -1,0 +1,95 @@
+# LangSight
+
+> Runtime reliability platform for AI agent toolchains — detect loops, enforce budgets, monitor MCP health, scan for security issues, and map blast radius.
+
+LangSight is open-source (Apache 2.0) and fully self-hosted. It does not handle prompt evaluation, model benchmarking, or simulation — those are handled by tools like Langfuse or LangSmith. LangSight monitors the tool layer: MCP servers, agent tool calls, their health, cost, and safety.
+
+Current version: v0.14.15
+Language: Python 3.11+
+License: Apache 2.0
+Install: pip install langsight
+Self-host: docker compose up -d (5 containers: API, dashboard, Postgres, ClickHouse, optional Redis)
+
+## What LangSight does
+
+- Loop detection: terminates a session when the same tool is called with the same arguments 3 times
+- Budget guardrails: hard cost and step limits per session
+- Circuit breaker: auto-disables a failing tool after 5 consecutive errors; re-enables after cooldown
+- MCP health monitoring: continuous health checks, uptime tracking, latency history
+- Schema drift detection: alerts when an MCP server's tool schema changes unexpectedly
+- Security scanning: CVE checks (OSV), OWASP MCP Top 10, tool poisoning / prompt injection detection, auth audit
+- Cost attribution: per-tool, per-agent, per-session cost breakdown (not model-level — use Langfuse for that)
+- Blast radius: lineage DAG showing which agents call which tools; impact count when a tool goes down
+- Multi-agent call trees: full parent-child span hierarchy across agent handoffs via parent_span_id
+- Alerting: Slack (Block Kit) and generic webhook; OpsGenie and PagerDuty are planned, not yet shipped
+
+## What LangSight does NOT do
+
+- Prompt evaluation or optimization (use Langfuse, LangSmith, LangWatch)
+- Model-level cost tracking (use Langfuse)
+- Agent simulation or testing (use LangWatch)
+- Infrastructure monitoring — CPU, memory, HTTP codes (use Datadog, New Relic)
+
+## Supported integrations (shipped)
+
+- LangChain / LangGraph / Langflow — LangSightLangChainCallback
+- CrewAI — native event bus integration (19 handlers), zero-code
+- Pydantic AI — @langsight_tool decorator
+- OpenAI Agents SDK — LangSightOpenAIHooks
+- Anthropic / Claude Agent SDK — auto_patch with SessionContext
+- OpenAI SDK (direct) — wrap_llm()
+- Anthropic SDK (direct) — wrap_llm()
+- Google Gemini SDK (direct) — wrap_llm()
+- Claude Desktop / Cursor / VS Code — auto-discovered by langsight init
+- Any OTEL framework — OTLP endpoint
+
+## Storage backends
+
+- dual (default): PostgreSQL (metadata) + ClickHouse (analytics) — all features
+- postgres only: user management, security scanning, alerts; no span analytics
+- clickhouse only: span ingestion, sessions, costs; no user management
+- sqlite: local evaluation only; not for production
+
+## Pages on this site
+
+- [Home](https://www.langsight.dev): What LangSight is, how it fits alongside Langfuse, 4 core pillars (Prevent / Detect / Monitor / Map), quickstart
+- [Security](https://www.langsight.dev/security): OWASP MCP Top 10 coverage, tool poisoning detection, CVE scanning, security scanning in CI
+- [Pricing](https://www.langsight.dev/pricing): $0 forever self-hosted; no paid tiers
+- [Alternatives](https://www.langsight.dev/alternatives): How LangSight compares to Langfuse, LangSmith, Datadog — they answer different questions
+- [Glossary](https://www.langsight.dev/glossary): Definitions for agent observability terminology (session, span, health tag, circuit breaker, blast radius, schema drift, etc.)
+- [Blog](https://www.langsight.dev/blog): Engineering posts on agent reliability
+
+## Blog posts
+
+- [How LangSight Detects Agent Loops](https://www.langsight.dev/blog/ai-agent-loop-detection)
+- [Tool-Level Cost Attribution for AI Agents](https://www.langsight.dev/blog/ai-agent-cost-attribution)
+- [Blast Radius Mapping for MCP Servers](https://www.langsight.dev/blog/blast-radius-mapping)
+- [Circuit Breakers for AI Agent Tools](https://www.langsight.dev/blog/circuit-breakers-ai-agents)
+- [LangSight vs Langfuse](https://www.langsight.dev/blog/langsight-vs-langfuse)
+- [MCP Monitoring in Production](https://www.langsight.dev/blog/mcp-monitoring-production)
+- [MCP Schema Drift Detection](https://www.langsight.dev/blog/mcp-schema-drift)
+- [MCP Server Security](https://www.langsight.dev/blog/mcp-server-security)
+- [MCP Tool Poisoning](https://www.langsight.dev/blog/mcp-tool-poisoning)
+- [OWASP MCP Top 10 Guide](https://www.langsight.dev/blog/owasp-mcp-top-10-guide)
+- [Self-Hosting AI Observability](https://www.langsight.dev/blog/self-hosting-ai-observability)
+- [SLOs for AI Agents](https://www.langsight.dev/blog/slos-for-ai-agents)
+
+## Documentation
+
+Full docs at https://docs.langsight.dev
+
+Key sections:
+- Quickstart: https://docs.langsight.dev/quickstart
+- SDK integrations: https://docs.langsight.dev/sdk/python
+- MCP health monitoring: https://docs.langsight.dev/mcp/health-monitoring
+- Security scanning: https://docs.langsight.dev/cli/security-scan
+- Self-hosting (production): https://docs.langsight.dev/self-hosting/production
+- Production hardening (TLS, firewall, nginx): https://docs.langsight.dev/self-hosting/production-hardening
+- Scaling guide: https://docs.langsight.dev/self-hosting/scaling
+- Feature matrix (which features need Postgres vs ClickHouse): https://docs.langsight.dev/self-hosting/feature-matrix
+- Upgrade guide: https://docs.langsight.dev/self-hosting/upgrading
+- LangChain RAG quickstart: https://docs.langsight.dev/guides/langchain-rag
+
+## Source code
+
+https://github.com/LangSight/langsight
