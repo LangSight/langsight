@@ -15,11 +15,12 @@ Rate limits (S.4):
 from __future__ import annotations
 
 import asyncio
+import os
 from collections import OrderedDict
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Request
 from fastapi import status as http_status
 
 from langsight.api.metrics import SPANS_INGESTED
@@ -34,8 +35,7 @@ router = APIRouter(prefix="/traces", tags=["traces"])
 # In multi-worker mode each worker has its own semaphore — total across the
 # cluster = LANGSIGHT_WORKERS × _INSERT_SEM_LIMIT.  With 4 workers and limit=5:
 # 4 × 5 = 20 concurrent inserts total (same safe budget as single-worker=20).
-import os as _os
-_INSERT_SEM_LIMIT = max(1, 20 // max(1, int(_os.environ.get("LANGSIGHT_WORKERS", "1"))))
+_INSERT_SEM_LIMIT = max(1, 20 // max(1, int(os.environ.get("LANGSIGHT_WORKERS", "1"))))
 _INSERT_SEM = asyncio.Semaphore(_INSERT_SEM_LIMIT)
 
 # LRU caches to avoid DB lookups on every span batch.
@@ -162,7 +162,6 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
     """
     # Validate session_id format at the API boundary — reject non-UUID values
     # so arbitrary test strings cannot pollute the dashboard.
-    from fastapi import HTTPException
 
     for span in spans:
         if span.session_id and not SESSION_ID_RE.match(span.session_id):
@@ -242,12 +241,11 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                     span_count=len(spans),
                     error=err_str[:200],
                 )
-                from fastapi import HTTPException
                 raise HTTPException(
                     status_code=503,
                     detail="Storage temporarily unavailable — retry after 5 seconds",
                     headers={"Retry-After": "5"},
-                )
+                ) from None
             raise
 
     # Extract project_id once — used for both health tagging and agent registration
