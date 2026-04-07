@@ -81,7 +81,6 @@ assets/package.json
 # Audit / working documents (not product docs)
 AUDIT_*.md
 PRINCIPAL_ENGINEER_AUDIT.md
-ROADMAP_AND_SMB_ADOPTION.md
 V03_SPRINT_PLAN.md
 
 # Internal docs — not published, tracked locally only

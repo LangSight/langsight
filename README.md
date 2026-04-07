@@ -203,8 +203,8 @@ Two lines. Every tool call is now traced, guarded, and cost-attributed.
 |---|---|
 | Slack (Block Kit) | Shipped |
 | Generic webhook | Shipped |
-| OpsGenie (native Events API) | v0.3 |
-| PagerDuty (Events API v2) | v0.3 |
+| OpsGenie (native Events API) | Planned |
+| PagerDuty (Events API v2) | Planned |
 
 Alert types: server down/recovered, schema drift, latency spike, SLO breach, anomaly, loop detected, budget exceeded, circuit breaker open, failure rate spike, blast radius impact.
 
@@ -315,7 +315,7 @@ result = await traced_session.call_tool("my_tool", {"arg": "value"})
 | Command | Description |
 |---------|-------------|
 | `langsight init` | Auto-discover MCP servers, generate config |
-| `langsight sessions` | List sessions with health tags, costs, failures |
+| `langsight sessions` | List sessions with health tags and failure counts |
 | `langsight sessions --id <id>` | Full trace for one session |
 | `langsight mcp-health` | Health status + circuit breaker state |
 | `langsight security-scan` | CVE + OWASP MCP + poisoning detection |
