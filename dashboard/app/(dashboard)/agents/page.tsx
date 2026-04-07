@@ -623,16 +623,18 @@ function ServerToolsCard({ serverName, reliability, healthStatus, isMcpServer, p
   );
 
   // Merge declared (schema) + observed (call stats)
-  const allNames = new Set([...(declared ?? []).map(d => d.tool_name), ...reliability.map(r => r.tool_name)]);
-  const tools = Array.from(allNames).sort().map((name) => ({
-    name,
-    description: declared?.find(d => d.tool_name === name)?.description ?? "",
-    rel: reliability.find(r => r.tool_name === name) ?? null,
-    isDeclared: !!(declared?.find(d => d.tool_name === name)),
-  }));
+  const tools = useMemo(() => {
+    const allNames = new Set([...(declared ?? []).map(d => d.tool_name), ...reliability.map(r => r.tool_name)]);
+    return Array.from(allNames).sort().map((name) => ({
+      name,
+      description: declared?.find(d => d.tool_name === name)?.description ?? "",
+      rel: reliability.find(r => r.tool_name === name) ?? null,
+      isDeclared: !!(declared?.find(d => d.tool_name === name)),
+    }));
+  }, [declared, reliability]);
 
   const statusColor = STATUS_COLOR_MAP[healthStatus ?? ""] ?? "#6b7280";
-  const totalCalls = reliability.reduce((s, r) => s + r.total_calls, 0);
+  const totalCalls = useMemo(() => reliability.reduce((s, r) => s + r.total_calls, 0), [reliability]);
 
   return (
     <div className="rounded-xl border overflow-hidden transition-all" style={{ borderColor: expanded ? "hsl(var(--primary) / 0.3)" : "hsl(var(--border))" }}>

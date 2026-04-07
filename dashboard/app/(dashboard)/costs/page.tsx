@@ -209,8 +209,8 @@ export default function CostsPage() {
   }, [data, agentFilter]);
 
   // Filtered totals
-  const filteredTotal = filteredTools.reduce((sum, e) => sum + e.total_cost_usd, 0);
-  const filteredCalls = filteredTools.reduce((sum, e) => sum + e.total_calls, 0);
+  const filteredTotal = useMemo(() => filteredTools.reduce((sum, e) => sum + e.total_cost_usd, 0), [filteredTools]);
+  const filteredCalls = useMemo(() => filteredTools.reduce((sum, e) => sum + e.total_calls, 0), [filteredTools]);
   const hasFilters = serverFilter.length > 0 || agentFilter.length > 0 || modelFilter.length > 0 || typeFilter.length > 0;
 
   function clearAll() {
