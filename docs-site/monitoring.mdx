@@ -39,11 +39,19 @@ High-frequency internal paths (`/metrics`, `/api/liveness`, `/api/readiness`) ar
 
 ### Authentication
 
-The `/metrics` endpoint requires **no authentication**. Prometheus scrapers can reach it directly without API keys. Access control should be enforced at the network level (firewall rules, Docker internal network, reverse proxy ACLs).
+The `/metrics` endpoint requires a **bearer token**. Set the `LANGSIGHT_METRICS_TOKEN` environment variable before starting the API:
+
+```bash
+export LANGSIGHT_METRICS_TOKEN=$(python -c "import secrets; print(secrets.token_hex(32))")
+```
+
+- If `LANGSIGHT_METRICS_TOKEN` is **not set**, the endpoint returns **404** (no body) so it does not fingerprint the deployment.
+- If the token is **wrong or missing** in the request, the endpoint returns **401 Unauthorized**.
+- Pass the token in every scrape request using the `Authorization: Bearer <token>` header.
 
 ### Scrape configuration
 
-Add the following job to your `prometheus.yml`:
+Add the following job to your `prometheus.yml`, including the `authorization` block:
 
 ```yaml
 # prometheus.yml
@@ -53,6 +61,8 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:8000"]
     metrics_path: /metrics
+    authorization:
+      credentials: "<your-LANGSIGHT_METRICS_TOKEN-value>"
 ```
 
 If running inside Docker Compose, use the service name:
@@ -64,12 +74,18 @@ scrape_configs:
     static_configs:
       - targets: ["api:8000"]
     metrics_path: /metrics
+    authorization:
+      credentials: "<your-LANGSIGHT_METRICS_TOKEN-value>"
 ```
+
+<Tip>
+  Store the token value in a Prometheus `--web.config.file` or use environment variable expansion (`$LANGSIGHT_METRICS_TOKEN`) rather than hardcoding it in `prometheus.yml`.
+</Tip>
 
 ### Verify the endpoint
 
 ```bash
-curl http://localhost:8000/metrics
+curl -H "Authorization: Bearer <your-token>" http://localhost:8000/metrics
 ```
 
 You should see Prometheus text exposition format output:

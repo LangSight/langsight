@@ -243,10 +243,11 @@ class TestServerMetadataUpdateModel:
         m = ServerMetadataUpdate(url="")
         assert m.url == ""
 
-    def test_url_field_is_string_type(self) -> None:
-        """The url field is a plain str (no AnyUrl validation — flexible for MCP URLs)."""
-        m = ServerMetadataUpdate(url="https://custom-mcp.internal/endpoint")
+    def test_url_field_accepts_valid_https_url(self) -> None:
+        """Valid external https URLs are accepted."""
+        m = ServerMetadataUpdate(url="https://mcp.example.com/sse")
         assert isinstance(m.url, str)
+        assert m.url == "https://mcp.example.com/sse"
 
     def test_other_fields_still_work_alongside_url(self) -> None:
         """Setting url alongside transport and description works correctly."""

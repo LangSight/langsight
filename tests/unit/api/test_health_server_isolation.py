@@ -454,9 +454,10 @@ class TestTriggerHealthCheckProjectFilter:
         assert servers_passed[0].name == "http-srv"
 
     @pytest.mark.asyncio
-    async def test_no_checkable_servers_returns_empty_list(self, client) -> None:
-        """When all project servers are stdio with no url, returns [] without
-        calling HealthChecker at all."""
+    async def test_no_checkable_servers_returns_not_configured_results(self, client) -> None:
+        """When all project servers are stdio with no url, HealthChecker is not
+        called but each unconfigured server is returned with status=unknown and
+        a descriptive error so the user knows why no check ran."""
         c, mock_storage = client
 
         mock_storage.get_all_server_metadata = AsyncMock(
@@ -469,7 +470,11 @@ class TestTriggerHealthCheckProjectFilter:
             response = await c.post("/api/health/check?project_id=proj-1")
 
         assert response.status_code == 200
-        assert response.json() == []
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["server_name"] == "stdio-only"
+        assert data[0]["status"] == "unknown"
+        assert "transport/url not configured" in data[0]["error"]
         MockChecker.assert_not_called()
 
     @pytest.mark.asyncio
@@ -519,9 +524,10 @@ class TestTriggerHealthCheckProjectFilter:
         instance.check_many.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_sse_server_without_url_is_excluded(self, client) -> None:
-        """An SSE server row with an empty url string is not checkable and must
-        be excluded from check_many even if transport='sse'."""
+    async def test_sse_server_without_url_is_excluded_from_check_many(self, client) -> None:
+        """An SSE server row with an empty url string cannot be pinged and must
+        not be passed to check_many. It is instead returned as status=unknown
+        with a descriptive error so the user knows to configure the url."""
         c, mock_storage = client
 
         mock_storage.get_all_server_metadata = AsyncMock(
@@ -535,7 +541,11 @@ class TestTriggerHealthCheckProjectFilter:
             response = await c.post("/api/health/check?project_id=proj-1")
 
         assert response.status_code == 200
-        assert response.json() == []
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["server_name"] == "sse-no-url"
+        assert data[0]["status"] == "unknown"
+        assert "transport/url not configured" in data[0]["error"]
         MockChecker.assert_not_called()
 
     @pytest.mark.asyncio

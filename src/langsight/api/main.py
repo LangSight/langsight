@@ -392,6 +392,18 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         app.state.config = config
         app.state.storage = await open_storage(app.state.config.storage)
 
+        # ── Login-failures table — ensure it exists (idempotent) ─────────────
+        from langsight.api.routers.users import _CREATE_LOGIN_FAILURES_TABLE, _get_raw_conn
+
+        _lf_pool = _get_raw_conn(app.state.storage)
+        if _lf_pool is not None:
+            try:
+                async with _lf_pool.acquire() as _conn:
+                    await _conn.execute(_CREATE_LOGIN_FAILURES_TABLE)
+                logger.info("api.startup.login_failures_table_ready")
+            except Exception as _exc:  # noqa: BLE001
+                logger.warning("api.startup.login_failures_table_error", error=str(_exc))
+
         # ── Load saved AI provider keys into os.environ ───────────────────────
         # Keys saved via PUT /api/settings are persisted in Postgres settings_json.
         # On startup, load them into os.environ so providers.py picks them up.

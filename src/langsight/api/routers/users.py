@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import secrets
-import time
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import bcrypt
 import structlog
@@ -36,51 +36,128 @@ from langsight.models import InviteToken, User, UserRole
 from langsight.storage.base import StorageBackend
 
 # ---------------------------------------------------------------------------
-# Per-account lockout — simple in-process counter.
-# Keys: email (lowercased) → (fail_count, window_start_monotonic)
+# Per-account lockout — DB-backed via the login_failures table.
+# Falls back gracefully when DB is unavailable (e.g. table not yet created).
 # Locked out after _MAX_FAILURES failures within _WINDOW_SECONDS.
 # Lock clears automatically after _LOCKOUT_SECONDS.
-# Works for single-worker deployments; with Redis multi-worker, the rate
-# limiter's per-IP 10/min already provides strong brute-force protection.
+# Persists across restarts; works correctly with multiple workers.
 # ---------------------------------------------------------------------------
 _MAX_FAILURES = 5
 _WINDOW_SECONDS = 300  # 5-minute failure window
 _LOCKOUT_SECONDS = 900  # 15-minute lockout
-_login_failures: dict[str, tuple[int, float]] = {}  # email → (count, first_fail_ts)
+
+_CREATE_LOGIN_FAILURES_TABLE = """
+CREATE TABLE IF NOT EXISTS login_failures (
+    email        TEXT PRIMARY KEY,
+    fail_count   INT         NOT NULL DEFAULT 0,
+    window_start TIMESTAMPTZ NOT NULL,
+    locked_until TIMESTAMPTZ
+)
+"""
 
 
-def _record_login_failure(email: str) -> bool:
-    """Record a failed login attempt. Returns True if the account is now locked."""
+def _get_raw_conn(storage: StorageBackend) -> Any | None:
+    """Return the raw asyncpg connection/pool from the storage backend, or None."""
+    # PostgreSQL storage exposes ._pool; DualStorage wraps it in .pg
+    pool = getattr(storage, "_pool", None)
+    if pool is not None:
+        return pool
+    pg = getattr(storage, "pg", None)
+    if pg is not None:
+        return getattr(pg, "_pool", None)
+    return None
+
+
+async def _record_login_failure(storage: StorageBackend, email: str) -> bool:
+    """Persist a failed login attempt. Returns True if account is now locked."""
     key = email.lower()
-    now = time.monotonic()
-    count, window_start = _login_failures.get(key, (0, now))
+    now = datetime.now(UTC)
+    locked_until = now + timedelta(seconds=_LOCKOUT_SECONDS)
 
-    if now - window_start > _WINDOW_SECONDS:
-        # Window expired — reset
-        count, window_start = 0, now
+    pool = _get_raw_conn(storage)
+    if pool is None:
+        return False
 
-    count += 1
-    _login_failures[key] = (count, window_start)
-    return count >= _MAX_FAILURES
+    try:
+        async with pool.acquire() as conn:
+            # Upsert: if row missing → insert with count=1; if window expired → reset;
+            # otherwise increment. Set locked_until once threshold is reached.
+            await conn.execute(
+                """
+                INSERT INTO login_failures (email, fail_count, window_start, locked_until)
+                VALUES ($1, 1, $2, NULL)
+                ON CONFLICT (email) DO UPDATE SET
+                    fail_count   = CASE
+                                     WHEN login_failures.window_start < $3 THEN 1
+                                     ELSE login_failures.fail_count + 1
+                                   END,
+                    window_start = CASE
+                                     WHEN login_failures.window_start < $3 THEN $2
+                                     ELSE login_failures.window_start
+                                   END,
+                    locked_until = CASE
+                                     WHEN (CASE
+                                             WHEN login_failures.window_start < $3 THEN 1
+                                             ELSE login_failures.fail_count + 1
+                                           END) >= $4
+                                     THEN $5
+                                     ELSE NULL
+                                   END
+                """,
+                key,
+                now,
+                now - timedelta(seconds=_WINDOW_SECONDS),
+                _MAX_FAILURES,
+                locked_until,
+            )
+            row = await conn.fetchrow(
+                "SELECT fail_count, locked_until FROM login_failures WHERE email = $1", key
+            )
+            if row is None:
+                return False
+            lu = row["locked_until"]
+            return lu is not None and lu > now
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("login_failures.record_error", error=str(exc))
+        return False
 
 
-def _is_locked_out(email: str) -> bool:
+async def _is_locked_out(storage: StorageBackend, email: str) -> bool:
     """Return True if the account is currently locked out."""
     key = email.lower()
-    now = time.monotonic()
-    count, window_start = _login_failures.get(key, (0, 0.0))
-    if count < _MAX_FAILURES:
+    now = datetime.now(UTC)
+
+    pool = _get_raw_conn(storage)
+    if pool is None:
         return False
-    # Locked — check if lockout period has passed
-    if now - window_start > _LOCKOUT_SECONDS:
-        _login_failures.pop(key, None)
+
+    try:
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT locked_until FROM login_failures WHERE email = $1", key
+            )
+        if row is None:
+            return False
+        lu = row["locked_until"]
+        return lu is not None and lu > now
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("login_failures.check_error", error=str(exc))
         return False
-    return True
 
 
-def _clear_login_failures(email: str) -> None:
-    """Clear failure counter on successful login."""
-    _login_failures.pop(email.lower(), None)
+async def _clear_login_failures(storage: StorageBackend, email: str) -> None:
+    """Delete failure row on successful login."""
+    key = email.lower()
+
+    pool = _get_raw_conn(storage)
+    if pool is None:
+        return
+
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM login_failures WHERE email = $1", key)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("login_failures.clear_error", error=str(exc))
 
 
 logger = structlog.get_logger()
@@ -546,7 +623,7 @@ async def verify_credentials(
     _require_user_storage(storage)
 
     # Check account lockout before hitting the DB or running bcrypt
-    if _is_locked_out(body.email):
+    if await _is_locked_out(storage, body.email):
         raise HTTPException(
             status_code=http_status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Account temporarily locked after too many failed attempts. Try again later.",
@@ -556,7 +633,7 @@ async def verify_credentials(
     if not user or not await _verify_password(body.password, user.password_hash):
         # Mask email — log domain only to avoid PII in log aggregators
         _domain = body.email.split("@")[-1] if "@" in body.email else "?"
-        locked = _record_login_failure(body.email)
+        locked = await _record_login_failure(storage, body.email)
         logger.warning(
             "audit.auth.dashboard_login_failed",
             email_domain=_domain,
@@ -568,7 +645,7 @@ async def verify_credentials(
             detail="Invalid email or password.",
         )
 
-    _clear_login_failures(body.email)
+    await _clear_login_failures(storage, body.email)
     await storage.touch_user_login(user.id)
 
     logger.info(

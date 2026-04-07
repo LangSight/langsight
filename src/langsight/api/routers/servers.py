@@ -2,17 +2,90 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
+import socket
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from starlette import status as http_status
 
 from langsight.api.dependencies import get_active_project_id, get_storage, require_admin
 from langsight.storage.base import StorageBackend
 
 router = APIRouter(prefix="/servers", tags=["servers"])
+
+# RFC-1918 + loopback + link-local (IMDS) private ranges
+_BLOCKED_NETWORKS = [
+    ipaddress.ip_network("127.0.0.0/8"),      # loopback
+    ipaddress.ip_network("::1/128"),           # IPv6 loopback
+    ipaddress.ip_network("10.0.0.0/8"),        # RFC-1918
+    ipaddress.ip_network("172.16.0.0/12"),     # RFC-1918
+    ipaddress.ip_network("192.168.0.0/16"),    # RFC-1918
+    ipaddress.ip_network("169.254.0.0/16"),    # link-local / AWS IMDS
+    ipaddress.ip_network("fe80::/10"),         # IPv6 link-local
+]
+
+# Blocked hostnames (exact match or suffix match for *.internal)
+_BLOCKED_HOSTNAMES = frozenset(["localhost", "metadata.google.internal"])
+
+
+def _validate_server_url(url: str) -> str:
+    """Validate a server URL against SSRF targets.
+
+    Allows empty string (no URL configured yet).
+    Raises ValueError on any SSRF risk — Pydantic converts this to HTTP 422.
+    """
+    if not url:
+        return url
+
+    parsed = urlparse(url)
+
+    # Only http/https allowed
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(
+            f"URL scheme '{parsed.scheme}' is not allowed; only http and https are permitted."
+        )
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("URL must contain a valid hostname.")
+
+    # Exact hostname blocks and *.internal suffix
+    hostname_lower = hostname.lower()
+    if hostname_lower in _BLOCKED_HOSTNAMES:
+        raise ValueError(
+            f"Hostname '{hostname}' is blocked; internal/loopback hostnames are not permitted."
+        )
+    if hostname_lower.endswith(".internal"):
+        raise ValueError(
+            f"Hostname '{hostname}' matches blocked pattern '*.internal'."
+        )
+
+    # Resolve hostname to IP and check against blocked networks
+    try:
+        addr = ipaddress.ip_address(hostname)
+        addresses = [addr]
+    except ValueError:
+        # Not a bare IP — resolve DNS
+        try:
+            resolved = socket.getaddrinfo(hostname, None)
+            addresses = [ipaddress.ip_address(r[4][0]) for r in resolved]
+        except socket.gaierror:
+            # Cannot resolve — allow through; connection will fail at runtime
+            addresses = []
+
+    for addr in addresses:
+        for network in _BLOCKED_NETWORKS:
+            if addr in network:
+                raise ValueError(
+                    f"URL '{url}' resolves to a private or reserved IP address "
+                    f"({addr}) and is blocked to prevent SSRF."
+                )
+
+    return url
 
 
 class ServerMetadataUpdate(BaseModel):
@@ -22,6 +95,13 @@ class ServerMetadataUpdate(BaseModel):
     transport: str = ""
     url: str = ""
     runbook_url: str = ""
+
+    @field_validator("url", mode="before")
+    @classmethod
+    def validate_url_no_ssrf(cls, v: object) -> object:
+        if not isinstance(v, str):
+            return v
+        return _validate_server_url(v)
 
 
 class ServerMetadataResponse(BaseModel):

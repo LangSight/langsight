@@ -9,14 +9,6 @@ import { NextResponse } from "next/server";
 const { auth } = NextAuth(authConfig);
 
 export default auth((req) => {
-  if (
-    process.env.NODE_ENV !== "production"
-    && process.env.PLAYWRIGHT_TEST === "1"
-    && req.cookies.get("langsight_e2e_auth")?.value === "1"
-  ) {
-    return NextResponse.next();
-  }
-
   const isLoggedIn = !!req.auth;
   const { pathname } = req.nextUrl;
   const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/accept-invite");

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from langsight.api.dependencies import get_active_project_id, get_config, get_storage, require_admin
 from langsight.config import LangSightConfig
+from langsight.models import MCPServer, TransportType
 from langsight.security.models import ScanResult
 from langsight.security.scanner import SecurityScanner
 from langsight.storage.base import StorageBackend
@@ -55,6 +56,56 @@ def _scan_to_response(scan: ScanResult) -> SecurityScanResponse:
     )
 
 
+def _servers_from_metadata_rows(
+    rows: list[dict[str, Any]],
+    config: LangSightConfig,
+) -> list[MCPServer]:
+    """Build MCPServer objects from project catalog rows.
+
+    Only rows with enough information are included:
+    - transport must be set to a recognised value
+    - sse / streamable_http rows need a non-empty url
+    - stdio rows need a non-empty command (url field is not meaningful there)
+
+    Rows that have only a name registered (no transport / connection info) are
+    silently skipped — they are display-only entries in the catalog.
+
+    For stdio servers the url column does not carry a command; we fall back to
+    any matching MCPServer in config.servers so we don't lose command/args.
+    """
+    config_by_name: dict[str, MCPServer] = {s.name: s for s in config.servers}
+    servers: list[MCPServer] = []
+
+    valid_transports = {t.value for t in TransportType}
+
+    for row in rows:
+        name = row.get("server_name", "")
+        transport_raw = (row.get("transport") or "").strip().lower()
+
+        if not name or transport_raw not in valid_transports:
+            # Not enough info — skip silently
+            continue
+
+        transport = TransportType(transport_raw)
+
+        if transport in (TransportType.SSE, TransportType.STREAMABLE_HTTP):
+            url = (row.get("url") or "").strip()
+            if not url:
+                # No endpoint — skip
+                continue
+            servers.append(
+                MCPServer(name=name, transport=transport, url=url)
+            )
+        elif transport == TransportType.STDIO:
+            # Prefer a config entry that already has command + args + env
+            if name in config_by_name:
+                servers.append(config_by_name[name])
+            # If not in config, we have no command to run — skip
+        # Any future transport types are skipped (unknown how to connect)
+
+    return servers
+
+
 @router.post(
     "/scan",
     response_model=list[SecurityScanResponse],
@@ -74,13 +125,20 @@ async def trigger_security_scan(
     metadata are scanned.  Otherwise (admin / open install) all configured
     servers are scanned.
     """
-    servers = list(config.servers)
-
-    # ── Project-scope: filter to servers that belong to this project ──────
+    # ── Project-scope: build server list from Postgres catalog ───────────
+    # When a project_id is active we use the project's server catalog as the
+    # authoritative source rather than filtering config.servers.  This ensures
+    # servers registered via the dashboard (but absent from the YAML) are also
+    # scanned, and that servers from other projects cannot be included.
     if project_id and hasattr(storage, "get_all_server_metadata"):
-        project_servers = await storage.get_all_server_metadata(project_id=project_id)
-        allowed_names = {row["server_name"] for row in project_servers}
-        servers = [s for s in servers if s.name in allowed_names]
+        project_rows = await storage.get_all_server_metadata(project_id=project_id)
+        servers = _servers_from_metadata_rows(project_rows, config)
+        # Fall back to config.servers if no usable rows were found (new project,
+        # catalog not yet populated).
+        if not servers:
+            servers = list(config.servers)
+    else:
+        servers = list(config.servers)
 
     logger.info(
         "audit.security_scan.triggered",

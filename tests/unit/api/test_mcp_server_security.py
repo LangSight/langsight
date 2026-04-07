@@ -654,28 +654,15 @@ class TestCrossProjectServerWrite:
 
 
 class TestSsrfUrlFieldGap:
-    """The `url` field on ServerMetadataUpdate has no SSRF validation at the
-    API layer. The health check transport layer (transports.py) calls
-    validate_webhook_url() at connection time, but the metadata API stores
-    whatever is submitted without filtering.
+    """URL field on ServerMetadataUpdate is validated at the API layer.
 
-    Invariants (current behaviour — documented gaps):
-      - AWS IMDS, localhost, and file:// URLs are accepted by PUT /metadata.
-      - The transport layer will block these at health-check connection time.
-      - A future fix should add server-side URL validation at the API layer.
-
-    Tests below pass today because the API does NOT validate the url field.
-    When the gap is fixed, update the asserts to expect status_code == 422.
+    PUT /api/servers/metadata/{name} with SSRF-risk URLs (AWS IMDS, loopback,
+    private ranges, non-http schemes) must be rejected with HTTP 422 before
+    any storage call is made.
     """
 
-    async def test_aws_imds_url_is_stored_without_api_rejection(
-        self, auth_client
-    ) -> None:
-        """GAP: PUT with url='http://169.254.169.254/latest/meta-data' returns 200.
-
-        This is the SSRF gap — the API accepts and persists the URL without
-        validation. When fixed, assert response.status_code == 422 instead.
-        """
+    async def test_aws_imds_url_is_rejected(self, auth_client) -> None:
+        """PUT with AWS IMDS URL must be rejected with 422."""
         c, storage, _ = auth_client
         ssrf_url = "http://169.254.169.254/latest/meta-data"
         storage.upsert_server_metadata = AsyncMock(
@@ -687,17 +674,13 @@ class TestSsrfUrlFieldGap:
             json={"url": ssrf_url, "transport": "sse"},
             headers={"X-API-Key": "test-admin-key"},
         )
-        # CURRENT BEHAVIOUR (gap): 200
-        # TODO: assert response.status_code == 422 after adding url validation
-        assert response.status_code == 200, (
-            "SSRF GAP: AWS IMDS URL is accepted without API-layer validation. "
-            "Add url validation to ServerMetadataUpdate to reject this."
+        assert response.status_code == 422, (
+            "SSRF: AWS IMDS URL must be rejected at the API layer with 422."
         )
+        storage.upsert_server_metadata.assert_not_called()
 
-    async def test_localhost_url_is_stored_without_api_rejection(
-        self, auth_client
-    ) -> None:
-        """GAP: PUT with url='http://localhost/admin' returns 200 at the API layer."""
+    async def test_localhost_url_is_rejected(self, auth_client) -> None:
+        """PUT with localhost URL must be rejected with 422."""
         c, storage, _ = auth_client
         storage.upsert_server_metadata = AsyncMock(
             return_value=_server_row("local-probe", url="http://localhost/admin")
@@ -708,16 +691,13 @@ class TestSsrfUrlFieldGap:
             json={"url": "http://localhost/admin", "transport": "sse"},
             headers={"X-API-Key": "test-admin-key"},
         )
-        # CURRENT BEHAVIOUR (gap): 200
-        # TODO: assert response.status_code == 422 after adding url validation
-        assert response.status_code == 200, (
-            "SSRF GAP: localhost URL is accepted without API-layer validation."
+        assert response.status_code == 422, (
+            "SSRF: localhost URL must be rejected at the API layer with 422."
         )
+        storage.upsert_server_metadata.assert_not_called()
 
-    async def test_file_scheme_url_is_stored_without_api_rejection(
-        self, auth_client
-    ) -> None:
-        """GAP: PUT with url='file:///etc/passwd' returns 200 at the API layer."""
+    async def test_file_scheme_url_is_rejected(self, auth_client) -> None:
+        """PUT with file:// URL must be rejected with 422."""
         c, storage, _ = auth_client
         storage.upsert_server_metadata = AsyncMock(
             return_value=_server_row("file-probe", url="file:///etc/passwd")
@@ -728,11 +708,10 @@ class TestSsrfUrlFieldGap:
             json={"url": "file:///etc/passwd", "transport": "sse"},
             headers={"X-API-Key": "test-admin-key"},
         )
-        # CURRENT BEHAVIOUR (gap): 200
-        # TODO: assert response.status_code == 422 after adding url validation
-        assert response.status_code == 200, (
-            "SSRF GAP: file:// URL is accepted without API-layer validation."
+        assert response.status_code == 422, (
+            "SSRF: file:// URL must be rejected at the API layer with 422."
         )
+        storage.upsert_server_metadata.assert_not_called()
 
     def test_transport_layer_rejects_aws_imds(self) -> None:
         """The transport-layer validator correctly rejects AWS IMDS URLs.

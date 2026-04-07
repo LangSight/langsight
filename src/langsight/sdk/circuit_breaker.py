@@ -330,9 +330,21 @@ class AsyncCircuitBreaker:
             "opened_at": str(opened_at) if opened_at is not None else "",
         }
         try:
-            asyncio.ensure_future(self._store.save(fields))
+            loop = asyncio.get_running_loop()
         except RuntimeError:
-            pass  # no event loop — state change won't be persisted (acceptable)
+            return  # no event loop — state change won't be persisted (acceptable)
+
+        async def _save_with_log() -> None:
+            try:
+                await self._store.save(fields)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "circuit_breaker.persist_failed",
+                    server=self._cb._server_name,
+                    error=str(exc),
+                )
+
+        loop.create_task(_save_with_log())
 
     async def should_allow(self) -> bool:
         """Check if a call should proceed. Loads Redis state on first call."""
