@@ -10,7 +10,7 @@ from fastapi import status as http_status
 from langsight.api.dependencies import get_active_project_id, get_config, get_storage, require_admin
 from langsight.config import LangSightConfig
 from langsight.health.checker import HealthChecker
-from langsight.models import HealthCheckResult
+from langsight.models import HealthCheckResult, ServerStatus
 from langsight.storage.base import StorageBackend
 
 router = APIRouter(prefix="/health", tags=["health"])
@@ -140,8 +140,6 @@ async def list_servers_health(
     # Servers registered in metadata but never health-checked → synthetic UNKNOWN
     from datetime import UTC, datetime
 
-    from langsight.models import ServerStatus
-
     checked_names = {r.server_name for r in results}
     for name in sorted(all_names - checked_names):
         results.append(
@@ -247,6 +245,7 @@ async def trigger_health_check(
             return []
         meta_rows = await meta_fn(project_id=project_id)
         checkable: list[MCPServerModel] = []
+        not_configured: list[HealthCheckResult] = []
         for row in meta_rows:
             transport_str = row.get("transport", "")
             url = row.get("url", "")
@@ -260,11 +259,34 @@ async def trigger_health_check(
                         )
                     )
                 except (ValueError, KeyError):
-                    continue
+                    not_configured.append(
+                        HealthCheckResult(
+                            server_name=row.get("server_name", "unknown"),
+                            status=ServerStatus.UNKNOWN,
+                            error=(
+                                "Server discovered but transport/url not configured"
+                                " — edit server settings to enable health checks"
+                            ),
+                            project_id=project_id,
+                        )
+                    )
+            else:
+                not_configured.append(
+                    HealthCheckResult(
+                        server_name=row.get("server_name", "unknown"),
+                        status=ServerStatus.UNKNOWN,
+                        error=(
+                            "Server discovered but transport/url not configured"
+                            " — edit server settings to enable health checks"
+                        ),
+                        project_id=project_id,
+                    )
+                )
         if not checkable:
-            return []
+            return not_configured
         checker = HealthChecker(storage=storage, project_id=project_id)
-        return await checker.check_many(checkable)
+        checked = await checker.check_many(checkable)
+        return checked + not_configured
 
     # Global/admin view — use config.servers
     if not config.servers:

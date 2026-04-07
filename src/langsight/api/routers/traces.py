@@ -8,17 +8,18 @@ Phase 2: spans are logged with structlog (visible in langsight serve output).
 Phase 3: spans are stored in ClickHouse via the storage backend when available.
 
 Rate limits (S.4):
-  /spans: 200 requests/minute per IP — accommodates high-frequency SDK use
+  /spans: 10,000 requests/minute per IP — accommodates high-frequency SDK use
   /otlp:  60 requests/minute per IP  — OTEL collector batches; lower is fine
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections import OrderedDict
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from fastapi import status as http_status
 
 from langsight.api.metrics import SPANS_INGESTED
@@ -28,6 +29,14 @@ from langsight.sdk.models import SESSION_ID_RE, ToolCallSpan, ToolCallStatus
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/traces", tags=["traces"])
+
+# Limit concurrent ClickHouse span inserts per worker to prevent OOM.
+# In multi-worker mode each worker has its own semaphore — total across the
+# cluster = LANGSIGHT_WORKERS × _INSERT_SEM_LIMIT.  With 4 workers and limit=5:
+# 4 × 5 = 20 concurrent inserts total (same safe budget as single-worker=20).
+import os as _os
+_INSERT_SEM_LIMIT = max(1, 20 // max(1, int(_os.environ.get("LANGSIGHT_WORKERS", "1"))))
+_INSERT_SEM = asyncio.Semaphore(_INSERT_SEM_LIMIT)
 
 # LRU caches to avoid DB lookups on every span batch.
 # Bounded at 2000 entries each — prevents unbounded memory growth in
@@ -144,7 +153,7 @@ async def _resolve_tag(
     summary="Ingest tool call spans from the LangSight SDK",
     response_model=dict[str, Any],
 )
-@limiter.limit("2000/minute")
+@limiter.limit("10000/minute")
 async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str, Any]:
     """Accept a batch of ToolCallSpans from the SDK.
 
@@ -217,9 +226,29 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
         except Exception:  # noqa: BLE001
             pass  # fail-open — if settings fetch fails, don't block ingestion
 
-    # Persist to ClickHouse if the backend supports it
+    # Persist to ClickHouse if the backend supports it.
+    # _INSERT_SEM caps concurrent inserts at 20 to prevent ClickHouse OOM
+    # under burst load (Code 241). On OOM, return 503 with Retry-After so
+    # the SDK retries instead of silently dropping spans.
     if storage is not None and hasattr(storage, "save_tool_call_spans"):
-        await storage.save_tool_call_spans(spans)
+        try:
+            async with _INSERT_SEM:
+                await storage.save_tool_call_spans(spans)
+        except Exception as exc:  # noqa: BLE001
+            err_str = str(exc)
+            if "241" in err_str or "MEMORY_LIMIT_EXCEEDED" in err_str:
+                logger.warning(
+                    "traces.clickhouse_oom",
+                    span_count=len(spans),
+                    error=err_str[:200],
+                )
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=503,
+                    detail="Storage temporarily unavailable — retry after 5 seconds",
+                    headers={"Retry-After": "5"},
+                )
+            raise
 
     # Extract project_id once — used for both health tagging and agent registration
     _batch_project_id = _extract_project_id(spans)

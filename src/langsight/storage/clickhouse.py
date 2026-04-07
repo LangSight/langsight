@@ -788,12 +788,20 @@ class ClickHouseBackend:
             s.cache_creation_tokens,
         ]
 
+    # async_insert=1: ClickHouse buffers concurrent writes internally and flushes
+    # as a single batch, avoiding per-request memory allocation spikes that cause
+    # Code 241 (MEMORY_LIMIT_EXCEEDED) under high concurrent insert load.
+    # wait_for_async_insert=0: fire-and-forget — the HTTP response returns as soon
+    # as the write is queued, not after flush. Acceptable for telemetry data.
+    _INSERT_SETTINGS = {"async_insert": 1, "wait_for_async_insert": 0}
+
     async def save_tool_call_span(self, span: ToolCallSpan) -> None:
         """Persist a single span (tool_call, agent, or handoff)."""
         await self._client.insert(
             "mcp_tool_calls",
             [self._span_row(span)],
             column_names=self._SPAN_COLUMNS,
+            settings=self._INSERT_SETTINGS,
         )
 
     async def save_tool_call_spans(self, spans: list[ToolCallSpan]) -> None:
@@ -805,6 +813,7 @@ class ClickHouseBackend:
             "mcp_tool_calls",
             rows,
             column_names=self._SPAN_COLUMNS,
+            settings=self._INSERT_SETTINGS,
         )
         logger.debug("storage.clickhouse.spans_saved", count=len(spans))
 
@@ -1072,22 +1081,23 @@ class ClickHouseBackend:
                 sum(t.input_tokens)                                  AS total_input_tokens,
                 sum(t.output_tokens)                                 AS total_output_tokens,
                 anyIf(t.model_id, t.model_id != '')                  AS model_id,
-                arrayFilter(x -> x != '', groupUniqArray(t.agent_name)) AS agents_used,
+                groupUniqArrayIf(t.agent_name, t.agent_name != '')   AS agents_used,
                 countIf(t.span_type = 'agent' AND t.tool_name = 'session' AND t.llm_input != '') > 0 AS has_prompt
             FROM mcp_tool_calls t
             LEFT JOIN (
-                -- Coalesce project_id to '' so spans with no project_id
-                -- match health tags saved with the batch's project_id.
-                -- Without this, sessions where spans arrive without project_id
-                -- but the health tag is saved with one show no health status.
-                SELECT session_id, health_tag
-                FROM session_health_tags FINAL
+                -- argMax avoids FINAL deduplication scan on ReplacingMergeTree —
+                -- picks the health_tag from the row with the latest tagged_at,
+                -- which is correct and ~10x faster than FINAL on large tables.
+                SELECT session_id, argMax(health_tag, tagged_at) AS health_tag
+                FROM session_health_tags
+                GROUP BY session_id
             ) sht ON t.session_id = sht.session_id
             {where}
             GROUP BY t.session_id
             {having}
             ORDER BY first_call_at DESC
             LIMIT {{limit:UInt32}}
+            SETTINGS max_threads = 4
             """,
             parameters=params,
         )
@@ -1126,7 +1136,8 @@ class ClickHouseBackend:
                 cache_read_tokens, cache_creation_tokens
             FROM mcp_tool_calls
             WHERE {where}
-            ORDER BY started_at ASC, llm_output DESC
+            ORDER BY started_at ASC
+            SETTINGS max_memory_usage = 500000000
             """,
             parameters=params,
         )
