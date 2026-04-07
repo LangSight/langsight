@@ -1081,3 +1081,280 @@ class TestFullFlow:
         agent_spans = [s for s in spans if s.span_type == "agent"]
         assert len(tool_spans) == 1
         assert len(agent_spans) == 3  # agent + task + crew
+
+        # Verify span hierarchy (parent-child links)
+        crew_span = next(s for s in spans if s.tool_name == "crew:marketing-crew")
+        task_span = next(s for s in spans if s.tool_name == "task:research_task")
+        agent_span = next(s for s in spans if s.tool_name == "agent:Lead Analyst")
+        tool_span = next(s for s in spans if s.tool_name == "scrape_website")
+
+        assert crew_span.parent_span_id is None  # root
+        assert task_span.parent_span_id == crew_span.span_id
+        assert agent_span.parent_span_id == task_span.span_id
+        assert tool_span.parent_span_id == agent_span.span_id
+
+        # All span_ids should be unique
+        all_ids = [s.span_id for s in spans]
+        assert len(set(all_ids)) == len(all_ids)
+
+
+# ===========================================================================
+# Test: Span parent-child hierarchy
+# ===========================================================================
+
+
+class TestSpanHierarchy:
+    """Tests for the parent-child span hierarchy linking."""
+
+    def test_crew_span_is_root(self):
+        """Crew span has parent_span_id=None."""
+        listener, spans, _ = _make_listener()
+        bus = _setup_and_get_bus(listener)
+
+        bus.emit(None, _make_event(CrewKickoffStartedEvent, crew_name="crew"))
+        bus.emit(
+            None,
+            _make_event(CrewKickoffCompletedEvent, crew_name="crew", output="ok", total_tokens=0),
+        )
+
+        assert len(spans) == 1
+        assert spans[0].parent_span_id is None
+
+    def test_task_parent_is_crew(self):
+        """Task span has parent_span_id pointing to crew span."""
+        listener, spans, _ = _make_listener()
+        bus = _setup_and_get_bus(listener)
+
+        bus.emit(None, _make_event(CrewKickoffStartedEvent, crew_name="crew"))
+
+        task = MagicMock()
+        task.id = "t-1"
+        task.name = "task1"
+        task.agent = None
+        bus.emit(None, _make_event(TaskStartedEvent, task=task, context=""))
+        bus.emit(None, _make_event(TaskCompletedEvent, task=task, output="done"))
+        bus.emit(
+            None,
+            _make_event(CrewKickoffCompletedEvent, crew_name="crew", output="ok", total_tokens=0),
+        )
+
+        task_span = next(s for s in spans if s.tool_name == "task:task1")
+        crew_span = next(s for s in spans if s.tool_name == "crew:crew")
+        assert task_span.parent_span_id == crew_span.span_id
+
+    def test_agent_parent_is_task(self):
+        """Agent span has parent_span_id pointing to task span."""
+        listener, spans, _ = _make_listener()
+        bus = _setup_and_get_bus(listener)
+
+        bus.emit(None, _make_event(CrewKickoffStartedEvent, crew_name="crew"))
+
+        agent = MagicMock()
+        agent.id = "a-1"
+        agent.role = "Analyst"
+        task = MagicMock()
+        task.id = "t-1"
+        task.name = "task1"
+        task.agent = agent
+
+        bus.emit(None, _make_event(TaskStartedEvent, task=task, context=""))
+        bus.emit(
+            None,
+            _make_event(
+                AgentExecutionStartedEvent,
+                agent=agent, task=task, tools=[], task_prompt="",
+            ),
+        )
+        bus.emit(
+            None,
+            _make_event(AgentExecutionCompletedEvent, agent=agent, task=task, output="done"),
+        )
+        bus.emit(None, _make_event(TaskCompletedEvent, task=task, output="done"))
+
+        agent_span = next(s for s in spans if s.tool_name == "agent:Analyst")
+        task_span = next(s for s in spans if s.tool_name == "task:task1")
+        assert agent_span.parent_span_id == task_span.span_id
+
+    def test_tool_parent_is_agent(self):
+        """Tool span has parent_span_id pointing to agent span."""
+        listener, spans, _ = _make_listener()
+        bus = _setup_and_get_bus(listener)
+
+        agent = MagicMock()
+        agent.id = "a-1"
+        agent.role = "Analyst"
+
+        bus.emit(
+            None,
+            _make_event(
+                AgentExecutionStartedEvent,
+                agent=agent, task=None, tools=[], task_prompt="",
+            ),
+        )
+        bus.emit(
+            None,
+            _make_event(
+                ToolUsageStartedEvent,
+                tool_name="search", agent_id="a-1", agent_role="Analyst", tool_args={},
+            ),
+        )
+        bus.emit(
+            None,
+            _make_event(
+                ToolUsageFinishedEvent,
+                tool_name="search", agent_id="a-1", agent_role="Analyst",
+                tool_args={}, output="ok",
+                started_at=datetime.now(UTC), finished_at=datetime.now(UTC),
+                from_cache=False,
+            ),
+        )
+
+        tool_span = next(s for s in spans if s.tool_name == "search")
+        assert tool_span.parent_span_id is not None
+        assert tool_span.parent_span_id == listener._agent_span_ids.get("a-1")
+
+    def test_span_ids_pre_generated_and_stable(self):
+        """Span IDs generated at 'started' events match those used at 'completed' events."""
+        listener, spans, _ = _make_listener()
+        bus = _setup_and_get_bus(listener)
+
+        bus.emit(None, _make_event(CrewKickoffStartedEvent, crew_name="crew"))
+        pre_crew_id = listener._crew_span_id
+        assert pre_crew_id is not None
+
+        bus.emit(
+            None,
+            _make_event(CrewKickoffCompletedEvent, crew_name="crew", output="ok", total_tokens=0),
+        )
+        assert spans[0].span_id == pre_crew_id
+
+    def test_multiple_tasks_share_crew_parent(self):
+        """Two sequential tasks both point to the same crew as parent."""
+        listener, spans, _ = _make_listener()
+        bus = _setup_and_get_bus(listener)
+
+        bus.emit(None, _make_event(CrewKickoffStartedEvent, crew_name="crew"))
+
+        for i in range(2):
+            task = MagicMock()
+            task.id = f"t-{i}"
+            task.name = f"task{i}"
+            task.agent = None
+            bus.emit(None, _make_event(TaskStartedEvent, task=task, context=""))
+            bus.emit(None, _make_event(TaskCompletedEvent, task=task, output="done"))
+
+        bus.emit(
+            None,
+            _make_event(CrewKickoffCompletedEvent, crew_name="crew", output="ok", total_tokens=0),
+        )
+
+        crew_span = next(s for s in spans if s.tool_name == "crew:crew")
+        task_spans = [s for s in spans if s.tool_name.startswith("task:")]
+        assert len(task_spans) == 2
+        for ts in task_spans:
+            assert ts.parent_span_id == crew_span.span_id
+
+    def test_bridge_dict_populated_on_agent_start(self):
+        """_active_agent_span_ids is populated when agent starts (fallback path)."""
+        from langsight.integrations.crewai_events import _active_agent_span_ids
+
+        # Clear any pre-existing bridge entry to test fallback generation
+        _active_agent_span_ids.pop("Analyst", None)
+
+        listener, _, _ = _make_listener()
+        bus = _setup_and_get_bus(listener)
+
+        agent = MagicMock()
+        agent.id = "a-1"
+        agent.role = "Analyst"
+        bus.emit(
+            None,
+            _make_event(
+                AgentExecutionStartedEvent,
+                agent=agent, task=None, tools=[], task_prompt="",
+            ),
+        )
+
+        assert "Analyst" in _active_agent_span_ids
+        assert _active_agent_span_ids["Analyst"] == listener._agent_span_ids["a-1"]
+
+        # Cleanup
+        _active_agent_span_ids.pop("Analyst", None)
+
+    def test_bridge_dict_adopted_from_execute_task_patch(self):
+        """_handle_agent_started adopts span_id already set by _patched_execute_task."""
+        from langsight.integrations.crewai_events import _active_agent_span_ids
+
+        # Simulate _patched_execute_task pre-generating a span_id
+        _active_agent_span_ids["Analyst"] = "pre-generated-span-id"
+
+        listener, _, _ = _make_listener()
+        bus = _setup_and_get_bus(listener)
+
+        agent = MagicMock()
+        agent.id = "a-1"
+        agent.role = "Analyst"
+        bus.emit(
+            None,
+            _make_event(
+                AgentExecutionStartedEvent,
+                agent=agent, task=None, tools=[], task_prompt="",
+            ),
+        )
+
+        # Should adopt the pre-generated ID, not generate a new one
+        assert listener._agent_span_ids["a-1"] == "pre-generated-span-id"
+
+        # Cleanup
+        _active_agent_span_ids.pop("Analyst", None)
+
+    def test_bridge_dict_cleared_on_agent_complete(self):
+        """_active_agent_span_ids is cleared when agent completes."""
+        from langsight.integrations.crewai_events import _active_agent_span_ids
+
+        listener, _, _ = _make_listener()
+        bus = _setup_and_get_bus(listener)
+
+        agent = MagicMock()
+        agent.id = "a-1"
+        agent.role = "Analyst"
+        bus.emit(
+            None,
+            _make_event(
+                AgentExecutionStartedEvent,
+                agent=agent, task=None, tools=[], task_prompt="",
+            ),
+        )
+        assert "Analyst" in _active_agent_span_ids
+
+        bus.emit(
+            None,
+            _make_event(AgentExecutionCompletedEvent, agent=agent, task=None, output="done"),
+        )
+        assert "Analyst" not in _active_agent_span_ids
+
+    def test_cleanup_on_crew_completed(self):
+        """Crew completion clears all tracking dicts to prevent leaks."""
+        listener, _, _ = _make_listener()
+        bus = _setup_and_get_bus(listener)
+
+        bus.emit(None, _make_event(CrewKickoffStartedEvent, crew_name="crew"))
+
+        task = MagicMock()
+        task.id = "t-1"
+        task.name = "task1"
+        task.agent = None
+        bus.emit(None, _make_event(TaskStartedEvent, task=task, context=""))
+        # Intentionally don't complete task — simulate unbalanced events
+
+        bus.emit(
+            None,
+            _make_event(CrewKickoffCompletedEvent, crew_name="crew", output="ok", total_tokens=0),
+        )
+
+        # All tracking dicts should be cleared
+        assert listener._crew_span_id is None
+        assert len(listener._task_span_ids) == 0
+        assert len(listener._agent_span_ids) == 0
+        assert len(listener._agent_to_task) == 0
+        assert listener._active_task_id is None

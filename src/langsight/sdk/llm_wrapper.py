@@ -353,6 +353,7 @@ def _process_openai_response(
     trace_id = object.__getattribute__(proxy, "_trace_id")
     project_id = object.__getattribute__(proxy, "_project_id")
     redact = object.__getattribute__(proxy, "_redact")
+    parent_span_id = getattr(proxy, "_parent_span_id", None)
 
     model = (
         getattr(response, "model", kwargs.get("model", "unknown"))
@@ -405,6 +406,7 @@ def _process_openai_response(
         finish_reason=finish_reason,
         llm_input=llm_input,
         llm_output=llm_output,
+        parent_span_id=parent_span_id,
     )
     spans.append(llm_span)
 
@@ -553,6 +555,7 @@ def _process_anthropic_response(
     trace_id = object.__getattribute__(proxy, "_trace_id")
     project_id = object.__getattribute__(proxy, "_project_id")
     redact = object.__getattribute__(proxy, "_redact")
+    parent_span_id = getattr(proxy, "_parent_span_id", None)
 
     model = (
         getattr(response, "model", kwargs.get("model", "unknown"))
@@ -629,6 +632,7 @@ def _process_anthropic_response(
         cache_creation_tokens=cache_creation_tokens,
         llm_input=llm_input,
         llm_output=llm_output,
+        parent_span_id=parent_span_id,
     )
     spans.append(llm_span)
 
@@ -758,6 +762,7 @@ def _process_gemini_response(
     trace_id = object.__getattribute__(proxy, "_trace_id")
     project_id = object.__getattribute__(proxy, "_project_id")
     redact = object.__getattribute__(proxy, "_redact")
+    parent_span_id = getattr(proxy, "_parent_span_id", None)
 
     if model_override:
         model = model_override
@@ -817,6 +822,7 @@ def _process_gemini_response(
         output_tokens=output_tokens,
         model_id=model,
         finish_reason=finish_reason,
+        parent_span_id=parent_span_id,
         llm_input=llm_input,
         llm_output=llm_output,
     )

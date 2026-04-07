@@ -670,3 +670,83 @@ class TestEdgeCases:
         assert len(captured) == 2
         servers = {s.server_name for s in captured}
         assert servers == {"db", "s3"}
+
+
+# ===========================================================================
+# 7. execute_task sets _parent_span_ctx from _active_agent_span_ids bridge
+# ===========================================================================
+
+class TestExecuteTaskParentSpanBridge:
+    def test_execute_task_generates_and_sets_parent_span_ctx(self, monkeypatch) -> None:
+        """_patched_execute_task pre-generates a span_id, writes it to
+        _active_agent_span_ids, and sets _parent_span_ctx."""
+        import types
+
+        from langsight.sdk.auto_patch import _parent_span_ctx
+
+        _, _, _ = _install_fake_crewai(monkeypatch)
+        fake_core = types.ModuleType("crewai.agent.core")
+        parent_ids_seen: list = []
+
+        class FakeAgentCoreP:
+            def __init__(self, role=""):
+                self.role = role
+
+            def execute_task(self, *a, **kw):
+                parent_ids_seen.append(_parent_span_ctx.get())
+
+        fake_core.Agent = FakeAgentCoreP  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "crewai.agent.core", fake_core)
+        monkeypatch.setenv("LANGSIGHT_URL", "http://localhost:8000")
+
+        from langsight.integrations.crewai_events import _active_agent_span_ids
+
+        import langsight
+
+        langsight.auto_patch()
+
+        agent = FakeAgentCoreP(role="SQL Analyst")
+        agent.execute_task()
+
+        # execute_task should have generated a span_id and set it
+        assert len(parent_ids_seen) == 1
+        assert parent_ids_seen[0] is not None
+        # The bridge should also have been written
+        assert "SQL Analyst" in _active_agent_span_ids
+        assert _active_agent_span_ids["SQL Analyst"] == parent_ids_seen[0]
+
+        # Verify context is reset after execute_task
+        assert _parent_span_ctx.get() is None
+
+        # Cleanup
+        _active_agent_span_ids.pop("SQL Analyst", None)
+
+    def test_execute_task_empty_role_skips_bridge(self, monkeypatch) -> None:
+        """Agent with empty role does not write to bridge or set _parent_span_ctx."""
+        import types
+
+        from langsight.sdk.auto_patch import _parent_span_ctx
+
+        _, _, _ = _install_fake_crewai(monkeypatch)
+        fake_core = types.ModuleType("crewai.agent.core")
+        parent_ids_seen: list = []
+
+        class FakeAgentCoreQ:
+            def __init__(self, role=""):
+                self.role = role
+
+            def execute_task(self, *a, **kw):
+                parent_ids_seen.append(_parent_span_ctx.get())
+
+        fake_core.Agent = FakeAgentCoreQ  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "crewai.agent.core", fake_core)
+        monkeypatch.setenv("LANGSIGHT_URL", "http://localhost:8000")
+
+        import langsight
+
+        langsight.auto_patch()
+
+        agent = FakeAgentCoreQ(role="")
+        agent.execute_task()
+
+        assert parent_ids_seen == [None]

@@ -108,6 +108,9 @@ _agent_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 _trace_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "langsight_trace_id", default=None
 )
+_parent_span_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "langsight_parent_span_id", default=None
+)
 # Set to True by MCPClientProxy.call_tool() to suppress auto_patch for the
 # inner ClientSession.call_tool() call — prevents double-tracing when both
 # explicit wrap() and auto_patch() are active for the same MCP session.
@@ -171,6 +174,7 @@ class _AutoPatchProxy:
         agent_name: str | None = None,
         session_id: str | None = None,
         trace_id: str | None = None,
+        parent_span_id: str | None = None,
     ) -> None:
         object.__setattr__(self, "_langsight", ls)
         object.__setattr__(self, "_agent_name", agent_name)
@@ -178,7 +182,7 @@ class _AutoPatchProxy:
         object.__setattr__(self, "_trace_id", trace_id)
         object.__setattr__(self, "_redact", getattr(ls, "_redact_payloads", False))
         object.__setattr__(self, "_project_id", getattr(ls, "_project_id", None) or "")
-        # _client not needed — model name comes via model_override or response
+        object.__setattr__(self, "_parent_span_id", parent_span_id)
 
     def _emit_spans(self, spans: list[ToolCallSpan]) -> None:
         """Forward spans to the global LangSight client buffer."""
@@ -196,6 +200,7 @@ def _make_proxy() -> _AutoPatchProxy | None:
         agent_name=_agent_ctx.get() or None,
         session_id=_session_ctx.get() or None,
         trace_id=_trace_ctx.get() or None,
+        parent_span_id=_parent_span_ctx.get() or None,
     )
 
 
@@ -801,13 +806,33 @@ def _patch_crewai() -> None:
             _originals["crewai_agent_execute_task"] = orig_execute_task
 
             def _patched_execute_task(self_agent: Any, *args: Any, **kw: Any) -> Any:
+                import uuid as _uuid
+
                 role: str = getattr(self_agent, "role", None) or ""
                 token = _agent_ctx.set(role) if role else None
+                # Bridge: pre-generate an agent span_id and write it to the
+                # shared dict BEFORE orig_execute_task fires the event.
+                # The event handler (_handle_agent_started) will adopt this
+                # span_id instead of generating its own.
+                parent_token = None
+                if role:
+                    try:
+                        from langsight.integrations.crewai_events import (
+                            _active_agent_span_ids,
+                        )
+
+                        agent_span_id = str(_uuid.uuid4())
+                        _active_agent_span_ids[role] = agent_span_id
+                        parent_token = _parent_span_ctx.set(agent_span_id)
+                    except ImportError:
+                        pass
                 try:
                     return orig_execute_task(self_agent, *args, **kw)
                 finally:
                     if token is not None:
                         _agent_ctx.reset(token)
+                    if parent_token is not None:
+                        _parent_span_ctx.reset(parent_token)
 
             _CrewAgentCore.execute_task = _patched_execute_task
 

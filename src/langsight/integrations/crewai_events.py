@@ -37,6 +37,11 @@ logger = structlog.get_logger()
 # MCP tool name pattern: mcp__<server>__<tool>
 _MCP_PREFIX = "mcp__"
 
+# Bridge: agent_role → pre-generated agent span_id.
+# Written by _handle_agent_started, read by auto_patch._patched_execute_task.
+# Thread-safe for simple dict get/set under CPython GIL.
+_active_agent_span_ids: dict[str, str] = {}
+
 
 def _parse_mcp_tool_name(raw_name: str) -> tuple[str, str]:
     """Parse a tool name into (server_name, tool_name).
@@ -78,6 +83,13 @@ class LangSightCrewAIEventListener:
         self._tool_starts: dict[str, datetime] = {}  # tool_name:agent_id → started_at
         self._a2a_delegation_starts: dict[str, datetime] = {}  # agent_id → started_at
         self._a2a_conversation_starts: dict[str, datetime] = {}  # agent_id → started_at
+
+        # Pre-generated span IDs (assigned at "started", used at "completed")
+        self._crew_span_id: str | None = None
+        self._task_span_ids: dict[str, str] = {}    # task_id → span_id
+        self._agent_span_ids: dict[str, str] = {}   # agent_id → span_id
+        self._agent_to_task: dict[str, str] = {}    # agent_id → task_id
+        self._active_task_id: str | None = None      # last started, not yet completed
 
     def setup(self) -> bool:
         """Register all event handlers on the CrewAI event bus.
@@ -291,12 +303,18 @@ class LangSightCrewAIEventListener:
         input_tokens: int | None = None,
         output_tokens: int | None = None,
         ended_at: datetime | None = None,
+        span_id: str | None = None,
+        parent_span_id: str | None = None,
     ) -> ToolCallSpan:
         """Build a ToolCallSpan with common fields populated.
 
         When ``ended_at`` is provided (e.g. from ToolUsageFinishedEvent.finished_at),
         it is used directly instead of ``datetime.now(UTC)`` — this gives accurate
         latency even when the event handler runs after the fact.
+
+        When ``span_id`` is provided (pre-generated at "started" events), it overrides
+        the auto-generated UUID.  ``parent_span_id`` links this span to its parent
+        in the crew → task → agent → tool hierarchy.
         """
         from datetime import UTC
 
@@ -311,14 +329,14 @@ class LangSightCrewAIEventListener:
         client = self._resolve_client()
         project_id = self._get_project_id(client) if client else None
 
-        return ToolCallSpan(
+        kwargs: dict[str, Any] = dict(
             server_name=server_name,
             tool_name=tool_name,
             started_at=started_at,
             ended_at=ended_at,
             latency_ms=latency_ms,
             status=status,
-            span_type=span_type,  # type: ignore[arg-type]
+            span_type=span_type,
             agent_name=agent_name,
             session_id=self._get_session_id(),
             error=error,
@@ -330,15 +348,20 @@ class LangSightCrewAIEventListener:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             project_id=project_id,
+            parent_span_id=parent_span_id,
             lineage_provenance="explicit",
             schema_version="1.0",
         )
+        if span_id is not None:
+            kwargs["span_id"] = span_id
+        return ToolCallSpan(**kwargs)
 
     # ── Crew handlers ──────────────────────────────────────────────────
 
     def _handle_crew_started(self, event: Any) -> None:
         self._crew_started_at = event.timestamp
         self._crew_name = getattr(event, "crew_name", None) or "crew"
+        self._crew_span_id = str(uuid.uuid4())
 
         # Capture crew inputs as human prompt (llm_input)
         inputs = getattr(event, "inputs", None)
@@ -382,6 +405,8 @@ class LangSightCrewAIEventListener:
             input_tokens=total_tokens if total_tokens else None,
             llm_input=self._crew_inputs,
             llm_output=output_str,
+            span_id=self._crew_span_id,
+            parent_span_id=None,
         )
         self._buffer_span(span)
         self._crew_inputs = None
@@ -393,6 +418,12 @@ class LangSightCrewAIEventListener:
 
         self._crew_started_at = None
         self._crew_name = None
+        self._crew_span_id = None
+        # Cleanup all tracking dicts to prevent leaks from unbalanced events
+        self._task_span_ids.clear()
+        self._agent_span_ids.clear()
+        self._agent_to_task.clear()
+        self._active_task_id = None
 
     def _handle_crew_failed(self, event: Any) -> None:
         started = self._crew_started_at or event.timestamp
@@ -407,6 +438,8 @@ class LangSightCrewAIEventListener:
             span_type="agent",
             agent_name=crew_name,
             error=str(error_msg),
+            span_id=self._crew_span_id,
+            parent_span_id=None,
         )
         self._buffer_span(span)
 
@@ -416,6 +449,11 @@ class LangSightCrewAIEventListener:
 
         self._crew_started_at = None
         self._crew_name = None
+        self._crew_span_id = None
+        self._task_span_ids.clear()
+        self._agent_span_ids.clear()
+        self._agent_to_task.clear()
+        self._active_task_id = None
 
     # ── Task handlers ──────────────────────────────────────────────────
 
@@ -424,11 +462,20 @@ class LangSightCrewAIEventListener:
         task_id = str(getattr(task, "id", "")) if task else ""
         if task_id:
             self._task_starts[task_id] = event.timestamp
+            self._task_span_ids[task_id] = str(uuid.uuid4())
+            self._active_task_id = task_id
+            # Map task's assigned agent to this task
+            agent = getattr(task, "agent", None)
+            if agent:
+                agent_id = str(getattr(agent, "id", ""))
+                if agent_id:
+                    self._agent_to_task[agent_id] = task_id
 
     def _handle_task_completed(self, event: Any) -> None:
         task = getattr(event, "task", None)
         task_id = str(getattr(task, "id", "")) if task else ""
         started = self._task_starts.pop(task_id, event.timestamp)
+        task_span_id = self._task_span_ids.pop(task_id, None)
 
         task_name = _extract_task_name(task)
         agent_role = _extract_agent_role_from_task(task)
@@ -444,13 +491,20 @@ class LangSightCrewAIEventListener:
             span_type="agent",
             agent_name=agent_role,
             output_result=output_str,
+            span_id=task_span_id,
+            parent_span_id=self._crew_span_id,
         )
         self._buffer_span(span)
+
+        if task_id == self._active_task_id:
+            self._active_task_id = None
+        self._agent_to_task = {k: v for k, v in self._agent_to_task.items() if v != task_id}
 
     def _handle_task_failed(self, event: Any) -> None:
         task = getattr(event, "task", None)
         task_id = str(getattr(task, "id", "")) if task else ""
         started = self._task_starts.pop(task_id, event.timestamp)
+        task_span_id = self._task_span_ids.pop(task_id, None)
 
         task_name = _extract_task_name(task)
         agent_role = _extract_agent_role_from_task(task)
@@ -464,8 +518,14 @@ class LangSightCrewAIEventListener:
             span_type="agent",
             agent_name=agent_role,
             error=str(error_msg),
+            span_id=task_span_id,
+            parent_span_id=self._crew_span_id,
         )
         self._buffer_span(span)
+
+        if task_id == self._active_task_id:
+            self._active_task_id = None
+        self._agent_to_task = {k: v for k, v in self._agent_to_task.items() if v != task_id}
 
     # ── Agent execution handlers ───────────────────────────────────────
 
@@ -474,14 +534,28 @@ class LangSightCrewAIEventListener:
         agent_id = str(getattr(agent, "id", "")) if agent else ""
         if agent_id:
             self._agent_starts[agent_id] = event.timestamp
+            # Adopt span_id from bridge if _patched_execute_task already
+            # pre-generated one (it runs before this event fires).
+            # Otherwise generate a fresh one (fallback for non-patched paths).
+            role = getattr(agent, "role", None) or ""
+            existing = _active_agent_span_ids.get(role) if role else None
+            agent_span_id = existing or str(uuid.uuid4())
+            self._agent_span_ids[agent_id] = agent_span_id
+            if role and not existing:
+                _active_agent_span_ids[role] = agent_span_id
 
     def _handle_agent_completed(self, event: Any) -> None:
         agent = getattr(event, "agent", None)
         agent_id = str(getattr(agent, "id", "")) if agent else ""
         started = self._agent_starts.pop(agent_id, event.timestamp)
+        agent_span_id = self._agent_span_ids.pop(agent_id, None)
 
         agent_role = getattr(agent, "role", None) or "agent"
         output = getattr(event, "output", None)
+
+        # Resolve parent: find which task this agent belongs to
+        task_id = self._agent_to_task.get(agent_id) or self._active_task_id
+        parent_id = self._task_span_ids.get(task_id) if task_id else None
 
         span = self._make_span(
             server_name="crewai",
@@ -491,16 +565,26 @@ class LangSightCrewAIEventListener:
             span_type="agent",
             agent_name=agent_role,
             output_result=str(output) if output else None,
+            span_id=agent_span_id,
+            parent_span_id=parent_id,
         )
         self._buffer_span(span)
+
+        # Clear bridge
+        if agent_role:
+            _active_agent_span_ids.pop(agent_role, None)
 
     def _handle_agent_error(self, event: Any) -> None:
         agent = getattr(event, "agent", None)
         agent_id = str(getattr(agent, "id", "")) if agent else ""
         started = self._agent_starts.pop(agent_id, event.timestamp)
+        agent_span_id = self._agent_span_ids.pop(agent_id, None)
 
         agent_role = getattr(agent, "role", None) or "agent"
         error_msg = getattr(event, "error", None) or "agent execution failed"
+
+        task_id = self._agent_to_task.get(agent_id) or self._active_task_id
+        parent_id = self._task_span_ids.get(task_id) if task_id else None
 
         span = self._make_span(
             server_name="crewai",
@@ -510,8 +594,13 @@ class LangSightCrewAIEventListener:
             span_type="agent",
             agent_name=agent_role,
             error=str(error_msg),
+            span_id=agent_span_id,
+            parent_span_id=parent_id,
         )
         self._buffer_span(span)
+
+        if agent_role:
+            _active_agent_span_ids.pop(agent_role, None)
 
     # ── Tool usage handlers ────────────────────────────────────────────
 
@@ -550,6 +639,11 @@ class LangSightCrewAIEventListener:
 
         finished = getattr(event, "finished_at", None)
 
+        # Resolve parent: try agent_id first, fall back to role via bridge
+        parent_id = self._agent_span_ids.get(agent_id) if agent_id else None
+        if not parent_id and agent_role:
+            parent_id = _active_agent_span_ids.get(agent_role)
+
         span = self._make_span(
             server_name=server_name,
             tool_name=tool_name,
@@ -560,6 +654,7 @@ class LangSightCrewAIEventListener:
             output_result=output_str,
             input_args=input_args,
             ended_at=finished,
+            parent_span_id=parent_id,
         )
         self._buffer_span(span)
 
@@ -581,6 +676,10 @@ class LangSightCrewAIEventListener:
             elif isinstance(tool_args, str):
                 input_args = {"input": tool_args}
 
+        parent_id = self._agent_span_ids.get(agent_id) if agent_id else None
+        if not parent_id and agent_role:
+            parent_id = _active_agent_span_ids.get(agent_role)
+
         span = self._make_span(
             server_name=server_name,
             tool_name=tool_name,
@@ -590,6 +689,7 @@ class LangSightCrewAIEventListener:
             agent_name=agent_role,
             error=str(error_msg),
             input_args=input_args,
+            parent_span_id=parent_id,
         )
         self._buffer_span(span)
 
@@ -639,6 +739,8 @@ class LangSightCrewAIEventListener:
         client = self._resolve_client()
         project_id = self._get_project_id(client) if client else None
 
+        parent_id = self._agent_span_ids.get(agent_id) if agent_id else None
+
         span = ToolCallSpan.record(
             server_name=from_agent,
             tool_name=f"→ {target_name}",
@@ -651,6 +753,7 @@ class LangSightCrewAIEventListener:
             error=str(error) if error and not is_success else None,
             output_result=str(result)[:2000] if result else None,
             project_id=project_id,
+            parent_span_id=parent_id,
             lineage_provenance="explicit",
             schema_version="1.0",
         )
@@ -673,6 +776,8 @@ class LangSightCrewAIEventListener:
 
         is_success = status_str == "completed"
 
+        parent_id = self._agent_span_ids.get(agent_id) if agent_id else None
+
         span = self._make_span(
             server_name="crewai",
             tool_name=f"a2a:{a2a_agent_name}",
@@ -686,6 +791,7 @@ class LangSightCrewAIEventListener:
                 if final_result
                 else f"[{total_turns} turns]"
             ),
+            parent_span_id=parent_id,
         )
         self._buffer_span(span)
 
