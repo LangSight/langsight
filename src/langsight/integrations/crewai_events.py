@@ -86,10 +86,10 @@ class LangSightCrewAIEventListener:
 
         # Pre-generated span IDs (assigned at "started", used at "completed")
         self._crew_span_id: str | None = None
-        self._task_span_ids: dict[str, str] = {}    # task_id → span_id
-        self._agent_span_ids: dict[str, str] = {}   # agent_id → span_id
-        self._agent_to_task: dict[str, str] = {}    # agent_id → task_id
-        self._active_task_id: str | None = None      # last started, not yet completed
+        self._task_span_ids: dict[str, str] = {}  # task_id → span_id
+        self._agent_span_ids: dict[str, str] = {}  # agent_id → span_id
+        self._agent_to_task: dict[str, str] = {}  # agent_id → task_id
+        self._active_task_id: str | None = None  # last started, not yet completed
 
     def setup(self) -> bool:
         """Register all event handlers on the CrewAI event bus.

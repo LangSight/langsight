@@ -93,9 +93,7 @@ def _servers_from_metadata_rows(
             if not url:
                 # No endpoint — skip
                 continue
-            servers.append(
-                MCPServer(name=name, transport=transport, url=url)
-            )
+            servers.append(MCPServer(name=name, transport=transport, url=url))
         elif transport == TransportType.STDIO:
             # Prefer a config entry that already has command + args + env
             if name in config_by_name:

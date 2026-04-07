@@ -19,13 +19,13 @@ router = APIRouter(prefix="/servers", tags=["servers"])
 
 # RFC-1918 + loopback + link-local (IMDS) private ranges
 _BLOCKED_NETWORKS = [
-    ipaddress.ip_network("127.0.0.0/8"),      # loopback
-    ipaddress.ip_network("::1/128"),           # IPv6 loopback
-    ipaddress.ip_network("10.0.0.0/8"),        # RFC-1918
-    ipaddress.ip_network("172.16.0.0/12"),     # RFC-1918
-    ipaddress.ip_network("192.168.0.0/16"),    # RFC-1918
-    ipaddress.ip_network("169.254.0.0/16"),    # link-local / AWS IMDS
-    ipaddress.ip_network("fe80::/10"),         # IPv6 link-local
+    ipaddress.ip_network("127.0.0.0/8"),  # loopback
+    ipaddress.ip_network("::1/128"),  # IPv6 loopback
+    ipaddress.ip_network("10.0.0.0/8"),  # RFC-1918
+    ipaddress.ip_network("172.16.0.0/12"),  # RFC-1918
+    ipaddress.ip_network("192.168.0.0/16"),  # RFC-1918
+    ipaddress.ip_network("169.254.0.0/16"),  # link-local / AWS IMDS
+    ipaddress.ip_network("fe80::/10"),  # IPv6 link-local
 ]
 
 # Blocked hostnames (exact match or suffix match for *.internal)
@@ -60,9 +60,7 @@ def _validate_server_url(url: str) -> str:
             f"Hostname '{hostname}' is blocked; internal/loopback hostnames are not permitted."
         )
     if hostname_lower.endswith(".internal"):
-        raise ValueError(
-            f"Hostname '{hostname}' matches blocked pattern '*.internal'."
-        )
+        raise ValueError(f"Hostname '{hostname}' matches blocked pattern '*.internal'.")
 
     # Resolve hostname to IP and check against blocked networks
     try:
