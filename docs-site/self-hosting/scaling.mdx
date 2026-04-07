@@ -137,7 +137,7 @@ LANGSIGHT_CLICKHOUSE_PASSWORD=<password>
 LANGSIGHT_CLICKHOUSE_DATABASE=langsight
 ```
 
-**Option C — Add a materialized view for sessions**: At 10M+ spans, even with time-window pruning the GROUP BY aggregation for the sessions list becomes slow. A pre-aggregated `AggregatingMergeTree` view would keep the sessions list at <100ms regardless of volume. This is planned for a future release.
+**Option C — Add a materialized view for sessions**: At 10M+ spans, even with time-window pruning the GROUP BY aggregation for the sessions list becomes slow. A pre-aggregated `AggregatingMergeTree` view would keep the sessions list under 100ms regardless of volume. This is planned for a future release.
 
 ---
 
