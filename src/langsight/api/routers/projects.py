@@ -288,9 +288,9 @@ async def create_project(
     # Auto-add creator as owner — skip if creator_id is not a real user
     # (e.g. stale session cookie after a DB wipe, or "system" fallback).
     creator_is_real = creator_id != "system"
-    if creator_is_real and hasattr(storage, "get_user"):
+    if creator_is_real and hasattr(storage, "get_user_by_id"):
         try:
-            creator_is_real = await storage.get_user(creator_id) is not None
+            creator_is_real = await storage.get_user_by_id(creator_id) is not None
         except Exception:  # noqa: BLE001
             creator_is_real = False
     if creator_is_real:
