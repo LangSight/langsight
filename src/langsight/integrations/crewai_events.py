@@ -803,17 +803,19 @@ class LangSightCrewAIEventListener:
 
     @staticmethod
     def _flush_client(client: Any) -> None:
-        """Flush the client, handling both sync and async contexts."""
-        import asyncio
+        """Flush the client synchronously.
 
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.ensure_future(client.flush())
-            else:
-                loop.run_until_complete(client.flush())
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("crewai_events.flush_error", error=str(exc))
+        Called from CrewAI event bus ThreadPoolExecutor threads which have no
+        asyncio event loop. Using get_event_loop() here raises RuntimeError in
+        Python 3.12+. Instead, call _flush_on_exit() directly — it uses a
+        plain synchronous httpx.Client and works from any thread.
+        """
+        flush_fn = getattr(client, "_flush_on_exit", None)
+        if flush_fn is not None:
+            try:
+                flush_fn()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("crewai_events.flush_error", error=str(exc))
 
 
 # ── Module-level helpers ───────────────────────────────────────────────

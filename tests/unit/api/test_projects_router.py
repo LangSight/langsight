@@ -69,7 +69,7 @@ class TestCreateProjectFKGuard:
         """
         c, mock_storage = client
         # Simulate creator not in DB (stale session cookie scenario)
-        mock_storage.get_user = AsyncMock(return_value=None)
+        mock_storage.get_user_by_id = AsyncMock(return_value=None)
 
         response = await c.post(
             "/api/projects",
@@ -96,7 +96,7 @@ class TestCreateProjectFKGuard:
             role=UserRole.ADMIN,
             created_at=datetime.now(UTC),
         )
-        mock_storage.get_user = AsyncMock(return_value=real_user)
+        mock_storage.get_user_by_id = AsyncMock(return_value=real_user)
 
         response = await c.post(
             "/api/projects",

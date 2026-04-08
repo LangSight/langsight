@@ -123,6 +123,18 @@ class LangSightClient:
         self._buffer: list[ToolCallSpan] = []
         self._lock = threading.Lock()
         self._flush_task: asyncio.Task[None] | None = None
+        self._closed = False
+
+        # Background daemon thread: flushes every flush_interval seconds using
+        # synchronous httpx. Works regardless of whether an asyncio event loop
+        # is running — critical for frameworks like CrewAI that call buffer_span()
+        # from ThreadPoolExecutor threads where get_running_loop() always fails.
+        self._flush_thread = threading.Thread(
+            target=self._thread_flush_loop,
+            daemon=True,
+            name="langsight-flush",
+        )
+        self._flush_thread.start()
 
         # Flush any remaining buffered spans on program exit — no user code needed
         atexit.register(self._flush_on_exit)
@@ -624,6 +636,21 @@ class LangSightClient:
             budget=self._budget_config is not None,
             circuit_breaker=self._cb_default_config is not None,
         )
+
+    def _thread_flush_loop(self) -> None:
+        """Background daemon thread: flushes the buffer every flush_interval seconds.
+
+        Uses synchronous httpx — no event loop required. This is the primary
+        delivery path for frameworks (CrewAI, LangChain) that call buffer_span()
+        from ThreadPoolExecutor threads where asyncio.get_running_loop() always
+        raises RuntimeError.
+        """
+        import time
+
+        while not self._closed:
+            time.sleep(self._flush_interval)
+            if self._buffer and not self._test_mode:
+                self._flush_on_exit()
 
     def _flush_on_exit(self) -> None:
         """Synchronous atexit handler — flushes buffered spans when the program exits.
