@@ -77,7 +77,7 @@ export function OverviewStatCards({
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       <StatCard
         label="Sessions"
-        value={summary?.totalSessions ?? "—"}
+        value={trends?.cur_sessions ?? summary?.totalSessions ?? "—"}
         icon={Activity}
         color="#14b8a6"
         sub={`last ${hours}h`}

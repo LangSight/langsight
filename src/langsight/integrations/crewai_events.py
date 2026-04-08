@@ -278,12 +278,16 @@ class LangSightCrewAIEventListener:
 
     @staticmethod
     def _ensure_utc(dt: datetime) -> datetime:
-        """Ensure a datetime is UTC-aware. CrewAI emits naive datetimes."""
+        """Ensure a datetime is UTC-aware. CrewAI emits naive datetimes in local time."""
         from datetime import UTC
 
         if dt.tzinfo is None:
-            return dt.replace(tzinfo=UTC)
-        return dt
+            # astimezone() on a naive datetime assumes system local time and
+            # converts correctly to UTC. replace(tzinfo=UTC) would wrongly
+            # treat local time as UTC, causing timestamps to be offset by the
+            # local UTC offset (e.g. +2h for CEST).
+            return dt.astimezone(UTC)
+        return dt.astimezone(UTC)
 
     def _make_span(
         self,
