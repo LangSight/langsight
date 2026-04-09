@@ -591,7 +591,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                         "detail": f"Payload too large (max {_MAX_BODY_SIZE // 1024 // 1024} MB)"
                     },
                 )
-            return await call_next(request)  # type: ignore[return-value]
+            resp: StarletteResponse = await call_next(request)
+            return resp
 
     app.add_middleware(BodySizeLimitMiddleware)
 
