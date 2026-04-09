@@ -198,16 +198,18 @@ class DualStorage:
         self,
         server_name: str,
         limit: int = 20,
+        project_id: str = "",
     ) -> list[dict[str, Any]]:
-        return await self._analytics.get_schema_drift_history(server_name, limit)
+        return await self._analytics.get_schema_drift_history(server_name, limit, project_id)
 
     async def get_drift_impact(
         self,
         server_name: str,
         tool_name: str,
         hours: int = 24,
+        project_id: str = "",
     ) -> list[dict[str, Any]]:
-        return await self._analytics.get_drift_impact(server_name, tool_name, hours)
+        return await self._analytics.get_drift_impact(server_name, tool_name, hours, project_id)
 
     # ── Metadata → Postgres ───────────────────────────────────────────────────
     # API keys

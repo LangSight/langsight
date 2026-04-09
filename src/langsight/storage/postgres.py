@@ -1649,6 +1649,7 @@ class PostgresBackend:
         self,
         server_name: str,
         limit: int = 20,
+        project_id: str = "",
     ) -> list[dict[str, Any]]:
         """No-op: schema drift history lives in ClickHouse, not Postgres."""
         return []
@@ -1658,6 +1659,7 @@ class PostgresBackend:
         server_name: str,
         tool_name: str,
         hours: int = 24,
+        project_id: str = "",
     ) -> list[dict[str, Any]]:
         """No-op: drift impact data lives in ClickHouse, not Postgres."""
         return []

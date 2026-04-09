@@ -546,6 +546,7 @@ class ClickHouseBackend:
         server_name: str,
         tool_name: str,
         hours: int = 24,
+        project_id: str = "",
     ) -> list[dict[str, Any]]:
         """Return agents/sessions that called a tool recently.
 
@@ -565,6 +566,7 @@ class ClickHouseBackend:
                 server_name = {server_name:String}
                 AND tool_name  = {tool_name:String}
                 AND started_at >= now() - INTERVAL {hours:UInt32} HOUR
+                AND project_id = {project_id:String}
             GROUP BY agent_name, session_id
             ORDER BY call_count DESC
             LIMIT 100
@@ -573,6 +575,7 @@ class ClickHouseBackend:
                 "server_name": server_name,
                 "tool_name": tool_name,
                 "hours": hours,
+                "project_id": project_id,
             },
         )
         return [

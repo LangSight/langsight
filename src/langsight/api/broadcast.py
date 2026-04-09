@@ -178,6 +178,11 @@ class RedisBroadcaster:
         project_id='x'   → listens on langsight:events:x (own events only)
         """
         channel = _ADMIN_CHANNEL if project_id is None else f"{_PROJECT_CHANNEL_PREFIX}{project_id}"
+
+        if self._local_client_count >= _MAX_CLIENTS:
+            yield f"event: error\ndata: {json.dumps({'message': 'Too many connections'})}\n\n"
+            return
+
         pubsub = self._redis.pubsub()
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=_CLIENT_BUFFER)
         self._local_client_count += 1

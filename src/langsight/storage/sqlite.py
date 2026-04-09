@@ -263,7 +263,7 @@ class SQLiteBackend(StorageBackend):
         return []
 
     async def get_drift_impact(
-        self, server_name: str, tool_name: str, hours: int = 24
+        self, server_name: str, tool_name: str, hours: int = 24, project_id: str = ""
     ) -> list[dict[str, Any]]:
         return []
 

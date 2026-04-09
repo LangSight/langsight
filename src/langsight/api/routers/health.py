@@ -391,7 +391,7 @@ async def get_drift_history(
     fn = getattr(storage, "get_schema_drift_history", None)
     if fn is None:
         return []
-    return list(await fn(server_name=server_name, limit=limit))
+    return list(await fn(server_name=server_name, limit=limit, project_id=project_id or ""))
 
 
 @router.get(
@@ -413,7 +413,9 @@ async def get_drift_impact(
     fn = getattr(storage, "get_drift_impact", None)
     if fn is None:
         return []
-    return list(await fn(server_name=server_name, tool_name=tool_name, hours=hours))
+    return list(
+        await fn(server_name=server_name, tool_name=tool_name, hours=hours, project_id=project_id or "")
+    )
 
 
 @router.get(

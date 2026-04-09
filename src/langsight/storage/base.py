@@ -435,6 +435,7 @@ class StorageBackend(Protocol):
         server_name: str,
         tool_name: str,
         hours: int = 24,
+        project_id: str = "",
     ) -> list[dict[str, Any]]:
         """Return agents/sessions that called a tool recently (consumer impact)."""
         ...

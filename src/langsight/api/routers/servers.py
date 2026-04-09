@@ -247,6 +247,7 @@ async def record_tool_schemas(
     body: ToolSchemaPayload,
     storage: StorageBackend = Depends(get_storage),
     project_id: str | None = Depends(get_active_project_id),
+    _admin: None = Depends(require_admin),
 ) -> dict[str, int]:
     """Called by the SDK whenever list_tools() is invoked.
     Upserts tool names, descriptions and input schemas for the server.

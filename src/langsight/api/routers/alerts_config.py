@@ -164,6 +164,19 @@ async def test_slack_webhook(
             detail="No Slack webhook URL configured. Set it in Settings → Notifications.",
         )
 
+    # SSRF guard — validate webhook URL before making an outbound request.
+    # Reuses the same validator applied to server URLs (blocks RFC-1918,
+    # loopback, link-local, cloud metadata endpoints).
+    from langsight.api.routers.servers import _validate_server_url
+
+    try:
+        _validate_server_url(webhook_url)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=f"Webhook URL is not allowed: {exc}",
+        ) from exc
+
     import httpx
 
     payload = {

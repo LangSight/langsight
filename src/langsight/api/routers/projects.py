@@ -33,6 +33,7 @@ from langsight.api.dependencies import (
     get_project_access,
     get_session_user,
     get_storage,
+    require_admin,
 )
 from langsight.models import Project, ProjectMember, ProjectRole
 from langsight.storage.base import StorageBackend
@@ -239,6 +240,7 @@ async def create_project(
     body: CreateProjectRequest,
     request: Request,
     storage: StorageBackend = Depends(get_storage),
+    _admin: None = Depends(require_admin),
 ) -> ProjectResponse:
     """Create a new project. The caller becomes the owner automatically."""
     _require_storage(storage)
