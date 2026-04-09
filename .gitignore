@@ -38,6 +38,13 @@ build/
 
 # Claude Code — skill content (re-fetchable from skills-lock.json)
 .claude/skills/
+# Claude Code — local machine permissions (personal paths, not for contributors)
+.claude/settings.json
+.claude/settings.local.json
+# AI tool state — tool-specific, not project source
+.agents/
+.claude-flow/
+.junie/
 
 # IDE
 .vscode/
