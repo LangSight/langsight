@@ -23,6 +23,7 @@ import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi import status as http_status
 
+from langsight.alerts.engine import _safe_alert_text as _safe_alert
 from langsight.api.metrics import SPANS_INGESTED
 from langsight.api.rate_limit import limiter
 from langsight.sdk.models import SESSION_ID_RE, ToolCallSpan, ToolCallStatus
@@ -318,7 +319,7 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                         title=f"Agent session failed: {final_tag.replace('_', ' ')}",
                         message=(
                             f"Session `{session_id}` ended with health tag **{final_tag}**. "
-                            f"Agent: {agent_name}, failed tool calls: {failed}."
+                            f"Agent: {_safe_alert(agent_name)}, failed tool calls: {failed}."
                         ),
                         session_id=session_id,
                         project_id=_batch_project_id or "",

@@ -11,6 +11,7 @@ Design principles:
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -26,6 +27,31 @@ if TYPE_CHECKING:
     from langsight.storage.base import StorageBackend
 
 logger = structlog.get_logger()
+
+# Markdown link pattern: [text](url) — used in Slack Block Kit and dashboard
+# markdown renderers to create clickable links. Strip to prevent link injection.
+_MD_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+# Angle-bracket URLs: <https://...> — Slack renders these as links too.
+_ANGLE_URL_RE = re.compile(r"<[^>]{0,512}>")
+
+
+def _safe_alert_text(value: str | None, max_len: int = 256) -> str:
+    """Sanitize user-supplied text before including it in alert messages.
+
+    Strips Markdown link syntax ``[text](url) → text`` and angle-bracket URLs
+    ``<https://...>`` that would render as clickable links in Slack Block Kit
+    or the dashboard markdown renderer. Truncates to ``max_len`` characters.
+
+    Safe for all alert title/message fields that originate from span data
+    (agent_name, tool_name, server_name) — never apply to enum values or UUIDs
+    that are already constrained to a known-safe character set.
+    """
+    if not value:
+        return ""
+    text = _MD_LINK_RE.sub(r"\1", value)  # [text](url) → text
+    text = _ANGLE_URL_RE.sub("", text)  # <url> → ""
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:max_len]
 
 
 class AlertSeverity(StrEnum):
@@ -222,8 +248,15 @@ class AlertEngine:
         session = event.session_id or "unknown"
         details = event.details
 
-        title = self._prevention_title(event.event_type, server, tool)
-        message = self._prevention_message(event.event_type, server, tool, session, details)
+        # Sanitize user-controlled span fields before including in alert text.
+        # server_name, tool_name, and session_id originate from ingested spans
+        # and could contain Markdown link syntax for Slack/dashboard injection.
+        safe_server = _safe_alert_text(server)
+        safe_tool = _safe_alert_text(tool)
+        safe_session = _safe_alert_text(session)
+
+        title = self._prevention_title(event.event_type, safe_server, safe_tool)
+        message = self._prevention_message(event.event_type, safe_server, safe_tool, safe_session, details)
 
         logger.info(
             "alert_engine.prevention_event",

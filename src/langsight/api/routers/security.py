@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi import status as http_status
 from pydantic import BaseModel
 
+from langsight.alerts.engine import _safe_alert_text as _safe_alert
 from langsight.api.dependencies import get_active_project_id, get_config, get_storage, require_admin
 from langsight.config import LangSightConfig
 from langsight.models import MCPServer, TransportType
@@ -169,10 +170,10 @@ async def trigger_security_scan(
                 alert_type="security_critical",
                 severity="critical",
                 server_name=scan.server_name,
-                title=f"Critical security findings on '{scan.server_name}'",
+                title=f"Critical security findings on '{_safe_alert(scan.server_name)}'",
                 message=(
                     f"Security scan found {scan.critical_count} critical finding(s) "
-                    f"on `{scan.server_name}`: {top_findings or 'see dashboard for details'}."
+                    f"on `{_safe_alert(scan.server_name)}`: {_safe_alert(top_findings) or 'see dashboard for details'}."
                 ),
                 project_id=pid,
                 config=config,
@@ -187,10 +188,10 @@ async def trigger_security_scan(
                 alert_type="security_high",
                 severity="warning",
                 server_name=scan.server_name,
-                title=f"High severity findings on '{scan.server_name}'",
+                title=f"High severity findings on '{_safe_alert(scan.server_name)}'",
                 message=(
                     f"Security scan found {scan.high_count} high severity finding(s) "
-                    f"on `{scan.server_name}`: {top_findings or 'see dashboard for details'}."
+                    f"on `{_safe_alert(scan.server_name)}`: {_safe_alert(top_findings) or 'see dashboard for details'}."
                 ),
                 project_id=pid,
                 config=config,

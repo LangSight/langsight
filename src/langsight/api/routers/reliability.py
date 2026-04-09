@@ -13,6 +13,7 @@ from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Query, Request
 
+from langsight.alerts.engine import _safe_alert_text as _safe_alert
 from langsight.api.dependencies import get_active_project_id, get_storage
 from langsight.reliability.engine import AnomalyDetector, ReliabilityEngine
 from langsight.storage.base import StorageBackend
@@ -108,9 +109,9 @@ async def get_anomalies(
                     alert_type=alert_type,
                     severity=sev,
                     server_name=server,
-                    title=f"Anomaly detected: {tool} on {server}",
+                    title=f"Anomaly detected: {_safe_alert(tool)} on {_safe_alert(server)}",
                     message=(
-                        f"Tool `{tool}` on `{server}` shows anomalous `{metric}` "
+                        f"Tool `{_safe_alert(tool)}` on `{_safe_alert(server)}` shows anomalous `{metric}` "
                         f"(z-score: {z:.1f}). This deviates significantly from the "
                         f"{baseline_hours}h baseline."
                     ),
