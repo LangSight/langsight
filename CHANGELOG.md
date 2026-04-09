@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.14.18] - 2026-04-09
+
+**Security hardening release: SSRF protection, tenant isolation, RBAC enforcement, DoS mitigation, alert injection, and P0-P2 audit findings.**
+
+### Fixed
+- **SSRF in Slack webhook** (`src/langsight/alerts/slack.py`): Validate the Slack webhook URL before making any outbound request. RFC-1918 private ranges, IMDS (`169.254.169.254`), and loopback addresses are blocked, preventing server-side request forgery via a crafted webhook URL.
+- **Schema drift tenant leak** (`src/langsight/api/routers/health.py`, `src/langsight/storage/`): `get_schema_drift_history` and `get_drift_impact` now receive and enforce `project_id` in all storage layers. The ClickHouse backend adds a `WHERE project_id = ?` filter so one project cannot read another project's schema drift data.
+- **RBAC: viewer write on project create and tool schema record** (`src/langsight/api/routers/projects.py`, `src/langsight/api/routers/servers.py`): `POST /api/projects` (create project) and `POST /api/servers/{name}/tools` (record tool schemas) now require the `admin` role via `require_admin`. Previously, any authenticated viewer could invoke these write endpoints.
+- **DoS: unbounded Redis SSE connections** (`src/langsight/alerts/webhook.py`): `RedisBroadcaster` now caps SSE connections at 200, matching the existing cap in `SSEBroadcaster`. An unlimited number of open connections previously allowed a trivial resource-exhaustion attack.
+- **Alert message injection (XSS / Markdown)** (`src/langsight/alerts/engine.py`): User-controlled fields embedded in alert messages are now sanitized before interpolation. Prevents XSS and Markdown injection in Slack notifications and webhook payloads via crafted server names or tool descriptions.
+- **Body size limits, CIDR validation, CSP headers, SDK HTTPS warning, auth fail-closed** (`src/langsight/api/main.py`, `src/langsight/api/routers/`, `src/langsight/sdk/client.py`): P0-P2 hardening items from a full security audit: request body size limits on all write endpoints, CIDR input validation, Content-Security-Policy headers added to API responses, SDK now emits a warning when configured with an HTTP (non-HTTPS) backend URL, and auth middleware defaults to fail-closed on unexpected errors.
+
 ## [0.14.17] - 2026-04-08
 
 **CI-green re-cut of v0.14.16: background flush thread race fix and all prior fixes.**
