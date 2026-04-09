@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: { default: "Blog", template: "%s | LangSight Blog" },
+  title: { default: "Blog — AI Agent Monitoring & MCP Security Guides", template: "%s | LangSight Blog" },
   description:
-    "Practical guides on AI agent reliability, MCP server monitoring, loop detection, cost guardrails, and security for teams running agents in production.",
+    "Practical engineering guides on AI agent monitoring, MCP server security, loop detection, cost attribution, and production reliability for teams running AI agents.",
   alternates: { canonical: "https://langsight.dev/blog/" },
   openGraph: {
     title: "LangSight Blog — AI Agent Reliability & MCP Monitoring",

@@ -91,6 +91,7 @@ export function Nav({ dark, toggle, activePage }: { dark: boolean; toggle: () =>
   const navLinks = [
     { label: "Blog", href: "/blog" },
     { label: "Security", href: "/security" },
+    { label: "Integrations", href: "/integrations" },
     { label: "Pricing", href: "/pricing" },
     { label: "Docs", href: "https://docs.langsight.dev" },
     { label: "GitHub", href: "https://github.com/LangSight/langsight" },
@@ -98,6 +99,7 @@ export function Nav({ dark, toggle, activePage }: { dark: boolean; toggle: () =>
 
   return (
     <nav
+      aria-label="Main navigation"
       className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
       style={{
         background: scrolled ? "color-mix(in srgb, var(--bg) 88%, transparent)" : "transparent",
@@ -181,20 +183,22 @@ export function Nav({ dark, toggle, activePage }: { dark: boolean; toggle: () =>
 /* ── Footer ─────────────────────────────────────────────────── */
 export function Footer() {
   const links = [
+    { label: "Security", href: "/security" },
+    { label: "Pricing", href: "/pricing" },
+    { label: "Blog", href: "/blog" },
+    { label: "Alternatives", href: "/alternatives" },
+    { label: "Glossary", href: "/glossary" },
     { label: "Docs", href: "https://docs.langsight.dev" },
     { label: "GitHub", href: "https://github.com/LangSight/langsight" },
     { label: "PyPI", href: "https://pypi.org/project/langsight/" },
     { label: "Changelog", href: "https://github.com/LangSight/langsight/blob/main/CHANGELOG.md" },
-    { label: "Security", href: "/security" },
-    { label: "Pricing", href: "/pricing" },
-    { label: "Blog", href: "/blog" },
   ];
 
   return (
-    <footer className="py-10" style={{ borderTop: "1px solid var(--border)" }}>
+    <footer className="py-10" style={{ borderTop: "1px solid var(--border)" }} aria-label="Site footer">
       <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
         <Logo />
-        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
+        <nav aria-label="Footer navigation" className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
           {links.map((l) => (
             <a
               key={l.label}
@@ -207,9 +211,9 @@ export function Footer() {
               {l.label}
             </a>
           ))}
-        </div>
+        </nav>
         <p className="text-xs" style={{ color: "var(--dimmer)" }}>
-          Apache 2.0 · v0.14.0
+          Apache 2.0 · v0.14.18
         </p>
       </div>
     </footer>

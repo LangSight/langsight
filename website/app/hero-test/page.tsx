@@ -8,7 +8,7 @@ import IntegrationsSection from "@/components/hero/integrations-section";
 import QuickstartSection from "@/components/hero/quickstart-section";
 import { SharedKeyframes } from "@/components/hero/animated-primitives";
 
-export default function Home() {
+export default function HeroTestPage() {
   const { dark, toggle } = useTheme();
 
   return (
