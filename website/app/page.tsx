@@ -236,7 +236,6 @@ function Hero() {
             >
               <span>LangChain · CrewAI · Pydantic AI</span>
               <span>Postgres + ClickHouse</span>
-              <span>2,933 tests · 75% coverage</span>
             </div>
           </div>
 
@@ -434,7 +433,7 @@ Root cause: slack-mcp timed out at 14:32`,
   {
     n: "03",
     title: "Monitor",
-    desc: "MCP health checks, security scanning, schema drift detection. Proactive — catches problems before agents start failing. Alerts via Slack, OpsGenie, PagerDuty.",
+    desc: "MCP health checks, security scanning, schema drift detection. Proactive — catches problems before agents start failing. Alerts via Slack and webhooks.",
     code: `$ langsight mcp-health
 
 Server           Status   Latency   Schema    Circuit
@@ -619,11 +618,6 @@ const FEATURES = [
     desc: "langsight investigate sends evidence to Claude, GPT-4o, Gemini, or Ollama and returns remediation steps.",
     badge: "4 LLMs",
   },
-  {
-    title: "Prometheus Metrics",
-    desc: "Native /metrics endpoint. Plug into your existing Grafana stack. Request counts, latencies, SSE connections.",
-    badge: "v0.14",
-  },
 ];
 
 function Features() {
@@ -676,7 +670,6 @@ const INTEGRATIONS = [
   { name: "LangChain", sub: "LangGraph · Langflow", accent: "#10B981" },
   { name: "CrewAI", sub: "Multi-agent orchestration", accent: "#F59E0B" },
   { name: "Pydantic AI", sub: "Type-safe agents", accent: "#3B82F6" },
-  { name: "LibreChat", sub: "Self-hosted chat", accent: "#8B5CF6" },
   { name: "OTLP", sub: "Any OpenTelemetry framework", accent: "#6366F1" },
   { name: "Claude · Cursor", sub: "Auto-discovered by init", accent: "#71717A" },
 ];

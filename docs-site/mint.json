@@ -89,7 +89,6 @@
         "sdk/integrations/langchain",
         "sdk/integrations/crewai",
         "sdk/integrations/pydantic-ai",
-        "sdk/integrations/librechat",
         "sdk/integrations/otel"
       ]
     },
@@ -132,8 +131,7 @@
         "costs-model-pricing",
         "slos",
         "anomaly-detection",
-        "alerts",
-        "monitoring"
+        "alerts"
       ]
     },
     {

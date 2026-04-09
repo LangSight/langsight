@@ -13,7 +13,7 @@ function GithubIcon({ className }: { className?: string }) {
 
 /* ── Feature list ───────────────────────────────────────────── */
 const ALL_FEATURES = [
-  { category: "Agent Runtime Reliability", items: ["Full session traces — every tool call", "Multi-agent call tree reconstruction", "Payload capture (input args + output)", "Session replay against live MCP servers", "Side-by-side session comparison", "LLM reasoning traces (llm_input / llm_output)", "Anomaly detection (z-score vs 7-day baseline)", "Agent SLO tracking (success_rate, latency_p99)"] },
+  { category: "Agent Runtime Reliability", items: ["Full session traces — every tool call", "Multi-agent call tree reconstruction", "Payload capture (input args + output)", "LLM reasoning traces (llm_input / llm_output)", "Anomaly detection (z-score vs 7-day baseline)", "Agent SLO tracking (success_rate, latency_p99)"] },
   { category: "MCP Health Monitoring", items: ["Continuous proactive health checks", "Schema drift detection", "Latency tracking and p99 trends", "Slack + webhook alerts on DOWN/recovery", "Multi-transport: stdio, SSE, StreamableHTTP"] },
   { category: "MCP Security Scanning", items: ["CVE detection against public database", "5 of 10 OWASP MCP checks (MCP-01, 02, 04, 05, 06 — more coming)", "Tool poisoning detection (injection, unicode, base64)", "Auth gap analysis", "CI/CD integration with --ci flag", "JSON output for SIEM integration"] },
   { category: "Cost Attribution", items: ["Token-based pricing for LLM calls", "Per-tool call-based pricing rules", "Cost per session / per agent / per tool", "Model pricing table (admin-managed)", "Historical cost trends"] },
@@ -222,7 +222,6 @@ export default function PricingPage() {
                       "Per-agent override config from dashboard",
                       "Security scanning (OWASP + CVE)",
                       "Cost attribution + model pricing",
-                      "Session replay + comparison",
                       "Anomaly detection + SLO tracking",
                       "AI root cause analysis (bring your key)",
                       "Self-hosted — your data, your infra",

@@ -48,7 +48,7 @@ class DualStorage:
 
     All StorageBackend protocol methods are explicitly implemented here so that
     type checkers and IDE tooling see a complete surface. ClickHouse-specific
-    extension methods (get_session_trace, compare_sessions, get_cost_call_counts,
+    extension methods (get_session_trace, get_cost_call_counts,
     get_tool_reliability, get_baseline_stats) are forwarded via __getattr__.
     """
 
@@ -513,8 +513,8 @@ class DualStorage:
 
     # ── ClickHouse extension methods ──────────────────────────────────────────
     # Methods not in the base StorageBackend protocol but used by API routers
-    # via hasattr/getattr (e.g. get_session_trace, compare_sessions,
-    # get_cost_call_counts, get_tool_reliability, get_baseline_stats,
+    # via hasattr/getattr (e.g. get_session_trace, get_cost_call_counts,
+    # get_tool_reliability, get_baseline_stats,
     # get_agent_sessions, get_lineage_graph). Delegated transparently to the
     # analytics backend.
 
