@@ -69,34 +69,23 @@
       "group": "AI Providers",
       "pages": [
         "providers/overview",
-        "providers/claude",
-        "providers/openai",
-        "providers/gemini",
-        "providers/ollama"
+        "providers/claude"
       ]
     },
     {
       "group": "SDK & Integrations",
       "pages": [
         "sdk/python",
-        "sdk/integrations/gemini-sdk",
-        "sdk/integrations/openai-sdk",
         "sdk/integrations/anthropic-sdk",
-        "sdk/integrations/direct-sdk",
-        "sdk/integrations/openai-agents",
         "sdk/integrations/anthropic",
-        "sdk/integrations/langgraph",
-        "sdk/integrations/langchain",
         "sdk/integrations/crewai",
-        "sdk/integrations/pydantic-ai",
         "sdk/integrations/otel"
       ]
     },
     {
       "group": "Guides",
       "pages": [
-        "guides/auto-discovery",
-        "guides/langchain-rag"
+        "guides/auto-discovery"
       ]
     },
     {
@@ -172,8 +161,19 @@
     "github": "https://github.com/LangSight/langsight"
   },
   "_disabled_pages": {
-    "_note": "Re-add these to the navigation above once the features are battle-tested",
-    "librechat": "sdk/integrations/librechat — add back under SDK Integrations group when LibreChat plugin is validated",
-    "monitoring": "monitoring — add back under Dashboard group when Prometheus/Grafana integration is validated end-to-end"
+    "_note": "Re-add these to the navigation above once each integration is battle-tested by real users",
+    "librechat": "sdk/integrations/librechat — add back under SDK Integrations",
+    "monitoring": "monitoring — add back under Dashboard when Prometheus/Grafana validated",
+    "gemini-sdk": "sdk/integrations/gemini-sdk — add back under SDK Integrations",
+    "openai-sdk": "sdk/integrations/openai-sdk — add back under SDK Integrations",
+    "direct-sdk": "sdk/integrations/direct-sdk — add back under SDK Integrations",
+    "openai-agents": "sdk/integrations/openai-agents — add back under SDK Integrations",
+    "langgraph": "sdk/integrations/langgraph — add back under SDK Integrations",
+    "langchain": "sdk/integrations/langchain — add back under SDK Integrations",
+    "pydantic-ai": "sdk/integrations/pydantic-ai — add back under SDK Integrations",
+    "langchain-rag": "guides/langchain-rag — add back under Guides",
+    "providers-openai": "providers/openai — add back under AI Providers",
+    "providers-gemini": "providers/gemini — add back under AI Providers",
+    "providers-ollama": "providers/ollama — add back under AI Providers"
   }
 }

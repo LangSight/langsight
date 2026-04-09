@@ -234,7 +234,8 @@ function Hero() {
               className="fade-up delay-5 flex flex-wrap gap-x-5 gap-y-1 text-xs"
               style={{ color: "var(--dimmer)" }}
             >
-              <span>LangChain · CrewAI · Pydantic AI</span>
+              <span>Anthropic · CrewAI · Claude Agent SDK</span>
+              {/* <span>LangChain · Pydantic AI · OpenAI · Gemini</span> */}
               <span>Postgres + ClickHouse</span>
               {/* <span>4,100+ tests · 77% coverage</span> */}
             </div>
@@ -670,11 +671,14 @@ function Features() {
 
 /* ── Integrations ───────────────────────────────────────────── */
 const INTEGRATIONS = [
-  { name: "LangChain", sub: "LangGraph · Langflow", accent: "#10B981" },
+  // TODO: re-enable when LangChain integration is battle-tested by real users
+  // { name: "LangChain", sub: "LangGraph · Langflow", accent: "#10B981" },
   { name: "CrewAI", sub: "Multi-agent orchestration", accent: "#F59E0B" },
-  { name: "Pydantic AI", sub: "Type-safe agents", accent: "#3B82F6" },
+  // TODO: re-enable when Pydantic AI integration is battle-tested by real users
+  // { name: "Pydantic AI", sub: "Type-safe agents", accent: "#3B82F6" },
   // TODO: re-enable when LibreChat integration is battle-tested by real users
   // { name: "LibreChat", sub: "Self-hosted chat", accent: "#8B5CF6" },
+  { name: "Anthropic SDK", sub: "Direct API + Claude Agent SDK", accent: "#D97706" },
   { name: "OTLP", sub: "Any OpenTelemetry framework", accent: "#6366F1" },
   { name: "Claude · Cursor", sub: "Auto-discovered by init", accent: "#71717A" },
 ];
