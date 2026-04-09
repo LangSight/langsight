@@ -108,6 +108,16 @@ class LangSightClient:
         import os
 
         self._url = url.rstrip("/")
+        # Warn when sending API keys over plaintext HTTP to non-local hosts.
+        # API keys in X-API-Key headers are visible to anyone on the network path.
+        _is_local = any(h in self._url for h in ("localhost", "127.0.0.1", "::1"))
+        if not _is_local and self._url.startswith("http://"):
+            import structlog as _sl
+            _sl.get_logger().warning(
+                "sdk.insecure_transport",
+                url=self._url,
+                hint="Use https:// in production — API keys are transmitted in cleartext over http://",
+            )
         # Test mode: LANGSIGHT_TEST_MODE=1 silently drops all spans.
         # Prevents test runs from polluting the dashboard with dummy sessions.
         # The URL is preserved so tests can assert on it — only HTTP sends are skipped.

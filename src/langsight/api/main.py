@@ -454,6 +454,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         # Auth setup — store parsed keys on app state so the dep can read them
         api_keys = settings.parsed_api_keys()
         app.state.api_keys = api_keys
+        # auth_disabled: True = explicitly allow unauthenticated access.
+        # Sourced from LangSightConfig (yaml) OR Settings (env var) — either is valid.
+        app.state.auth_disabled = config.auth_disabled or settings.auth_disabled
         # Dashboard URL — used to construct invite links that point to the UI, not the API
         app.state.dashboard_url = settings.dashboard_url
         # Trusted proxy networks — CIDRs whose X-User-* headers are trusted for session auth
@@ -568,10 +571,29 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     app.add_middleware(SlowAPIMiddleware)
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
-    # Security headers — applied to every response
+    # Body size limit — reject requests larger than 10 MB to prevent OOM via
+    # the trace ingestion endpoint. Single span batches should never approach
+    # this limit; legitimate large payloads are handled by the field constraints
+    # on ToolCallSpan (output_result, llm_input, llm_output capped at 128 KB).
+    _MAX_BODY_SIZE = 10 * 1024 * 1024  # 10 MB
+
     from starlette.middleware.base import BaseHTTPMiddleware
     from starlette.responses import Response as StarletteResponse
+    from starlette.responses import JSONResponse as StarletteJSONResponse
 
+    class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next: Any) -> StarletteResponse:
+            content_length = request.headers.get("content-length")
+            if content_length and int(content_length) > _MAX_BODY_SIZE:
+                return StarletteJSONResponse(
+                    status_code=413,
+                    content={"detail": f"Payload too large (max {_MAX_BODY_SIZE // 1024 // 1024} MB)"},
+                )
+            return await call_next(request)
+
+    app.add_middleware(BodySizeLimitMiddleware)
+
+    # Security headers — applied to every response
     class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next: Any) -> StarletteResponse:
             response: StarletteResponse = await call_next(request)

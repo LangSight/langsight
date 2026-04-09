@@ -36,7 +36,8 @@ def _critical_scan(name: str = "pg") -> ScanResult:
 def config_file(tmp_path: Path) -> Path:
     cfg = tmp_path / ".langsight.yaml"
     cfg.write_text(yaml.dump({
-        "servers": [{"name": "pg", "transport": "stdio", "command": "python s.py"}]
+        "servers": [{"name": "pg", "transport": "stdio", "command": "python s.py"}],
+        "auth_disabled": True,
     }))
     return cfg
 
@@ -53,6 +54,7 @@ async def client(config_file: Path):
     app = create_app(config_path=config_file)
     app.state.storage = mock_storage
     app.state.config = load_config(config_file)
+    app.state.auth_disabled = True
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c, mock_storage
@@ -98,10 +100,11 @@ class TestTriggerSecurityScan:
 
     async def test_empty_servers_returns_empty_list(self, tmp_path: Path) -> None:
         cfg = tmp_path / ".langsight.yaml"
-        cfg.write_text(yaml.dump({"servers": []}))
+        cfg.write_text(yaml.dump({"servers": [], "auth_disabled": True}))
         app = create_app(config_path=cfg)
         app.state.storage = MagicMock()
         app.state.config = load_config(cfg)
+        app.state.auth_disabled = True
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             data = (await c.post("/api/security/scan")).json()
         assert data == []

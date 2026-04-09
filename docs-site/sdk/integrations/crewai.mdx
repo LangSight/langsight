@@ -3,28 +3,140 @@ title: "CrewAI"
 description: "Full observability for CrewAI agents — crew, task, agent, tool, LLM, and handoff spans with zero code changes"
 ---
 
-## Zero-code setup
+## Requirements
 
-One line. No callbacks, no decorators, no config files.
+| Requirement | Version |
+|---|---|
+| Python | **3.11+** |
+| CrewAI | **1.5+** (event bus integration; older versions use a fallback) |
+| LangSight server | Running at `LANGSIGHT_URL` (default `http://localhost:8000`) |
+
+---
+
+## Installation
+
+### Using uv (recommended)
+
+```bash
+uv add langsight
+```
+
+Or in your `pyproject.toml`:
+
+```toml
+[project]
+dependencies = [
+    "crewai>=1.5",
+    "langsight",
+]
+```
+
+Then:
+
+```bash
+uv sync
+```
+
+### Using pip
+
+```bash
+pip install langsight
+```
+
+---
+
+## Quick start — full working example
+
+One function call. No callbacks, no decorators, no config files.
 
 ```python
+#!/usr/bin/env python
 import langsight
+
+# Patches CrewAI event bus + Anthropic/OpenAI SDK automatically.
+# Reads LANGSIGHT_URL, LANGSIGHT_API_KEY, LANGSIGHT_PROJECT_ID from env.
 langsight.auto_patch()
 
 from crewai import Agent, Task, Crew
 
-analyst = Agent(role="SQL Analyst", goal="...", backstory="...")
-task = Task(description="Analyze revenue", agent=analyst)
+analyst = Agent(
+    role="SQL Analyst",
+    goal="Write accurate SQL queries",
+    backstory="You are an expert SQL analyst.",
+)
+task = Task(
+    description="Count the number of orders in Q4 2024",
+    expected_output="A SQL query and the result",
+    agent=analyst,
+)
 crew = Crew(agents=[analyst], tasks=[task])
 result = crew.kickoff()
 # Done. Session grouping, agent attribution, and flush happen automatically.
 ```
 
+### Environment variables
+
+Create a `.env` file in your project root:
+
+```bash
+LANGSIGHT_URL=http://localhost:8000
+LANGSIGHT_API_KEY=ls_your_key_here
+LANGSIGHT_PROJECT_ID=your_project_id_here
+```
+
+`auto_patch()` loads `.env` automatically (via `python-dotenv` if installed).
+
 <Note>
-`auto_patch()` reads `LANGSIGHT_URL`, `LANGSIGHT_API_KEY`, and `LANGSIGHT_PROJECT_ID`
-from environment variables. It also auto-loads `.env` if present. If env vars aren't
-set at call time, LangSight lazily initialises the client on the first span.
+  **`LANGSIGHT_PROJECT_ID` explained:**
+  - **Required for dashboard visibility.** Without it, spans are ingested but not scoped to any project — they won't appear when you select a project in the dashboard.
+  - **Where to find it:** Dashboard → Settings → Projects → click the ID pill to copy.
+  - **For SDK/API key users:** If your API key is project-scoped, the key's project takes precedence and you can omit this variable.
 </Note>
+
+---
+
+## Verifying it works
+
+After running your crew, you should see:
+
+### 1. Startup log
+
+```
+auto_patch.crewai.event_bus  status=active
+auto_patch.complete          patched=['anthropic', 'crewai']
+```
+
+If you see `event_bus_failed` instead, check the error — usually a CrewAI version issue.
+
+### 2. Dashboard — Sessions page
+
+Navigate to your project in the dashboard. Within a few seconds of the crew starting:
+- A new session appears in the **Sessions** page with status `running`
+- The **Live** page shows spans arriving in real time
+- Agent names, tool calls, and latencies populate as the crew executes
+
+After `crew.kickoff()` returns:
+- The session status changes to `success` (or `tool_failure` / `loop_detected` if issues occurred)
+- Token counts and cost appear (from the Anthropic/OpenAI SDK patches)
+
+### 3. CLI verification
+
+```bash
+langsight sessions --hours 1
+```
+
+```
+Session          Agent        Calls   Failed   Duration
+bced92bc…        crew         24      0        2m 40s
+```
+
+### When spans appear
+
+- **During execution**: Spans are buffered in-process and flushed periodically (every ~1 second when an async event loop is running). You'll see them in the Live view within seconds.
+- **After completion**: A final flush runs when `crew.kickoff()` returns. All remaining buffered spans are delivered.
+- **On process exit**: An `atexit` handler ensures any un-flushed spans are sent even if kickoff raised an exception.
+
+If the Live page stays empty for more than 10 seconds after kickoff starts, check the [Troubleshooting](#troubleshooting) section.
 
 ---
 
@@ -110,6 +222,52 @@ monkey-patching `BaseTool.run`, `Agent.kickoff`, and `Crew.kickoff`.
 
 ---
 
+## `auto_patch()` vs `LangSightCrewAICallback`
+
+There are two integration methods. **Use `auto_patch()` unless you have a specific reason not to.**
+
+| | `auto_patch()` | `LangSightCrewAICallback` |
+|---|---|---|
+| Setup | 1 line | ~10 lines |
+| What it captures | All 19 events (crew, task, agent, tool, LLM, A2A) | Tool calls only |
+| Session grouping | Automatic | Manual (you manage session_id) |
+| LLM token/cost | Automatic (patches Anthropic/OpenAI SDK) | Not included |
+| Agent attribution | Automatic | Fixed (single agent_name) |
+| Use case | **All new projects** | Legacy setups, per-agent server_name override |
+
+### When to use `LangSightCrewAICallback`
+
+Only when you need per-agent configuration that `auto_patch()` doesn't support — for example, routing different agents' tool calls to different `server_name` values:
+
+```python
+from langsight.sdk import LangSightClient
+from langsight.integrations.crewai import LangSightCrewAICallback
+
+client = LangSightClient(
+    url="http://localhost:8000",
+    project_id="my-project",
+    redact_payloads=True,
+)
+
+callback = LangSightCrewAICallback(
+    client=client,
+    server_name="my-mcp-server",
+    agent_name="support-agent",
+)
+
+agent = Agent(
+    role="Support Agent",
+    tools=[my_mcp_tool],
+    callbacks=[callback],
+)
+```
+
+<Warning>
+  Do not use both `auto_patch()` and `LangSightCrewAICallback` together — you'll get duplicate spans.
+</Warning>
+
+---
+
 ## Competitor comparison
 
 How does LangSight's CrewAI support compare to other observability platforms?
@@ -151,7 +309,6 @@ How does LangSight's CrewAI support compare to other observability platforms?
 | Flow lifecycle (CrewAI Flows) | Arize Phoenix | Planned (Phase 2) |
 | Agent reasoning steps | Arize Phoenix | Planned (Phase 2) |
 | Per-agent/per-task cost rollup | AgentOps | Planned |
-| Span hierarchy (parent-child tree) | Langfuse, Arize Phoenix | Planned |
 
 ---
 
@@ -174,45 +331,20 @@ with langsight.session(session_id="q1-revenue-analysis"):
 
 ---
 
-## Advanced: manual callback
-
-Use the manual callback for per-agent configuration — specific `server_name`,
-fixed `session_id`, or payload redaction.
-
-```python
-from langsight.sdk import LangSightClient
-from langsight.integrations.crewai import LangSightCrewAICallback
-from crewai import Agent
-
-client = LangSightClient(
-    url="http://localhost:8000",
-    project_id="my-project",
-    redact_payloads=True,
-)
-
-callback = LangSightCrewAICallback(
-    client=client,
-    server_name="my-mcp-server",
-    agent_name="support-agent",
-)
-
-agent = Agent(
-    role="Support Agent",
-    tools=[my_mcp_tool],
-    callbacks=[callback],
-)
-```
-
----
-
 ## Troubleshooting
 
 ### No spans in the dashboard
 
-1. **Server running?** `curl http://localhost:8000/api/agents/sessions`
-2. **Env vars set?** `LANGSIGHT_URL`, `LANGSIGHT_API_KEY`, `LANGSIGHT_PROJECT_ID`
-3. **Check logs**: Look for `auto_patch.crewai.event_bus status=active` at startup. If you see `event_bus_failed`, check the error.
-4. **CrewAI version**: `python -c "import crewai; print(crewai.__version__)"` — event bus requires 1.5+.
+1. **LangSight server running?** `curl http://localhost:8000/api/liveness`
+2. **Env vars set?** Check `LANGSIGHT_URL` and `LANGSIGHT_API_KEY`. Check `LANGSIGHT_PROJECT_ID` — without it, spans are ingested but not visible in any project.
+3. **Check startup logs**: Look for `auto_patch.crewai.event_bus status=active`. If you see `event_bus_failed`, the error will explain why.
+4. **`tracing=False` in Crew constructor?** This disables CrewAI's event bus entirely. Remove it — LangSight needs the event bus to capture crew/task/agent/tool events. Without it, only raw LLM calls (via SDK patches) are captured, with no session grouping.
+5. **CrewAI version**: `python -c "import crewai; print(crewai.__version__)"` — event bus requires 1.5+.
+6. **Python version**: `python --version` — LangSight requires Python 3.11+.
+
+### Spans appear only after process exits
+
+This is normal if the crew runs for less than 1 second (the flush loop fires every ~1s). For longer crews, spans appear during execution. If they consistently only appear at exit, the async flush loop may not be starting — check that `python-dotenv` is installed (`uv add python-dotenv`) so env vars load before CrewAI initialises its event loop.
 
 ### Duplicate spans
 
@@ -222,6 +354,6 @@ Using both `auto_patch()` AND a manual `LangSightCrewAICallback`? Pick one — `
 
 The Anthropic/OpenAI SDK patches use `contextvars` which don't propagate across threads. The event bus LLM events always carry `agent_role` — those spans will have correct attribution regardless.
 
-### Naive datetime warnings
+### Session shows wrong duration
 
-CrewAI emits timezone-naive datetimes. LangSight automatically adds UTC timezone info. The `offset-naive and offset-aware datetimes` warning is harmless.
+If session duration looks much longer than the actual run (e.g., 2 hours when the crew ran for 2 minutes), check that your system clock and timezone settings are correct. LangSight converts CrewAI's naive timestamps to UTC — a misconfigured system timezone can cause offset issues.

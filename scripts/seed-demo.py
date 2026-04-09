@@ -28,6 +28,7 @@ import httpx
 
 API_URL = os.environ.get("LANGSIGHT_URL", "http://localhost:8000")
 API_KEY = os.environ.get("LANGSIGHT_API_KEY", "")
+PROJECT_ID = os.environ.get("LANGSIGHT_PROJECT_ID", "")
 
 AGENTS = ["support-agent", "billing-agent", "data-analyst", "orchestrator"]
 SERVERS = {
@@ -53,13 +54,13 @@ MAX_CALLS_PER_SESSION = 8
 # ── Span generation ──────────────────────────────────────────────────────────
 
 
-def generate_session(session_idx: int) -> list[dict]:
+def generate_session(session_idx: int, project_id: str = "") -> list[dict]:
     """Generate a realistic agent session with tool call spans."""
     agent = random.choice(AGENTS)
     servers = AGENT_SERVERS[agent]
     session_id = uuid.uuid4().hex
     trace_id = uuid.uuid4().hex
-    base_time = datetime.now(UTC) - timedelta(hours=random.randint(1, 48))
+    base_time = datetime.now(UTC) - timedelta(hours=random.randint(1, 20))
 
     spans = []
     num_calls = random.randint(2, MAX_CALLS_PER_SESSION)
@@ -89,6 +90,7 @@ def generate_session(session_idx: int) -> list[dict]:
                 "latency_ms": round(latency, 2),
                 "status": "success",
                 "agent_name": agent,
+                "project_id": project_id,
             })
             elapsed += latency
             continue
@@ -140,6 +142,7 @@ def generate_session(session_idx: int) -> list[dict]:
             "status": status,
             "error": error,
             "agent_name": current_agent,
+            "project_id": project_id,
         }
         if handoff_span_id and current_agent == sub_agent:
             span["parent_span_id"] = handoff_span_id
@@ -184,6 +187,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Seed LangSight with demo data")
     parser.add_argument("--url", default=API_URL, help="LangSight API URL")
     parser.add_argument("--api-key", default=API_KEY, help="API key")
+    parser.add_argument("--project-id", default=PROJECT_ID, help="Project ID to scope spans to")
     parser.add_argument("--sessions", type=int, default=NUM_SESSIONS, help="Number of sessions")
     args = parser.parse_args()
 
@@ -210,6 +214,7 @@ def main() -> None:
     print("  LangSight Demo Seeder")
     print("──────────────────────────────────────────────────────")
     print(f"  API:      {url}")
+    print(f"  Project:  {args.project_id or '(none — spans unscoped)'}")
     print(f"  Sessions: {args.sessions}")
     print("")
 
@@ -221,7 +226,7 @@ def main() -> None:
     ok_sessions = 0
 
     for i in range(args.sessions):
-        spans = generate_session(i)
+        spans = generate_session(i, project_id=args.project_id)
         if send_spans(client, spans):
             ok_sessions += 1
             total_spans += len(spans)

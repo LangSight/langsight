@@ -87,6 +87,7 @@ async def _make_client(
     app = create_app(config_path=config_file)
     app.state.storage = storage
     app.state.config = load_config(config_file)
+    app.state.auth_disabled = True
     app.state.api_keys = []  # auth disabled — focus on project filtering logic
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 

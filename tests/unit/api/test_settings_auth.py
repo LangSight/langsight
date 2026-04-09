@@ -54,7 +54,7 @@ _VIEWER_KEY_HASH = hashlib.sha256(_VIEWER_KEY.encode()).hexdigest()
 
 def _make_config_file(tmp_path: Path) -> Path:
     cfg = tmp_path / ".langsight.yaml"
-    cfg.write_text(yaml.dump({"servers": []}))
+    cfg.write_text(yaml.dump({"servers": [], "auth_disabled": True}))
     return cfg
 
 

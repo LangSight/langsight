@@ -222,6 +222,7 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
                     span.output_result = None
                     span.llm_input = None
                     span.llm_output = None
+                    span.error = None  # error messages can contain PII or stack traces
         except Exception:  # noqa: BLE001
             pass  # fail-open — if settings fetch fails, don't block ingestion
 

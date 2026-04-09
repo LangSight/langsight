@@ -17,7 +17,7 @@ from langsight.models import AgentSLO, SLOMetric
 @pytest.fixture
 def config_file(tmp_path: Path) -> Path:
     cfg = tmp_path / ".langsight.yaml"
-    cfg.write_text(yaml.dump({"servers": []}))
+    cfg.write_text(yaml.dump({"servers": [], "auth_disabled": True}))
     return cfg
 
 
@@ -33,6 +33,7 @@ async def client(config_file: Path):
     storage.delete_slo = AsyncMock(return_value=True)
     app.state.storage = storage
     app.state.config = load_config(config_file)
+    app.state.auth_disabled = True
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c, storage
 

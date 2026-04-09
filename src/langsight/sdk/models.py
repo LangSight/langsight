@@ -95,18 +95,18 @@ class ToolCallSpan(BaseModel):
     span_type: SpanType = "tool_call"  # tool_call | agent | handoff
     trace_id: str | None = None  # groups all spans in one task/conversation
     session_id: str | None = None  # application-level session identifier
-    server_name: str  # tool server / agent name / "handoff"
-    tool_name: str  # tool called / agent task / target agent name
+    server_name: str = Field(max_length=256)   # tool server / agent name / "handoff"
+    tool_name: str = Field(max_length=512)     # tool called / agent task / target agent name
     started_at: datetime
     ended_at: datetime
     latency_ms: float | None = None  # auto-computed from started_at/ended_at if omitted
     status: ToolCallStatus
-    error: str | None = None
-    agent_name: str | None = None  # which agent emitted this span
+    error: str | None = Field(default=None, max_length=8192)
+    agent_name: str | None = Field(default=None, max_length=256)
     input_args: dict[str, Any] | None = None  # tool call arguments (omitted when redacted)
-    output_result: str | None = None  # tool return value as string (omitted when redacted)
-    llm_input: str | None = None  # P5.3 — LLM prompt/messages (agent spans only)
-    llm_output: str | None = None  # P5.3 — LLM completion text (agent spans only)
+    output_result: str | None = Field(default=None, max_length=131072)  # 128 KB cap
+    llm_input: str | None = Field(default=None, max_length=131072)      # 128 KB cap
+    llm_output: str | None = Field(default=None, max_length=131072)     # 128 KB cap
     replay_of: str | None = None  # P5.7 — original span_id this is a replay of
     project_id: str | None = None  # P6 — project this span belongs to
     input_tokens: int | None = None  # P7 — LLM input token count

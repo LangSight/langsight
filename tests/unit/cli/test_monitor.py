@@ -63,7 +63,7 @@ class TestMonitorCommand:
 
     def test_exits_1_when_no_servers(self, tmp_path: Path) -> None:
         cfg = tmp_path / ".langsight.yaml"
-        cfg.write_text(yaml.dump({"servers": []}))
+        cfg.write_text(yaml.dump({"servers": [], "auth_disabled": True}))
         runner = CliRunner()
         result = runner.invoke(cli, ["monitor", "--config", str(cfg), "--once"])
         assert result.exit_code == 1

@@ -24,7 +24,7 @@ from langsight.config import load_config
 @pytest.fixture
 def config_file(tmp_path: Path) -> Path:
     cfg = tmp_path / ".langsight.yaml"
-    cfg.write_text(yaml.dump({"servers": []}))
+    cfg.write_text(yaml.dump({"servers": [], "auth_disabled": True}))
     return cfg
 
 
@@ -45,7 +45,7 @@ async def client(config_file: Path):
 
     app.state.storage = mock_storage
     app.state.config = load_config(config_file)
-    app.state.api_keys = []
+    app.state.api_keys = []; app.state.auth_disabled = True
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c, mock_storage

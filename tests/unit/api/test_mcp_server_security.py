@@ -147,7 +147,7 @@ def _make_request_with_loopback(
 @pytest.fixture
 def config_file(tmp_path: Path) -> Path:
     cfg = tmp_path / ".langsight.yaml"
-    cfg.write_text(yaml.dump({"servers": []}))
+    cfg.write_text(yaml.dump({"servers": [], "auth_disabled": True}))
     return cfg
 
 
@@ -174,7 +174,7 @@ async def open_client(config_file: Path):
     storage = _make_mock_storage()
     app.state.storage = storage
     app.state.config = load_config(config_file)
-    app.state.api_keys = []
+    app.state.api_keys = []; app.state.auth_disabled = True
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c, storage, app

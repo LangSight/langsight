@@ -79,7 +79,7 @@ def _make_span(session_id: str = "sess-1", project_id: str = "project-a") -> dic
 @pytest.fixture
 def config_file(tmp_path: Path) -> Path:
     cfg = tmp_path / ".langsight.yaml"
-    cfg.write_text(yaml.dump({"servers": []}))
+    cfg.write_text(yaml.dump({"servers": [], "auth_disabled": True}))
     return cfg
 
 

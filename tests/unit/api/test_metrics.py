@@ -46,7 +46,7 @@ class TestMetricsEndpoint:
         from langsight.config import load_config
 
         cfg = tmp_path / ".langsight.yaml"
-        cfg.write_text(yaml.dump({"servers": []}))
+        cfg.write_text(yaml.dump({"servers": [], "auth_disabled": True}))
 
         app = create_app(config_path=cfg)
         storage = MagicMock()
@@ -55,7 +55,7 @@ class TestMetricsEndpoint:
         storage.get_health_history = AsyncMock(return_value=[])
         app.state.storage = storage
         app.state.config = load_config(cfg)
-        app.state.api_keys = []
+        app.state.api_keys = []; app.state.auth_disabled = True
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             yield c

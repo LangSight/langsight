@@ -39,7 +39,8 @@ def config_file(tmp_path: Path) -> Path:
         "servers": [
             {"name": "pg", "transport": "stdio", "command": "python server.py"},
             {"name": "s3", "transport": "stdio", "command": "python s3.py"},
-        ]
+        ],
+        "auth_disabled": True,
     }))
     return cfg
 
@@ -58,6 +59,7 @@ async def client(config_file: Path):
     # Inject state directly — ASGITransport doesn't trigger lifespan
     app.state.storage = mock_storage
     app.state.config = load_config(config_file)
+    app.state.auth_disabled = True
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
@@ -199,12 +201,12 @@ class TestGetServerInvocations:
         bare_storage.close = AsyncMock()
 
         cfg = tmp_path / ".langsight.yaml"
-        cfg.write_text(yaml.dump({"servers": []}))
+        cfg.write_text(yaml.dump({"servers": [], "auth_disabled": True}))
 
         app = create_app(config_path=cfg)
         app.state.storage = bare_storage
         app.state.config = load_config(cfg)
-        app.state.api_keys = []
+        app.state.api_keys = []; app.state.auth_disabled = True
 
         from httpx import ASGITransport, AsyncClient
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c2:
@@ -271,10 +273,11 @@ class TestTriggerHealthCheck:
 
     async def test_no_servers_returns_empty(self, tmp_path: Path) -> None:
         cfg = tmp_path / ".langsight.yaml"
-        cfg.write_text(yaml.dump({"servers": []}))
+        cfg.write_text(yaml.dump({"servers": [], "auth_disabled": True}))
         app = create_app(config_path=cfg)
         app.state.storage = MagicMock()
         app.state.config = load_config(cfg)
+        app.state.auth_disabled = True
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             data = (await c.post("/api/health/check")).json()
         assert data == []

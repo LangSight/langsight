@@ -121,7 +121,7 @@ def _member_record(project_id: str = "proj-1", user_id: str = "user-1") -> Magic
 @pytest.fixture
 def config_file(tmp_path: Path) -> Path:
     cfg = tmp_path / ".langsight.yaml"
-    cfg.write_text(yaml.dump({"servers": []}))
+    cfg.write_text(yaml.dump({"servers": [], "auth_disabled": True}))
     return cfg
 
 

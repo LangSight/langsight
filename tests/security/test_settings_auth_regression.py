@@ -41,7 +41,7 @@ pytestmark = [pytest.mark.security, pytest.mark.regression]
 def config_file(tmp_path: Path) -> Path:
     """Minimal .langsight.yaml with no servers, suitable for all settings tests."""
     cfg = tmp_path / ".langsight.yaml"
-    cfg.write_text(yaml.dump({"servers": []}))
+    cfg.write_text(yaml.dump({"servers": [], "auth_disabled": True}))
     return cfg
 
 

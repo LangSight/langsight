@@ -105,7 +105,9 @@ def _span_dict(
 @pytest.fixture
 def config_file(tmp_path: Path) -> Path:
     cfg = tmp_path / ".langsight.yaml"
-    cfg.write_text(yaml.dump({"servers": []}))
+    # auth_disabled=true: test client has no API keys; auth is explicitly
+    # disabled so spans can be submitted without credentials in unit tests.
+    cfg.write_text(yaml.dump({"servers": [], "auth_disabled": True}))
     return cfg
 
 
@@ -540,24 +542,30 @@ class TestDenialOfService:
         assert elapsed < 2.0, f"Validation took {elapsed:.2f}s, expected < 2s"
 
     def test_many_handoff_spans_with_long_target_names_do_not_oom(self) -> None:
-        """1000 handoff spans with 1KB target_agent_name must parse without memory issues."""
-        long_name = "A" * 1024
+        """1000 handoff spans with long target_agent_name must parse without memory issues.
+
+        tool_name is capped at 512 chars (field constraint); target_agent_name has no cap.
+        The body-size middleware (10 MB) is the primary DoS guard for oversized payloads.
+        """
+        # tool_name must be ≤ 512 chars: "→ " prefix (3 chars) + 400 A's = 403 chars
+        tool_name_suffix = "A" * 400
+        long_target = "A" * 1024  # target_agent_name has no field constraint
         spans = [
             ToolCallSpan(
                 server_name="attacker",
-                tool_name=f"\u2192 {long_name}",
+                tool_name=f"\u2192 {tool_name_suffix}",
                 started_at=_now(),
                 ended_at=_now(),
                 status=ToolCallStatus.SUCCESS,
                 span_type="handoff",
-                target_agent_name=long_name,
+                target_agent_name=long_target,
             )
             for _ in range(1000)
         ]
         # If we got here without MemoryError, the test passes.
         assert len(spans) == 1000
         # Verify all target names are intact
-        assert all(s.target_agent_name == long_name for s in spans)
+        assert all(s.target_agent_name == long_target for s in spans)
 
 
 # ============================================================================

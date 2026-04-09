@@ -85,11 +85,29 @@ Update `CHANGELOG.md` following Keep a Changelog format:
 - Health check interval now configurable per server
 ```
 
-### Git tagging
+### Git tagging and CI verification
+
+After committing, push and **wait for CI to pass before tagging**:
+
 ```bash
 git add pyproject.toml CHANGELOG.md
 git commit -m "chore(release): bump version to v0.2.0"
+git push origin main
+
+# Wait for CI to go green — poll until complete
+gh run watch $(gh run list --branch main --limit 1 --json databaseId --jq '.[0].databaseId')
+
+# Verify it passed
+gh run list --branch main --limit 1
+# Must show: completed  success
+```
+
+If CI fails, fix the failures before continuing. Do not tag a failing commit.
+
+Only after CI is green:
+```bash
 git tag -a v0.2.0 -m "Release v0.2.0"
+git push origin v0.2.0
 ```
 
 ### Docker image build

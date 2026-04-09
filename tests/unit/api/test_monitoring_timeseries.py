@@ -65,6 +65,7 @@ async def client(config_file: Path, mock_storage: MagicMock):
     app = create_app(config_path=config_file)
     app.state.storage = mock_storage
     app.state.config = load_config(config_file)
+    app.state.auth_disabled = True
     app.state.config_path = config_file
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"

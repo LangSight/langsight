@@ -105,15 +105,35 @@ def parse_trusted_proxy_networks(cidrs_str: str) -> list[_IPNetwork]:
     Invalid entries are logged and skipped rather than raising — a misconfigured
     CIDR should not prevent the API from starting.
     """
+    # /8 or broader (e.g. 0.0.0.0/0, 10.0.0.0/8) would trust the entire internet
+    # or a huge address block as a proxy — that enables session header spoofing
+    # from any IP in that range.  Reject any CIDR broader than /16.
+    _MIN_PREFIX_LEN = 16
+
     networks: list[_IPNetwork] = []
     for raw in cidrs_str.split(","):
         cidr = raw.strip()
         if not cidr:
             continue
         try:
-            networks.append(ipaddress.ip_network(cidr, strict=False))
+            net = ipaddress.ip_network(cidr, strict=False)
         except ValueError:
             logger.warning("config.invalid_trusted_proxy_cidr", cidr=cidr)
+            continue
+        if net.prefixlen < _MIN_PREFIX_LEN:
+            logger.error(
+                "config.trusted_proxy_cidr_too_broad",
+                cidr=cidr,
+                prefixlen=net.prefixlen,
+                minimum=_MIN_PREFIX_LEN,
+                hint="A CIDR this broad allows session header spoofing from most of the internet. Use a more specific range (e.g. /24 for a single subnet).",
+            )
+            raise ValueError(
+                f"LANGSIGHT_TRUSTED_PROXY_CIDRS: {cidr} is dangerously broad "
+                f"(/{net.prefixlen}). Minimum prefix length is /{_MIN_PREFIX_LEN}. "
+                "Use a more specific range or set 127.0.0.1/32 for loopback only."
+            )
+        networks.append(net)
     return networks
 
 
@@ -211,8 +231,30 @@ async def verify_api_key(
     has_db_keys = await _has_db_keys(storage)
 
     if not has_env_keys and not has_db_keys:
-        # Auth fully disabled — local dev mode (no keys configured at all)
-        return
+        # Fail-closed: no keys configured anywhere.
+        # auth_disabled can be set in two places:
+        #   1. app.state.auth_disabled — set by create_app() lifespan from
+        #      Settings (env var) or LangSightConfig (yaml).
+        #   2. app.state.config.auth_disabled — fallback for test clients that
+        #      bypass the lifespan but set app.state.config = load_config(...).
+        # Both paths must check False before raising 401.
+        state = getattr(getattr(request, "app", None), "state", None)
+        auth_disabled = getattr(state, "auth_disabled", False)
+        if not auth_disabled:
+            cfg = getattr(state, "config", None)
+            auth_disabled = bool(getattr(cfg, "auth_disabled", False))
+        if not auth_disabled:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=(
+                    "Authentication is required. Configure LANGSIGHT_API_KEYS "
+                    "or create API keys via the dashboard. "
+                    "To explicitly disable auth (local dev only): "
+                    "set LANGSIGHT_AUTH_DISABLED=true."
+                ),
+                headers={"WWW-Authenticate": "ApiKey"},
+            )
+        return  # auth explicitly disabled
 
     if not api_key:
         logger.warning(
@@ -526,12 +568,22 @@ async def require_admin(
     env_keys: list[str] = getattr(request.app.state, "api_keys", [])
     storage: StorageBackend = request.app.state.storage
 
-    # Auth disabled — allow everything
     has_env_keys = bool(env_keys)
     has_db_keys = await _has_db_keys(storage)
 
     if not has_env_keys and not has_db_keys:
-        return  # auth disabled
+        config_obj = getattr(getattr(request, "app", None), "state", None)
+        cfg = getattr(config_obj, "config", None) if config_obj else None
+        if cfg is not None and not getattr(cfg, "auth_disabled", False):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=(
+                    "Authentication is required. Configure LANGSIGHT_API_KEYS "
+                    "or create API keys via the dashboard."
+                ),
+                headers={"WWW-Authenticate": "ApiKey"},
+            )
+        return  # auth explicitly disabled or no config
 
     api_key = _read_api_key(request, api_key)
     if not api_key:

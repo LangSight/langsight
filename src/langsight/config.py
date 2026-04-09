@@ -82,6 +82,11 @@ class LangSightConfig(BaseModel):
     #   project_id: "abc123"         # UUID from the dashboard (preferred)
     project: str = ""  # project slug (display only — resolved to id at query time)
     project_id: str = ""  # project UUID — used directly for storage scoping
+    # Explicitly disable API authentication (local dev / air-gapped only).
+    # When false (default), the API refuses unauthenticated requests when no
+    # API keys are configured anywhere. Set to true ONLY for local dev.
+    # NEVER set this in a network-accessible deployment.
+    auth_disabled: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -111,9 +116,14 @@ class Settings(BaseSettings):
 
     # --- Auth ------------------------------------------------------------------
     # Comma-separated list of valid API keys, e.g. "key1,key2".
-    # When empty (default), authentication is DISABLED — safe for local dev only.
-    # Set at least one key before exposing the API on a network.
+    # When empty, authentication falls back to DB keys; if no DB keys exist,
+    # the API refuses to start unless LANGSIGHT_AUTH_DISABLED=true is set.
     api_keys: str = ""
+    # Explicitly disable authentication (local dev / air-gapped deployments only).
+    # When false (default), the API refuses to start if no API keys are configured
+    # anywhere — fail-closed to prevent accidental open deployments.
+    # NEVER set this to true on a network-accessible deployment.
+    auth_disabled: bool = False
     # CORS allowed origins.  Override with LANGSIGHT_CORS_ORIGINS for production.
     cors_origins: str = "http://localhost:3003"
     # Dashboard base URL used when constructing invite links.

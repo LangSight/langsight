@@ -106,7 +106,7 @@ class TestMcpHealthCommand:
 
     def test_exits_1_when_no_servers_configured(self, tmp_path: Path) -> None:
         cfg = tmp_path / ".langsight.yaml"
-        cfg.write_text(yaml.dump({"servers": []}))
+        cfg.write_text(yaml.dump({"servers": [], "auth_disabled": True}))
         runner = CliRunner()
         result = runner.invoke(cli, ["mcp-health", "--config", str(cfg)])
         assert result.exit_code == 1

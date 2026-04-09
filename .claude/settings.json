@@ -8,7 +8,10 @@
       "Bash(.venv/bin/python -c ':*)",
       "Bash(docker restart:*)",
       "Bash(python3 -c ':*)",
-      "Bash(time curl:*)"
+      "Bash(time curl:*)",
+      "Bash(find /Users/sumansahoo/Documents/Gotphoto_Office/AI-agent-e2e/crewai-match-profile-app/src -name \"main.py\" -exec cat {} \\\\;)",
+      "Bash(find /Users/sumansahoo/Documents/Gotphoto_Office/AI-agent-e2e/crewai-match-profile-app/src -name \"*.py\" -exec cat {} \\\\;)",
+      "Bash(curl -s --max-time 3 http://localhost:8000/api/liveness)"
     ]
   }
 }
