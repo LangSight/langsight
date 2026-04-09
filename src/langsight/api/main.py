@@ -582,7 +582,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     from starlette.responses import Response as StarletteResponse
 
     class BodySizeLimitMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request: Request, call_next: Any) -> StarletteResponse:  # type: ignore[override]
+        async def dispatch(self, request: Request, call_next: Any) -> StarletteResponse:
             content_length = request.headers.get("content-length")
             if content_length and int(content_length) > _MAX_BODY_SIZE:
                 return StarletteJSONResponse(
@@ -591,7 +591,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                         "detail": f"Payload too large (max {_MAX_BODY_SIZE // 1024 // 1024} MB)"
                     },
                 )
-            return await call_next(request)
+            return await call_next(request)  # type: ignore[return-value]
 
     app.add_middleware(BodySizeLimitMiddleware)
 
