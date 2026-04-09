@@ -256,7 +256,9 @@ class AlertEngine:
         safe_session = _safe_alert_text(session)
 
         title = self._prevention_title(event.event_type, safe_server, safe_tool)
-        message = self._prevention_message(event.event_type, safe_server, safe_tool, safe_session, details)
+        message = self._prevention_message(
+            event.event_type, safe_server, safe_tool, safe_session, details
+        )
 
         logger.info(
             "alert_engine.prevention_event",
