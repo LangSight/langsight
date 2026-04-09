@@ -649,8 +649,16 @@ class LangSightClient:
 
         while not self._closed:
             time.sleep(self._flush_interval)
-            if self._buffer and not self._test_mode:
-                self._flush_on_exit()
+            if not self._buffer or self._test_mode:
+                continue
+            # Yield to the asyncio flush loop when it is running — it uses
+            # the async HTTP client and is the primary delivery path for async
+            # frameworks (Claude SDK, FastAPI, LangChain in async context).
+            # The background thread is only the fallback for sync-only callers
+            # (CrewAI, standalone scripts) where get_running_loop() fails.
+            if self._flush_task and not self._flush_task.done():
+                continue
+            self._flush_on_exit()
 
     def _flush_on_exit(self) -> None:
         """Synchronous atexit handler — flushes buffered spans when the program exits.
@@ -695,6 +703,7 @@ class LangSightClient:
 
     async def close(self) -> None:
         """Flush remaining spans, cancel the flush loop, and close the HTTP client."""
+        self._closed = True  # stop the background thread flush loop
         if self._flush_task and not self._flush_task.done():
             self._flush_task.cancel()
             try:
