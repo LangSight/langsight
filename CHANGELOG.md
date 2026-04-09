@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.14.17] - 2026-04-08
+
+**CI-green re-cut of v0.14.16: background flush thread race fix and all prior fixes.**
+
+### Fixed
+- **Background flush thread yields to asyncio loop when it is running** (`src/langsight/sdk/auto_patch.py`): The background flush thread now checks whether an asyncio event loop is already running before calling `asyncio.run()`. When a loop is active (e.g. during pytest-asyncio test runs) the thread uses `loop.call_soon_threadsafe()` instead, eliminating the race condition that caused two unit tests to fail in v0.14.16 CI.
+- **Background flush thread + `_flush_client` for non-async threads** (`src/langsight/sdk/auto_patch.py`): Added a background flush thread so spans emitted from non-async contexts (CrewAI task callbacks, thread-pool workers) are reliably flushed to the backend during execution rather than only at process exit. `_flush_client` now correctly handles callers running outside an asyncio event loop.
+- **CrewAI session double-count caused by naive datetime timezone mismatch** (`src/langsight/integrations/crewai.py`, `src/langsight/storage/`): Session deduplication queries compared timezone-aware and timezone-naive datetimes, causing the same session to be counted twice in the dashboard. All datetime values are now consistently timezone-aware (`UTC`).
+- **`create_project` user guard uses `get_user_by_id`** (`src/langsight/api/routers/projects.py`): The ownership guard called `get_user` instead of `get_user_by_id`, causing a lookup failure for valid authenticated users.
+
+### Added
+- **Feature matrix, upgrade guide, LangChain RAG integration guide, and `llms.txt`** (`docs-site/`): New reference pages covering the full feature set by plan tier, a step-by-step version upgrade guide, a LangChain RAG instrumentation walkthrough, and a machine-readable `llms.txt` for LLM crawlers.
+
 ## [0.14.16] - 2026-04-08
 
 **Background flush thread, CrewAI datetime fix, project guard fix, and docs improvements.**
