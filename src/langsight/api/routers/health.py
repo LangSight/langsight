@@ -414,7 +414,9 @@ async def get_drift_impact(
     if fn is None:
         return []
     return list(
-        await fn(server_name=server_name, tool_name=tool_name, hours=hours, project_id=project_id or "")
+        await fn(
+            server_name=server_name, tool_name=tool_name, hours=hours, project_id=project_id or ""
+        )
     )
 
 
