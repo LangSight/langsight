@@ -105,11 +105,10 @@ def parse_trusted_proxy_networks(cidrs_str: str) -> list[_IPNetwork]:
     Invalid entries are logged and skipped rather than raising — a misconfigured
     CIDR should not prevent the API from starting.
     """
-    # /8 or broader (e.g. 0.0.0.0/0, 10.0.0.0/8) would trust the entire internet
-    # or a huge address block as a proxy — that enables session header spoofing
-    # from any IP in that range.  Reject any CIDR broader than /16.
-    _MIN_PREFIX_LEN = 16
-
+    # Only 0.0.0.0/0 (all IPv4) and ::/0 (all IPv6) trust the entire public
+    # internet as a proxy — that enables session header spoofing from anywhere.
+    # Reject those; warn (but allow) private ranges broader than /16 since
+    # Docker (172.16.0.0/12) and K8s (10.0.0.0/8) use broad private CIDRs.
     networks: list[_IPNetwork] = []
     for raw in cidrs_str.split(","):
         cidr = raw.strip()
@@ -120,18 +119,22 @@ def parse_trusted_proxy_networks(cidrs_str: str) -> list[_IPNetwork]:
         except ValueError:
             logger.warning("config.invalid_trusted_proxy_cidr", cidr=cidr)
             continue
-        if net.prefixlen < _MIN_PREFIX_LEN:
+        if net.prefixlen == 0:
             logger.error(
-                "config.trusted_proxy_cidr_too_broad",
+                "config.trusted_proxy_cidr_internet_wide",
                 cidr=cidr,
-                prefixlen=net.prefixlen,
-                minimum=_MIN_PREFIX_LEN,
-                hint="A CIDR this broad allows session header spoofing from most of the internet. Use a more specific range (e.g. /24 for a single subnet).",
+                hint="0.0.0.0/0 trusts the entire internet as a proxy — anyone can spoof X-User-Id headers. Use a specific CIDR.",
             )
             raise ValueError(
-                f"LANGSIGHT_TRUSTED_PROXY_CIDRS: {cidr} is dangerously broad "
-                f"(/{net.prefixlen}). Minimum prefix length is /{_MIN_PREFIX_LEN}. "
-                "Use a more specific range or set 127.0.0.1/32 for loopback only."
+                f"LANGSIGHT_TRUSTED_PROXY_CIDRS: {cidr} trusts the entire internet. "
+                "Specify the actual proxy IP or subnet (e.g. 172.16.0.0/12 for Docker)."
+            )
+        if net.prefixlen < 8:
+            logger.warning(
+                "config.trusted_proxy_cidr_very_broad",
+                cidr=cidr,
+                prefixlen=net.prefixlen,
+                hint="This CIDR is very broad. Ensure it covers only your proxy infrastructure.",
             )
         networks.append(net)
     return networks
