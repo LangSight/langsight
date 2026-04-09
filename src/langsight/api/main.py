@@ -578,8 +578,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     _MAX_BODY_SIZE = 10 * 1024 * 1024  # 10 MB
 
     from starlette.middleware.base import BaseHTTPMiddleware
-    from starlette.responses import Response as StarletteResponse
     from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.responses import Response as StarletteResponse
 
     class BodySizeLimitMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next: Any) -> StarletteResponse:
