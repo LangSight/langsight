@@ -113,6 +113,7 @@ class LangSightClient:
         _is_local = any(h in self._url for h in ("localhost", "127.0.0.1", "::1"))
         if not _is_local and self._url.startswith("http://"):
             import structlog as _sl
+
             _sl.get_logger().warning(
                 "sdk.insecure_transport",
                 url=self._url,

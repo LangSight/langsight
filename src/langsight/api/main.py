@@ -587,7 +587,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             if content_length and int(content_length) > _MAX_BODY_SIZE:
                 return StarletteJSONResponse(
                     status_code=413,
-                    content={"detail": f"Payload too large (max {_MAX_BODY_SIZE // 1024 // 1024} MB)"},
+                    content={
+                        "detail": f"Payload too large (max {_MAX_BODY_SIZE // 1024 // 1024} MB)"
+                    },
                 )
             return await call_next(request)
 
