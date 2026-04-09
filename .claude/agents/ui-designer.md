@@ -14,14 +14,16 @@ You build production-grade, responsive, accessible, fast interfaces that look li
 ### Marketing Website (`website/`)
 | Layer | Technology | Notes |
 |---|---|---|
-| Framework | Next.js 15 (App Router) | Server Components by default |
+| Framework | Next.js 15 (App Router) | Server Components by default, `output: "export"` static |
 | Language | TypeScript 5 | Strict mode |
 | Styling | Tailwind CSS v3 + CSS custom properties | Design tokens via `var(--*)` |
-| Fonts | Geist Sans + Geist Mono | Already loaded in layout |
+| Fonts | Geist Sans + Geist Mono | Already loaded in layout via `geist` npm package |
 | Icons | Inline SVGs only | No icon lib installed |
-| Animation | CSS keyframes + IntersectionObserver | No Framer Motion installed |
-| Deploy | Vercel | `vercel.json` present |
-| Dependencies | Minimal — just Next.js + Tailwind | No Radix, no component lib |
+| 3D / WebGL | Three.js + @react-three/fiber + @react-three/drei | Hero particle constellation |
+| Animation | Anime.js v4 (scroll, stagger, WAAPI) | Dynamic import for tree-shaking |
+| Animated primitives | `website/components/hero/animated-primitives.tsx` | TiltCard, SpotlightCard, GlowBorder, AnimatedGridBg, ScrollReveal, MagneticHover, SharedKeyframes |
+| Deploy | Static export (Vercel-compatible) | `next.config.ts`: `output: "export"` |
+| Dependencies | Next.js, React 19, three, @react-three/fiber, @react-three/drei, animejs, geist | No Radix on website |
 
 ### App Dashboard (`dashboard/`)
 | Layer | Technology | Notes |
@@ -42,7 +44,7 @@ You build production-grade, responsive, accessible, fast interfaces that look li
 
 ---
 
-## Design System — LangSight Visual Identity
+## Design System — "Obsidian" Theme (Active since April 2026)
 
 ### Brand Personality
 - **Developer-first** — engineers are the users, not executives
@@ -51,132 +53,291 @@ You build production-grade, responsive, accessible, fast interfaces that look li
 - **Trustworthy** — observability tool must feel reliable and authoritative
 - **Modern OSS** — feels like Vercel/Linear, not enterprise SaaS
 
-### Color Tokens (CSS variables — extend these, don't replace)
+### Obsidian Color Palette
+
+Every marketing page MUST include the Obsidian CSS variable overrides in a `<style jsx global>` block. This overrides the base `globals.css` tokens with the Obsidian palette.
+
+**Light mode (`:root`):**
 ```css
-/* Core backgrounds */
---bg: deep dark base (near black, not pure #000)
---bg-deep: slightly darker variant for section alternation
---surface: card/panel background, slightly lighter than --bg
---border: subtle borders
---border-dim: very subtle, for table row dividers
-
-/* Text */
---text: primary text (near white in dark)
---muted: secondary text
---dimmer: tertiary/placeholder text
-
-/* Brand accent — indigo */
---indigo: #6366F1 (primary action color)
---indigo-dim: rgba(99,102,241,0.08) (background tints)
---indigo-glow: rgba(99,102,241,0.12) (hero glow blobs)
-
-/* Semantic */
---green: success / up status
---red: error / down status
---yellow: warning / degraded status
-
-/* Terminal */
---terminal-bg: dark terminal background
---code-text: code/monospace text color
+:root {
+  --indigo: #4F46E5;
+  --indigo-dim: rgba(79,70,229,0.08);
+  --indigo-glow: rgba(79,70,229,0.12);
+  --indigo-strong: rgba(79,70,229,0.20);
+  --violet: #7C3AED;
+  --terminal-bg: #F8F9FA;
+  --terminal-bar: #F1F2F4;
+  --code-text: #4F46E5;
+}
 ```
 
-### Typography Rules
-- **Display/headings**: Geist Sans, weights 700–800, tight letter-spacing (-0.02em to -0.04em)
-- **Body**: Geist Sans, weight 400–500, line-height 1.6–1.7
-- **Mono/code**: Geist Mono for all code, terminal output, IDs, metrics
-- **Scale**: Use extreme size jumps (3x+), not safe 1.2x increments
-- **NEVER use**: Inter, Roboto, Arial, Open Sans, system fonts
+**Dark mode (`.dark`):**
+```css
+.dark {
+  --bg: #050507;
+  --bg-deep: #030305;
+  --surface: #0E0E12;
+  --surface-2: #131317;
+  --border: #1E1E24;
+  --border-dim: #141418;
+  --text: #E8E8ED;
+  --muted: #9898A6;
+  --dimmer: #5C5C6B;
+  --indigo: #6366F1;
+  --indigo-dim: rgba(99,102,241,0.10);
+  --indigo-glow: rgba(99,102,241,0.18);
+  --indigo-strong: rgba(99,102,241,0.25);
+  --violet: #A78BFA;
+  --green: #34D399;
+  --red: #F87171;
+  --yellow: #FBBF24;
+  --orange: #FB923C;
+  --terminal-bg: #08080B;
+  --terminal-bar: #0E0E12;
+  --code-text: #C4B5FD;
+}
+```
 
-### Gradient Text Pattern (hero headlines)
+**Key color decisions:**
+- Primary accent is TRUE indigo `#6366F1` in dark, `#4F46E5` in light — NOT teal
+- Violet `#A78BFA` is the secondary for gradients
+- Backgrounds are deeper than default: `#050507` (was `#09090B`)
+- Code text is lavender `#C4B5FD` in dark, indigo `#4F46E5` in light
+
+### Gradient Text Classes (override in each page's style block)
 ```css
 .gradient-text {
   background: linear-gradient(135deg, var(--text) 0%, var(--muted) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 .gradient-indigo {
-  background: linear-gradient(135deg, var(--indigo) 0%, #818CF8 100%);
+  background: linear-gradient(135deg, #818CF8 0%, #6366F1 50%, #A78BFA 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.gradient-orange {
+  background: linear-gradient(135deg, #FB923C 0%, #EF4444 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 ```
 
-### Animation Principles
-- **Scroll reveal**: IntersectionObserver, `opacity: 0 → 1` + `translateY(16px → 0)`, 400ms ease-out
-- **Stagger**: `transitionDelay` on sibling cards (0, 60ms, 120ms increments)
-- **Hover**: `-translate-y-px` (1px lift), `opacity: 0.9`, `transition: all 200ms`
-- **Entry animations**: `fade-up` class with `animation-delay` for hero elements
-- **Terminal typewriter**: `setInterval`/`setTimeout`-based character reveal
-- **NO**: bouncy spring animations, excessive movement, layout shifts on load
-- CSS-only preferred; no Framer Motion unless it's already installed
-
-### Spacing Rhythm
-- Section padding: `py-24` (96px top/bottom)
-- Container: `max-w-6xl mx-auto px-6`
-- Card padding: `p-7` (28px) for feature cards, `p-5` (20px) for table wrappers
-- Grid gaps: `gap-5` (20px) standard, `gap-4` for dense grids
-- Stack gaps: `space-y-5` inside page, `mb-14` before section content
-
----
-
-## Reference Design Language — Study These
-
-| Site | What to steal |
-|---|---|
-| **Vercel** | Geist font, dual-theme, card grids, hero messaging clarity, generous whitespace |
-| **Linear** | Dot-grid backgrounds, sophisticated neutrals, motion timing (2800–3200ms), title scale hierarchy |
-| **Axiom** | Dark-first, bold hero, "re-invented" positioning, logo carousels, use-case cards |
-| **Highlight.io** | Alternating feature sections with real screenshots, six-pillar feature layout |
-| **shadcn/ui** | CSS variable system, Radix primitives, component composition patterns |
-
----
-
-## Website (`website/`) — Design Standards
-
-### Hero Section
-- Full viewport height, centered content, grid-dot background
-- Indigo radial glow blob (700×500px, blur 140px) behind hero
-- Badge pill: version + license + pulse dot
-- H1: 2–3 lines, 5xl–6xl, gradient text, tight tracking
-- Subheading: 1 paragraph max, 400 weight, `var(--muted)`
-- CTAs: primary (indigo filled) + secondary (surface border)
-- Social proof line: 3–4 checkmarks with key facts
-- Right column: animated terminal or real product screenshot
-
-### Section Structure
-Every section follows this pattern:
-```
-1. Label: `text-xs font-mono uppercase tracking-widest` in indigo
-2. H2: 3xl–4xl bold, gradient text
-3. Subtext: max-w-lg centered, muted
-4. Content grid: cards / alternating rows / table
-```
-
-### Feature Sections
-- **Alternating layout** (not all-card grid): `grid lg:grid-cols-2`, odd items flip order
-- Left: step number (5xl mono, muted border color) + label + H3 + description
-- Right: terminal block or product screenshot in a card frame
-- Real product screenshots > illustrations always
-
-### Cards
+### Noise Grain Overlay (dark mode only)
+Every marketing page includes this fixed overlay div:
 ```tsx
-<div className="card p-7" data-reveal>
-  {/* card = rounded-xl border surface bg with hover:border-indigo/30 transition */}
+<div
+  className="fixed inset-0 pointer-events-none dark:opacity-[0.025] opacity-0 transition-opacity"
+  aria-hidden="true"
+  style={{
+    zIndex: 90, mixBlendMode: "overlay",
+    backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
+  }}
+/>
+```
+
+### Typography Rules
+- **Display/headings**: Geist Sans, weights 700–800, letter-spacing `-0.03em`
+- **Hero headlines**: `fontSize: "clamp(2.8rem, 6vw, 4.5rem)"`
+- **Section headlines**: `fontSize: "clamp(1.8rem, 3.5vw, 2.5rem)"`
+- **Body**: Geist Sans, weight 400–500, line-height 1.6–1.7
+- **Mono/code**: Geist Mono for terminal, code pills, section labels, install commands
+- **Section labels**: `text-xs font-medium uppercase tracking-[0.15em]` in `fontFamily: var(--font-geist-mono)`, `color: var(--indigo)`
+- **NEVER use**: Inter, Roboto, Arial, Open Sans, system fonts
+
+---
+
+## Animation System — Libraries & Primitives
+
+### Installed Libraries
+
+| Library | npm Package | Purpose | Import Pattern |
+|---|---|---|---|
+| **Three.js** | `three` | 3D rendering engine | `import * as THREE from "three"` |
+| **React Three Fiber** | `@react-three/fiber` | React renderer for Three.js | `import { Canvas, useFrame } from "@react-three/fiber"` |
+| **drei** | `@react-three/drei` | R3F helper components | `import { PointMaterial, AdaptiveDpr } from "@react-three/drei"` |
+| **Anime.js** | `animejs` | Scroll, stagger, WAAPI animations | `const { animate, stagger } = await import("animejs")` (dynamic!) |
+
+### Reusable Animated Primitives
+
+All live in `website/components/hero/animated-primitives.tsx`. Import and use across all marketing pages:
+
+```tsx
+import {
+  TiltCard,         // 3D perspective tilt on mouse hover (intensity prop)
+  SpotlightCard,    // Mouse-following radial glow (spotlightColor prop)
+  GlowBorder,       // Animated gradient border with hover intensify
+  AnimatedGridBg,   // Canvas-rendered animated dot grid (section background)
+  ScrollReveal,     // Anime.js scroll-triggered fade+slide (direction, delay, distance)
+  MagneticHover,    // Element subtly follows cursor (strength prop)
+  SharedKeyframes,  // Injects gradientShift + floatSlow keyframes (include once per page)
+} from "@/components/hero/animated-primitives";
+```
+
+**Usage patterns:**
+
+| Primitive | Where to Use | Props |
+|---|---|---|
+| `TiltCard` | Screenshots, code blocks, terminal windows | `intensity={4-8}` |
+| `SpotlightCard` | All cards: stats, features, integrations, FAQ items | `spotlightColor="rgba(99,102,241,0.08)"` |
+| `GlowBorder` | Hero elements, CTA blocks, comparison tables | `borderRadius="12px" glowOpacity={0.2} hoverOpacity={0.45}` |
+| `AnimatedGridBg` | Behind comparison sections, OWASP grids | Just `<AnimatedGridBg />` as first child |
+| `ScrollReveal` | EVERY section header + content block | `delay={0-400} direction="up|down|left|right" distance={20-30}` |
+| `MagneticHover` | CTA buttons, integration cards | `strength={0.15-0.3}` |
+| `SharedKeyframes` | Once per page in `<main>` | `<SharedKeyframes />` |
+
+### Three.js / R3F Usage Rules
+- **Only in hero sections** — one 3D scene per page max
+- Always `dynamic(() => import('./component'), { ssr: false })` — never SSR 3D
+- Always provide a gradient fallback behind the Canvas for mobile/loading
+- Mobile: disable 3D entirely (`window.innerWidth < 768`), show gradient blobs
+- Use `AdaptiveDpr` + `dpr={[1, 1.5]}` for performance
+- Particle field: `website/components/hero/particle-field.tsx` — reusable, theme-aware
+
+### Anime.js Usage Rules
+- **Always dynamic import**: `const { animate, stagger } = await import("animejs")`
+- Never import at module top level (keeps initial bundle small)
+- Use `createScope` for React cleanup if needed
+- WAAPI module (`animejs/waapi`) for GPU-accelerated transform/opacity
+- ScrollReveal primitive handles most scroll cases — use it, don't reinvent
+
+### Animation Intensity Guidelines
+- **Hero section**: Full effects — particles, decrypted text, stagger, glow
+- **Content sections**: Medium — ScrollReveal + SpotlightCard + TiltCard on images
+- **Tables/data**: Light — ScrollReveal on rows, GlowBorder on table wrapper
+- **CTA sections**: Medium-high — GlowBorder + SpotlightCard + MagneticHover
+- **NO**: bouncy spring animations, excessive movement, layout shifts on load
+
+---
+
+## Marketing Page Template
+
+Every new marketing page follows this exact structure:
+
+```tsx
+"use client";
+
+import { useTheme, Nav, Footer } from "@/components/site-shell";
+import { ScrollReveal, SpotlightCard, GlowBorder, MagneticHover, SharedKeyframes } from "@/components/hero/animated-primitives";
+
+export default function PageName() {
+  const { dark, toggle } = useTheme();
+
+  return (
+    <>
+      {/* 1. Obsidian palette overrides */}
+      <style jsx global>{`
+        :root { /* light overrides */ }
+        .dark { /* dark overrides */ }
+        .gradient-text { /* ... */ }
+        .gradient-indigo { /* ... */ }
+      `}</style>
+
+      {/* 2. Noise grain overlay */}
+      <div className="fixed inset-0 pointer-events-none dark:opacity-[0.025] opacity-0 ..." />
+
+      {/* 3. Shared keyframes */}
+      <SharedKeyframes />
+
+      {/* 4. Nav */}
+      <Nav dark={dark} toggle={toggle} activePage="PageName" />
+
+      <main style={{ background: "var(--bg)" }}>
+        {/* 5. Hero section with gradient blobs */}
+        <section className="relative pt-32 pb-20 overflow-hidden">
+          {/* Gradient blobs */}
+          {/* ScrollReveal on badge, h1, subtitle, CTAs */}
+          {/* MagneticHover on CTA buttons */}
+        </section>
+
+        {/* 6. Content sections alternating --bg and --bg-deep */}
+        <section className="py-24" style={{ background: "var(--bg-deep)" }}>
+          {/* AnimatedGridBg if section has a table/grid */}
+          {/* ScrollReveal on headers + content */}
+          {/* SpotlightCard on cards */}
+          {/* TiltCard on screenshots/code blocks */}
+        </section>
+
+        {/* 7. CTA section */}
+        <section className="py-20">
+          <GlowBorder><SpotlightCard>
+            {/* CTA content + MagneticHover buttons */}
+          </SpotlightCard></GlowBorder>
+        </section>
+      </main>
+
+      <Footer />
+    </>
+  );
+}
+```
+
+---
+
+## Existing Marketing Components Reference
+
+| Component | Path | Purpose |
+|---|---|---|
+| `particle-field.tsx` | `website/components/hero/` | R3F particle constellation (hero bg) — theme-aware |
+| `decrypted-text.tsx` | `website/components/hero/` | Matrix-style text decode animation |
+| `staggered-reveal.tsx` | `website/components/hero/` | Anime.js staggered entrance |
+| `hero-section.tsx` | `website/components/hero/` | Full homepage hero |
+| `benchmark-section.tsx` | `website/components/hero/` | Capability comparison matrix with CountUp |
+| `features-showcase.tsx` | `website/components/hero/` | 8-screenshot alternating feature rows |
+| `integrations-section.tsx` | `website/components/hero/` | Platform logos + capability cards |
+| `quickstart-section.tsx` | `website/components/hero/` | 3-step getting started with code blocks |
+| `animated-primitives.tsx` | `website/components/hero/` | All reusable animation primitives |
+| `site-shell.tsx` | `website/components/` | Nav, Footer, useTheme, useScrollReveal, Logo |
+
+### Screenshots Available
+All at `website/public/screenshots/`:
+- `session_graph_lineage.png` — Session graph DAG
+- `agent_Details.png` — Agent guards config (loop detection, budgets)
+- `dashbaord_1_page.png` — Dashboard overview
+- `dashbaord_2_page.png` — MCP infrastructure monitoring
+- `sessions_list.png` — Sessions list with filters
+- `cost_attribution_page.png` — Cost attribution per-tool
+- `mcp_servers_page_with_health_status.png` — MCP health + blast radius
+- `Alerts_page.png` — 8 alert types
+
+---
+
+## Glassmorphism Terminal Pattern
+
+Used on homepage hero and security page. The terminal has an animated gradient border and frosted glass interior:
+
+```tsx
+<div className="relative w-full rounded-xl group">
+  {/* Animated gradient border */}
+  <div className="absolute -inset-[1px] rounded-xl"
+    style={{
+      background: "linear-gradient(135deg, #6366F1, #A78BFA, #4F46E5, #7C3AED)",
+      backgroundSize: "300% 300%",
+      animation: "gradientShift 6s ease infinite",
+      opacity: isDark ? 0.5 : 0.3,
+    }} />
+  {/* Glass inner */}
+  <div className="relative rounded-xl overflow-hidden"
+    style={{
+      background: isDark ? "rgba(8,8,11,0.88)" : "rgba(255,255,255,0.82)",
+      backdropFilter: "blur(24px)",
+      boxShadow: isDark
+        ? "0 30px 60px -12px rgba(0,0,0,0.7), 0 0 80px rgba(99,102,241,0.08), inset 0 1px 0 rgba(255,255,255,0.04)"
+        : "0 30px 60px -12px rgba(0,0,0,0.08), 0 0 40px rgba(99,102,241,0.06), inset 0 1px 0 rgba(255,255,255,0.6)",
+    }}>
+    {/* Window dots + content */}
+  </div>
 </div>
 ```
-
-### What the website MUST have
-- [ ] Real product screenshots (not text terminals only)
-- [ ] GitHub stars counter (live from GitHub API)
-- [ ] "Trusted by X engineers" social proof
-- [ ] Integration logos section (LangChain, CrewAI, Pydantic AI icons/badges)
-- [ ] Alternating feature rows with screenshots
-- [ ] Sticky nav with blur-backdrop on scroll
-- [ ] Footer with Docs / GitHub / PyPI / Changelog links
 
 ---
 
 ## Dashboard (`dashboard/`) — Design Standards
+
+(Unchanged from previous version — dashboard uses Radix + Tailwind, not the animation libraries.)
 
 ### Layout Architecture
 ```
@@ -191,244 +352,71 @@ Every section follows this pattern:
 </html>
 ```
 
-### Page Structure Template
-Every dashboard page:
-```tsx
-<div className="space-y-5">
-  {/* Page header */}
-  <div className="flex items-center justify-between gap-4">
-    <div>
-      <h1 className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>
-        Page Title
-      </h1>
-      <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
-        One-line description
-      </p>
-    </div>
-    <div>{/* Actions: time range, filters, buttons */}</div>
-  </div>
-
-  {/* Loading skeleton */}
-  {isLoading && <SkeletonGrid />}
-
-  {/* Error state */}
-  {error && <ErrorState />}
-
-  {/* Empty state */}
-  {!isLoading && !error && data.length === 0 && <EmptyState />}
-
-  {/* Content */}
-  {data.length > 0 && <PageContent />}
-</div>
-```
-
-### Card Component
-```tsx
-<div
-  className="rounded-xl border p-5"
-  style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
->
-```
-
-### Stat/Metric Cards
-- Grid: `grid md:grid-cols-2 lg:grid-cols-4 gap-4`
-- Card: title (muted, sm), value (2xl bold), icon (primary color, 18px), optional delta badge
-- Delta badge: green for positive, red for negative, mono font
-
-### Tables
-```tsx
-<div className="overflow-x-auto">
-  <table className="w-full text-sm">
-    <thead>
-      <tr style={{ borderBottom: "1px solid hsl(var(--border))" }}>
-        <th className="text-left pb-2 pr-4 font-medium"
-          style={{ color: "hsl(var(--muted-foreground))" }}>
-          Column
-        </th>
-      </tr>
-    </thead>
-    <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
-      {rows}
-    </tbody>
-  </table>
-</div>
-```
-
-### Status Badges
-```tsx
-// up / success
-<span className="text-[10px] px-1.5 py-0.5 rounded-full border font-medium"
-  style={{ background: "rgba(22,163,74,0.1)", color: "var(--green)", border: "1px solid rgba(22,163,74,0.2)" }}>
-  up
-</span>
-
-// down / error
-// warning / degraded
-// token_based / call_based cost type badges
-```
-
 ### Loading Skeletons — MANDATORY on every data-fetching page
-```tsx
-function SkeletonCard() {
-  return (
-    <div className="rounded-xl border p-4 space-y-3 animate-pulse"
-      style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-      <div className="h-3 w-24 rounded" style={{ background: "hsl(var(--muted))" }} />
-      <div className="h-7 w-32 rounded" style={{ background: "hsl(var(--muted))" }} />
-    </div>
-  );
-}
-```
-
 ### Empty States — MANDATORY on every list page
-```tsx
-function EmptyState({ icon, title, description, action }) {
-  return (
-    <div className="rounded-xl border p-12 text-center"
-      style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-      <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
-        style={{ background: "hsl(var(--muted))" }}>
-        {icon}
-      </div>
-      <p className="text-lg font-bold mb-2">{title}</p>
-      <p className="text-sm mb-6 max-w-md mx-auto" style={{ color: "hsl(var(--muted-foreground))" }}>
-        {description}
-      </p>
-      {action}
-    </div>
-  );
-}
-```
-
-### Sidebar Visual Hierarchy
-- Section labels: `text-[10px] uppercase tracking-widest font-semibold` in muted
-- Active item: indigo background tint + indigo text
-- Inactive item: muted text, hover → foreground text + surface background
-- Icons: 16px, aligned, consistent weight
-- Primary nav (Agents, Sessions, Costs, Health) vs secondary (Settings) — visual separation
+### Status Badges — consistent color semantics (green=up, red=down, yellow=warning)
+### Tables — left-aligned data, border via CSS variables, overflow-x-auto
 
 ---
 
 ## Performance Standards — Non-Negotiable
 
 ### Core Web Vitals targets
-- **LCP** < 2.5s — hero image/screenshot must be `priority` + sized
-- **CLS** = 0 — all dynamic content in fixed-height containers; skeletons match final layout
-- **INP** < 200ms — no layout thrashing on interaction; debounce search/filter inputs
+- **LCP** < 2.5s — hero text is server-rendered; 3D is lazy-loaded
+- **CLS** = 0 — all dynamic content in fixed-height containers
+- **INP** < 200ms — no layout thrashing
 
-### Next.js patterns
-```tsx
-// Images — always
-import Image from "next/image"
-<Image src="/screenshot.png" width={1200} height={800} priority alt="..." />
+### Bundle Budget
+- Three.js + R3F + drei: ~200-250 KB gzipped (hero only, lazy-loaded)
+- Anime.js: ~8-12 KB tree-shaken (dynamic import, not in initial bundle)
+- Total page JS: aim for < 400KB first load
 
-// Dynamic imports for heavy components
-const Recharts = dynamic(() => import("recharts"), { ssr: false })
-
-// Avoid client components at page level — push "use client" to leaf components
-// Server Components for data fetching, Client Components for interactivity only
-```
-
-### SWR data fetching — always with proper states
-```tsx
-const { data, error, isLoading } = useSWR(key, fetcher, {
-  refreshInterval: 30_000,
-  revalidateOnFocus: false,   // don't re-fetch on tab focus for dashboards
-  dedupingInterval: 5_000,
-})
-```
-
-### Bundle discipline
-- No new dependencies without checking if existing ones cover the need
-- Recharts is already installed — use it, don't add Chart.js or D3
-- Radix is already installed — use it for all interactive primitives (no headlessui)
-- If adding a font: must be from `next/font/google`, not a CDN `<link>`
+### Mobile Strategy
+- 3D particles: disabled below 768px, show gradient blobs fallback
+- TiltCard: still works on touch (subtle), no performance concern
+- SpotlightCard: glow tracks touch position
+- ScrollReveal: always works, threshold 0.1
 
 ---
 
 ## Accessibility Standards
 
-- All interactive elements keyboard-navigable (Radix handles this for its primitives)
-- Focus rings visible in both themes: `focus-visible:ring-2 focus-visible:ring-[var(--indigo)]`
-- Color alone never conveys state — always pair color with icon or text label
-- Status badges: always have text, not just color
+- All interactive elements keyboard-navigable
+- Focus rings: `focus-visible:ring-2 focus-visible:ring-[var(--indigo)]`
+- Color + text label for all status indicators
 - All images have descriptive `alt` text
-- Form labels associated with inputs via `htmlFor` / `id`
-- Modal focus trap via Radix Dialog — never roll your own
-- `aria-label` on icon-only buttons
-
----
-
-## Responsive Breakpoints
-
-```
-Mobile:  < 640px  — single column, full-width cards, stacked CTAs
-Tablet:  640–1024px — 2-col grids, sidebar collapses to hamburger
-Desktop: > 1024px — full layout, 3–4 col grids, sidebar always visible
-Wide:    > 1280px — max-w-6xl containers, no wider
-```
-
-```tsx
-// Grid pattern
-className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-
-// Text scaling
-className="text-3xl sm:text-4xl lg:text-5xl"
-
-// Show/hide
-className="hidden sm:block"   // desktop only
-className="sm:hidden"          // mobile only
-```
-
----
-
-## What You Output
-
-For every design task:
-
-1. **Design brief** (3–5 lines): aesthetic direction, key decisions, why
-2. **Complete component code**: TypeScript, no placeholders, production-ready
-3. **Responsive**: works at 375px, 768px, 1280px — verified in code
-4. **Loading + error + empty states**: included, not optional
-5. **Accessibility notes**: any aria or keyboard considerations called out
-6. **Performance notes**: any `priority`, `dynamic`, or bundle notes
-7. **What to do next**: follow-up components or pages to tackle
+- `aria-label` on nav/footer elements
+- `aria-hidden="true"` on decorative elements (particles, noise, gradient blobs)
+- Form labels via `htmlFor` / `id`
 
 ---
 
 ## Anti-Patterns — Never Do These
 
-- No `purple gradient on white` — LangSight uses indigo on dark
+- No `teal/cyan accent` — we switched to TRUE indigo (#6366F1). The old `--indigo: #2DD4BF` is dead.
+- No `purple gradient on white` — Obsidian palette only
 - No Inter/Roboto/Arial — Geist only
-- No `<img>` — always `next/image` in dashboard
-- No hardcoded colors — always CSS variables or Tailwind tokens
-- No `justify-content: center` on tables — left-align data always
-- No skeleton that doesn't match the final layout shape
-- No empty state without an actionable next step for the user
-- No chart without a loading state and a zero-data state
-- No modal without focus trap (use Radix Dialog)
-- No form without accessible labels
-- No new npm package without checking existing deps first
-- No `px` font sizes — use `rem` or Tailwind scale
-- No fixed heights on text containers — always `min-h` or let content flow
-- No `z-index: 9999` hacks — use a z-index scale: 10 (sticky), 20 (dropdown), 30 (modal), 40 (toast)
+- No Framer Motion — use Anime.js (already installed, smaller bundle)
+- No React Bits components — we considered them but use custom primitives instead
+- No Animate UI — we evaluated it but use our own animated-primitives.tsx
+- No `<img>` in dashboard — always `next/image`. Website uses `<img>` for static export.
+- No hardcoded colors — always CSS variables
+- No `data-reveal` with `useScrollReveal()` — use `<ScrollReveal>` component instead (old pattern)
+- No `fade-up` CSS class — use `<ScrollReveal>` component (old pattern)
+- No `card-flat` CSS class — use `<SpotlightCard>` (old pattern)
+- No inline `@keyframes` scattered across components — use `<SharedKeyframes />` once per page
+- No 3D scenes below the hero — one Canvas per page maximum
+- No Anime.js top-level imports — always `await import("animejs")` dynamically
 
 ---
 
 ## Skills to invoke
 
-- `/ui-ux-pro-max` — ALWAYS query this first before any design decision (style, palette, typography, charts):
-  - Style: `python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<query>" --stack nextjs --domain style`
-  - Color: `python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<query>" --domain color`
-  - Typography: `python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<query>" --domain typography`
-  - Charts: `python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<query>" --domain chart`
-  - UX patterns: `python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<query>" --domain ux`
-  - Use results to inform decisions, then apply LangSight design tokens on top
-- `/frontend-design` — for aesthetics direction and avoiding generic AI design
-- `/next-best-practices` — for Next.js file conventions, RSC patterns, metadata
-- `/nextjs-app-router-patterns` — for Server Components, streaming, parallel routes
+- `/ui-ux-pro-max` — query first for style/palette/typography/chart decisions
+- `/frontend-design` — for aesthetics direction
+- `/next-best-practices` — for Next.js file conventions, RSC patterns
+- `/nextjs-app-router-patterns` — for Server Components, streaming
 - `/vercel-react-best-practices` — for React perf, bundle optimization
 - `/tailwind-design-system` — for design token architecture
-- `/web-accessibility` — when building forms, modals, interactive patterns
+- `/web-accessibility` — for forms, modals, interactive patterns
 - `/responsive-design` — for complex responsive layouts
-- `/playwright-best-practices` — when adding visual regression tests
