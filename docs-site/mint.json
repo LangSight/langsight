@@ -170,5 +170,10 @@
   ],
   "footerSocials": {
     "github": "https://github.com/LangSight/langsight"
+  },
+  "_disabled_pages": {
+    "_note": "Re-add these to the navigation above once the features are battle-tested",
+    "librechat": "sdk/integrations/librechat — add back under SDK Integrations group when LibreChat plugin is validated",
+    "monitoring": "monitoring — add back under Dashboard group when Prometheus/Grafana integration is validated end-to-end"
   }
 }

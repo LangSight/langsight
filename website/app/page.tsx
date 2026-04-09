@@ -236,6 +236,7 @@ function Hero() {
             >
               <span>LangChain · CrewAI · Pydantic AI</span>
               <span>Postgres + ClickHouse</span>
+              {/* <span>4,100+ tests · 77% coverage</span> */}
             </div>
           </div>
 
@@ -618,6 +619,8 @@ const FEATURES = [
     desc: "langsight investigate sends evidence to Claude, GPT-4o, Gemini, or Ollama and returns remediation steps.",
     badge: "4 LLMs",
   },
+  // TODO: re-enable when validated end-to-end with real Grafana dashboards
+  // { title: "Prometheus Metrics", desc: "Native /metrics endpoint. Plug into your existing Grafana stack. Request counts, latencies, SSE connections.", badge: "v0.14" },
 ];
 
 function Features() {
@@ -670,6 +673,8 @@ const INTEGRATIONS = [
   { name: "LangChain", sub: "LangGraph · Langflow", accent: "#10B981" },
   { name: "CrewAI", sub: "Multi-agent orchestration", accent: "#F59E0B" },
   { name: "Pydantic AI", sub: "Type-safe agents", accent: "#3B82F6" },
+  // TODO: re-enable when LibreChat integration is battle-tested by real users
+  // { name: "LibreChat", sub: "Self-hosted chat", accent: "#8B5CF6" },
   { name: "OTLP", sub: "Any OpenTelemetry framework", accent: "#6366F1" },
   { name: "Claude · Cursor", sub: "Auto-discovered by init", accent: "#71717A" },
 ];
