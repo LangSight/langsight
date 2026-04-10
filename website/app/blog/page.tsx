@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { Nav, Footer, useTheme } from "@/components/site-shell";
 
 const posts = [
   {
@@ -150,6 +151,7 @@ const posts = [
 ];
 
 export default function BlogIndex() {
+  const { dark, toggle } = useTheme();
   const gridRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -175,18 +177,7 @@ export default function BlogIndex() {
 
   return (
     <main className="min-h-screen bg-[var(--bg)] text-[var(--fg)]">
-      {/* Nav */}
-      <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--bg)]/90 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <a href="/" className="flex items-center gap-2 font-semibold text-[var(--fg)]">
-            <img src="/logo-icon.svg" alt="LangSight" className="w-7 h-7" />
-            LangSight
-          </a>
-          <a href="/" className="text-sm text-[var(--muted)] hover:text-[var(--fg)] transition-colors">
-            ← Back to home
-          </a>
-        </div>
-      </header>
+      <Nav dark={dark} toggle={toggle} activePage="Blog" />
 
       <div ref={gridRef} className="max-w-6xl mx-auto px-6 py-16">
         {/* Hero Section */}
@@ -346,6 +337,7 @@ export default function BlogIndex() {
           overflow: hidden;
         }
       `}</style>
+      <Footer />
     </main>
   );
 }
