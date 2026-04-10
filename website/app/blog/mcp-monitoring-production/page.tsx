@@ -1,20 +1,12 @@
 "use client";
 
+import { Nav, Footer, useTheme } from "@/components/site-shell";
+
 export default function McpMonitoringProductionPost() {
+  const { dark, toggle } = useTheme();
   return (
     <main className="min-h-screen bg-[var(--bg)] text-[var(--fg)]">
-      {/* Nav */}
-      <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--bg)]/90 backdrop-blur-sm">
-        <div className="max-w-3xl mx-auto px-6 h-14 flex items-center justify-between">
-          <a href="/" className="flex items-center gap-2 font-semibold text-[var(--fg)]">
-            <img src="/logo-icon.svg" alt="LangSight" className="w-7 h-7" />
-            LangSight
-          </a>
-          <a href="/blog/" className="text-sm text-[var(--muted)] hover:text-[var(--fg)] transition-colors">
-            ← All posts
-          </a>
-        </div>
-      </header>
+      <Nav dark={dark} toggle={toggle} activePage="Blog" />
 
       <article className="max-w-3xl mx-auto px-6 py-16">
         {/* Header */}
@@ -475,6 +467,7 @@ langsight_mcp_errors_total{server="postgres-mcp",type="timeout"} 2`}</pre>
           opacity: 0.8;
         }
       `}</style>
+      <Footer />
     </main>
   );
 }
