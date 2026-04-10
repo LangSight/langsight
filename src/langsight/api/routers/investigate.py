@@ -263,7 +263,7 @@ def _rule_based_report(evidence_map: dict[str, dict[str, Any]]) -> str:
 # ---------------------------------------------------------------------------
 
 
-@router.post("/investigate", response_model=InvestigateResponse)
+@router.post("/investigate", response_model=InvestigateResponse)  # type: ignore[operator]
 @limiter.limit("10/minute")
 async def run_investigation(
     body: InvestigateRequest,

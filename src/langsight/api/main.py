@@ -626,7 +626,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                         )
                     body_chunks.append(chunk)
                 # Reassemble body so downstream handlers can read it
-                request._body = b"".join(body_chunks)  # type: ignore[attr-defined]
+                request._body = b"".join(body_chunks)
             resp: StarletteResponse = await call_next(request)
             return resp
 

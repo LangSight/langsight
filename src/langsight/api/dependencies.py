@@ -650,8 +650,8 @@ async def require_admin(
         # in the DB. JWTs bake the role at login time — a demoted or deactivated
         # user keeps their old JWT until expiry. This DB check on admin-gated
         # routes closes that window.
-        storage: StorageBackend = request.app.state.storage
-        get_user_fn = getattr(storage, "get_user_by_id", None)
+        _storage: StorageBackend = request.app.state.storage
+        get_user_fn = getattr(_storage, "get_user_by_id", None)
         if get_user_fn is not None and inspect.iscoroutinefunction(get_user_fn):
             try:
                 db_user = await get_user_fn(user_id)
