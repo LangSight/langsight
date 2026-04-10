@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "OWASP MCP Top 10 Explained: A Practical Guide",
+  title: "OWASP MCP Top 10 (2026): Practical Security Guide for Every Risk",
   description:
-    "The OWASP MCP Top 10 defines the most critical security risks for Model Context Protocol servers. Here is what each risk means, real-world examples, and how to audit your servers against every check.",
+    "The OWASP MCP Top 10 defines the most critical security risks for Model Context Protocol servers in 2026. Every risk explained with real attack examples, detection methods, and automated scanning with LangSight.",
   keywords: [
     "OWASP MCP Top 10",
     "MCP security risks",
@@ -18,14 +18,14 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: "https://langsight.dev/blog/owasp-mcp-top-10-guide/" },
   openGraph: {
-    title: "OWASP MCP Top 10 Explained: A Practical Guide",
+    title: "OWASP MCP Top 10 (2026): Practical Security Guide for Every Risk",
     description:
-      "The OWASP MCP Top 10 defines the most critical security risks for MCP servers. Real-world examples and remediation for every check.",
+      "All 10 OWASP MCP security risks explained with real attack examples, detection methods, and automated scanning. The only guide covering all 10 checks including tool poisoning, schema drift, and CVE detection.",
     url: "https://langsight.dev/blog/owasp-mcp-top-10-guide/",
     type: "article",
     siteName: "LangSight",
     publishedTime: "2026-04-02T00:00:00Z",
-    modifiedTime: "2026-04-02T00:00:00Z",
+    modifiedTime: "2026-04-10T00:00:00Z",
     section: "MCP Security",
     authors: ["https://langsight.dev"],
     tags: ["OWASP", "MCP Security", "Compliance", "OWASP MCP Top 10", "MCP vulnerability"],
@@ -33,9 +33,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "OWASP MCP Top 10 Explained: A Practical Guide",
+    title: "OWASP MCP Top 10 (2026): Practical Security Guide for Every Risk",
     description:
-      "The OWASP MCP Top 10 defines the most critical security risks for MCP servers. Real-world examples and remediation for every check.",
+      "All 10 OWASP MCP security risks with real attack examples and remediation. Updated 2026 — tool poisoning, auth gaps, CVEs, schema drift.",
     images: ["https://langsight.dev/blog/owasp-mcp-top-10-guide.png"],
   },
 };
@@ -53,11 +53,11 @@ const jsonLd = [
   {
     "@context": "https://schema.org",
     "@type": "TechArticle",
-    headline: "OWASP MCP Top 10 Explained: A Practical Guide",
+    headline: "OWASP MCP Top 10 (2026): Practical Security Guide for Every Risk",
     description:
-      "The OWASP MCP Top 10 defines the most critical security risks for Model Context Protocol servers. Here is what each risk means, real-world examples, and how to audit your servers against every check.",
+      "The OWASP MCP Top 10 defines the most critical security risks for Model Context Protocol servers. Every risk explained with real attack examples, detection methods, and automated scanning.",
     datePublished: "2026-04-02T00:00:00Z",
-    dateModified: "2026-04-02T00:00:00Z",
+    dateModified: "2026-04-10T00:00:00Z",
     wordCount: 2600,
     mainEntityOfPage: {
       "@type": "WebPage",

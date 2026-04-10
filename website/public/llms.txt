@@ -1,0 +1,67 @@
+# LangSight
+
+> Runtime reliability platform for AI agent toolchains — detect loops, enforce budgets, monitor MCP health, scan for security issues, and map blast radius.
+
+LangSight is open-source (Apache 2.0) and fully self-hosted. It is complementary to Langfuse, LangSmith, and LangWatch — those tools evaluate prompts and LLM quality. LangSight monitors the tool layer: MCP servers, agent tool calls, their health, cost, and safety.
+
+Current version: v0.14.18
+Language: Python 3.11+
+License: Apache 2.0
+Install: pip install langsight
+Self-host: docker compose up -d (5 containers: API, dashboard, Postgres, ClickHouse, optional Redis)
+GitHub: https://github.com/LangSight/langsight
+Docs: https://docs.langsight.dev
+
+## What LangSight does
+
+- Loop detection: terminates a session when the same tool is called with the same arguments 3+ times in a row
+- Budget guardrails: configurable hard cost and step limits per agent session
+- Circuit breaker: auto-disables a failing MCP tool after N consecutive errors; re-enables after cooldown
+- MCP health monitoring: continuous health checks, uptime tracking, latency history, schema drift detection
+- Security scanning: CVE checks via OSV API, 5 of 10 OWASP MCP Top 10 checks, tool poisoning / prompt injection detection, auth audit
+- Cost attribution: per-tool, per-agent, per-session cost breakdown with token-level detail
+- Blast radius mapping: lineage DAG showing which agents call which MCP servers; impact count when a server goes down
+- Multi-agent call trees: full parent-child span hierarchy across agent handoffs
+- Alerting: Slack (Block Kit) and generic webhook; 8 alert types including anomaly detection (z-score vs 7-day baseline)
+- AI root cause investigation: one-click investigation using Claude to diagnose agent failures
+
+## Integrations (verified)
+
+- Claude Agent SDK (zero-code auto_patch())
+- Anthropic SDK (Messages API + streaming)
+- CrewAI (native event bus, 19 handlers, A2A handoffs)
+- OTLP / OpenTelemetry (any OTEL-compatible framework, any language)
+
+## Integrations (beta)
+
+- OpenAI SDK
+- Google Gemini Generative AI SDK
+
+## What LangSight does NOT do
+
+- Prompt evaluation or optimization (use Langfuse, LangSmith, LangWatch)
+- Model-level cost tracking at the billing level (use Langfuse)
+- Agent simulation or testing (use LangWatch)
+- Keyword: this is not a session replay tool
+
+## Key pages
+
+- Homepage: https://langsight.dev/
+- Quickstart: https://docs.langsight.dev/quickstart
+- Security scanning: https://langsight.dev/security/
+- Integrations: https://langsight.dev/integrations/
+- Pricing (free): https://langsight.dev/pricing/
+- Blog: https://langsight.dev/blog/
+- Glossary: https://langsight.dev/glossary/
+- Alternatives comparison: https://langsight.dev/alternatives/
+
+## Key blog posts
+
+- How to detect AI agent loops: https://langsight.dev/blog/ai-agent-loop-detection/
+- OWASP MCP Top 10 guide: https://langsight.dev/blog/owasp-mcp-top-10-guide/
+- MCP server security: https://langsight.dev/blog/mcp-server-security/
+- Circuit breakers for AI agents: https://langsight.dev/blog/circuit-breakers-ai-agents/
+- MCP monitoring in production: https://langsight.dev/blog/mcp-monitoring-production/
+- Cost attribution for AI agents: https://langsight.dev/blog/ai-agent-cost-attribution/
+- Blast radius mapping: https://langsight.dev/blog/blast-radius-mapping/
+- SLOs for AI agents: https://langsight.dev/blog/slos-for-ai-agents/

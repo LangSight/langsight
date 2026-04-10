@@ -167,6 +167,8 @@ interface ComparisonRow {
   langsight: CheckValue;
   langfuse: CheckValue;
   langwatch: CheckValue;
+  langtrace: CheckValue;
+  phoenix: CheckValue;
   note?: string;
 }
 
@@ -176,6 +178,8 @@ const COMPARISON_ROWS: ComparisonRow[] = [
     langsight: "yes",
     langfuse: "no",
     langwatch: "no",
+    langtrace: "no",
+    phoenix: "no",
     note: "LangSight is the only platform with native MCP health checks.",
   },
   {
@@ -183,6 +187,8 @@ const COMPARISON_ROWS: ComparisonRow[] = [
     langsight: "yes",
     langfuse: "no",
     langwatch: "no",
+    langtrace: "no",
+    phoenix: "no",
     note: "CVE detection and 5 of 10 OWASP MCP checks, built-in.",
   },
   {
@@ -190,6 +196,8 @@ const COMPARISON_ROWS: ComparisonRow[] = [
     langsight: "yes",
     langfuse: "no",
     langwatch: "no",
+    langtrace: "no",
+    phoenix: "no",
     note: "Injection, unicode, and base64-encoded payload detection.",
   },
   {
@@ -197,74 +205,114 @@ const COMPARISON_ROWS: ComparisonRow[] = [
     langsight: "yes",
     langfuse: "no",
     langwatch: "no",
-    note:
-      "Alerts when a tool's schema changes unexpectedly between scans.",
+    langtrace: "no",
+    phoenix: "no",
+    note: "Alerts when a tool's schema changes unexpectedly between scans.",
+  },
+  {
+    feature: "Loop detection + auto-kill",
+    langsight: "yes",
+    langfuse: "no",
+    langwatch: "partial",
+    langtrace: "no",
+    phoenix: "no",
+    note: "Argument-hash and sliding-window detection, configurable terminate action.",
+  },
+  {
+    feature: "Budget guardrails (cost limits)",
+    langsight: "yes",
+    langfuse: "no",
+    langwatch: "no",
+    langtrace: "no",
+    phoenix: "no",
+  },
+  {
+    feature: "Tool-level circuit breakers",
+    langsight: "yes",
+    langfuse: "no",
+    langwatch: "no",
+    langtrace: "no",
+    phoenix: "no",
   },
   {
     feature: "Agent tool call tracing",
     langsight: "yes",
     langfuse: "yes",
     langwatch: "yes",
+    langtrace: "yes",
+    phoenix: "yes",
   },
   {
     feature: "LLM input / output capture",
     langsight: "yes",
     langfuse: "yes",
     langwatch: "yes",
+    langtrace: "yes",
+    phoenix: "yes",
   },
   {
     feature: "Multi-agent call tree",
     langsight: "yes",
     langfuse: "partial",
     langwatch: "partial",
+    langtrace: "partial",
+    phoenix: "partial",
   },
   {
     feature: "Cost attribution per tool call",
     langsight: "yes",
     langfuse: "yes",
     langwatch: "partial",
+    langtrace: "partial",
+    phoenix: "no",
   },
   {
     feature: "Anomaly detection",
     langsight: "yes",
     langfuse: "no",
     langwatch: "partial",
+    langtrace: "no",
+    phoenix: "partial",
   },
   {
     feature: "SLO tracking",
     langsight: "yes",
     langfuse: "no",
     langwatch: "partial",
+    langtrace: "no",
+    phoenix: "no",
   },
   {
     feature: "CI/CD security gate (--ci flag)",
     langsight: "yes",
     langfuse: "no",
     langwatch: "no",
+    langtrace: "no",
+    phoenix: "no",
   },
   {
     feature: "Self-hosted (free forever)",
     langsight: "yes",
     langfuse: "yes",
     langwatch: "yes",
-  },
-  {
-    feature: "Data leaves your network",
-    langsight: "Never",
-    langfuse: "Optional",
-    langwatch: "Optional",
+    langtrace: "yes",
+    phoenix: "yes",
   },
   {
     feature: "License",
     langsight: "Apache 2.0",
     langfuse: "MIT / ELv2",
     langwatch: "Apache 2.0",
+    langtrace: "Apache 2.0",
+    phoenix: "ELv2",
   },
   {
     feature: "Primary focus",
     langsight: "Agent runtime reliability",
     langfuse: "LLM evals + tracing",
     langwatch: "LLM quality + guardrails",
+    langtrace: "OTEL-native tracing",
+    phoenix: "LLM eval + RAG quality",
   },
 ];
 
@@ -308,7 +356,7 @@ export default function AlternativesPage() {
                 color: "var(--indigo)",
               }}
             >
-              LangSight vs Langfuse vs LangWatch
+              LangSight vs Langfuse vs LangWatch vs LangTrace vs Arize Phoenix
             </div>
 
             <h1
@@ -359,14 +407,14 @@ export default function AlternativesPage() {
         {/* Positioning summary cards */}
         <section className="py-16" style={{ background: "var(--bg-deep)" }}>
           <div className="max-w-5xl mx-auto px-6">
-            <div className="grid md:grid-cols-3 gap-5">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {[
                 {
                   name: "LangSight",
-                  badge: "MCP-native",
+                  badge: "MCP-native · runtime",
                   badgeColor: "var(--indigo)",
                   badgeBg: "var(--indigo-dim)",
-                  desc: "Agent runtime reliability for AI toolchains. Purpose-built for MCP health monitoring, security scanning, circuit breakers, guardrails, and tool call tracing.",
+                  desc: "Agent runtime reliability for AI toolchains. Purpose-built for MCP health monitoring, security scanning, circuit breakers, loop detection, and tool call tracing.",
                   highlight: true,
                 },
                 {
@@ -379,10 +427,34 @@ export default function AlternativesPage() {
                 },
                 {
                   name: "LangWatch",
-                  badge: "Quality & guardrails",
+                  badge: "LLM quality & guardrails",
                   badgeColor: "var(--muted)",
                   badgeBg: "var(--surface-2)",
                   desc: "Focuses on LLM output quality, guardrails, and safety evaluations. Does not cover MCP infrastructure health, CVE scanning, or tool-level security.",
+                  highlight: false,
+                },
+                {
+                  name: "LangTrace",
+                  badge: "OTEL-native tracing",
+                  badgeColor: "var(--muted)",
+                  badgeBg: "var(--surface-2)",
+                  desc: "OpenTelemetry-native tracing for LLMs. Good for span capture and latency visibility. Does not do runtime guardrails, MCP health checks, or security scanning.",
+                  highlight: false,
+                },
+                {
+                  name: "Arize Phoenix",
+                  badge: "LLM eval & RAG",
+                  badgeColor: "var(--muted)",
+                  badgeBg: "var(--surface-2)",
+                  desc: "Strong for RAG pipeline evaluation, retrieval quality, and LLM tracing. Does not cover MCP server health, circuit breakers, or agent runtime security.",
+                  highlight: false,
+                },
+                {
+                  name: "LangSmith",
+                  badge: "LangChain-native",
+                  badgeColor: "var(--muted)",
+                  badgeBg: "var(--surface-2)",
+                  desc: "LangChain's observability platform for prompt debugging, dataset management, and evals. Tightly coupled to LangChain/LangGraph. No MCP health monitoring or security scanning.",
                   highlight: false,
                 },
               ].map((card) => (
@@ -462,22 +534,34 @@ export default function AlternativesPage() {
                         Feature
                       </th>
                       <th
-                        className="px-5 py-3 text-center font-bold"
+                        className="px-4 py-3 text-center font-bold"
                         style={{ color: "var(--indigo)" }}
                       >
                         LangSight
                       </th>
                       <th
-                        className="px-5 py-3 text-center font-medium"
+                        className="px-4 py-3 text-center font-medium"
                         style={{ color: "var(--muted)" }}
                       >
                         Langfuse
                       </th>
                       <th
-                        className="px-5 py-3 text-center font-medium"
+                        className="px-4 py-3 text-center font-medium"
                         style={{ color: "var(--muted)" }}
                       >
                         LangWatch
+                      </th>
+                      <th
+                        className="px-4 py-3 text-center font-medium"
+                        style={{ color: "var(--muted)" }}
+                      >
+                        LangTrace
+                      </th>
+                      <th
+                        className="px-4 py-3 text-center font-medium"
+                        style={{ color: "var(--muted)" }}
+                      >
+                        Arize Phoenix
                       </th>
                     </tr>
                   </thead>
@@ -486,7 +570,9 @@ export default function AlternativesPage() {
                       const isUnique =
                         row.langsight === "yes" &&
                         row.langfuse === "no" &&
-                        row.langwatch === "no";
+                        row.langwatch === "no" &&
+                        row.langtrace === "no" &&
+                        row.phoenix === "no";
                       return (
                         <tr
                           key={i}
@@ -511,14 +597,20 @@ export default function AlternativesPage() {
                               </span>
                             )}
                           </td>
-                          <td className="px-5 py-3 text-center">
+                          <td className="px-4 py-3 text-center">
                             <CellValue value={row.langsight} />
                           </td>
-                          <td className="px-5 py-3 text-center">
+                          <td className="px-4 py-3 text-center">
                             <CellValue value={row.langfuse} />
                           </td>
-                          <td className="px-5 py-3 text-center">
+                          <td className="px-4 py-3 text-center">
                             <CellValue value={row.langwatch} />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <CellValue value={row.langtrace} />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <CellValue value={row.phoenix} />
                           </td>
                         </tr>
                       );
