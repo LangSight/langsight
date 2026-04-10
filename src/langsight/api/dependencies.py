@@ -169,12 +169,56 @@ def _is_proxy_request(request: Request) -> bool:
         return client_host == "localhost"
 
 
+def _verify_proxy_hmac(request: Request, user_id: str, user_role: str) -> bool:
+    """Verify the HMAC signature on proxy headers.
+
+    When LANGSIGHT_PROXY_SECRET is set, the proxy signs X-User-Id and
+    X-User-Role with a timestamp. This prevents header forgery even from
+    within the trusted CIDR.
+
+    Returns True if:
+    - LANGSIGHT_PROXY_SECRET is not configured (backwards-compatible), OR
+    - The signature is valid and the timestamp is within 60 seconds.
+    """
+    import os
+
+    secret = os.environ.get("LANGSIGHT_PROXY_SECRET", "")
+    if not secret:
+        return True  # HMAC not configured — fall back to CIDR-only trust
+
+    sig = request.headers.get("X-Proxy-Signature", "")
+    ts = request.headers.get("X-Proxy-Timestamp", "")
+    if not sig or not ts:
+        logger.warning(
+            "audit.proxy.missing_hmac",
+            client_ip=request.client.host if request.client else "unknown",
+        )
+        return False
+
+    # Check timestamp freshness (60-second window)
+    try:
+        ts_int = int(ts)
+    except ValueError:
+        return False
+    now = int(time.time())
+    if abs(now - ts_int) > 60:
+        logger.warning("audit.proxy.stale_timestamp", delta=abs(now - ts_int))
+        return False
+
+    # Verify HMAC
+    expected_payload = f"{user_id}:{user_role}:{ts}"
+    expected_sig = hmac.new(secret.encode(), expected_payload.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(sig, expected_sig)
+
+
 def _get_session_user(request: Request) -> tuple[str | None, str | None]:
     """Extract (user_id, user_role) from X-User-* headers (proxy-only).
 
-    SECURITY: Headers are ONLY trusted when the request originates from
-    _TRUSTED_PROXY_IPS. Any other caller receives (None, None). This is
-    the single canonical implementation of the proxy-trust boundary —
+    SECURITY: Headers are ONLY trusted when:
+    1. The request originates from a trusted proxy IP (CIDR check), AND
+    2. The HMAC signature is valid (when LANGSIGHT_PROXY_SECRET is set).
+
+    This is the single canonical implementation of the proxy-trust boundary —
     do not replicate this logic elsewhere; import get_session_user instead.
 
     These headers are injected by the Next.js proxy route after verifying
@@ -184,6 +228,17 @@ def _get_session_user(request: Request) -> tuple[str | None, str | None]:
         return None, None
     user_id = request.headers.get("X-User-Id")
     user_role = request.headers.get("X-User-Role")
+    if not user_id:
+        return None, None
+
+    # Verify HMAC signature when LANGSIGHT_PROXY_SECRET is configured
+    if not _verify_proxy_hmac(request, user_id, user_role or ""):
+        logger.warning(
+            "audit.proxy.hmac_verification_failed",
+            client_ip=request.client.host if request.client else "unknown",
+        )
+        return None, None
+
     return user_id or None, user_role or None
 
 

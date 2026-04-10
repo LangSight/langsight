@@ -212,20 +212,27 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
             session=span.session_id,
         )
 
-    # Server-side payload redaction — admin toggle overrides SDK setting
+    # Server-side payload redaction — admin toggle overrides SDK setting.
+    # FAIL-CLOSED: if the settings fetch fails, assume redact_payloads=True
+    # to prevent accidental PII storage. Ingestion still proceeds (spans are
+    # saved) but payload fields are stripped.
     storage = getattr(request.app.state, "storage", None)
+    _should_redact = False
     if storage is not None and hasattr(storage, "get_instance_settings"):
         try:
             settings = await storage.get_instance_settings()
-            if settings.get("redact_payloads"):
-                for span in spans:
-                    span.input_args = None
-                    span.output_result = None
-                    span.llm_input = None
-                    span.llm_output = None
-                    span.error = None  # error messages can contain PII or stack traces
+            _should_redact = bool(settings.get("redact_payloads"))
         except Exception:  # noqa: BLE001
-            pass  # fail-open — if settings fetch fails, don't block ingestion
+            # Fail-closed: redact when settings are unavailable
+            _should_redact = True
+            logger.warning("traces.redaction_fail_closed", reason="settings fetch failed")
+    if _should_redact:
+        for span in spans:
+            span.input_args = None
+            span.output_result = None
+            span.llm_input = None
+            span.llm_output = None
+            span.error = None  # error messages can contain PII or stack traces
 
     # Persist to ClickHouse if the backend supports it.
     # _INSERT_SEM caps concurrent inserts at 20 to prevent ClickHouse OOM

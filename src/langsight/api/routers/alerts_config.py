@@ -19,7 +19,7 @@ from fastapi import status as http_status
 from pydantic import BaseModel
 
 from langsight.api.audit import append_audit  # noqa: F401 — re-export for backwards compat
-from langsight.api.dependencies import require_admin
+from langsight.api.dependencies import get_active_project_id, require_admin
 from langsight.storage.base import StorageBackend
 
 logger = structlog.get_logger()
@@ -101,10 +101,14 @@ class AlertConfigUpdate(BaseModel):
 @router.get("/alerts/config", response_model=AlertConfigResponse)
 async def get_alerts_config(
     request: Request,
-    project_id: str = Query(default=""),
+    project_id: str | None = Depends(get_active_project_id),
 ) -> AlertConfigResponse:
-    """Return the current alert configuration (read from DB)."""
-    cfg = await _load_alert_config(request, project_id)
+    """Return the current alert configuration (read from DB).
+
+    project_id is resolved via get_active_project_id which enforces access
+    control — callers can only read configs for projects they belong to.
+    """
+    cfg = await _load_alert_config(request, project_id or "")
     webhook = cfg["slack_webhook"]
     return AlertConfigResponse(
         # Mask the full URL — expose only a configured/not-configured flag.
@@ -120,11 +124,16 @@ async def save_alerts_config(
     body: AlertConfigUpdate,
     request: Request,
     _: None = Depends(require_admin),
-    project_id: str = Query(default=""),
+    project_id: str | None = Depends(get_active_project_id),
 ) -> AlertConfigResponse:
-    """Persist alert configuration to the database."""
+    """Persist alert configuration to the database.
+
+    project_id is resolved via get_active_project_id which enforces access
+    control — callers can only write configs for projects they belong to.
+    """
+    pid = project_id or ""
     # Load current values so we can merge
-    current = await _load_alert_config(request, project_id)
+    current = await _load_alert_config(request, pid)
 
     new_webhook = body.slack_webhook if body.slack_webhook is not None else current["slack_webhook"]
     new_alert_types: dict[str, bool] = dict(current["alert_types"])
@@ -134,7 +143,7 @@ async def save_alerts_config(
     # Persist to DB
     storage: StorageBackend = request.app.state.storage
     if hasattr(storage, "save_alert_config"):
-        await storage.save_alert_config(new_webhook, new_alert_types, project_id)
+        await storage.save_alert_config(new_webhook, new_alert_types, pid)
 
     logger.info(
         "audit.alerts.config_updated",

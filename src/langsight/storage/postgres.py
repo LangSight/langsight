@@ -483,13 +483,18 @@ class PostgresBackend:
         limit: int = 10,
         project_id: str | None = None,
     ) -> list[HealthCheckResult]:
-        """Return the N most recent health results for a server, newest first."""
+        """Return the N most recent health results for a server, newest first.
+
+        When project_id is set, returns only results strictly for that project.
+        Global/unscoped results (project_id='') are excluded to prevent
+        cross-tenant data leakage in multi-tenant deployments.
+        """
         async with self._pool.acquire() as conn:
             if project_id:
                 rows = await conn.fetch(
                     """
                     SELECT * FROM health_results
-                    WHERE server_name = $1 AND (project_id = $3 OR project_id = '')
+                    WHERE server_name = $1 AND project_id = $3
                     ORDER BY checked_at DESC
                     LIMIT $2
                     """,
@@ -1111,7 +1116,12 @@ class PostgresBackend:
     # ── Instance settings (global, singleton) ────────────────────────────────
 
     async def get_instance_settings(self) -> dict[str, Any]:
-        """Return global instance settings, with defaults if never saved."""
+        """Return global instance settings, with defaults if never saved.
+
+        Provider API keys are decrypted transparently if LANGSIGHT_SECRET_KEY is set.
+        """
+        from langsight.crypto import decrypt_value
+
         row = await self._pool.fetchrow(
             "SELECT redact_payloads, settings_json FROM instance_settings WHERE id = 'singleton'"
         )
@@ -1120,12 +1130,36 @@ class PostgresBackend:
         extra = row["settings_json"] or {}
         if isinstance(extra, str):
             extra = json.loads(extra)
+
+        # Decrypt provider API keys after reading
+        ai_providers = extra.get("ai_providers")
+        if isinstance(ai_providers, dict):
+            for cfg in ai_providers.values():
+                if isinstance(cfg, dict) and cfg.get("api_key"):
+                    cfg["api_key"] = decrypt_value(cfg["api_key"])
+
         return {"redact_payloads": row["redact_payloads"], **extra}
 
     async def save_instance_settings(self, settings: dict[str, Any]) -> None:
-        """Upsert the singleton instance settings row."""
+        """Upsert the singleton instance settings row.
+
+        Provider API keys are encrypted at rest when LANGSIGHT_SECRET_KEY is set.
+        """
+        from langsight.crypto import encrypt_value
+
         redact = settings.get("redact_payloads", False)
         extra = {k: v for k, v in settings.items() if k != "redact_payloads"}
+
+        # Encrypt provider API keys before persisting
+        ai_providers = extra.get("ai_providers")
+        if isinstance(ai_providers, dict):
+            for _provider, cfg in ai_providers.items():
+                if isinstance(cfg, dict) and cfg.get("api_key"):
+                    raw_key = cfg["api_key"]
+                    # Don't re-encrypt already-encrypted values
+                    if not raw_key.startswith("enc:fernet:"):
+                        cfg["api_key"] = encrypt_value(raw_key)
+
         await self._pool.execute(
             """
             INSERT INTO instance_settings (id, redact_payloads, settings_json)

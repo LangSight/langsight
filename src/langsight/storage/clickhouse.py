@@ -377,13 +377,14 @@ class ClickHouseBackend:
     ) -> list[HealthCheckResult]:
         """Return the N most recent health results, newest first.
 
-        When project_id is set, returns only results for that project OR
-        global results (project_id='') so CLI-triggered checks are always visible.
+        When project_id is set, returns only results strictly for that project.
+        Global/unscoped results (project_id='') are excluded to prevent
+        cross-tenant data leakage in multi-tenant deployments.
         """
         params: dict[str, Any] = {"server_name": server_name, "limit": limit}
         project_filter = ""
         if project_id:
-            project_filter = "AND (project_id = {project_id:String} OR project_id = '')"
+            project_filter = "AND project_id = {project_id:String}"
             params["project_id"] = project_id
         result = await self._client.query(
             f"""
@@ -1091,10 +1092,12 @@ class ClickHouseBackend:
                 -- argMax avoids FINAL deduplication scan on ReplacingMergeTree —
                 -- picks the health_tag from the row with the latest tagged_at,
                 -- which is correct and ~10x faster than FINAL on large tables.
-                SELECT session_id, argMax(health_tag, tagged_at) AS health_tag
+                -- project_id is included in GROUP BY to prevent cross-tenant
+                -- health tag bleed when different projects share session IDs.
+                SELECT session_id, project_id, argMax(health_tag, tagged_at) AS health_tag
                 FROM session_health_tags
-                GROUP BY session_id
-            ) sht ON t.session_id = sht.session_id
+                GROUP BY session_id, project_id
+            ) sht ON t.session_id = sht.session_id AND t.project_id = sht.project_id
             {where}
             GROUP BY t.session_id
             {having}
@@ -1140,7 +1143,8 @@ class ClickHouseBackend:
             FROM mcp_tool_calls
             WHERE {where}
             ORDER BY started_at ASC
-            SETTINGS max_memory_usage = 500000000
+            LIMIT 10000
+            SETTINGS max_memory_usage = 200000000
             """,
             parameters=params,
         )

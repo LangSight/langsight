@@ -364,6 +364,23 @@ uv run mypy src/ && uv run ruff check src/
 
 LangSight monitors MCP security — it must itself be secure. Report vulnerabilities via [GitHub Security Advisories](https://github.com/LangSight/langsight/security/advisories).
 
+### Production hardening
+
+Set these environment variables for any deployment beyond local dev:
+
+```bash
+# Encrypt provider API keys at rest in Postgres
+LANGSIGHT_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+
+# HMAC-sign dashboard→API proxy headers (prevents header forgery)
+LANGSIGHT_PROXY_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+
+# Authenticate OTEL span ingestion
+OTEL_COLLECTOR_TOKEN=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+```
+
+See [SECURITY.md](SECURITY.md) for the full security model, threat scenarios, and recommended configuration.
+
 ---
 
 ## License

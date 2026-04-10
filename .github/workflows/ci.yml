@@ -194,3 +194,49 @@ jobs:
       - name: Stop ClickHouse
         if: always()
         run: docker stop langsight-ci-clickhouse && docker rm langsight-ci-clickhouse
+
+  # ---------------------------------------------------------------------------
+  # Supply-chain security scanning
+  # ---------------------------------------------------------------------------
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for gitleaks
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      # Dependency vulnerability audit — fails on known CVEs
+      - name: pip-audit (Python dependency CVEs)
+        run: |
+          uv pip install pip-audit
+          uv run pip-audit --strict --desc
+
+      # Secret detection — catches accidentally committed credentials
+      - name: Gitleaks (secret detection)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Container image scanning (only if Dockerfile exists)
+      - name: Trivy (container image scan)
+        if: hashFiles('Dockerfile') != ''
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"

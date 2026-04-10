@@ -404,6 +404,21 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             except Exception as _exc:  # noqa: BLE001
                 logger.warning("api.startup.login_failures_table_error", error=str(_exc))
 
+        # ── Warn if provider key encryption is disabled ─────────────────────
+        from langsight.crypto import is_encryption_available
+
+        if not is_encryption_available():
+            logger.warning("=" * 72)
+            logger.warning(
+                "SECURITY WARNING: LANGSIGHT_SECRET_KEY is not set. "
+                "Provider API keys will be stored in plaintext in Postgres."
+            )
+            logger.warning(
+                "Set LANGSIGHT_SECRET_KEY to a random 32+ character string "
+                "to enable encryption at rest."
+            )
+            logger.warning("=" * 72)
+
         # ── Load saved AI provider keys into os.environ ───────────────────────
         # Keys saved via PUT /api/settings are persisted in Postgres settings_json.
         # On startup, load them into os.environ so providers.py picks them up.

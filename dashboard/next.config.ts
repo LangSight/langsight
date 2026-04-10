@@ -1,9 +1,30 @@
 import type { NextConfig } from "next";
 
+// SECURITY: In production, the direct rewrite (below) MUST be backed by
+// LANGSIGHT_API_KEYS on the FastAPI side. If NODE_ENV=production and
+// LANGSIGHT_API_KEY is not set, log a prominent warning at build/startup.
+if (process.env.NODE_ENV === "production" && !process.env.LANGSIGHT_API_KEY) {
+  console.error("=".repeat(72));
+  console.error(
+    "SECURITY WARNING: LANGSIGHT_API_KEY is not set in production. " +
+    "The /api/* rewrite will forward unauthenticated requests to FastAPI. " +
+    "Set LANGSIGHT_API_KEY (and LANGSIGHT_API_KEYS on the API) before deploying."
+  );
+  console.error("=".repeat(72));
+}
+
 const nextConfig: NextConfig = {
   output: "standalone",   // required for Docker multi-stage build
   async rewrites() {
     const apiUrl = process.env.LANGSIGHT_API_URL || "http://127.0.0.1:8000";
+
+    // In production without LANGSIGHT_API_KEY, disable the direct rewrite
+    // to prevent unauthenticated pass-through. All dashboard traffic must
+    // go through /api/proxy/* which enforces NextAuth session checks.
+    if (process.env.NODE_ENV === "production" && !process.env.LANGSIGHT_API_KEY) {
+      return [];
+    }
+
     return [
       {
         // SDK/CLI compatibility rewrite — allows agents to POST spans directly
@@ -14,10 +35,6 @@ const nextConfig: NextConfig = {
         // Excluded paths (handled by Next.js itself, never forwarded):
         //   /api/auth/*  — NextAuth session endpoints
         //   /api/proxy/* — authenticated server-side proxy (session → API key)
-        //
-        // In fail-open mode (no LANGSIGHT_API_KEYS set) all FastAPI routes are
-        // publicly accessible — this is intentional for local dev only.
-        // Always set LANGSIGHT_API_KEYS before exposing on a network.
         source: "/api/:path((?!auth(?:/|$)|proxy(?:/|$)).*)",
         destination: `${apiUrl}/api/:path*`,
       },

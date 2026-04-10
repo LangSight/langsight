@@ -162,6 +162,14 @@ services:
       # Requires starting Redis: docker compose --profile redis up -d
       LANGSIGHT_REDIS_URL: ${LANGSIGHT_REDIS_URL:-}
       LANGSIGHT_WORKERS: ${LANGSIGHT_WORKERS:-1}
+      # Encryption at rest for provider API keys (Anthropic/OpenAI/Gemini) in Postgres.
+      # Generate: python3 -c "import secrets; print(secrets.token_hex(32))"
+      LANGSIGHT_SECRET_KEY: ${LANGSIGHT_SECRET_KEY:-}
+      # HMAC signing of dashboard→API proxy headers. Must match dashboard container.
+      LANGSIGHT_PROXY_SECRET: ${LANGSIGHT_PROXY_SECRET:-}
+      # SSE and trace read tuning
+      LANGSIGHT_SSE_MAX_CLIENTS: ${LANGSIGHT_SSE_MAX_CLIENTS:-1000}
+      LANGSIGHT_MAX_CONCURRENT_TRACE_READS: ${LANGSIGHT_MAX_CONCURRENT_TRACE_READS:-5}
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
@@ -213,6 +221,8 @@ services:
       NODE_ENV: production
       PORT: 3002
       HOSTNAME: "0.0.0.0"
+      # HMAC signing of proxy headers — must match API container value
+      LANGSIGHT_PROXY_SECRET: ${LANGSIGHT_PROXY_SECRET:-}
     ports:
       - "127.0.0.1:3003:3002"
     depends_on:

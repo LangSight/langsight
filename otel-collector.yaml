@@ -7,14 +7,28 @@
 #   OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer ${OTEL_COLLECTOR_TOKEN}"
 #
 # The collector receives spans and forwards them to the LangSight OTLP endpoint.
+#
+# SECURITY: OTEL_COLLECTOR_TOKEN MUST be set in any shared or production
+# deployment. When the token is blank, any client can inject arbitrary spans
+# — poisoning analytics, triggering false alerts, and inflating storage costs.
+# Local dev only: set OTEL_COLLECTOR_TOKEN="" explicitly if you accept the risk.
 
 extensions:
   bearertokenauth/collector:
     # Validate inbound OTLP requests from SDK clients against this token.
     # Set OTEL_COLLECTOR_TOKEN in the environment (docker-compose passes it
-    # from the host).  When the env var is empty, the token is blank and any
-    # request is accepted — safe for local dev, not for shared deployments.
+    # from the host).
+    #
+    # IMPORTANT: When the env var is empty, the token is blank and any
+    # request is accepted. This is a security risk in shared deployments.
+    # Always set OTEL_COLLECTOR_TOKEN before exposing the collector.
     token: "${env:OTEL_COLLECTOR_TOKEN}"
+
+  # Health check extension — enables /healthz endpoint for readiness probes.
+  # Also used by the startup script to verify the collector is running before
+  # accepting traffic.
+  health_check:
+    endpoint: 0.0.0.0:13133
 
 receivers:
   otlp:
@@ -52,7 +66,7 @@ exporters:
       X-API-Key: "${env:LANGSIGHT_API_KEY}"
 
 service:
-  extensions: [bearertokenauth/collector]
+  extensions: [bearertokenauth/collector, health_check]
   pipelines:
     traces:
       receivers: [otlp]

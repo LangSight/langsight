@@ -7,6 +7,8 @@ GET /api/agents/sessions/{session_id} — full span tree for one session
 
 from __future__ import annotations
 
+import asyncio
+import os
 from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,6 +19,13 @@ from langsight.api.dependencies import get_active_project_id, get_storage, requi
 from langsight.storage.base import StorageBackend
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+
+# Cap concurrent session trace reads to prevent ClickHouse OOM.
+# Each trace query can use up to 200 MB of ClickHouse memory; at 5 concurrent
+# reads that's 1 GB — within the API container's 1 GB limit.
+_TRACE_READ_SEM = asyncio.Semaphore(
+    int(os.environ.get("LANGSIGHT_MAX_CONCURRENT_TRACE_READS", "5"))
+)
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +241,8 @@ async def get_session(
             detail="Session traces require ClickHouse backend (storage.mode: clickhouse).",
         )
 
-    spans = await storage.get_session_trace(session_id, project_id=project_id)
+    async with _TRACE_READ_SEM:
+        spans = await storage.get_session_trace(session_id, project_id=project_id)
     if not spans:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,

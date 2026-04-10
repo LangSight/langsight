@@ -282,8 +282,9 @@ class TestHealthHistoryProjectFiltering:
         return storage
 
     async def test_project_filter_adds_project_id_clause_to_query(self) -> None:
-        """When project_id='project-a' is given, the SQL must include both the
-        project-specific AND the empty-string (global) condition."""
+        """When project_id='project-a' is given, the SQL must filter strictly
+        by that project — no global (project_id='') results should be included
+        to prevent cross-tenant data leakage."""
         storage = self._make_mock_ch_storage([])
 
         await storage.get_health_history("pg-mcp", project_id="project-a")
@@ -293,9 +294,13 @@ class TestHealthHistoryProjectFiltering:
         params: dict = query_call[1]["parameters"]
 
         assert "project_id" in sql, "SQL must include a project_id filter"
-        assert "project_id = ''" in sql or "project_id = ''" in sql.replace(
-            "{project_id:String}", "project_id"
-        ) or "project_id = ''" in sql or "project_id = ''" in sql
+        # Must filter strictly by project — no OR project_id = '' clause
+        assert "project_id = {project_id:String}" in sql, (
+            "SQL must filter strictly by the caller's project_id"
+        )
+        assert "project_id = ''" not in sql, (
+            "SQL must NOT include global (project_id='') results — cross-tenant leak"
+        )
         # Verify the actual project filter is set
         assert params.get("project_id") == "project-a", (
             "project_id parameter must be passed to the query"
@@ -317,21 +322,21 @@ class TestHealthHistoryProjectFiltering:
         # No project-scoped WHERE clause should be present
         assert "project_id = {project_id:String}" not in sql
 
-    async def test_global_health_checks_visible_to_project_callers(self) -> None:
-        """Rows with project_id='' (CLI-triggered global checks) must be returned
-        even when the caller specifies project_id='project-a'.  The SQL uses
-        OR project_id = '' to achieve this — verify the clause is present."""
+    async def test_global_health_checks_excluded_from_project_callers(self) -> None:
+        """Rows with project_id='' (CLI-triggered global checks) must NOT be
+        returned when the caller specifies project_id='project-a'. The SQL
+        must filter strictly by project to prevent cross-tenant data leakage."""
         storage = self._make_mock_ch_storage([])
 
         await storage.get_health_history("pg-mcp", project_id="project-a")
 
         sql: str = storage._client.query.call_args[0][0]
-        # Both conditions must appear in the query
+        # Only the project-specific filter should be present
         assert "project_id = {project_id:String}" in sql, (
             "Project-specific filter must be present"
         )
-        assert "project_id = ''" in sql, (
-            "Global health check rows (project_id='') must also be returned"
+        assert "project_id = ''" not in sql, (
+            "Global health check rows (project_id='') must NOT be included — cross-tenant leak"
         )
 
     async def test_project_b_results_excluded_when_querying_project_a(self) -> None:

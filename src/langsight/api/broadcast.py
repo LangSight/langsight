@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -47,10 +48,13 @@ _PROJECT_CHANNEL_PREFIX = "langsight:events:"
 
 logger = structlog.get_logger()
 
-# Hard limit on connected clients to prevent resource exhaustion
-_MAX_CLIENTS = 200
-# Buffer size per client — old events dropped if client is slow
-_CLIENT_BUFFER = 50
+# Hard limit on connected clients per worker — configurable via env var.
+# Default raised from 200 to 1000; with Redis broadcaster and multiple workers
+# the effective total is _MAX_CLIENTS × workers.
+_MAX_CLIENTS = int(os.environ.get("LANGSIGHT_SSE_MAX_CLIENTS", "1000"))
+# Buffer size per client — old events dropped if client is slow.
+# Raised from 50 to 200 to reduce drops under burst.
+_CLIENT_BUFFER = int(os.environ.get("LANGSIGHT_SSE_CLIENT_BUFFER", "200"))
 
 
 class SSEBroadcaster:
@@ -107,7 +111,13 @@ class SSEBroadcaster:
         project_id=<id> receives only events for that project.
         """
         if len(self._clients) >= _MAX_CLIENTS:
-            yield f"event: error\ndata: {json.dumps({'message': 'Too many connections'})}\n\n"
+            logger.warning(
+                "sse.connection_rejected",
+                current_clients=len(self._clients),
+                max_clients=_MAX_CLIENTS,
+                project_id=project_id,
+            )
+            yield f"event: error\ndata: {json.dumps({'message': 'Too many connections', 'max': _MAX_CLIENTS})}\n\n"
             return
 
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=_CLIENT_BUFFER)
@@ -180,7 +190,13 @@ class RedisBroadcaster:
         channel = _ADMIN_CHANNEL if project_id is None else f"{_PROJECT_CHANNEL_PREFIX}{project_id}"
 
         if self._local_client_count >= _MAX_CLIENTS:
-            yield f"event: error\ndata: {json.dumps({'message': 'Too many connections'})}\n\n"
+            logger.warning(
+                "sse.redis.connection_rejected",
+                current_clients=self._local_client_count,
+                max_clients=_MAX_CLIENTS,
+                project_id=project_id,
+            )
+            yield f"event: error\ndata: {json.dumps({'message': 'Too many connections', 'max': _MAX_CLIENTS})}\n\n"
             return
 
         pubsub = self._redis.pubsub()
