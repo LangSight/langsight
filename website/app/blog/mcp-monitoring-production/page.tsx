@@ -163,6 +163,11 @@ $ langsight monitor --interval 30
 # (configure OTEL collector to forward to LangSight)
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317`}</pre>
 
+          <div className="my-8 rounded-xl overflow-hidden border border-[var(--border)] shadow-lg">
+            <img src="/screenshots/dashbaord_2_page.png" alt="LangSight MCP infrastructure dashboard showing tool call volume, error rate and P99 latency per server" className="w-full h-auto block" loading="lazy" />
+            <p className="text-xs text-center text-[var(--muted)] py-2 bg-[var(--surface)]">LangSight MCP infrastructure dashboard — tool call volume, error rates, and P99 latency broken down per MCP server across your entire fleet.</p>
+          </div>
+
           <h2>Setting up MCP health monitoring with LangSight</h2>
           <p>
             LangSight can be monitoring your entire MCP fleet in under two minutes. Here is the setup flow.
@@ -299,6 +304,11 @@ alerts:
     "current_snapshot": "2026-04-02T08:15:00Z"
   }
 }`}</pre>
+
+          <div className="my-8 rounded-xl overflow-hidden border border-[var(--border)] shadow-lg">
+            <img src="/screenshots/mcp_servers_page_with_health_status.png" alt="LangSight MCP Servers catalog with health history, blast radius and AI root cause" className="w-full h-auto block" loading="lazy" />
+            <p className="text-xs text-center text-[var(--muted)] py-2 bg-[var(--surface)]">MCP Servers catalog — per-server health history, declared tools, blast radius (how many agents break if this server goes down), and one-click AI root cause investigation.</p>
+          </div>
 
           <h2>The MCP server scorecard</h2>
           <p>

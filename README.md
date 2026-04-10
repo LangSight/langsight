@@ -15,6 +15,10 @@ For MCP servers: health checks, security scanning, schema drift detection.
 > **Not another prompt, eval, or simulation platform.**
 > LangSight is the runtime reliability layer for AI agent toolchains.
 
+<p align="center">
+  <img src="https://langsight.dev/screenshots/dashbaord_1_page.png" alt="LangSight dashboard — sessions, error rate, latency, token usage" width="900" />
+</p>
+
 ---
 
 ## Where LangSight fits
@@ -93,6 +97,13 @@ Root cause: slack-mcp timed out at 14:32 UTC
 - **Multi-agent trees** — full call tree across agent handoffs via `parent_span_id`
 - **Run health tags** — every session auto-classified: `success`, `loop_detected`, `budget_exceeded`, `tool_failure`
 
+<p align="center">
+  <img src="https://langsight.dev/screenshots/sessions_list.png" alt="LangSight sessions list with health tags" width="900" />
+</p>
+<p align="center">
+  <img src="https://langsight.dev/screenshots/session_graph_lineage.png" alt="LangSight session graph — multi-agent call tree" width="900" />
+</p>
+
 ### 3. Monitor — MCP health + security
 
 ```
@@ -117,6 +128,10 @@ HIGH      postgres-mcp    OWASP-MCP-04   No authentication configured
 - **Schema drift detection** — tool schemas change → alert fires before agents hallucinate
 - **Security scanning** — CVE (OSV), OWASP MCP Top 10, tool poisoning detection, auth audit
 
+<p align="center">
+  <img src="https://langsight.dev/screenshots/mcp_servers_page_with_health_status.png" alt="LangSight MCP servers page with health status and blast radius" width="900" />
+</p>
+
 ### 4. Attribute — cost at the tool level
 
 ```
@@ -129,6 +144,10 @@ claude-3.5 (LLM)       156     0        $312       7.4%
 ```
 
 Not model-level costs (Langfuse does that). **Tool-level costs.** Which MCP server is burning your budget?
+
+<p align="center">
+  <img src="https://langsight.dev/screenshots/cost_attribution_page.png" alt="LangSight cost attribution per tool call" width="900" />
+</p>
 
 ### 5. Map — blast radius via lineage
 
@@ -207,6 +226,10 @@ Two lines. Every tool call is now traced, guarded, and cost-attributed.
 | PagerDuty (Events API v2) | Planned |
 
 Alert types: server down/recovered, schema drift, latency spike, SLO breach, anomaly, loop detected, budget exceeded, circuit breaker open, failure rate spike, blast radius impact.
+
+<p align="center">
+  <img src="https://langsight.dev/screenshots/slack_alerts.png" alt="LangSight Slack alert — agent session failed: tool failure with View in Dashboard button" width="600" />
+</p>
 
 ---
 

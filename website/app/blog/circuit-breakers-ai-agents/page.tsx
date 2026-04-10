@@ -150,6 +150,11 @@ servers:
       failure_threshold: 10     # non-critical — more tolerance
       cooldown_seconds: 120     # slower recovery probe`}</pre>
 
+          <div className="my-8 rounded-xl overflow-hidden border border-[var(--border)] shadow-lg">
+            <img src="/screenshots/mcp_servers_page_with_health_status.png" alt="LangSight MCP Servers page showing circuit breaker state, health status and blast radius" className="w-full h-auto block" loading="lazy" />
+            <p className="text-xs text-center text-[var(--muted)] py-2 bg-[var(--surface)]">LangSight MCP Servers — circuit breaker state (closed / open / half-open) shown per server alongside uptime history, P99 latency, and blast radius impact count.</p>
+          </div>
+
           <h2>Blast radius: which agents are affected?</h2>
           <p>
             When a circuit opens, the critical question is: which agents are affected? LangSight tracks the agent-to-tool dependency graph, so when a circuit opens, the alert includes:

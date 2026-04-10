@@ -189,6 +189,11 @@ class RateLoopDetector:
             Instead of terminating, inject a system message telling the agent it is stuck: <em>"You have called [tool] with the same arguments 3 times without progress. Stop and summarize what you know so far, then decide on a different approach."</em> This gives the agent a chance to self-recover before forcing termination.
           </p>
 
+          <div className="my-8 rounded-xl overflow-hidden border border-[var(--border)] shadow-lg">
+            <img src="/screenshots/sessions_list.png" alt="LangSight sessions list showing loop_detected health tag" className="w-full h-auto block" loading="lazy" />
+            <p className="text-xs text-center text-[var(--muted)] py-2 bg-[var(--surface)]">Sessions list in LangSight — the <code>loop_detected</code> tag appears automatically when the same tool is called with identical arguments 3+ times in a row.</p>
+          </div>
+
           <h2>Integrating loop detection with LangSight</h2>
           <p>
             LangSight's SDK handles all three detection approaches automatically. Two lines of code:
@@ -223,6 +228,11 @@ result = await traced.call_tool("lookup_customer", {"id": 456})`}</pre>
     max_wall_time_s=120,   # hard stop at 2 minutes
     budget_soft_alert=0.80 # alert at 80% of budget
 )`}</pre>
+          <div className="my-8 rounded-xl overflow-hidden border border-[var(--border)] shadow-lg">
+            <img src="/screenshots/agent_Details.png" alt="LangSight agent detail panel — loop detection settings and budget guardrails" className="w-full h-auto block" loading="lazy" />
+            <p className="text-xs text-center text-[var(--muted)] py-2 bg-[var(--surface)]">Agent detail panel — configure loop detection threshold, terminate vs warn action, max cost per session, and max steps — no code changes required.</p>
+          </div>
+
           <p>
             Use both together: loop detection for the known failure pattern, budget guardrails for unknown failure patterns you haven't anticipated yet.
           </p>

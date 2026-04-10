@@ -277,6 +277,11 @@ $ langsight security-scan --ci --min-severity high
 # JSON output for integration with security dashboards
 $ langsight security-scan --json | jq '.findings[] | select(.severity == "critical")'`}</pre>
 
+          <div className="my-8 rounded-xl overflow-hidden border border-[var(--border)] shadow-lg">
+            <img src="/screenshots/mcp_servers_page_with_health_status.png" alt="LangSight MCP Servers page — security findings and OWASP check results per server" className="w-full h-auto block" loading="lazy" />
+            <p className="text-xs text-center text-[var(--muted)] py-2 bg-[var(--surface)]">LangSight MCP Servers — per-server security findings, OWASP MCP check results, CVE detections, and blast radius shown in one panel.</p>
+          </div>
+
           <h2>Compliance checklist</h2>
           <p>
             Use this checklist to verify your MCP servers against the OWASP MCP Top 10. Every item maps to a specific risk.
