@@ -66,7 +66,9 @@ Be brief. Use bullet points. No invented scenarios — only report what the data
 
 class InvestigateRequest(BaseModel):
     server_names: list[str] = Field(..., max_length=10, description="Max 10 servers per request")
-    window_hours: float = Field(default=1.0, ge=0.5, le=168, description="Look-back window (0.5–168h)")
+    window_hours: float = Field(
+        default=1.0, ge=0.5, le=168, description="Look-back window (0.5–168h)"
+    )
     provider: str = "anthropic"
     model: str | None = None
     project_id: str | None = None
