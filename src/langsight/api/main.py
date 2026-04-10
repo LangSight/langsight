@@ -666,8 +666,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     # with forged Host headers are rejected with 400 before reaching any route.
     _dashboard_url = _settings.dashboard_url
     if _dashboard_url:
-        from starlette.middleware.trustedhost import TrustedHostMiddleware
         from urllib.parse import urlparse
+
+        from starlette.middleware.trustedhost import TrustedHostMiddleware
 
         _parsed = urlparse(_dashboard_url)
         _allowed = [_parsed.hostname or "localhost", "localhost", "127.0.0.1"]

@@ -684,7 +684,7 @@ async def require_admin(
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail="Unable to verify session — try again",
-                )
+                ) from None
         return
 
     env_keys: list[str] = getattr(request.app.state, "api_keys", [])
