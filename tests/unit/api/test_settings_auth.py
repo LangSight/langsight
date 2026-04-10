@@ -181,12 +181,13 @@ class TestGetSettingsAuthEnforcement:
         # Response now includes ai_providers alongside redact_payloads
         assert response.json().get("redact_payloads") is True
 
-    async def test_get_settings_with_viewer_key_returns_200(
+    async def test_get_settings_with_viewer_key_returns_403(
         self, tmp_path: Path
     ) -> None:
-        """GET /api/settings requires authentication but NOT admin role.
+        """GET /api/settings now requires admin role (security fix #11).
 
-        A viewer key should be allowed to read settings.
+        A viewer key is blocked — settings reveal provider names, models,
+        and OLLAMA_BASE_URL which helps lateral movement.
         """
         viewer = _make_viewer_record()
         storage = _base_storage([viewer])
@@ -198,8 +199,7 @@ class TestGetSettingsAuthEnforcement:
                 headers={"X-API-Key": _VIEWER_KEY},
             )
 
-        # GET only requires authentication (verify_api_key), not admin role
-        assert response.status_code == 200
+        assert response.status_code == 403
 
 
 # ---------------------------------------------------------------------------

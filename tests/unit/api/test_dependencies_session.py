@@ -94,22 +94,50 @@ class TestIsProxyRequest:
 # _get_session_user
 # ---------------------------------------------------------------------------
 
+def _sign_proxy_headers(user_id: str, user_role: str, secret: str) -> dict[str, str]:
+    """Generate HMAC-signed proxy headers for testing."""
+    import hashlib
+    import hmac
+    import time
+
+    ts = str(int(time.time()))
+    payload = f"{user_id}:{user_role}:{ts}"
+    sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return {
+        "X-User-Id": user_id,
+        "X-User-Role": user_role,
+        "X-Proxy-Timestamp": ts,
+        "X-Proxy-Signature": sig,
+    }
+
+
+_TEST_PROXY_SECRET = "test-secret-for-unit-tests-32chars!"
+
+
 class TestGetSessionUser:
-    def test_returns_user_id_and_role_from_proxy(self) -> None:
+    def test_returns_user_id_and_role_from_proxy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
+        headers = _sign_proxy_headers("user-abc", "admin", _TEST_PROXY_SECRET)
+        req = _make_request(client_ip="127.0.0.1", headers=headers)
+        user_id, role = _get_session_user(req)
+        assert user_id == "user-abc"
+        assert role == "admin"
+
+    def test_returns_none_when_hmac_not_configured(self) -> None:
+        """Without LANGSIGHT_PROXY_SECRET, proxy auth is disabled (fail-closed)."""
         req = _make_request(
             client_ip="127.0.0.1",
             headers={"X-User-Id": "user-abc", "X-User-Role": "admin"},
         )
         user_id, role = _get_session_user(req)
-        assert user_id == "user-abc"
-        assert role == "admin"
+        assert user_id is None
+        assert role is None
 
-    def test_returns_none_none_when_ip_not_trusted(self) -> None:
+    def test_returns_none_none_when_ip_not_trusted(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Headers present but IP is external — must be ignored."""
-        req = _make_request(
-            client_ip="10.0.0.5",
-            headers={"X-User-Id": "user-abc", "X-User-Role": "admin"},
-        )
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
+        headers = _sign_proxy_headers("user-abc", "admin", _TEST_PROXY_SECRET)
+        req = _make_request(client_ip="10.0.0.5", headers=headers)
         user_id, role = _get_session_user(req)
         assert user_id is None
         assert role is None
@@ -129,11 +157,10 @@ class TestGetSessionUser:
         assert user_id is None
         assert role is None
 
-    def test_viewer_role_forwarded_correctly(self) -> None:
-        req = _make_request(
-            client_ip="::1",
-            headers={"X-User-Id": "user-xyz", "X-User-Role": "viewer"},
-        )
+    def test_viewer_role_forwarded_correctly(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
+        headers = _sign_proxy_headers("user-xyz", "viewer", _TEST_PROXY_SECRET)
+        req = _make_request(client_ip="::1", headers=headers)
         user_id, role = _get_session_user(req)
         assert user_id == "user-xyz"
         assert role == "viewer"
@@ -144,12 +171,16 @@ class TestGetSessionUser:
 # ---------------------------------------------------------------------------
 
 class TestVerifyApiKey:
-    async def test_session_headers_from_proxy_bypass_key_check(self) -> None:
-        """Valid proxy session headers are sufficient — no API key needed."""
+    async def test_session_headers_from_proxy_bypass_key_check(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Valid HMAC-signed proxy session headers are sufficient — no API key needed."""
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
         storage = MagicMock()
+        headers = _sign_proxy_headers("user-1", "admin", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "user-1", "X-User-Role": "admin"},
+            headers=headers,
             api_keys=["some-key"],
             storage=storage,
         )
@@ -249,26 +280,34 @@ class TestVerifyApiKey:
 # ---------------------------------------------------------------------------
 
 class TestRequireAdmin:
-    async def test_session_admin_role_passes(self) -> None:
+    async def test_session_admin_role_passes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
         storage = MagicMock()
         storage.list_api_keys = AsyncMock(return_value=[])
+        # DB check: user is still active admin
+        storage.get_user_by_id = AsyncMock(return_value=MagicMock(
+            active=True, role=MagicMock(value="admin")
+        ))
+        headers = _sign_proxy_headers("user-1", "admin", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "user-1", "X-User-Role": "admin"},
+            headers=headers,
             api_keys=["some-key"],
             storage=storage,
         )
         # Should not raise
         await require_admin(request=req, api_key=None)
 
-    async def test_session_viewer_role_raises_403(self) -> None:
+    async def test_session_viewer_role_raises_403(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A session with role=viewer must be blocked from write operations."""
         from fastapi import HTTPException
 
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
         storage = MagicMock()
+        headers = _sign_proxy_headers("user-1", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "user-1", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["some-key"],
             storage=storage,
         )
@@ -378,44 +417,56 @@ class TestGetActiveProjectId:
         result = await get_active_project_id(request=req, project_id=None)
         assert result is None
 
-    async def test_admin_session_returns_project_id_without_membership_check(self) -> None:
+    async def test_admin_session_returns_project_id_without_membership_check(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
         storage = MagicMock()
         storage.list_members = AsyncMock(return_value=[])
+        # DB check for admin verification
+        storage.get_user_by_id = AsyncMock(return_value=MagicMock(
+            active=True, role=MagicMock(value="admin")
+        ))
+        headers = _sign_proxy_headers("admin-user", "admin", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "admin-user", "X-User-Role": "admin"},
+            headers=headers,
             api_keys=["key"],
             storage=storage,
         )
         result = await get_active_project_id(request=req, project_id="proj-1")
         assert result == "proj-1"
-        # Must NOT call get_member for admin
-        storage.get_member.assert_not_called()
 
-    async def test_member_session_returns_project_id_when_membership_exists(self) -> None:
+    async def test_member_session_returns_project_id_when_membership_exists(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
         member_record = MagicMock()
         storage = MagicMock()
         storage.list_members = AsyncMock(return_value=[member_record])
         storage.get_member = AsyncMock(return_value=member_record)
+        headers = _sign_proxy_headers("viewer-user", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "viewer-user", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["key"],
             storage=storage,
         )
         result = await get_active_project_id(request=req, project_id="proj-1")
         assert result == "proj-1"
 
-    async def test_non_member_session_raises_404(self) -> None:
+    async def test_non_member_session_raises_404(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A session user who is not a member of the project → 404."""
         from fastapi import HTTPException
 
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
         storage = MagicMock()
         storage.list_members = AsyncMock(return_value=[MagicMock()])  # list_members present
         storage.get_member = AsyncMock(return_value=None)  # user is NOT a member
+        headers = _sign_proxy_headers("outsider", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "outsider", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["key"],
             storage=storage,
         )

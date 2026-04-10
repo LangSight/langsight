@@ -176,15 +176,25 @@ def _verify_proxy_hmac(request: Request, user_id: str, user_role: str) -> bool:
     X-User-Role with a timestamp. This prevents header forgery even from
     within the trusted CIDR.
 
-    Returns True if:
-    - LANGSIGHT_PROXY_SECRET is not configured (backwards-compatible), OR
+    SECURITY: Fails closed — returns False when LANGSIGHT_PROXY_SECRET is
+    not configured. CIDR-only trust is no longer sufficient because any
+    compromised container on the trusted subnet could forge X-User-* headers.
+    Set LANGSIGHT_PROXY_SECRET on both the API and dashboard containers.
+
+    Returns True only when:
     - The signature is valid and the timestamp is within 60 seconds.
     """
     import os
 
     secret = os.environ.get("LANGSIGHT_PROXY_SECRET", "")
     if not secret:
-        return True  # HMAC not configured — fall back to CIDR-only trust
+        logger.warning(
+            "audit.proxy.hmac_not_configured",
+            hint="LANGSIGHT_PROXY_SECRET is not set — session auth via proxy headers is disabled. "
+            "Set the same secret on both API and dashboard containers.",
+            client_ip=request.client.host if request.client else "unknown",
+        )
+        return False  # Fail closed — CIDR-only trust is not sufficient
 
     sig = request.headers.get("X-Proxy-Signature", "")
     ts = request.headers.get("X-Proxy-Timestamp", "")
@@ -461,7 +471,22 @@ async def get_project_access(
     user_id, user_role = _get_session_user(request)
     if user_id:
         if user_role == "admin":
-            return ProjectAccess(project, ProjectRole.OWNER, is_global_admin=True)
+            # Verify the user is still active + admin in the DB before
+            # granting global admin access. Prevents stale JWTs from
+            # retaining privileges after role change or deactivation.
+            get_user_fn = getattr(storage, "get_user_by_id", None)
+            if get_user_fn is not None and inspect.iscoroutinefunction(get_user_fn):
+                try:
+                    db_user = await get_user_fn(user_id)
+                    if db_user is None or not db_user.active or db_user.role.value != "admin":
+                        # Fall through to member check instead of granting admin
+                        user_role = "viewer"
+                    else:
+                        return ProjectAccess(project, ProjectRole.OWNER, is_global_admin=True)
+                except Exception:  # noqa: BLE001
+                    pass  # fail-open for reads — fall through to member check
+            else:
+                return ProjectAccess(project, ProjectRole.OWNER, is_global_admin=True)
         # Check project membership by user_id
         member = await storage.get_member(project_id, user_id)
         if member:
@@ -621,6 +646,45 @@ async def require_admin(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Write operations require admin role",
             )
+        # SECURITY: Verify the session user is still active and still admin
+        # in the DB. JWTs bake the role at login time — a demoted or deactivated
+        # user keeps their old JWT until expiry. This DB check on admin-gated
+        # routes closes that window.
+        storage: StorageBackend = request.app.state.storage
+        get_user_fn = getattr(storage, "get_user_by_id", None)
+        if get_user_fn is not None and inspect.iscoroutinefunction(get_user_fn):
+            try:
+                db_user = await get_user_fn(user_id)
+                if db_user is None or not db_user.active:
+                    logger.warning(
+                        "audit.rbac.deactivated_session",
+                        user_id=user_id,
+                        path=str(request.url.path),
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Account has been deactivated",
+                    )
+                if db_user.role.value != "admin":
+                    logger.warning(
+                        "audit.rbac.stale_admin_session",
+                        user_id=user_id,
+                        jwt_role="admin",
+                        db_role=db_user.role.value,
+                        path=str(request.url.path),
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Your role has been changed. Please log in again.",
+                    )
+            except HTTPException:
+                raise
+            except Exception:  # noqa: BLE001
+                # DB error: fail-closed — deny rather than trust stale JWT
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Unable to verify session — try again",
+                )
         return
 
     env_keys: list[str] = getattr(request.app.state, "api_keys", [])

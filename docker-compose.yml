@@ -118,7 +118,10 @@ services:
       # Generate: python3 -c "import secrets; print(secrets.token_hex(32))"
       # Add to your .env file: OTEL_COLLECTOR_TOKEN=<generated-token>
       OTEL_COLLECTOR_TOKEN: ${OTEL_COLLECTOR_TOKEN:?OTEL_COLLECTOR_TOKEN is required. Generate one with: python3 -c "import secrets; print(secrets.token_hex(32))"}
-      LANGSIGHT_API_KEY: ${LANGSIGHT_API_KEYS}
+      # OTEL collector key — use a SEPARATE key from the dashboard/API admin key.
+      # Generate a dedicated collector key: python3 -c "import secrets; print(secrets.token_hex(32))"
+      # Then create a viewer-role API key in the dashboard for the collector.
+      LANGSIGHT_API_KEY: ${LANGSIGHT_OTEL_COLLECTOR_KEY:?LANGSIGHT_OTEL_COLLECTOR_KEY env var is required. Generate a dedicated key for the collector.}
     ports:
       - "127.0.0.1:4317:4317"  # gRPC OTLP — loopback only
       - "127.0.0.1:4318:4318"  # HTTP OTLP — loopback only
@@ -213,7 +216,12 @@ services:
     container_name: langsight-dashboard
     environment:
       LANGSIGHT_API_URL: http://api:8000
-      LANGSIGHT_API_KEY: ${LANGSIGHT_API_KEYS:?LANGSIGHT_API_KEYS env var is required}
+      # Dashboard API key — use a SEPARATE key from the admin/collector keys.
+      # The dashboard proxy forwards this key on every request; if this key
+      # is the same admin key used elsewhere, compromise of the dashboard
+      # container grants full API admin access.
+      # For production: create a dedicated dashboard-scoped API key via the dashboard.
+      LANGSIGHT_API_KEY: ${LANGSIGHT_DASHBOARD_KEY:-${LANGSIGHT_API_KEYS:?LANGSIGHT_API_KEYS env var is required}}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3003}
       AUTH_SECRET: "${AUTH_SECRET:?AUTH_SECRET env var is required (generate with: openssl rand -base64 32)}"
       NEXTAUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET env var is required}

@@ -5,10 +5,32 @@ All fixtures here are offline — no Docker, no real DB, no network.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+# ---------------------------------------------------------------------------
+# HMAC signing for proxy headers
+# ---------------------------------------------------------------------------
+
+_TEST_PROXY_SECRET = "test-secret-for-unit-tests-32chars!"
+
+
+def _sign_proxy_headers(user_id: str, user_role: str, secret: str) -> dict[str, str]:
+    """Generate signed proxy headers for session auth testing."""
+    ts = str(int(time.time()))
+    payload = f"{user_id}:{user_role}:{ts}"
+    sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return {
+        "X-User-Id": user_id,
+        "X-User-Role": user_role,
+        "X-Proxy-Timestamp": ts,
+        "X-Proxy-Signature": sig,
+    }
 
 
 @pytest.fixture(autouse=True)

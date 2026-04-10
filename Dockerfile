@@ -4,7 +4,9 @@
 FROM python:3.11-slim AS builder
 
 # Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Pin uv to a specific version digest for reproducible, supply-chain-safe builds.
+# Update by checking: https://github.com/astral-sh/uv/pkgs/container/uv/versions
+COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /uvx /bin/
 
 WORKDIR /app
 
@@ -18,9 +20,9 @@ RUN uv sync --frozen --no-install-project --no-dev
 COPY src/ ./src/
 RUN uv sync --frozen --no-dev
 
-# Test MCP servers executed by the health checker need these runtime deps.
-# Install them after the final sync so uv does not remove them again.
-RUN uv pip install --python /app/.venv/bin/python fastmcp boto3 "redis[hiredis]>=5"
+# Runtime deps for health checker MCP servers and multi-worker mode.
+# Pinned to specific versions for reproducible builds.
+RUN uv pip install --python /app/.venv/bin/python "fastmcp==2.5.1" "boto3==1.38.34" "redis[hiredis]==5.3.0"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2: runtime — minimal image with only what's needed to run
@@ -36,7 +38,7 @@ WORKDIR /app
 # Copy the virtual environment from builder
 COPY --from=builder --chown=langsight:langsight /app/.venv /app/.venv
 # Copy uv/uvx so stdio MCP commands configured with uvx work inside Docker
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /uvx /bin/
 # Copy source
 COPY --from=builder --chown=langsight:langsight /app/src /app/src
 

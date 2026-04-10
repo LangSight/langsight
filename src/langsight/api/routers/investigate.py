@@ -18,9 +18,10 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from langsight.api.dependencies import get_active_project_id
+from langsight.api.dependencies import get_active_project_id, require_admin
+from langsight.api.rate_limit import limiter
 from langsight.exceptions import ConfigError
 from langsight.models import ServerStatus
 from langsight.storage.base import StorageBackend
@@ -64,8 +65,8 @@ Be brief. Use bullet points. No invented scenarios — only report what the data
 
 
 class InvestigateRequest(BaseModel):
-    server_names: list[str]
-    window_hours: float = 1.0
+    server_names: list[str] = Field(..., max_length=10, description="Max 10 servers per request")
+    window_hours: float = Field(default=1.0, ge=0.5, le=168, description="Look-back window (0.5–168h)")
     provider: str = "anthropic"
     model: str | None = None
     project_id: str | None = None
@@ -261,10 +262,12 @@ def _rule_based_report(evidence_map: dict[str, dict[str, Any]]) -> str:
 
 
 @router.post("/investigate", response_model=InvestigateResponse)
+@limiter.limit("10/minute")
 async def run_investigation(
     body: InvestigateRequest,
     request: Request,
     project_id: str | None = Depends(get_active_project_id),
+    _admin: None = Depends(require_admin),
 ) -> InvestigateResponse:
     """Run an AI-powered root cause investigation on MCP servers.
 

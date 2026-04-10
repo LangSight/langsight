@@ -14,7 +14,7 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, Query, Request
 
 from langsight.alerts.engine import _safe_alert_text as _safe_alert
-from langsight.api.dependencies import get_active_project_id, get_storage
+from langsight.api.dependencies import get_active_project_id, get_storage, require_admin
 from langsight.reliability.engine import AnomalyDetector, ReliabilityEngine
 from langsight.storage.base import StorageBackend
 
@@ -181,13 +181,14 @@ async def get_incomplete_sessions(
 @router.post(
     "/tag-incomplete",
     summary="Tag stale sessions as 'incomplete'",
+    dependencies=[Depends(require_admin)],
 )
 async def tag_incomplete_sessions(
     stale_minutes: int = Query(default=5, ge=1, le=60),
     project_id: str | None = Depends(get_active_project_id),
     storage: StorageBackend = Depends(get_storage),
 ) -> dict[str, int]:
-    """Scan for stale sessions and tag them as 'incomplete'.
+    """Scan for stale sessions and tag them as 'incomplete'. Admin only.
 
     Returns the count of newly tagged sessions.
     """

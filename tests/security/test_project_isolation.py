@@ -14,19 +14,28 @@ any authenticated user.
 """
 from __future__ import annotations
 
+import os
 from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
 
 from tests.security.conftest import (
+    _TEST_PROXY_SECRET,
     _active_key_record,
     _make_request,
     _make_storage,
     _member_record,
+    _sign_proxy_headers,
 )
 
 pytestmark = pytest.mark.security
+
+
+@pytest.fixture(autouse=True)
+def _set_proxy_secret(monkeypatch):
+    """Set LANGSIGHT_PROXY_SECRET for all tests in this module."""
+    monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
 
 
 # ---------------------------------------------------------------------------
@@ -39,9 +48,10 @@ class TestProjectIdRequiredForNonAdmins:
         from langsight.api.dependencies import get_active_project_id
 
         storage = _make_storage(active_db_keys=[_active_key_record()])
+        headers = _sign_proxy_headers("viewer-1", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "viewer-1", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )
@@ -55,9 +65,10 @@ class TestProjectIdRequiredForNonAdmins:
         from langsight.api.dependencies import get_active_project_id
 
         storage = _make_storage(active_db_keys=[_active_key_record(role="viewer")])
+        headers = _sign_proxy_headers("member-1", "member", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "member-1", "X-User-Role": "member"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )
@@ -89,12 +100,21 @@ class TestProjectIdRequiredForNonAdmins:
 class TestAdminAndOpenInstallExceptions:
     async def test_admin_session_without_project_id_returns_none(self) -> None:
         """Admins can query all data — project_id=None is valid for them."""
+        from unittest.mock import MagicMock
+
         from langsight.api.dependencies import get_active_project_id
 
         storage = _make_storage(active_db_keys=[])
+        # Mock get_user_by_id to return an active admin user
+        admin_user = MagicMock()
+        admin_user.active = True
+        admin_user.role = MagicMock(value="admin")
+        storage.get_user_by_id = AsyncMock(return_value=admin_user)
+
+        headers = _sign_proxy_headers("admin-1", "admin", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "admin-1", "X-User-Role": "admin"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )
@@ -138,9 +158,10 @@ class TestCrossTenantAccess:
             active_db_keys=[_active_key_record()],
             get_member_returns=None,  # not a member of any project
         )
+        headers = _sign_proxy_headers("user-no-access", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "user-no-access", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )
@@ -156,9 +177,10 @@ class TestCrossTenantAccess:
         storage = _make_storage(active_db_keys=[_active_key_record()])
         storage.get_member = AsyncMock(return_value=None)  # not in project-b
 
+        headers = _sign_proxy_headers("user-in-project-a", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "user-in-project-a", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )
@@ -173,9 +195,10 @@ class TestCrossTenantAccess:
         storage = _make_storage(active_db_keys=[_active_key_record()])
         storage.get_member = AsyncMock(return_value=_member_record("project-a", "user-1"))
 
+        headers = _sign_proxy_headers("user-1", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "user-1", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )
@@ -184,14 +207,22 @@ class TestCrossTenantAccess:
 
     async def test_admin_can_access_any_project_without_membership(self) -> None:
         """Admin bypass: get_member must NOT be called for admin users."""
+        from unittest.mock import MagicMock
+
         from langsight.api.dependencies import get_active_project_id
 
         storage = _make_storage(active_db_keys=[])
         storage.get_member = AsyncMock(return_value=None)  # no membership
+        # Mock get_user_by_id for admin verification
+        admin_user = MagicMock()
+        admin_user.active = True
+        admin_user.role = MagicMock(value="admin")
+        storage.get_user_by_id = AsyncMock(return_value=admin_user)
 
+        headers = _sign_proxy_headers("admin-user", "admin", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "admin-user", "X-User-Role": "admin"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )
@@ -213,9 +244,10 @@ class TestMembershipCheckFailure:
             active_db_keys=[_active_key_record()],
             get_member_raises=Exception("membership query failed"),
         )
+        headers = _sign_proxy_headers("attacker", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "attacker", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )

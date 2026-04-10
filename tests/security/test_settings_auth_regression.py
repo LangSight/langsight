@@ -37,6 +37,14 @@ pytestmark = [pytest.mark.security, pytest.mark.regression]
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _set_proxy_secret(monkeypatch):
+    """Set LANGSIGHT_PROXY_SECRET for all tests in this module."""
+    from tests.security.conftest import _TEST_PROXY_SECRET
+
+    monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
+
+
 @pytest.fixture
 def config_file(tmp_path: Path) -> Path:
     """Minimal .langsight.yaml with no servers, suitable for all settings tests."""
@@ -364,32 +372,30 @@ class TestNonAdminPutSettings:
 
     async def test_viewer_session_header_returns_403(self, auth_client_with_storage) -> None:
         """A session user with role=viewer (via X-User-* from trusted proxy) must be blocked."""
+        from tests.security.conftest import _TEST_PROXY_SECRET, _sign_proxy_headers
+
         c, storage = auth_client_with_storage
+        headers = _sign_proxy_headers("viewer-user-uuid", "viewer", _TEST_PROXY_SECRET)
         response = await c.put(
             "/api/settings",
             json={"redact_payloads": True},
-            # Simulate trusted Next.js proxy injecting session headers
-            headers={
-                "X-User-Id": "viewer-user-uuid",
-                "X-User-Role": "viewer",
-                # No X-Forwarded-For: the test client connects from 127.0.0.1 (loopback),
-                # which is in the default trusted_proxy_networks — so these headers are honoured.
-            },
+            # Simulate trusted Next.js proxy injecting signed session headers
+            headers=headers,
         )
         assert response.status_code == 403
         storage.save_instance_settings.assert_not_called()
 
-    async def test_viewer_db_key_can_read_settings(self, viewer_client_with_storage) -> None:
-        """Positive control: a viewer key must still be able to GET settings.
+    async def test_viewer_db_key_cannot_read_settings(self, viewer_client_with_storage) -> None:
+        """GET /api/settings now requires admin role — viewer keys get 403.
 
-        The fix only gates writes; reads require authentication but not admin.
+        Updated security: both read and write require admin role.
         """
         c, _, viewer_secret = viewer_client_with_storage
         response = await c.get(
             "/api/settings",
             headers={"X-API-Key": viewer_secret},
         )
-        assert response.status_code == 200
+        assert response.status_code == 403
 
 
 # ===========================================================================

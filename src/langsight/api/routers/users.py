@@ -42,9 +42,14 @@ from langsight.storage.base import StorageBackend
 # Lock clears automatically after _LOCKOUT_SECONDS.
 # Persists across restarts; works correctly with multiple workers.
 # ---------------------------------------------------------------------------
-_MAX_FAILURES = 5
+# Raised from 5→10 to reduce weaponization risk: an attacker knowing
+# someone's email can no longer trivially lock them out with 5 bad attempts
+# from distributed IPs. Combined with the per-IP rate limit (10/min on /verify),
+# legitimate users get ~10 tries before lockout, and automated attacks from a
+# single IP are stopped at the rate-limit layer first.
+_MAX_FAILURES = 10
 _WINDOW_SECONDS = 300  # 5-minute failure window
-_LOCKOUT_SECONDS = 900  # 15-minute lockout
+_LOCKOUT_SECONDS = 300  # 5-minute lockout (reduced from 15 min to limit DoS impact)
 
 _CREATE_LOGIN_FAILURES_TABLE = """
 CREATE TABLE IF NOT EXISTS login_failures (

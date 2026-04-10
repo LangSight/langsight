@@ -457,14 +457,21 @@ async def client(config_file: Path):
     ])
     mock_storage.close = AsyncMock()
 
+    _test_api_key = "test-admin-key-for-investigate"
     app = create_app(config_path=config_file)
     app.state.storage = mock_storage
     app.state.config = load_config(config_file)
-    app.state.auth_disabled = True
-    app.state.api_keys = []  # auth disabled
+    app.state.auth_disabled = False
+    app.state.api_keys = [_test_api_key]  # env-var key → always admin
+
+    # Reset rate limiter state so tests don't hit each other's limits
+    from langsight.api.rate_limit import limiter
+    limiter.reset()
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"X-API-Key": _test_api_key},
     ) as c:
         yield c, mock_storage
 

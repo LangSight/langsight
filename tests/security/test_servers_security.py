@@ -24,18 +24,27 @@ Test classes and their invariants:
 """
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from tests.security.conftest import (
+    _TEST_PROXY_SECRET,
     _active_key_record,
     _make_request,
     _make_storage,
+    _sign_proxy_headers,
 )
 
 pytestmark = pytest.mark.security
+
+
+@pytest.fixture(autouse=True)
+def _set_proxy_secret(monkeypatch):
+    """Set LANGSIGHT_PROXY_SECRET for all tests in this module."""
+    monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
 
 
 # ---------------------------------------------------------------------------
@@ -124,9 +133,10 @@ class TestAdminWriteEnforcement:
         from langsight.api.dependencies import require_admin
 
         storage = _server_storage(active_db_keys=[_active_key_record(role="viewer")])
+        headers = _sign_proxy_headers("viewer-user", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "viewer-user", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )
@@ -145,9 +155,10 @@ class TestAdminWriteEnforcement:
         from langsight.api.dependencies import require_admin
 
         storage = _server_storage(active_db_keys=[_active_key_record(role="viewer")])
+        headers = _sign_proxy_headers("member-user", "member", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "member-user", "X-User-Role": "member"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )
@@ -200,9 +211,10 @@ class TestAdminWriteEnforcement:
         from langsight.api.dependencies import require_admin
 
         storage = _server_storage(active_db_keys=[_active_key_record(role="viewer")])
+        headers = _sign_proxy_headers("viewer-user", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "viewer-user", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )
@@ -636,9 +648,10 @@ class TestProjectIsolationOnReads:
         from langsight.api.dependencies import get_active_project_id
 
         storage = _server_storage(active_db_keys=[_active_key_record(role="viewer")])
+        headers = _sign_proxy_headers("viewer-1", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "viewer-1", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )
@@ -661,9 +674,10 @@ class TestProjectIsolationOnReads:
             active_db_keys=[_active_key_record(role="viewer")],
             get_member_returns=None,  # not a member of any project
         )
+        headers = _sign_proxy_headers("attacker", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "attacker", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )
@@ -684,9 +698,10 @@ class TestProjectIsolationOnReads:
         # get_member returns None specifically for project-b (lateral move)
         storage.get_member = AsyncMock(return_value=None)
 
+        headers = _sign_proxy_headers("user-in-a", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "user-in-a", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )
@@ -701,9 +716,16 @@ class TestProjectIsolationOnReads:
         from langsight.api.dependencies import get_active_project_id
 
         storage = _server_storage(active_db_keys=[])
+        # Mock get_user_by_id for admin verification
+        admin_user = MagicMock()
+        admin_user.active = True
+        admin_user.role = MagicMock(value="admin")
+        storage.get_user_by_id = AsyncMock(return_value=admin_user)
+
+        headers = _sign_proxy_headers("admin-1", "admin", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "admin-1", "X-User-Role": "admin"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )
@@ -722,9 +744,10 @@ class TestProjectIsolationOnReads:
             active_db_keys=[_active_key_record(role="viewer")],
             get_member_raises=Exception("membership query timed out"),
         )
+        headers = _sign_proxy_headers("user-1", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "user-1", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["env-key"],
             storage=storage,
         )

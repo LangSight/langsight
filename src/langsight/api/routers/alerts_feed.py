@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import status as http_status
 from pydantic import BaseModel
 
-from langsight.api.dependencies import get_active_project_id
+from langsight.api.dependencies import get_active_project_id, get_current_user_id, require_admin
 from langsight.storage.base import StorageBackend
 
 logger = structlog.get_logger()
@@ -156,33 +156,46 @@ async def get_alert_counts(
     )
 
 
-@router.post("/alerts/{alert_id}/ack", status_code=http_status.HTTP_200_OK)
+@router.post(
+    "/alerts/{alert_id}/ack",
+    status_code=http_status.HTTP_200_OK,
+    dependencies=[Depends(require_admin)],
+)
 async def ack_alert(
     alert_id: str,
-    body: AckRequest,
     request: Request,
     project_id: str | None = Depends(get_active_project_id),
+    caller_id: str | None = Depends(get_current_user_id),
 ) -> dict[str, Any]:
-    """Acknowledge a fired alert."""
+    """Acknowledge a fired alert. Admin only.
+
+    acked_by is server-bound from the authenticated identity — never
+    client-supplied — to prevent audit trail manipulation.
+    """
     storage = _storage(request)
     if not hasattr(storage, "ack_alert"):
         raise HTTPException(status_code=501, detail="Alert persistence not supported")
+    acked_by = caller_id or "admin"
     updated = await storage.ack_alert(
-        alert_id=alert_id, acked_by=body.acked_by, project_id=project_id or ""
+        alert_id=alert_id, acked_by=acked_by, project_id=project_id or ""
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Alert not found or already in final state")
-    logger.info("alerts.acked", alert_id=alert_id, acked_by=body.acked_by)
+    logger.info("alerts.acked", alert_id=alert_id, acked_by=acked_by)
     return {"ok": True, "alert_id": alert_id, "status": "acked"}
 
 
-@router.post("/alerts/{alert_id}/resolve", status_code=http_status.HTTP_200_OK)
+@router.post(
+    "/alerts/{alert_id}/resolve",
+    status_code=http_status.HTTP_200_OK,
+    dependencies=[Depends(require_admin)],
+)
 async def resolve_alert(
     alert_id: str,
     request: Request,
     project_id: str | None = Depends(get_active_project_id),
 ) -> dict[str, Any]:
-    """Resolve a fired alert."""
+    """Resolve a fired alert. Admin only."""
     storage = _storage(request)
     if not hasattr(storage, "resolve_alert"):
         raise HTTPException(status_code=501, detail="Alert persistence not supported")
@@ -193,14 +206,18 @@ async def resolve_alert(
     return {"ok": True, "alert_id": alert_id, "status": "resolved"}
 
 
-@router.post("/alerts/{alert_id}/snooze", status_code=http_status.HTTP_200_OK)
+@router.post(
+    "/alerts/{alert_id}/snooze",
+    status_code=http_status.HTTP_200_OK,
+    dependencies=[Depends(require_admin)],
+)
 async def snooze_alert(
     alert_id: str,
     body: SnoozeRequest,
     request: Request,
     project_id: str | None = Depends(get_active_project_id),
 ) -> dict[str, Any]:
-    """Snooze a fired alert for N minutes (15, 60, 240, or 1440)."""
+    """Snooze a fired alert for N minutes (15, 60, 240, or 1440). Admin only."""
     if body.minutes not in (15, 60, 240, 1440):
         raise HTTPException(
             status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,

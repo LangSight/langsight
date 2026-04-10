@@ -576,6 +576,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         # Exposing API schema unauthenticated leaks endpoint names and parameter shapes.
         docs_url="/docs" if os.environ.get("LANGSIGHT_ENV") == "development" else None,
         redoc_url="/redoc" if os.environ.get("LANGSIGHT_ENV") == "development" else None,
+        # Disable OpenAPI JSON endpoint in production — prevents unauthenticated
+        # endpoint enumeration even when Swagger/ReDoc are disabled.
+        openapi_url="/openapi.json" if os.environ.get("LANGSIGHT_ENV") == "development" else None,
     )
 
     # Prometheus metrics — request count + duration histograms
@@ -598,6 +601,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     class BodySizeLimitMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next: Any) -> StarletteResponse:
+            # Check Content-Length header when present (covers non-chunked requests)
             content_length = request.headers.get("content-length")
             if content_length and int(content_length) > _MAX_BODY_SIZE:
                 return StarletteJSONResponse(
@@ -606,6 +610,23 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                         "detail": f"Payload too large (max {_MAX_BODY_SIZE // 1024 // 1024} MB)"
                     },
                 )
+            # For chunked transfer encoding (no Content-Length), enforce the
+            # limit while reading the body to prevent memory exhaustion.
+            if not content_length and request.method in ("POST", "PUT", "PATCH"):
+                body_chunks: list[bytes] = []
+                body_size = 0
+                async for chunk in request.stream():
+                    body_size += len(chunk)
+                    if body_size > _MAX_BODY_SIZE:
+                        return StarletteJSONResponse(
+                            status_code=413,
+                            content={
+                                "detail": f"Payload too large (max {_MAX_BODY_SIZE // 1024 // 1024} MB)"
+                            },
+                        )
+                    body_chunks.append(chunk)
+                # Reassemble body so downstream handlers can read it
+                request._body = b"".join(body_chunks)  # type: ignore[attr-defined]
             resp: StarletteResponse = await call_next(request)
             return resp
 
@@ -638,6 +659,19 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         allow_headers=["Content-Type", "X-API-Key", "Authorization"],
         allow_credentials=True,
     )
+
+    # Trusted Host — prevent Host header spoofing (used in invite link generation).
+    # When LANGSIGHT_DASHBOARD_URL is set, the API ignores request.base_url for
+    # invite links. But TrustedHostMiddleware adds defence-in-depth: requests
+    # with forged Host headers are rejected with 400 before reaching any route.
+    _dashboard_url = _settings.dashboard_url
+    if _dashboard_url:
+        from starlette.middleware.trustedhost import TrustedHostMiddleware
+        from urllib.parse import urlparse
+
+        _parsed = urlparse(_dashboard_url)
+        _allowed = [_parsed.hostname or "localhost", "localhost", "127.0.0.1"]
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed)
 
     # All data routers require authentication (dependency applied at router level)
     _auth_dep = [Depends(verify_api_key)]
@@ -744,10 +778,10 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     @app.get(
         "/api/settings",
         tags=["settings"],
-        dependencies=[Depends(verify_api_key)],
+        dependencies=[Depends(verify_api_key), Depends(require_admin)],
     )
     async def get_settings() -> dict[str, Any]:
-        """Return global instance settings. Requires authentication."""
+        """Return global instance settings. Requires admin role."""
         import os as _os
 
         storage = getattr(app.state, "storage", None)

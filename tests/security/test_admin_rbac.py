@@ -18,9 +18,11 @@ import pytest
 from fastapi import HTTPException
 
 from tests.security.conftest import (
+    _TEST_PROXY_SECRET,
     _active_key_record,
     _make_request,
     _make_storage,
+    _sign_proxy_headers,
 )
 
 pytestmark = pytest.mark.security
@@ -31,37 +33,47 @@ pytestmark = pytest.mark.security
 # ---------------------------------------------------------------------------
 
 class TestRequireAdminDependency:
-    async def test_viewer_session_blocked(self) -> None:
+    async def test_viewer_session_blocked(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from langsight.api.dependencies import require_admin
 
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
+        headers = _sign_proxy_headers("viewer", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "viewer", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=[],
         )
         with pytest.raises(HTTPException) as exc_info:
             await require_admin(request=req, api_key=None)
         assert exc_info.value.status_code == 403
 
-    async def test_member_session_blocked(self) -> None:
+    async def test_member_session_blocked(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from langsight.api.dependencies import require_admin
 
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
+        headers = _sign_proxy_headers("member", "member", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "member", "X-User-Role": "member"},
+            headers=headers,
             api_keys=[],
         )
         with pytest.raises(HTTPException) as exc_info:
             await require_admin(request=req, api_key=None)
         assert exc_info.value.status_code == 403
 
-    async def test_admin_session_passes(self) -> None:
+    async def test_admin_session_passes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from langsight.api.dependencies import require_admin
+        from unittest.mock import AsyncMock, MagicMock
 
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
+        headers = _sign_proxy_headers("admin-1", "admin", _TEST_PROXY_SECRET)
+        storage = _make_storage()
+        storage.get_user_by_id = AsyncMock(return_value=MagicMock(active=True, role=MagicMock(value="admin")))
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "admin-1", "X-User-Role": "admin"},
+            headers=headers,
             api_keys=[],
+            storage=storage,
         )
         await require_admin(request=req, api_key=None)  # must not raise
 

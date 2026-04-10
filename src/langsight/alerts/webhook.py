@@ -78,10 +78,13 @@ async def send_alert(webhook_url: str, alert: Alert) -> bool:
         )
         return True
     except Exception as exc:  # noqa: BLE001
+        # Scrub exception message — httpx errors can contain the full
+        # webhook URL which may include tokens or secrets.
+        err_type = type(exc).__name__
         logger.warning(
             "webhook.delivery_failed",
             server=alert.server_name,
-            error=str(exc),
+            error_type=err_type,
         )
         return False
 

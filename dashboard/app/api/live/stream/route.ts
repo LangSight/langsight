@@ -7,10 +7,13 @@
  * each chunk immediately as it arrives from the backend.
  */
 import { auth } from "@/lib/auth";
+import { createHmac } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND = process.env.LANGSIGHT_API_URL ?? "http://localhost:8000";
 const BACKEND_API_KEY = (process.env.LANGSIGHT_API_KEY ?? "").split(",")[0].trim();
+// Shared secret for HMAC-signing proxy headers — must match LANGSIGHT_PROXY_SECRET on API side.
+const PROXY_SECRET = process.env.LANGSIGHT_PROXY_SECRET ?? "";
 
 type SessionWithMeta = { userId?: string; userRole?: string };
 
@@ -31,6 +34,16 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (userId) headers["X-User-Id"] = userId;
   if (userRole) headers["X-User-Role"] = userRole;
   if (BACKEND_API_KEY) headers["X-API-Key"] = BACKEND_API_KEY;
+
+  // HMAC-sign the proxy headers so FastAPI can verify they came from this proxy,
+  // not a forged request from within the trusted CIDR.
+  if (PROXY_SECRET && userId) {
+    const ts = Math.floor(Date.now() / 1000).toString();
+    const payload = `${userId}:${userRole ?? ""}:${ts}`;
+    const sig = createHmac("sha256", PROXY_SECRET).update(payload).digest("hex");
+    headers["X-Proxy-Timestamp"] = ts;
+    headers["X-Proxy-Signature"] = sig;
+  }
 
   let res: Response;
   try {

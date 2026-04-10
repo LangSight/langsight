@@ -13,12 +13,33 @@ All tests run offline — no Docker, no real DB, no network.
 from __future__ import annotations
 
 import hashlib
+import hmac
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
 
 pytestmark = pytest.mark.unit
+
+# ---------------------------------------------------------------------------
+# HMAC signing for proxy headers
+# ---------------------------------------------------------------------------
+
+_TEST_PROXY_SECRET = "test-secret-for-unit-tests-32chars!"
+
+
+def _sign_proxy_headers(user_id: str, user_role: str, secret: str) -> dict[str, str]:
+    """Generate signed proxy headers for session auth testing."""
+    ts = str(int(time.time()))
+    payload = f"{user_id}:{user_role}:{ts}"
+    sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return {
+        "X-User-Id": user_id,
+        "X-User-Role": user_role,
+        "X-Proxy-Timestamp": ts,
+        "X-Proxy-Signature": sig,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -291,14 +312,17 @@ class TestAdminAndAuthDisabled:
         result = await get_active_project_id(request=req, project_id=None)
         assert result is None
 
-    async def test_session_admin_no_project_returns_none(self) -> None:
+    async def test_session_admin_no_project_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Session user with role=admin + no project_id → None."""
         from langsight.api.dependencies import get_active_project_id
 
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
         storage = _make_storage(db_keys=[])
+        storage.get_user_by_id = AsyncMock(return_value=MagicMock(active=True, role=MagicMock(value="admin")))
+        headers = _sign_proxy_headers("admin-user", "admin", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",  # loopback = trusted proxy
-            headers={"X-User-Id": "admin-user", "X-User-Role": "admin"},
+            headers=headers,
             env_keys=["some-env-key"],
             storage=storage,
         )

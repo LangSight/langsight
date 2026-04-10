@@ -458,7 +458,24 @@ async def ingest_otlp(request: Request) -> dict[str, Any]:
 
     storage = getattr(request.app.state, "storage", None)
     if storage is not None and hasattr(storage, "save_tool_call_spans"):
-        await storage.save_tool_call_spans(spans)
+        try:
+            async with _INSERT_SEM:
+                await storage.save_tool_call_spans(spans)
+        except Exception as exc:  # noqa: BLE001
+            err_str = str(exc)
+            if "241" in err_str or "MEMORY_LIMIT_EXCEEDED" in err_str:
+                logger.warning(
+                    "traces.clickhouse_oom",
+                    span_count=len(spans),
+                    error=err_str[:200],
+                    path="otlp",
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail="Storage temporarily unavailable — retry after 5 seconds",
+                    headers={"Retry-After": "5"},
+                ) from None
+            raise
 
     return {"accepted": len(spans)}
 

@@ -40,7 +40,10 @@ Relationship to existing test files:
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import ipaddress
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -55,6 +58,25 @@ from langsight.api.main import create_app
 from langsight.config import load_config
 
 pytestmark = pytest.mark.security
+
+# ---------------------------------------------------------------------------
+# HMAC signing for proxy headers
+# ---------------------------------------------------------------------------
+
+_TEST_PROXY_SECRET = "test-secret-for-unit-tests-32chars!"
+
+
+def _sign_proxy_headers(user_id: str, user_role: str, secret: str) -> dict[str, str]:
+    """Generate signed proxy headers for session auth testing."""
+    ts = str(int(time.time()))
+    payload = f"{user_id}:{user_role}:{ts}"
+    sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return {
+        "X-User-Id": user_id,
+        "X-User-Role": user_role,
+        "X-Proxy-Timestamp": ts,
+        "X-Proxy-Signature": sig,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -193,28 +215,32 @@ class TestRequireAdminOnServerEndpoints:
     independently of the get_active_project_id dependency ordering in PUT/DELETE.
     """
 
-    async def test_viewer_session_blocked_by_require_admin(self) -> None:
+    async def test_viewer_session_blocked_by_require_admin(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Viewer-role session user must receive 403 from require_admin."""
         from langsight.api.dependencies import require_admin
         from tests.security.conftest import _make_request, _make_storage
 
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
+        headers = _sign_proxy_headers("viewer-1", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "viewer-1", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["env-key"],
         )
         with pytest.raises(Exception) as exc_info:
             await require_admin(request=req, api_key=None)
         assert exc_info.value.status_code == 403
 
-    async def test_member_session_blocked_by_require_admin(self) -> None:
+    async def test_member_session_blocked_by_require_admin(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """member role (not admin) also blocked with 403."""
         from langsight.api.dependencies import require_admin
         from tests.security.conftest import _make_request
 
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
+        headers = _sign_proxy_headers("member-1", "member", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "member-1", "X-User-Role": "member"},
+            headers=headers,
             api_keys=["env-key"],
         )
         with pytest.raises(Exception) as exc_info:
@@ -237,15 +263,20 @@ class TestRequireAdminOnServerEndpoints:
             await require_admin(request=req, api_key=None)
         assert exc_info.value.status_code == 401
 
-    async def test_admin_session_passes_require_admin(self) -> None:
+    async def test_admin_session_passes_require_admin(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Admin session user passes require_admin without error."""
         from langsight.api.dependencies import require_admin
-        from tests.security.conftest import _make_request
+        from tests.security.conftest import _make_request, _make_storage
 
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
+        headers = _sign_proxy_headers("admin-1", "admin", _TEST_PROXY_SECRET)
+        storage = _make_storage()
+        storage.get_user_by_id = AsyncMock(return_value=MagicMock(active=True, role=MagicMock(value="admin")))
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "admin-1", "X-User-Role": "admin"},
+            headers=headers,
             api_keys=["env-key"],
+            storage=storage,
         )
         await require_admin(request=req, api_key=None)  # must not raise
 
@@ -514,7 +545,7 @@ class TestCrossProjectServerRead:
     """
 
     async def test_non_admin_without_project_id_gets_400_on_list(
-        self, auth_client
+        self, auth_client, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Non-admin session user without project_id must get 400 on GET /api/servers/metadata.
 
@@ -522,25 +553,28 @@ class TestCrossProjectServerRead:
         returning all servers across all projects.
         """
         c, storage, app = auth_client
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
         storage.get_all_server_metadata = AsyncMock(return_value=[])
         # Ensure auth is enabled so the non-admin guard fires
         viewer_rec = _active_viewer_key_record()
         storage.list_api_keys = AsyncMock(return_value=[viewer_rec])
         app.state.trusted_proxy_networks = [ipaddress.ip_network("127.0.0.1/32")]
 
+        headers = _sign_proxy_headers("viewer-1", "viewer", _TEST_PROXY_SECRET)
         response = await c.get(
             "/api/servers/metadata",
-            headers={"X-User-Id": "viewer-1", "X-User-Role": "viewer"},
+            headers=headers,
         )
         assert response.status_code == 400
         # Storage must NOT have been queried — denial was pre-storage
         storage.get_all_server_metadata.assert_not_called()
 
     async def test_non_member_cannot_read_foreign_project_servers(
-        self, auth_client
+        self, auth_client, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Viewer who is not a member of project-B gets 404 when specifying project-B."""
         c, storage, app = auth_client
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
         storage.get_all_server_metadata = AsyncMock(
             return_value=[_server_row("victim-server", project_id="project-b")]
         )
@@ -550,9 +584,10 @@ class TestCrossProjectServerRead:
         storage.get_member = AsyncMock(return_value=None)
         app.state.trusted_proxy_networks = [ipaddress.ip_network("127.0.0.1/32")]
 
+        headers = _sign_proxy_headers("attacker", "viewer", _TEST_PROXY_SECRET)
         response = await c.get(
             "/api/servers/metadata?project_id=project-b",
-            headers={"X-User-Id": "attacker", "X-User-Role": "viewer"},
+            headers=headers,
         )
         # get_active_project_id must deny before storage is reached
         assert response.status_code == 404
@@ -591,45 +626,49 @@ class TestCrossProjectServerWrite:
     """
 
     async def test_viewer_cannot_register_server_access_denied(
-        self, auth_client
+        self, auth_client, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Viewer session attempting PUT on a foreign project is denied (403 or 404)."""
         c, storage, app = auth_client
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
         storage.upsert_server_metadata = AsyncMock(return_value=_server_row("srv"))
         viewer_rec = _active_viewer_key_record()
         storage.list_api_keys = AsyncMock(return_value=[viewer_rec])
         storage.get_member = AsyncMock(return_value=None)
         app.state.trusted_proxy_networks = [ipaddress.ip_network("127.0.0.1/32")]
 
+        headers = _sign_proxy_headers("attacker", "viewer", _TEST_PROXY_SECRET)
         response = await c.put(
             "/api/servers/metadata/new-srv?project_id=victim-project",
             json={"description": "PWNED"},
-            headers={"X-User-Id": "attacker", "X-User-Role": "viewer"},
+            headers=headers,
         )
         # Both 403 (require_admin) and 404 (membership) are correct denial codes
         assert response.status_code in (403, 404)
         storage.upsert_server_metadata.assert_not_called()
 
     async def test_viewer_cannot_delete_server_access_denied(
-        self, auth_client
+        self, auth_client, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Viewer session attempting DELETE on a foreign project is denied (403 or 404)."""
         c, storage, app = auth_client
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
         storage.delete_server_metadata = AsyncMock(return_value=True)
         viewer_rec = _active_viewer_key_record()
         storage.list_api_keys = AsyncMock(return_value=[viewer_rec])
         storage.get_member = AsyncMock(return_value=None)
         app.state.trusted_proxy_networks = [ipaddress.ip_network("127.0.0.1/32")]
 
+        headers = _sign_proxy_headers("attacker", "viewer", _TEST_PROXY_SECRET)
         response = await c.delete(
             "/api/servers/metadata/victim-server?project_id=victim-project",
-            headers={"X-User-Id": "attacker", "X-User-Role": "viewer"},
+            headers=headers,
         )
         assert response.status_code in (403, 404)
         storage.delete_server_metadata.assert_not_called()
 
     async def test_require_admin_blocks_viewer_before_storage_for_viewer_role(
-        self,
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Confirm that require_admin independently returns 403 for viewer role.
 
@@ -638,9 +677,11 @@ class TestCrossProjectServerWrite:
         from langsight.api.dependencies import require_admin
         from tests.security.conftest import _make_request, _make_storage
 
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
+        headers = _sign_proxy_headers("viewer", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "viewer", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["env-key"],
         )
         with pytest.raises(Exception) as exc_info:
@@ -1005,7 +1046,7 @@ class TestProxyHeaderTrustOnServerEndpoints:
     meaning the session-auth path is fully skipped.
     """
 
-    def test_x_user_role_alone_without_user_id_does_not_grant_admin(self) -> None:
+    def test_x_user_role_alone_without_user_id_does_not_grant_admin(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """X-User-Role: admin without X-User-Id must not yield a non-None user_id.
 
         require_admin and get_active_project_id both require user_id to be set
@@ -1013,6 +1054,7 @@ class TestProxyHeaderTrustOnServerEndpoints:
         """
         from langsight.api.dependencies import _get_session_user
 
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
         scope = {
             "type": "http",
             "method": "PUT",
@@ -1035,19 +1077,28 @@ class TestProxyHeaderTrustOnServerEndpoints:
             "from a trusted IP — role without identity is not sufficient."
         )
 
-    def test_user_id_header_without_role_has_no_role(self) -> None:
+    def test_user_id_header_without_role_has_no_role(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """X-User-Id present but X-User-Role absent → user_role is None.
 
         This must not default to admin or any other role.
         """
         from langsight.api.dependencies import _get_session_user
 
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
+        # Sign with empty role string
+        headers_dict = _sign_proxy_headers("some-user", "", _TEST_PROXY_SECRET)
+        # Convert to scope headers format, excluding X-User-Role
+        headers_list = [
+            (b"x-user-id", headers_dict["X-User-Id"].encode()),
+            (b"x-proxy-timestamp", headers_dict["X-Proxy-Timestamp"].encode()),
+            (b"x-proxy-signature", headers_dict["X-Proxy-Signature"].encode()),
+        ]
         scope = {
             "type": "http",
             "method": "GET",
             "path": "/api/test",
             "query_string": b"",
-            "headers": [(b"x-user-id", b"some-user")],  # no X-User-Role
+            "headers": headers_list,
             "client": ("127.0.0.1", 9000),
         }
         app_inner = Starlette()
@@ -1064,7 +1115,7 @@ class TestProxyHeaderTrustOnServerEndpoints:
             "must not default to admin."
         )
 
-    def test_admin_headers_from_untrusted_ip_are_silently_ignored(self) -> None:
+    def test_admin_headers_from_untrusted_ip_are_silently_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """X-User-Id: admin + X-User-Role: admin from an external IP → (None, None).
 
         If these headers were trusted from external IPs, any attacker with
@@ -1072,6 +1123,7 @@ class TestProxyHeaderTrustOnServerEndpoints:
         """
         from langsight.api.dependencies import _get_session_user
 
+        monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
         scope = {
             "type": "http",
             "method": "PUT",

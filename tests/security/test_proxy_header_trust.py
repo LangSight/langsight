@@ -11,11 +11,19 @@ headers claiming to be admin.
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 
-from tests.security.conftest import _make_request
+from tests.security.conftest import _TEST_PROXY_SECRET, _make_request, _sign_proxy_headers
 
 pytestmark = pytest.mark.security
+
+
+@pytest.fixture(autouse=True)
+def _set_proxy_secret(monkeypatch):
+    """Set LANGSIGHT_PROXY_SECRET for all tests in this module."""
+    monkeypatch.setenv("LANGSIGHT_PROXY_SECRET", _TEST_PROXY_SECRET)
 
 
 # ---------------------------------------------------------------------------
@@ -42,9 +50,10 @@ class TestProxyHeaderExtraction:
         """Dashboard proxy in Docker (172.18.0.x) must be trusted when CIDR configured."""
         from langsight.api.dependencies import _get_session_user
 
+        headers = _sign_proxy_headers("real-user", "admin", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="172.18.0.5",
-            headers={"X-User-Id": "real-user", "X-User-Role": "admin"},
+            headers=headers,
             trusted_cidrs="127.0.0.1/32,172.16.0.0/12",
         )
         user_id, user_role = _get_session_user(req)
@@ -54,9 +63,10 @@ class TestProxyHeaderExtraction:
     def test_admin_header_from_loopback_is_trusted(self) -> None:
         from langsight.api.dependencies import _get_session_user
 
+        headers = _sign_proxy_headers("dashboard-user", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "dashboard-user", "X-User-Role": "viewer"},
+            headers=headers,
         )
         user_id, user_role = _get_session_user(req)
         assert user_id == "dashboard-user"
@@ -123,9 +133,10 @@ class TestSpoofedHeadersDoNotBypassAuth:
         """Dashboard user via loopback proxy — no X-API-Key needed, session is auth."""
         from langsight.api.dependencies import verify_api_key
 
+        headers = _sign_proxy_headers("user-123", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="127.0.0.1",
-            headers={"X-User-Id": "user-123", "X-User-Role": "viewer"},
+            headers=headers,
             api_keys=["some-configured-key"],
         )
         # Session from trusted proxy is sufficient — must not raise
@@ -141,9 +152,10 @@ class TestIpBoundaryEdgeCases:
         from langsight.api.dependencies import _get_session_user
 
         # 10.0.0.1 is inside 10.0.0.0/8
+        headers = _sign_proxy_headers("inside-user", "viewer", _TEST_PROXY_SECRET)
         req = _make_request(
             client_ip="10.0.0.1",
-            headers={"X-User-Id": "inside-user", "X-User-Role": "viewer"},
+            headers=headers,
             trusted_cidrs="10.0.0.0/8",
         )
         user_id, _ = _get_session_user(req)
