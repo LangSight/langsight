@@ -14,18 +14,22 @@ from __future__ import annotations
 import base64
 import hashlib
 import os
+from typing import TYPE_CHECKING
 
 import structlog
+
+if TYPE_CHECKING:
+    from cryptography.fernet import Fernet as _FernetType
 
 logger = structlog.get_logger()
 
 _PREFIX = "enc:fernet:"
 
-_fernet_instance: object | None = None  # lazy — avoid import cost if unused
+_fernet_instance: _FernetType | None = None  # lazy — avoid import cost if unused
 _encryption_available: bool = False
 
 
-def _get_fernet() -> object | None:
+def _get_fernet() -> _FernetType | None:
     """Return a Fernet instance keyed from LANGSIGHT_SECRET_KEY, or None."""
     global _fernet_instance, _encryption_available  # noqa: PLW0603
     if _fernet_instance is not None:
@@ -72,7 +76,7 @@ def encrypt_value(plaintext: str) -> str:
     f = _get_fernet()
     if f is None:
         return plaintext
-    token = f.encrypt(plaintext.encode())  # type: ignore[union-attr]
+    token = f.encrypt(plaintext.encode())
     return _PREFIX + token.decode()
 
 
@@ -92,7 +96,7 @@ def decrypt_value(stored: str) -> str:
         return ""
     try:
         ciphertext = stored[len(_PREFIX) :].encode()
-        return f.decrypt(ciphertext).decode()  # type: ignore[union-attr]
+        return f.decrypt(ciphertext).decode()
     except Exception:  # noqa: BLE001
         logger.error("crypto.decrypt_failed", hint="Stored value may be corrupted or key changed")
         return ""
