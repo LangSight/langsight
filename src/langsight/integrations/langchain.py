@@ -93,10 +93,12 @@ _SKIP_NODE_NAMES = frozenset(
 
 _MAX_FIELD_LEN = 4000
 
+
 def _truncate(text: str, max_len: int = _MAX_FIELD_LEN) -> str:
     if len(text) <= max_len:
         return text
     return text[:max_len] + "...[truncated]"
+
 
 def _safe_json(obj: Any, max_len: int = _MAX_FIELD_LEN) -> str:
     try:
@@ -104,6 +106,7 @@ def _safe_json(obj: Any, max_len: int = _MAX_FIELD_LEN) -> str:
     except (TypeError, ValueError, OverflowError):
         text = str(obj)
     return _truncate(text, max_len)
+
 
 def _serialize_messages(messages: list[list[Any]], max_len: int = _MAX_FIELD_LEN) -> str:
     parts: list[str] = []
@@ -177,7 +180,7 @@ class _ActiveChain:
     is_agent: bool
     agent_span_id: str | None = None  # span_id of the agent span we emitted
     parent_span_id: str | None = None  # parent agent's span_id
-    is_langgraph_node: bool = False    # True when name came from metadata["langgraph_node"]
+    is_langgraph_node: bool = False  # True when name came from metadata["langgraph_node"]
     input_data: dict[str, Any] | None = None
 
 
@@ -411,6 +414,7 @@ class LangSightLangChainCallback(BaseIntegration):
         # --- Tier 2: Budget violation flag check (set in on_llm_end) ---
         if self._budget_violated and self._budget_violation is not None:
             from langsight.exceptions import BudgetExceededError
+
             violation = self._budget_violation
             raise BudgetExceededError(
                 limit_type=violation.limit_type,
@@ -432,7 +436,11 @@ class LangSightLangChainCallback(BaseIntegration):
 
             # Deduplication: skip duplicate on_chain_start for same LangGraph node
             node_from_meta = (metadata or {}).get("langgraph_node")
-            if node_from_meta and agent_name == node_from_meta and agent_name in self._active_lg_nodes:
+            if (
+                node_from_meta
+                and agent_name == node_from_meta
+                and agent_name in self._active_lg_nodes
+            ):
                 self._active_chains[key] = _ActiveChain(
                     name=agent_name,
                     started_at=datetime.now(UTC),
@@ -455,21 +463,24 @@ class LangSightLangChainCallback(BaseIntegration):
                     # Emit a prevented span
                     try:
                         if self._client is not None:
-                            self._client.buffer_span(ToolCallSpan(
-                                server_name="langgraph",
-                                tool_name=agent_name,
-                                started_at=datetime.now(UTC),
-                                ended_at=datetime.now(UTC),
-                                status=ToolCallStatus.PREVENTED,
-                                error=f"node_iteration_limit: {agent_name} ran {count} times (limit: {self._max_node_iterations})",
-                                session_id=self._session_id,
-                                trace_id=self._trace_id,
-                                span_type="node",
-                                project_id=getattr(self._client, "_project_id", None) or "",
-                            ))
+                            self._client.buffer_span(
+                                ToolCallSpan(
+                                    server_name="langgraph",
+                                    tool_name=agent_name,
+                                    started_at=datetime.now(UTC),
+                                    ended_at=datetime.now(UTC),
+                                    status=ToolCallStatus.PREVENTED,
+                                    error=f"node_iteration_limit: {agent_name} ran {count} times (limit: {self._max_node_iterations})",
+                                    session_id=self._session_id,
+                                    trace_id=self._trace_id,
+                                    span_type="node",
+                                    project_id=getattr(self._client, "_project_id", None) or "",
+                                )
+                            )
                     except Exception:  # noqa: BLE001
                         pass
                     from langsight.exceptions import GraphLoopDetectedError
+
                     raise GraphLoopDetectedError(
                         node_name=agent_name,
                         iteration_count=count,
@@ -825,7 +836,11 @@ class LangSightLangChainCallback(BaseIntegration):
                         # Extract thinking tokens for models that provide total_tokens
                         # (Gemini: thinking = total - input - output)
                         total_tokens_raw = um.get("total_tokens")
-                        if total_tokens_raw and input_tokens is not None and output_tokens is not None:
+                        if (
+                            total_tokens_raw
+                            and input_tokens is not None
+                            and output_tokens is not None
+                        ):
                             thinking = total_tokens_raw - input_tokens - output_tokens
                             if thinking > 0:
                                 thinking_tokens = thinking
@@ -872,19 +887,17 @@ class LangSightLangChainCallback(BaseIntegration):
             if not pricing:
                 for prefix in ("models/", "anthropic/", "openai/", "google/", "meta/"):
                     if _mid.startswith(prefix):
-                        pricing = self._pricing_table.get(_mid[len(prefix):])
+                        pricing = self._pricing_table.get(_mid[len(prefix) :])
                         break
             if pricing:
-                cost_usd = (
-                    (input_tokens or 0) / 1_000_000 * pricing[0]
-                    + (output_tokens or 0) / 1_000_000 * pricing[1]
-                )
+                cost_usd = (input_tokens or 0) / 1_000_000 * pricing[0] + (
+                    output_tokens or 0
+                ) / 1_000_000 * pricing[1]
             else:
                 # Conservative fallback
-                cost_usd = (
-                    (input_tokens or 0) / 1_000_000 * 10.0
-                    + (output_tokens or 0) / 1_000_000 * 30.0
-                )
+                cost_usd = (input_tokens or 0) / 1_000_000 * 10.0 + (
+                    output_tokens or 0
+                ) / 1_000_000 * 30.0
 
             violation = self._budget.record_step_and_cost(cost_usd)
             if violation is not None:
@@ -902,18 +915,20 @@ class LangSightLangChainCallback(BaseIntegration):
                 # Emit prevented span
                 try:
                     if self._client is not None:
-                        self._client.buffer_span(ToolCallSpan(
-                            server_name="langgraph",
-                            tool_name="budget_exceeded",
-                            started_at=datetime.now(UTC),
-                            ended_at=datetime.now(UTC),
-                            status=ToolCallStatus.PREVENTED,
-                            error=f"budget_exceeded: {violation.limit_type}={violation.actual_value} (limit: {violation.limit_value})",
-                            session_id=self._session_id,
-                            trace_id=self._trace_id,
-                            span_type="agent",
-                            project_id=getattr(self._client, "_project_id", None) or "",
-                        ))
+                        self._client.buffer_span(
+                            ToolCallSpan(
+                                server_name="langgraph",
+                                tool_name="budget_exceeded",
+                                started_at=datetime.now(UTC),
+                                ended_at=datetime.now(UTC),
+                                status=ToolCallStatus.PREVENTED,
+                                error=f"budget_exceeded: {violation.limit_type}={violation.actual_value} (limit: {violation.limit_value})",
+                                session_id=self._session_id,
+                                trace_id=self._trace_id,
+                                span_type="agent",
+                                project_id=getattr(self._client, "_project_id", None) or "",
+                            )
+                        )
                 except Exception:  # noqa: BLE001
                     pass
 

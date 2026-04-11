@@ -158,7 +158,7 @@ def _normalize_model_id(model_id: str) -> str:
     # OpenAI: "openai/gpt-4o" → "gpt-4o"
     for prefix in ("models/", "anthropic/", "openai/", "google/", "meta/"):
         if model_id.startswith(prefix):
-            return model_id[len(prefix):]
+            return model_id[len(prefix) :]
     return model_id
 
 
@@ -188,7 +188,9 @@ class ModelPricingLookup:
             return self._index.get(normalized)
         return None
 
-    def cost_for(self, model_id: str, input_tokens: int, output_tokens: int, thinking_tokens: int = 0) -> float:
+    def cost_for(
+        self, model_id: str, input_tokens: int, output_tokens: int, thinking_tokens: int = 0
+    ) -> float:
         """Return total cost in USD for given token counts."""
         entry = self._resolve(model_id)
         if entry is None:

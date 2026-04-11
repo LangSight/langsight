@@ -36,12 +36,12 @@ class ToolCallStatus(StrEnum):
 #               the pending-tool queue so the real tool_call can claim it.
 SpanType = Literal[
     "tool_call",  # MCP/tool execution — external server call
-    "node",       # workflow node execution — LangGraph node, CrewAI task step, etc.
-    "agent",      # LLM generation or agent lifecycle
-    "handoff",    # agent-to-agent delegation
-    "llm_intent", # LLM decided to call a tool (not actual execution)
+    "node",  # workflow node execution — LangGraph node, CrewAI task step, etc.
+    "agent",  # LLM generation or agent lifecycle
+    "handoff",  # agent-to-agent delegation
+    "llm_intent",  # LLM decided to call a tool (not actual execution)
     "user_message",  # human input mid-session (HITL, clarification, approval)
-    "topology",   # graph structure snapshot from StateGraph.compile()
+    "topology",  # graph structure snapshot from StateGraph.compile()
 ]
 
 # Lineage provenance — how parent/child was determined

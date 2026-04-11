@@ -176,7 +176,7 @@ async def list_sessions(
         if not prices:
             for prefix in ("models/", "anthropic/", "openai/", "google/", "meta/"):
                 if mid.startswith(prefix):
-                    prices = pricing.get(mid[len(prefix):])
+                    prices = pricing.get(mid[len(prefix) :])
                     break
         if not prices:
             return None

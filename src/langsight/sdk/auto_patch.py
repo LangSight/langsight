@@ -1220,29 +1220,33 @@ def _patch_langgraph() -> None:
     def _extract_topology(compiled_graph: Any) -> dict[str, Any] | None:
         """Extract graph structure from a CompiledStateGraph's builder."""
         try:
-            builder = getattr(compiled_graph, 'builder', None)
+            builder = getattr(compiled_graph, "builder", None)
             if builder is None:
                 return None
-            nodes = [name for name in (getattr(compiled_graph, 'nodes', {}) or {}).keys()]
+            nodes = [name for name in (getattr(compiled_graph, "nodes", {}) or {}).keys()]
             edges = []
-            for src, tgt in (getattr(builder, 'edges', set()) or set()):
+            for src, tgt in getattr(builder, "edges", set()) or set():
                 edges.append({"source": str(src), "target": str(tgt)})
             conditional_edges = []
-            branches = getattr(builder, 'branches', {}) or {}
+            branches = getattr(builder, "branches", {}) or {}
             for source_node, branch_dict in branches.items():
                 for _branch_name, branch_obj in branch_dict.items():
-                    ends = getattr(branch_obj, 'ends', None)
+                    ends = getattr(branch_obj, "ends", None)
                     if ends and isinstance(ends, dict):
-                        conditional_edges.append({
-                            "source": str(source_node),
-                            "targets": {str(k): str(v) for k, v in ends.items()},
-                        })
+                        conditional_edges.append(
+                            {
+                                "source": str(source_node),
+                                "targets": {str(k): str(v) for k, v in ends.items()},
+                            }
+                        )
                     else:
-                        conditional_edges.append({
-                            "source": str(source_node),
-                            "targets": {},
-                        })
-            entry_point = str(getattr(builder, 'entry_point', '__start__') or '__start__')
+                        conditional_edges.append(
+                            {
+                                "source": str(source_node),
+                                "targets": {},
+                            }
+                        )
+            entry_point = str(getattr(builder, "entry_point", "__start__") or "__start__")
             return {
                 "nodes": nodes,
                 "edges": edges,
@@ -1260,7 +1264,7 @@ def _patch_langgraph() -> None:
             from langgraph.graph.state import StateGraph
         except ImportError:
             return
-        if hasattr(StateGraph.compile, '_langsight_patched'):
+        if hasattr(StateGraph.compile, "_langsight_patched"):
             return
         orig_compile = StateGraph.compile
         _originals["langgraph_compile"] = orig_compile
@@ -1270,7 +1274,7 @@ def _patch_langgraph() -> None:
             topology = _extract_topology(compiled)
             if topology is not None:
                 try:
-                    object.__setattr__(compiled, '_langsight_topology', topology)
+                    object.__setattr__(compiled, "_langsight_topology", topology)
                 except (TypeError, AttributeError):
                     compiled._langsight_topology = topology  # type: ignore[attr-defined]
             return compiled
@@ -1282,13 +1286,19 @@ def _patch_langgraph() -> None:
 
     # --- Helper: emit topology span ------------------------------------------
 
-    def _emit_topology_span(topology: dict[str, Any], session_id: str | None, trace_id: str | None, agent_name: str | None) -> None:
+    def _emit_topology_span(
+        topology: dict[str, Any],
+        session_id: str | None,
+        trace_id: str | None,
+        agent_name: str | None,
+    ) -> None:
         """Emit a span_type='topology' span with graph structure."""
         client = _resolve_client()
         if client is None:
             return
         try:
             from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+
             span = ToolCallSpan.record(
                 server_name="langgraph",
                 tool_name="graph_topology",
@@ -1299,7 +1309,7 @@ def _patch_langgraph() -> None:
                 agent_name=agent_name,
                 span_type="topology",
                 input_args=topology,
-                project_id=getattr(client, '_project_id', None) or '',
+                project_id=getattr(client, "_project_id", None) or "",
             )
             client.buffer_span(span)
         except Exception:  # noqa: BLE001
@@ -1319,8 +1329,9 @@ def _patch_langgraph() -> None:
 
         # Tier 2: Create per-run budget if client has budget config
         budget = None
-        if getattr(client, '_budget_config', None) is not None:
+        if getattr(client, "_budget_config", None) is not None:
             from langsight.sdk.budget import SessionBudget
+
             budget = SessionBudget(client._budget_config)
 
         return LangSightLangChainCallback(
@@ -1329,9 +1340,9 @@ def _patch_langgraph() -> None:
             agent_name=_agent_ctx.get() or None,
             session_id=_session_ctx.get() or None,
             trace_id=_trace_ctx.get() or None,
-            max_node_iterations=getattr(client, '_max_node_iterations', 10),
+            max_node_iterations=getattr(client, "_max_node_iterations", 10),
             budget=budget,
-            pricing_table=getattr(client, '_pricing_table', None),
+            pricing_table=getattr(client, "_pricing_table", None),
         )
 
     # --- Helper: inject callback into config --------------------------------
@@ -1357,9 +1368,7 @@ def _patch_langgraph() -> None:
                         LangSightLangChainCallback,
                     )
 
-                    if any(
-                        isinstance(cb, LangSightLangChainCallback) for cb in existing
-                    ):
+                    if any(isinstance(cb, LangSightLangChainCallback) for cb in existing):
                         return config, None
                 except ImportError:
                     pass
@@ -1370,7 +1379,7 @@ def _patch_langgraph() -> None:
 
         # Emit topology span if graph has it
         if self_graph is not None:
-            topo = getattr(self_graph, '_langsight_topology', None)
+            topo = getattr(self_graph, "_langsight_topology", None)
             if topo is not None:
                 _emit_topology_span(
                     topo,
@@ -1380,7 +1389,7 @@ def _patch_langgraph() -> None:
                 )
                 # Only emit once per graph instance
                 try:
-                    object.__setattr__(self_graph, '_langsight_topology', None)
+                    object.__setattr__(self_graph, "_langsight_topology", None)
                 except (TypeError, AttributeError):
                     self_graph._langsight_topology = None  # type: ignore[attr-defined]
 
@@ -1856,6 +1865,7 @@ def unpatch() -> None:
 
     try:
         from langgraph.graph.state import StateGraph
+
         if "langgraph_compile" in _originals:
             StateGraph.compile = _originals.pop("langgraph_compile")  # type: ignore[method-assign]
     except (ImportError, AttributeError):
