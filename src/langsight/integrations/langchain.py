@@ -40,7 +40,7 @@ import structlog
 
 from langsight.integrations.base import BaseIntegration
 from langsight.sdk.client import LangSightClient
-from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+from langsight.sdk.models import SpanType, ToolCallSpan, ToolCallStatus
 
 logger = structlog.get_logger()
 
@@ -547,7 +547,7 @@ class LangSightLangChainCallback(BaseIntegration):
 
         # LangGraph nodes are discrete workflow steps — span_type='node'.
         # Graph roots, session wrappers, and LLM spans stay as span_type='agent'.
-        span_type = "node" if chain.is_langgraph_node else "agent"
+        span_type: SpanType = "node" if chain.is_langgraph_node else "agent"
 
         input_args: dict[str, Any] | None = None
         output_result: str | None = None
@@ -599,7 +599,7 @@ class LangSightLangChainCallback(BaseIntegration):
         if chain.is_langgraph_node:
             self._active_lg_nodes.discard(chain.name)
 
-        span_type = "node" if chain.is_langgraph_node else "agent"
+        span_type: SpanType = "node" if chain.is_langgraph_node else "agent"
 
         ended_at = datetime.now(UTC)
         span = ToolCallSpan(

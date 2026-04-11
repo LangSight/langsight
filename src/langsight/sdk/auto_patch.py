@@ -1211,7 +1211,7 @@ def _patch_langgraph() -> None:
         return
 
     try:
-        from langgraph.pregel import Pregel
+        from langgraph.pregel import Pregel  # type: ignore[import-not-found]
     except ImportError:
         return
 
@@ -1261,7 +1261,7 @@ def _patch_langgraph() -> None:
     def _patch_langgraph_compile() -> None:
         """Patch StateGraph.compile() to stash topology on the compiled graph."""
         try:
-            from langgraph.graph.state import StateGraph
+            from langgraph.graph.state import StateGraph  # type: ignore[import-not-found]
         except ImportError:
             return
         if hasattr(StateGraph.compile, "_langsight_patched"):
@@ -1276,11 +1276,11 @@ def _patch_langgraph() -> None:
                 try:
                     object.__setattr__(compiled, "_langsight_topology", topology)
                 except (TypeError, AttributeError):
-                    compiled._langsight_topology = topology  # type: ignore[attr-defined]
+                    compiled._langsight_topology = topology
             return compiled
 
         _patched_compile._langsight_patched = True  # type: ignore[attr-defined]
-        StateGraph.compile = _patched_compile  # type: ignore[method-assign]
+        StateGraph.compile = _patched_compile
 
     _patch_langgraph_compile()
 
@@ -1391,7 +1391,7 @@ def _patch_langgraph() -> None:
                 try:
                     object.__setattr__(self_graph, "_langsight_topology", None)
                 except (TypeError, AttributeError):
-                    self_graph._langsight_topology = None  # type: ignore[attr-defined]
+                    self_graph._langsight_topology = None
 
         # Build config with our callback prepended
         if config is None:
@@ -1469,7 +1469,7 @@ def _patch_langgraph() -> None:
             _lg_callback_injected.reset(token)
             _try_flush_lg()
 
-    Pregel.stream = _patched_stream  # type: ignore[method-assign]
+    Pregel.stream = _patched_stream
 
     # ── Patch astream() ────────────────────────────────────────────────────
 
@@ -1496,7 +1496,7 @@ def _patch_langgraph() -> None:
             _lg_callback_injected.reset(token)
             await _try_flush_lg_async()
 
-    Pregel.astream = _patched_astream  # type: ignore[method-assign]
+    Pregel.astream = _patched_astream
 
     # ── Patch invoke() ─────────────────────────────────────────────────────
 
@@ -1520,7 +1520,7 @@ def _patch_langgraph() -> None:
             _lg_callback_injected.reset(token)
             _try_flush_lg()
 
-    Pregel.invoke = _patched_invoke  # type: ignore[method-assign]
+    Pregel.invoke = _patched_invoke
 
     # ── Patch ainvoke() ────────────────────────────────────────────────────
 
@@ -1544,7 +1544,7 @@ def _patch_langgraph() -> None:
             _lg_callback_injected.reset(token)
             await _try_flush_lg_async()
 
-    Pregel.ainvoke = _patched_ainvoke  # type: ignore[method-assign]
+    Pregel.ainvoke = _patched_ainvoke
 
     _patched_sdks.add("langgraph")
     logger.debug("auto_patch.patched", sdk="langgraph")
@@ -1853,13 +1853,13 @@ def unpatch() -> None:
         from langgraph.pregel import Pregel
 
         if "langgraph_stream" in _originals:
-            Pregel.stream = _originals.pop("langgraph_stream")  # type: ignore[method-assign]
+            Pregel.stream = _originals.pop("langgraph_stream")
         if "langgraph_astream" in _originals:
-            Pregel.astream = _originals.pop("langgraph_astream")  # type: ignore[method-assign]
+            Pregel.astream = _originals.pop("langgraph_astream")
         if "langgraph_invoke" in _originals:
-            Pregel.invoke = _originals.pop("langgraph_invoke")  # type: ignore[method-assign]
+            Pregel.invoke = _originals.pop("langgraph_invoke")
         if "langgraph_ainvoke" in _originals:
-            Pregel.ainvoke = _originals.pop("langgraph_ainvoke")  # type: ignore[method-assign]
+            Pregel.ainvoke = _originals.pop("langgraph_ainvoke")
     except (ImportError, AttributeError):
         pass
 
@@ -1867,7 +1867,7 @@ def unpatch() -> None:
         from langgraph.graph.state import StateGraph
 
         if "langgraph_compile" in _originals:
-            StateGraph.compile = _originals.pop("langgraph_compile")  # type: ignore[method-assign]
+            StateGraph.compile = _originals.pop("langgraph_compile")
     except (ImportError, AttributeError):
         pass
 
