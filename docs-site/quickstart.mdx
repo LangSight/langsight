@@ -20,23 +20,22 @@ CLI and the dashboard.
 
 <Tabs>
   <Tab title="Full dashboard (recommended)">
-    See LangSight with realistic demo data — 30 agent sessions, health history,
-    security findings, and cost attribution, all pre-loaded:
+    Get the full stack running in one command:
 
     ```bash
     git clone https://github.com/LangSight/langsight && cd langsight
     ./scripts/quickstart.sh      # generates secrets, writes .env, starts everything
     ```
 
-    Open **http://localhost:3003** and log in. The dashboard is fully populated
-    with a demo project — explore Sessions, Health, Security, Costs, and Agents
-    pages to see what LangSight captures.
+    Open **http://localhost:3003** and log in with the admin credentials
+    printed by the script (also saved in `.env`). You'll see an empty
+    dashboard with a "Default" project — instrument your first agent below
+    to start seeing traces.
 
     <Note>
-      The demo data includes multi-agent sessions with handoffs, MCP server
-      health history (mix of UP/DEGRADED/DOWN), security scan findings, and
-      per-agent cost breakdowns. Everything you see is what your real agent
-      data will look like.
+      The quickstart script generates all required secrets, starts Docker
+      Compose, and creates your admin account automatically. Check `.env`
+      for the generated credentials if you need them later.
     </Note>
   </Tab>
   <Tab title="CLI only (no Docker)">
