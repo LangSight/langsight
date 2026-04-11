@@ -307,55 +307,6 @@ async def _bootstrap_default_project(storage: Any, admin_user_id: str) -> None:
         logger.warning("api.startup.project_bootstrap_error", error=str(exc))
 
 
-_SAMPLE_PROJECT_SLUG = "sample-project"
-
-
-async def _bootstrap_sample_project(storage: Any, admin_user_id: str) -> None:
-    """Create a 'Sample Project' with demo agent sessions on first run.
-
-    The sample project is isolated from user-created projects — users can
-    explore the demo data without mixing it with their own traces.
-    Skipped if the sample project already exists or LANGSIGHT_SKIP_DEMO_SEED=1.
-    """
-    if not hasattr(storage, "get_project_by_slug") or not hasattr(storage, "create_project"):
-        return
-
-    try:
-        existing = await storage.get_project_by_slug(_SAMPLE_PROJECT_SLUG)
-        if existing:
-            return  # already created on a previous startup
-
-        import uuid
-        from datetime import UTC, datetime
-
-        from langsight.demo_seed import seed_demo_data
-        from langsight.models import Project, ProjectMember, ProjectRole
-
-        now = datetime.now(UTC)
-        project = Project(
-            id=uuid.uuid4().hex,
-            name="Sample Project",
-            slug=_SAMPLE_PROJECT_SLUG,
-            created_by=admin_user_id,
-            created_at=now,
-        )
-        await storage.create_project(project)
-        await storage.add_member(
-            ProjectMember(
-                project_id=project.id,
-                user_id=admin_user_id,
-                role=ProjectRole.OWNER,
-                added_by=admin_user_id,
-                added_at=now,
-            )
-        )
-        logger.info("api.startup.sample_project_created", project_id=project.id)
-
-        await seed_demo_data(storage, project.id)
-
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("api.startup.sample_project_error", error=str(exc))
-
 
 def create_app(config_path: Path | None = None) -> FastAPI:
     """Application factory.
@@ -492,16 +443,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             )
             logger.warning("=" * 72)
 
-        # First-run bootstrap — create initial admin user and sample project
+        # First-run bootstrap — create initial admin user + seed model pricing
         await _seed_model_pricing(app.state.storage)
-        admin_id = await _bootstrap_admin(app.state.storage)
-
-        # Seed a "Sample Project" with demo agent sessions on first run.
-        # Only attempt when admin_id is known — passing "system" would violate
-        # the FK constraint project_members.user_id → users.id and silently
-        # fail the entire bootstrap step.
-        if admin_id:
-            await _bootstrap_sample_project(app.state.storage, admin_id)
+        await _bootstrap_admin(app.state.storage)
 
         logger.info(
             "api.startup",
@@ -664,6 +608,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     # When LANGSIGHT_DASHBOARD_URL is set, the API ignores request.base_url for
     # invite links. But TrustedHostMiddleware adds defence-in-depth: requests
     # with forged Host headers are rejected with 400 before reaching any route.
+    # LANGSIGHT_TRUSTED_HOSTS allows adding internal Docker service names
+    # (e.g. "api") so the dashboard container can reach the API via
+    # http://api:8000 without Host header rejection.
     _dashboard_url = _settings.dashboard_url
     if _dashboard_url:
         from urllib.parse import urlparse
@@ -671,8 +618,11 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         from starlette.middleware.trustedhost import TrustedHostMiddleware
 
         _parsed = urlparse(_dashboard_url)
-        _allowed = [_parsed.hostname or "localhost", "localhost", "127.0.0.1"]
-        app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed)
+        _allowed = {_parsed.hostname or "localhost", "localhost", "127.0.0.1"}
+        # Extra trusted hosts — comma-separated, typically Docker service names
+        _extra = os.environ.get("LANGSIGHT_TRUSTED_HOSTS", "api")
+        _allowed.update(h.strip() for h in _extra.split(",") if h.strip())
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(_allowed))
 
     # All data routers require authentication (dependency applied at router level)
     _auth_dep = [Depends(verify_api_key)]

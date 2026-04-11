@@ -66,7 +66,7 @@ build-backend = "hatchling.build"
 packages = ["src/langsight"]
 
 [tool.hatch.build]
-include = ["src/langsight/**/*.py", "src/langsight/seed_data/*.json"]
+include = ["src/langsight/**/*.py"]
 
 [dependency-groups]
 dev = [

@@ -117,11 +117,11 @@ services:
       # OTEL_COLLECTOR_TOKEN is required — no default to prevent guessable tokens.
       # Generate: python3 -c "import secrets; print(secrets.token_hex(32))"
       # Add to your .env file: OTEL_COLLECTOR_TOKEN=<generated-token>
-      OTEL_COLLECTOR_TOKEN: ${OTEL_COLLECTOR_TOKEN:?OTEL_COLLECTOR_TOKEN is required. Generate one with: python3 -c "import secrets; print(secrets.token_hex(32))"}
+      OTEL_COLLECTOR_TOKEN: "${OTEL_COLLECTOR_TOKEN:?OTEL_COLLECTOR_TOKEN is required}"
       # OTEL collector key — use a SEPARATE key from the dashboard/API admin key.
       # Generate a dedicated collector key: python3 -c "import secrets; print(secrets.token_hex(32))"
       # Then create a viewer-role API key in the dashboard for the collector.
-      LANGSIGHT_API_KEY: ${LANGSIGHT_OTEL_COLLECTOR_KEY:?LANGSIGHT_OTEL_COLLECTOR_KEY env var is required. Generate a dedicated key for the collector.}
+      LANGSIGHT_API_KEY: "${LANGSIGHT_OTEL_COLLECTOR_KEY:?LANGSIGHT_OTEL_COLLECTOR_KEY env var is required}"
     ports:
       - "127.0.0.1:4317:4317"  # gRPC OTLP — loopback only
       - "127.0.0.1:4318:4318"  # HTTP OTLP — loopback only

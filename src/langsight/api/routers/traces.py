@@ -351,7 +351,11 @@ async def ingest_spans(spans: list[ToolCallSpan], request: Request) -> dict[str,
         # inside the agent loop and used a stale `span` variable from the
         # outer ingestion loop — only the last span's server was ever seen.
         batch_agents = {span.agent_name for span in spans if span.agent_name}
-        batch_servers = {span.server_name for span in spans if span.server_name}
+        batch_servers = {
+            span.server_name
+            for span in spans
+            if span.server_name and span.span_type == "tool_call"
+        }
 
         for agent in batch_agents:
             cache_key = f"{project_id}:{agent}"
