@@ -568,6 +568,7 @@ class ClickHouseBackend:
             WHERE
                 server_name = {server_name:String}
                 AND tool_name  = {tool_name:String}
+                AND span_type = 'tool_call'
                 AND started_at >= now() - INTERVAL {hours:UInt32} HOUR
                 AND project_id = {project_id:String}
             GROUP BY agent_name, session_id
@@ -622,6 +623,7 @@ class ClickHouseBackend:
             FROM mcp_tool_calls
             WHERE
                 server_name = {{server_name:String}}
+                AND span_type = 'tool_call'
                 AND started_at >= now() - INTERVAL {{hours:UInt32}} HOUR
                 {project_filter}
             GROUP BY agent_name
@@ -634,6 +636,7 @@ class ClickHouseBackend:
             FROM mcp_tool_calls
             WHERE
                 server_name = {{server_name:String}}
+                AND span_type = 'tool_call'
                 AND started_at >= now() - INTERVAL {{hours:UInt32}} HOUR
                 {project_filter}
         """
@@ -689,6 +692,7 @@ class ClickHouseBackend:
             FROM mcp_tool_calls
             WHERE
                 server_name = {{server_name:String}}
+                AND span_type = 'tool_call'
                 AND started_at >= now() - INTERVAL {{hours:UInt32}} HOUR
                 {project_filter}
             ORDER BY started_at DESC
@@ -890,7 +894,9 @@ class ClickHouseBackend:
         The MV only stores sums and cannot produce accurate percentiles.
         """
         params: dict[str, Any] = {"hours": hours}
-        where = "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR"
+        where = (
+            "WHERE started_at >= now() - INTERVAL {hours:UInt32} HOUR AND span_type = 'tool_call'"
+        )
         if project_id:
             where += " AND project_id = {project_id:String}"
             params["project_id"] = project_id
@@ -999,6 +1005,7 @@ class ClickHouseBackend:
             FROM mcp_tool_calls
             WHERE started_at >= now() - INTERVAL {{hours:UInt32}} HOUR
               AND server_name != ''
+              AND span_type = 'tool_call'
               {project_filter}
             GROUP BY server_name
             ORDER BY last_called_at DESC

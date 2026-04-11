@@ -108,6 +108,7 @@ export function makeOversizedTrace(spanCount: number): SessionTrace {
     finish_reason: null,
     cache_read_tokens: null,
     cache_creation_tokens: null,
+      thinking_tokens: null,
     schema_version: "1.0",
     children: [],
   }));
@@ -154,6 +155,7 @@ export function makeXssTrace(payload: string): SessionTrace {
         finish_reason: null,
         cache_read_tokens: null,
         cache_creation_tokens: null,
+      thinking_tokens: null,
         schema_version: "1.0",
         children: [],
       },
@@ -194,6 +196,7 @@ export function makeNumericEdgeCaseTrace(): SessionTrace {
         finish_reason: null,
         cache_read_tokens: null,
         cache_creation_tokens: null,
+      thinking_tokens: null,
         target_agent_name: null,
         lineage_provenance: "explicit" as const,
         lineage_status: "complete" as const,

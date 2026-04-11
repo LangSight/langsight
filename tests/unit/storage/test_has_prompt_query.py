@@ -31,9 +31,10 @@ _COLS = [
     "health_tag",
     "total_input_tokens",
     "total_output_tokens",
+    "total_thinking_tokens",
     "model_id",
     "agents_used",
-    "has_prompt",  # index 14
+    "has_prompt",  # index 15
 ]
 
 
@@ -52,9 +53,10 @@ def _make_row(has_prompt_value: object = True) -> tuple:
         None,             # health_tag
         100,              # total_input_tokens
         200,              # total_output_tokens
+        0,                # total_thinking_tokens
         "claude-3-5-sonnet-20241022",  # model_id
         ["support-agent"],  # agents_used
-        has_prompt_value,  # has_prompt (index 14)
+        has_prompt_value,  # has_prompt (index 15)
     )
 
 
