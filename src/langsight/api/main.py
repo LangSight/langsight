@@ -307,7 +307,6 @@ async def _bootstrap_default_project(storage: Any, admin_user_id: str) -> None:
         logger.warning("api.startup.project_bootstrap_error", error=str(exc))
 
 
-
 def create_app(config_path: Path | None = None) -> FastAPI:
     """Application factory.
 
