@@ -38,7 +38,7 @@ LANGSIGHT_API_KEYS=${API_KEY}
 AUTH_SECRET=${AUTH_SECRET}
 
 # Dashboard admin login
-LANGSIGHT_ADMIN_EMAIL=admin@langsight.local
+LANGSIGHT_ADMIN_EMAIL=admin@langsight.dev
 LANGSIGHT_ADMIN_PASSWORD=${ADMIN_PASSWORD}
 
 # Database passwords
@@ -53,7 +53,7 @@ EOF
 
   echo "[ok] .env created."
   echo ""
-  echo "  Admin email:    admin@langsight.local"
+  echo "  Admin email:    admin@langsight.dev"
   echo "  Admin password: ${ADMIN_PASSWORD}"
   echo "  API key:        ${API_KEY}"
   echo ""

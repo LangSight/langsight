@@ -83,7 +83,7 @@ services:
     profiles: [redis]
     command: >
       redis-server
-      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD env var is required when using the redis profile}
+      --requirepass ${REDIS_PASSWORD:-changeme}
       --bind 0.0.0.0
       --protected-mode yes
     ports:
