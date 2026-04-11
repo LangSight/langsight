@@ -57,7 +57,7 @@ const COLUMNS: { label: string; key: SortKey; align: string }[] = [
   { label: "Health",     key: "health_tag",   align: "text-left" },
   { label: "Calls",      key: "tool_calls",   align: "text-right" },
   { label: "Failed",     key: "failed_calls", align: "text-right" },
-  { label: "Duration",   key: "duration_ms",  align: "text-right" },
+  { label: "Latency",    key: "duration_ms",  align: "text-right" },
   { label: "Tokens",     key: "tokens",       align: "text-right" },
   { label: "Cost",       key: "est_cost_usd", align: "text-right" },
   { label: "Servers",    key: "servers_used", align: "text-left" },

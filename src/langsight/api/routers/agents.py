@@ -158,21 +158,34 @@ async def list_sessions(
     )
 
     # Build pricing lookup for cost estimation
-    pricing: dict[str, tuple[float, float]] = {}
+    # (input_per_1m, output_per_1m, thinking_per_1m)
+    pricing: dict[str, tuple[float, float, float]] = {}
     if hasattr(storage, "list_model_pricing"):
         for mp in await storage.list_model_pricing():
-            pricing[mp.model_id] = (mp.input_per_1m_usd, mp.output_per_1m_usd)
+            thinking = getattr(mp, "thinking_per_1m_usd", 0.0) or 0.0
+            pricing[mp.model_id] = (mp.input_per_1m_usd, mp.output_per_1m_usd, thinking)
 
     def _est_cost(r: dict[str, Any]) -> float | None:
         in_tok = r.get("total_input_tokens") or 0
         out_tok = r.get("total_output_tokens") or 0
+        think_tok = r.get("total_thinking_tokens") or 0
         mid = r.get("model_id") or ""
         if not mid or (in_tok == 0 and out_tok == 0):
             return None
         prices = pricing.get(mid)
         if not prices:
+            for prefix in ("models/", "anthropic/", "openai/", "google/", "meta/"):
+                if mid.startswith(prefix):
+                    prices = pricing.get(mid[len(prefix):])
+                    break
+        if not prices:
             return None
-        return round(in_tok / 1_000_000 * prices[0] + out_tok / 1_000_000 * prices[1], 6)
+        return round(
+            in_tok / 1_000_000 * prices[0]
+            + out_tok / 1_000_000 * prices[1]
+            + think_tok / 1_000_000 * prices[2],
+            6,
+        )
 
     return [
         AgentSession(
@@ -250,7 +263,7 @@ async def get_session(
         )
 
     tree = _build_tree(spans)
-    tool_spans = [s for s in spans if s.get("span_type") == "tool_call"]
+    tool_spans = [s for s in spans if s.get("span_type") in ("tool_call", "node")]
     failed = [s for s in tool_spans if s.get("status") != "success"]
 
     # Duration = max(ended_at) - min(started_at)

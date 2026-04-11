@@ -22,6 +22,7 @@ import type { AgentSession, SessionTrace, SpanNode, PathMetrics, ServerCallerInf
 import { SessionHeader } from "@/components/sessions/session-header";
 import { SessionMetrics, MetricTile, SectionLabel } from "@/components/sessions/session-metrics";
 import { SpanTree, TokenSummaryBar } from "@/components/sessions/span-tree";
+import { MarkdownContent } from "@/components/markdown-content";
 
 /* ── Build session graph from trace spans ──────────────────── */
 
@@ -269,7 +270,7 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
             {rootSpan.llm_input && (
               <div className="mb-3">
                 <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5 text-muted-foreground">Input</p>
-                <p className="text-[12px] text-foreground rounded-lg px-3 py-2.5 leading-relaxed line-clamp-6" style={{ background: "hsl(var(--muted))" }}>{rootSpan.llm_input}</p>
+                <MarkdownContent content={rootSpan.llm_input} clamp={6} />
                 {rootSpan.llm_input.length > 300 && (
                   <button
                     onClick={() => onViewPayload?.(`Input — ${name}`, [{ label: "Text", json: rootSpan.llm_input ?? null }])}
@@ -289,7 +290,7 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
             {rootSpan.llm_output && (
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5 text-muted-foreground">Output</p>
-                <p className="text-[12px] text-foreground rounded-lg px-3 py-2.5 leading-relaxed line-clamp-6" style={{ background: "hsl(var(--muted))" }}>{rootSpan.llm_output}</p>
+                <MarkdownContent content={rootSpan.llm_output} clamp={6} />
                 {rootSpan.llm_output.length > 300 && (
                   <button
                     onClick={() => onViewPayload?.(`Output — ${name}`, [{ label: "Text", json: rootSpan.llm_output ?? null }])}
@@ -335,9 +336,7 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
                   ><ExternalLink size={9} />View full</button>
                 )}
               </div>
-              <pre className="text-[11px] text-foreground rounded-lg p-3 whitespace-pre-wrap break-all max-h-48 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
-                {spans[0].llm_input}
-              </pre>
+              <MarkdownContent content={spans[0].llm_input} className="max-h-48" fontSize="text-[11px]" />
             </div>
           )}
           {spans[0].llm_output && (
@@ -351,9 +350,7 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
                   ><ExternalLink size={9} />View full</button>
                 )}
               </div>
-              <pre className="text-[11px] text-foreground rounded-lg p-3 whitespace-pre-wrap break-all max-h-48 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
-                {spans[0].llm_output}
-              </pre>
+              <MarkdownContent content={spans[0].llm_output} className="max-h-48" fontSize="text-[11px]" />
             </div>
           )}
           {spans[0].error && (
@@ -454,9 +451,7 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
                           onClick={(e) => { e.stopPropagation(); onViewPayload?.(`Prompt — ${s.tool_name}`, [{ label: "Text", json: s.llm_input }]); }}
                         ><ExternalLink size={9} />View</button>
                       </div>
-                      <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-36 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
-                        {s.llm_input}
-                      </pre>
+                      <MarkdownContent content={s.llm_input} className="max-h-36" fontSize="text-[10px]" />
                     </div>
                   )}
                   {s.llm_output && (
@@ -468,9 +463,7 @@ function SessionNodeDetail({ nodeId, trace, serverCallers, onViewPayload }: { no
                           onClick={(e) => { e.stopPropagation(); onViewPayload?.(`Completion — ${s.tool_name}`, [{ label: "Text", json: s.llm_output }]); }}
                         ><ExternalLink size={9} />View</button>
                       </div>
-                      <pre className="text-[10px] text-foreground rounded-lg p-2.5 whitespace-pre-wrap break-all max-h-36 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono)", background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }}>
-                        {s.llm_output}
-                      </pre>
+                      <MarkdownContent content={s.llm_output} className="max-h-36" fontSize="text-[10px]" />
                     </div>
                   )}
                   {(s.input_tokens || s.output_tokens || s.finish_reason) && (
@@ -813,7 +806,7 @@ export default function SessionDetailPage() {
             const serverCount = new Set(realServerSpans.map((s: SpanNode) => s.server_name)).size;
             return `${agentCount} ${agentCount === 1 ? "agent" : "agents"} · ${serverCount} ${serverCount === 1 ? "server" : "servers"}`;
           })() : undefined },
-          { key: "trace", label: "Trace", count: trace ? `${trace.total_spans} spans` : undefined },
+          { key: "trace", label: "Trace", count: trace ? `${trace.spans_flat.filter((s: SpanNode) => s.span_type !== "topology" && s.tool_name !== "session").length} spans` : undefined },
         ] as const).map((tab) => (
           <button
             key={tab.key}
@@ -873,7 +866,7 @@ export default function SessionDetailPage() {
                     onToggleEdge={handleToggleEdge}
                     onExpandAll={handleExpandAll}
                     onCollapseAll={handleCollapseAll}
-                    nodeHeight={76}
+                    nodeHeight={86}
                     className="h-full"
                   />
                   {/* Fullscreen button — top-right corner overlay */}
@@ -912,7 +905,7 @@ export default function SessionDetailPage() {
                     onToggleEdge={handleToggleEdge}
                     onExpandAll={handleExpandAll}
                     onCollapseAll={handleCollapseAll}
-                    nodeHeight={76}
+                    nodeHeight={86}
                     className="h-full"
                   />
                 </div>

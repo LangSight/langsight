@@ -40,10 +40,18 @@ def _make_callback(
         cb._auto_detect = auto_detect
         cb._pending = {}
         cb._active_chains = {}
+        cb._pending_llm = {}
+        cb._active_lg_nodes = set()
         cb._local = threading.local()
         cb._session_input = None
         cb._session_output = None
         cb._session_input_captured = False
+        cb._node_counter = {}
+        cb._max_node_iterations = 10
+        cb._budget = None
+        cb._pricing_table = {}
+        cb._budget_violated = False
+        cb._budget_violation = None
     return cb
 
 

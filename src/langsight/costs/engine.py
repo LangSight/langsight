@@ -147,6 +147,21 @@ class CostEngine:
         return find_cost_per_call(self._rules, server_name, tool_name)
 
 
+def _normalize_model_id(model_id: str) -> str:
+    """Normalize model_id for pricing lookup.
+
+    Strips common provider prefixes so that 'models/gemini-2.5-flash'
+    matches the pricing table entry 'gemini-2.5-flash'.
+    """
+    # Google: "models/gemini-2.5-flash" → "gemini-2.5-flash"
+    # Anthropic: sometimes "anthropic/claude-sonnet-4-20250514" → "claude-sonnet-4-20250514"
+    # OpenAI: "openai/gpt-4o" → "gpt-4o"
+    for prefix in ("models/", "anthropic/", "openai/", "google/", "meta/"):
+        if model_id.startswith(prefix):
+            return model_id[len(prefix):]
+    return model_id
+
+
 class ModelPricingLookup:
     """Fast in-memory lookup for model token pricing.
 
@@ -162,9 +177,20 @@ class ModelPricingLookup:
             if model_id and (model_id not in self._index):  # keep first (most recent active)
                 self._index[model_id] = row
 
-    def cost_for(self, model_id: str, input_tokens: int, output_tokens: int) -> float:
-        """Return total cost in USD for given token counts."""
+    def _resolve(self, model_id: str) -> Any | None:
+        """Find pricing entry, trying exact match first then normalized."""
         entry = self._index.get(model_id)
+        if entry is not None:
+            return entry
+        # Try without provider prefix (models/gemini-2.5-flash → gemini-2.5-flash)
+        normalized = _normalize_model_id(model_id)
+        if normalized != model_id:
+            return self._index.get(normalized)
+        return None
+
+    def cost_for(self, model_id: str, input_tokens: int, output_tokens: int, thinking_tokens: int = 0) -> float:
+        """Return total cost in USD for given token counts."""
+        entry = self._resolve(model_id)
         if entry is None:
             return 0.0
         inp: float = (
@@ -177,10 +203,19 @@ class ModelPricingLookup:
             if hasattr(entry, "output_per_1m_usd")
             else entry.get("output_per_1m_usd", 0.0)
         )
-        return float((input_tokens / 1_000_000 * inp) + (output_tokens / 1_000_000 * out))
+        think: float = (
+            entry.thinking_per_1m_usd
+            if hasattr(entry, "thinking_per_1m_usd")
+            else entry.get("thinking_per_1m_usd", 0.0)
+        )
+        return float(
+            (input_tokens / 1_000_000 * inp)
+            + (output_tokens / 1_000_000 * out)
+            + (thinking_tokens / 1_000_000 * think)
+        )
 
     def has_model(self, model_id: str) -> bool:
-        return model_id in self._index
+        return self._resolve(model_id) is not None
 
 
 def find_cost_per_call(
@@ -217,8 +252,10 @@ def aggregate_cost_rows(
         row_model_id = str(row.get("model_id") or "").strip()
         raw_input = row.get("input_tokens")
         raw_output = row.get("output_tokens")
+        raw_thinking = row.get("thinking_tokens")
         input_tokens = int(raw_input) if raw_input is not None else None
         output_tokens = int(raw_output) if raw_output is not None else None
+        thinking_tokens = int(raw_thinking) if raw_thinking is not None else None
 
         use_token_pricing = (
             model_pricing is not None
@@ -229,12 +266,12 @@ def aggregate_cost_rows(
         )
 
         if use_token_pricing and model_pricing:
-            # input_tokens / output_tokens come from SUM() in the ClickHouse query —
+            # input_tokens / output_tokens / thinking_tokens come from SUM() in the ClickHouse query —
             # they already represent the total across all calls in this group.
             # cost_for() computes (tokens / 1M) * price, giving the total cost directly.
             # Do NOT multiply by total_calls — that would double-count.
             total_cost_usd = model_pricing.cost_for(
-                row_model_id, input_tokens or 0, output_tokens or 0
+                row_model_id, input_tokens or 0, output_tokens or 0, thinking_tokens or 0
             )
             cost_per_call = total_cost_usd / max(total_calls, 1)
             cost_type = "token_based"
@@ -245,6 +282,7 @@ def aggregate_cost_rows(
             row_model_id = ""
             input_tokens = None
             output_tokens = None
+            thinking_tokens = None
 
         tool_key = (server_name, tool_name)
         if tool_key not in tool_totals:

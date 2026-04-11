@@ -220,6 +220,8 @@ _DDL = [
     # Anthropic prompt caching token counts (gen_ai.usage.cache_read_input_tokens etc.)
     "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS cache_read_tokens Nullable(UInt32)",
     "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS cache_creation_tokens Nullable(UInt32)",
+    # Thinking tokens (Gemini 2.5, o1, etc.) — derived from total_tokens - input_tokens - output_tokens
+    "ALTER TABLE mcp_tool_calls ADD COLUMN IF NOT EXISTS thinking_tokens Nullable(UInt32)",
 ]
 
 
@@ -747,6 +749,7 @@ class ClickHouseBackend:
         "finish_reason",
         "cache_read_tokens",
         "cache_creation_tokens",
+        "thinking_tokens",
     ]
 
     def _span_row(self, s: ToolCallSpan) -> list[Any]:
@@ -790,6 +793,7 @@ class ClickHouseBackend:
             s.finish_reason or "",
             s.cache_read_tokens,
             s.cache_creation_tokens,
+            s.thinking_tokens,
         ]
 
     # async_insert=1: ClickHouse buffers concurrent writes internally and flushes
@@ -1046,6 +1050,7 @@ class ClickHouseBackend:
             "health_tag",  # v0.3
             "total_input_tokens",
             "total_output_tokens",
+            "total_thinking_tokens",
             "model_id",
             "agents_used",
             "has_prompt",  # True when a session span with llm_input was captured
@@ -1076,14 +1081,15 @@ class ClickHouseBackend:
                 anyIf(t.agent_name, t.agent_name != '')              AS agent_name,
                 min(t.started_at)                                    AS first_call_at,
                 max(t.ended_at)                                      AS last_call_at,
-                countIf(t.span_type = 'tool_call')                   AS tool_calls,
-                countIf(t.status != 'success' AND t.span_type = 'tool_call') AS failed_calls,
+                countIf(t.span_type IN ('tool_call', 'node'))                   AS tool_calls,
+                countIf(t.status != 'success' AND t.span_type IN ('tool_call', 'node')) AS failed_calls,
                 sum(t.latency_ms)                                    AS total_latency_ms,
                 groupUniqArrayIf(t.server_name, t.span_type = 'tool_call') AS servers_used,
                 dateDiff('millisecond', min(t.started_at), max(t.ended_at)) AS duration_ms,
                 any(sht.health_tag)                                  AS health_tag,
                 sum(t.input_tokens)                                  AS total_input_tokens,
                 sum(t.output_tokens)                                 AS total_output_tokens,
+                sum(t.thinking_tokens)                               AS total_thinking_tokens,
                 anyIf(t.model_id, t.model_id != '')                  AS model_id,
                 groupUniqArrayIf(t.agent_name, t.agent_name != '')   AS agents_used,
                 countIf(t.span_type = 'agent' AND t.tool_name = 'session' AND t.llm_input != '') > 0 AS has_prompt
@@ -1139,7 +1145,7 @@ class ClickHouseBackend:
                 input_tokens, output_tokens, model_id,
                 target_agent_name, lineage_provenance,
                 lineage_status, schema_version, finish_reason,
-                cache_read_tokens, cache_creation_tokens
+                cache_read_tokens, cache_creation_tokens, thinking_tokens
             FROM mcp_tool_calls
             WHERE {where}
             ORDER BY started_at ASC
@@ -1178,6 +1184,7 @@ class ClickHouseBackend:
             "finish_reason",
             "cache_read_tokens",
             "cache_creation_tokens",
+            "thinking_tokens",
         ]
         rows = [dict(zip(cols, row, strict=False)) for row in result.result_rows]
         # Ensure timestamps carry UTC timezone — ClickHouse DateTime64('UTC')
@@ -1276,7 +1283,8 @@ class ClickHouseBackend:
                 nullIf(model_id, '')   AS model_id,
                 count()                AS total_calls,
                 sum(input_tokens)      AS input_tokens,
-                sum(output_tokens)     AS output_tokens
+                sum(output_tokens)     AS output_tokens,
+                sum(thinking_tokens)   AS thinking_tokens
             FROM mcp_tool_calls
             WHERE {where}
             GROUP BY server_name, tool_name, agent_name, session_id, model_id
@@ -1294,6 +1302,7 @@ class ClickHouseBackend:
             "total_calls",
             "input_tokens",
             "output_tokens",
+            "thinking_tokens",
         ]
         return [dict(zip(cols, row, strict=False)) for row in result.result_rows]
 
@@ -1738,21 +1747,21 @@ class ClickHouseBackend:
             SELECT
                 formatDateTime({bucket_fn}, '{bucket_fmt}') AS bucket,
                 uniqExact(session_id)                                            AS sessions,
-                countIf(span_type = 'tool_call')                                AS tool_calls,
-                countIf(status != 'success' AND span_type = 'tool_call')        AS errors,
-                if(countIf(span_type = 'tool_call') > 0,
-                   countIf(status != 'success' AND span_type = 'tool_call') /
-                   countIf(span_type = 'tool_call'), 0)                         AS error_rate,
+                countIf(span_type IN ('tool_call', 'node'))                                AS tool_calls,
+                countIf(status != 'success' AND span_type IN ('tool_call', 'node'))        AS errors,
+                if(countIf(span_type IN ('tool_call', 'node')) > 0,
+                   countIf(status != 'success' AND span_type IN ('tool_call', 'node')) /
+                   countIf(span_type IN ('tool_call', 'node')), 0)                         AS error_rate,
                 avg(latency_ms)                                                  AS avg_latency_ms,
                 quantile(0.99)(latency_ms)                                       AS p99_latency_ms,
                 sum(input_tokens)                                                AS input_tokens,
                 sum(output_tokens)                                               AS output_tokens,
                 uniqExactIf(agent_name, agent_name != '')                        AS agents,
                 uniqExactIf(session_id,
-                    status != 'success' AND span_type = 'tool_call')             AS failed_sessions,
+                    status != 'success' AND span_type IN ('tool_call', 'node'))             AS failed_sessions,
                 if(uniqExact(session_id) > 0,
                    uniqExactIf(session_id,
-                       status != 'success' AND span_type = 'tool_call') /
+                       status != 'success' AND span_type IN ('tool_call', 'node')) /
                    uniqExact(session_id), 0)                                     AS session_error_rate,
                 quantileIf(0.99)(latency_ms, span_type = 'agent')               AS session_p99_ms
             FROM mcp_tool_calls
@@ -2058,8 +2067,8 @@ class ClickHouseBackend:
                 anyIf(agent_name, agent_name != '') AS agent_name,
                 max(ended_at)                        AS last_activity,
                 count()                              AS span_count,
-                countIf(span_type = 'agent')        AS llm_calls,
-                countIf(span_type = 'tool_call')    AS tool_calls
+                countIf(span_type = 'agent')                    AS llm_calls,
+                countIf(span_type IN ('tool_call', 'node'))    AS tool_calls
             FROM mcp_tool_calls
             {where}
             GROUP BY session_id

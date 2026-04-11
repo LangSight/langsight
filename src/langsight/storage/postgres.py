@@ -93,6 +93,7 @@ _DDL_STATEMENTS = [
         input_per_1m_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
         output_per_1m_usd     DOUBLE PRECISION NOT NULL DEFAULT 0,
         cache_read_per_1m_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+        thinking_per_1m_usd   DOUBLE PRECISION NOT NULL DEFAULT 0,
         effective_from        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         effective_to          TIMESTAMPTZ,
         notes                 TEXT,
@@ -102,6 +103,8 @@ _DDL_STATEMENTS = [
     """
     CREATE INDEX IF NOT EXISTS idx_model_pricing_model_id ON model_pricing (model_id, effective_from DESC)
     """,
+    # Migration: add thinking_per_1m_usd column for thinking tokens (Gemini 2.5, o1, etc.)
+    "ALTER TABLE model_pricing ADD COLUMN IF NOT EXISTS thinking_per_1m_usd DOUBLE PRECISION NOT NULL DEFAULT 0",
     """
     CREATE TABLE IF NOT EXISTS projects (
         id          TEXT        PRIMARY KEY,
@@ -597,8 +600,8 @@ class PostgresBackend:
             """
             INSERT INTO model_pricing
                 (id, provider, model_id, display_name, input_per_1m_usd, output_per_1m_usd,
-                 cache_read_per_1m_usd, effective_from, effective_to, notes, is_custom)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                 cache_read_per_1m_usd, thinking_per_1m_usd, effective_from, effective_to, notes, is_custom)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             """,
             entry.id,
             entry.provider,
@@ -607,6 +610,7 @@ class PostgresBackend:
             entry.input_per_1m_usd,
             entry.output_per_1m_usd,
             entry.cache_read_per_1m_usd,
+            entry.thinking_per_1m_usd,
             entry.effective_from,
             entry.effective_to,
             entry.notes,
@@ -1728,6 +1732,7 @@ def _row_to_model_pricing(row: asyncpg.Record) -> ModelPricing:
         input_per_1m_usd=float(row["input_per_1m_usd"]),
         output_per_1m_usd=float(row["output_per_1m_usd"]),
         cache_read_per_1m_usd=float(row["cache_read_per_1m_usd"]),
+        thinking_per_1m_usd=float(row.get("thinking_per_1m_usd", 0.0)),
         effective_from=row["effective_from"],
         effective_to=row["effective_to"],
         notes=row["notes"],

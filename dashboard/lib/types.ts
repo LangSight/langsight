@@ -1,7 +1,7 @@
 export type ServerStatus = "up" | "degraded" | "down" | "stale" | "unknown";
 export type ToolCallStatus = "success" | "error" | "timeout" | "prevented";
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
-export type SpanType = "tool_call" | "agent" | "handoff" | "llm_intent";
+export type SpanType = "tool_call" | "node" | "agent" | "handoff" | "llm_intent" | "topology";
 export type LineageProvenance = "explicit" | "derived_parent" | "derived_timing" | "derived_legacy" | "inferred_otel";
 export type LineageStatus = "complete" | "incomplete" | "orphaned" | "invalid_parent" | "session_mismatch" | "trace_mismatch";
 
@@ -86,6 +86,7 @@ export interface SpanNode {
   cache_creation_tokens: number | null; // Anthropic prompt caching: cache_creation_input_tokens
   input_tokens: number | null;  // P7 — LLM input token count
   output_tokens: number | null; // P7 — LLM output token count
+  thinking_tokens: number | null; // Reasoning/thinking tokens (Gemini 2.5, o1, etc.)
   model_id: string | null;      // P7 — model used
   target_agent_name: string | null;       // lineage v1.0 — handoff destination
   lineage_provenance: LineageProvenance;  // lineage v1.0 — how parent was determined

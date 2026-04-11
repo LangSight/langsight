@@ -86,6 +86,7 @@ class ModelPricing(BaseModel):
     input_per_1m_usd: float = 0.0  # $ per 1M input tokens
     output_per_1m_usd: float = 0.0  # $ per 1M output tokens
     cache_read_per_1m_usd: float = 0.0  # $ per 1M cached input tokens (Anthropic prompt caching)
+    thinking_per_1m_usd: float = 0.0  # $ per 1M thinking tokens (Gemini 2.5, o1, etc.)
     effective_from: datetime = Field(default_factory=lambda: datetime.now(UTC))
     effective_to: datetime | None = None
     notes: str | None = None
@@ -97,11 +98,12 @@ class ModelPricing(BaseModel):
     def is_active(self) -> bool:
         return self.effective_to is None
 
-    def cost_for(self, input_tokens: int, output_tokens: int) -> float:
+    def cost_for(self, input_tokens: int, output_tokens: int, thinking_tokens: int = 0) -> float:
         """Calculate cost for a single LLM call given token counts."""
         return (
             input_tokens / 1_000_000 * self.input_per_1m_usd
             + output_tokens / 1_000_000 * self.output_per_1m_usd
+            + thinking_tokens / 1_000_000 * self.thinking_per_1m_usd
         )
 
 

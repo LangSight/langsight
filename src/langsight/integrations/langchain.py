@@ -28,6 +28,7 @@ Does NOT import langchain at module level — LangSight can be installed without
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 import uuid
 from dataclasses import dataclass
@@ -86,10 +87,37 @@ _SKIP_NODE_NAMES = frozenset(
         "tool_node",
         "__start__",
         "__end__",
-        "should_continue",
         "agent",  # internal react-agent node, not the graph itself
     }
 )
+
+_MAX_FIELD_LEN = 4000
+
+def _truncate(text: str, max_len: int = _MAX_FIELD_LEN) -> str:
+    if len(text) <= max_len:
+        return text
+    return text[:max_len] + "...[truncated]"
+
+def _safe_json(obj: Any, max_len: int = _MAX_FIELD_LEN) -> str:
+    try:
+        text = json.dumps(obj, default=str, ensure_ascii=False)
+    except (TypeError, ValueError, OverflowError):
+        text = str(obj)
+    return _truncate(text, max_len)
+
+def _serialize_messages(messages: list[list[Any]], max_len: int = _MAX_FIELD_LEN) -> str:
+    parts: list[str] = []
+    try:
+        for msg_list in messages:
+            for msg in msg_list:
+                role = getattr(msg, "type", "unknown")
+                content = getattr(msg, "content", "")
+                if isinstance(content, list):
+                    content = json.dumps(content, default=str, ensure_ascii=False)
+                parts.append(f"{role}: {content}")
+    except (TypeError, AttributeError, IndexError):
+        return _truncate(str(messages), max_len)
+    return _truncate("\n".join(parts), max_len)
 
 
 def _detect_agent_name(
@@ -101,18 +129,25 @@ def _detect_agent_name(
     Heuristic: a chain is an agent if it has a user-defined name that is
     not a framework-internal class or LangGraph internal node.
     """
+    # LangGraph 0.0.x fires on_chain_start with serialized=None for nodes;
+    # the actual node name is in metadata["langgraph_node"].
+    node_from_meta = (metadata or {}).get("langgraph_node")
+    if not serialized:
+        if node_from_meta and node_from_meta not in _SKIP_NODE_NAMES:
+            return str(node_from_meta)
+        return None
+
     name = serialized.get("name", "")
     if not name or name in _SKIP_CHAIN_NAMES:
+        # Fall back to metadata node name if serialized name is missing/internal
+        if node_from_meta and node_from_meta not in _SKIP_NODE_NAMES:
+            return str(node_from_meta)
         return None
 
     # LangGraph internal nodes appear in metadata
-    node = (metadata or {}).get("langgraph_node")
-    if node and node in _SKIP_NODE_NAMES:
+    if node_from_meta and node_from_meta in _SKIP_NODE_NAMES:
         return None
 
-    # Heuristic: framework class names are CamelCase, user names are lowercase
-    # But don't be too strict — "MyAgent" is a valid user name
-    # The _SKIP sets above catch the common framework names
     return str(name)
 
 
@@ -142,6 +177,8 @@ class _ActiveChain:
     is_agent: bool
     agent_span_id: str | None = None  # span_id of the agent span we emitted
     parent_span_id: str | None = None  # parent agent's span_id
+    is_langgraph_node: bool = False    # True when name came from metadata["langgraph_node"]
+    input_data: dict[str, Any] | None = None
 
 
 @dataclass
@@ -213,6 +250,9 @@ class LangSightLangChainCallback(BaseIntegration):
         agent_name: str | None = None,
         session_id: str | None = None,
         trace_id: str | None = None,
+        max_node_iterations: int = 10,
+        budget: Any = None,  # SessionBudget | None
+        pricing_table: dict[str, tuple[float, float]] | None = None,
     ) -> None:
         """Initialise the callback.
 
@@ -260,13 +300,26 @@ class LangSightLangChainCallback(BaseIntegration):
         self._local = threading.local()
 
         # --- LLM call tracking (for token/cost capture) ---
-        # run_id → started_at
-        self._pending_llm: dict[str, datetime] = {}
+        # run_id → dict with started_at, messages_str, model_name
+        self._pending_llm: dict[str, dict[str, Any]] = {}
+
+        # --- LangGraph node deduplication ---
+        self._active_lg_nodes: set[str] = set()
 
         # --- Prompt / answer capture ---
         self._session_input: str | None = None
         self._session_output: str | None = None
         self._session_input_captured = False
+
+        # --- Tier 2: LangGraph loop detection ---
+        self._max_node_iterations = max_node_iterations
+        self._node_counter: dict[str, int] = {}
+
+        # --- Tier 2: Budget enforcement ---
+        self._budget = budget
+        self._pricing_table = pricing_table or {}
+        self._budget_violated: bool = False
+        self._budget_violation: Any = None
 
     # --- Thread-local tool stack (shared across all callback instances) ---
 
@@ -355,13 +408,81 @@ class LangSightLangChainCallback(BaseIntegration):
         if not self._auto_detect:
             return  # Fixed mode — skip chain tracking
 
+        # --- Tier 2: Budget violation flag check (set in on_llm_end) ---
+        if self._budget_violated and self._budget_violation is not None:
+            from langsight.exceptions import BudgetExceededError
+            violation = self._budget_violation
+            raise BudgetExceededError(
+                limit_type=violation.limit_type,
+                limit_value=violation.limit_value,
+                actual_value=violation.actual_value,
+                session_id=self._session_id,
+            )
+
         agent_name = _detect_agent_name(serialized, metadata)
         key = str(run_id)
 
         if agent_name:
-            # This is a named agent — emit an agent span
+            # Determine whether this is a LangGraph node (vs a named graph/chain).
+            # A node comes from metadata["langgraph_node"]; a graph comes from
+            # serialized["name"] (e.g. "LangGraph") when serialized is not None.
+            is_node = bool((metadata or {}).get("langgraph_node")) and (
+                not serialized or not serialized.get("name")
+            )
+
+            # Deduplication: skip duplicate on_chain_start for same LangGraph node
+            node_from_meta = (metadata or {}).get("langgraph_node")
+            if node_from_meta and agent_name == node_from_meta and agent_name in self._active_lg_nodes:
+                self._active_chains[key] = _ActiveChain(
+                    name=agent_name,
+                    started_at=datetime.now(UTC),
+                    is_agent=False,
+                )
+                return
+
+            # --- Tier 2: Node iteration counting ---
+            if node_from_meta and agent_name == node_from_meta:
+                count = self._node_counter.get(agent_name, 0) + 1
+                self._node_counter[agent_name] = count
+                if self._max_node_iterations > 0 and count > self._max_node_iterations:
+                    logger.warning(
+                        "integration.node_iteration_limit",
+                        node=agent_name,
+                        count=count,
+                        max=self._max_node_iterations,
+                        session_id=self._session_id,
+                    )
+                    # Emit a prevented span
+                    try:
+                        if self._client is not None:
+                            self._client.buffer_span(ToolCallSpan(
+                                server_name="langgraph",
+                                tool_name=agent_name,
+                                started_at=datetime.now(UTC),
+                                ended_at=datetime.now(UTC),
+                                status=ToolCallStatus.PREVENTED,
+                                error=f"node_iteration_limit: {agent_name} ran {count} times (limit: {self._max_node_iterations})",
+                                session_id=self._session_id,
+                                trace_id=self._trace_id,
+                                span_type="node",
+                                project_id=getattr(self._client, "_project_id", None) or "",
+                            ))
+                    except Exception:  # noqa: BLE001
+                        pass
+                    from langsight.exceptions import GraphLoopDetectedError
+                    raise GraphLoopDetectedError(
+                        node_name=agent_name,
+                        iteration_count=count,
+                        max_iterations=self._max_node_iterations,
+                        session_id=self._session_id,
+                    )
+
             span_id = str(uuid.uuid4())
             parent = self._resolve_parent_span_id(parent_run_id)
+
+            input_data: dict[str, Any] | None = None
+            if not self._redact and isinstance(inputs, dict):
+                input_data = inputs
 
             self._active_chains[key] = _ActiveChain(
                 name=agent_name,
@@ -369,16 +490,28 @@ class LangSightLangChainCallback(BaseIntegration):
                 is_agent=True,
                 agent_span_id=span_id,
                 parent_span_id=parent,
+                is_langgraph_node=is_node,
+                input_data=input_data,
             )
+
+            if node_from_meta and agent_name == node_from_meta:
+                self._active_lg_nodes.add(agent_name)
+
             logger.debug(
                 "integration.agent_detected",
                 agent=agent_name,
                 span_id=span_id,
                 parent_span_id=parent,
+                is_node=is_node,
             )
         else:
             # Track non-agent chains for node context (like langgraph.py did)
-            node_name = serialized.get("name") or serialized.get("id", ["unknown"])[-1] or "unknown"
+            node_name = (
+                (metadata or {}).get("langgraph_node")
+                or (serialized or {}).get("name")
+                or (serialized or {}).get("id", ["unknown"])[-1]
+                or "unknown"
+            )
             self._active_chains[key] = _ActiveChain(
                 name=node_name,
                 started_at=datetime.now(UTC),
@@ -398,7 +531,22 @@ class LangSightLangChainCallback(BaseIntegration):
         if not chain or not chain.is_agent:
             return
 
-        # Emit the finalized agent span (use constructor directly for span_id)
+        if chain.is_langgraph_node:
+            self._active_lg_nodes.discard(chain.name)
+
+        # LangGraph nodes are discrete workflow steps — span_type='node'.
+        # Graph roots, session wrappers, and LLM spans stay as span_type='agent'.
+        span_type = "node" if chain.is_langgraph_node else "agent"
+
+        input_args: dict[str, Any] | None = None
+        output_result: str | None = None
+        if not self._redact:
+            input_args = chain.input_data
+            if isinstance(outputs, dict):
+                output_result = _safe_json(outputs)
+            elif outputs is not None:
+                output_result = _truncate(str(outputs))
+
         ended_at = datetime.now(UTC)
         span = ToolCallSpan(
             span_id=chain.agent_span_id or str(uuid.uuid4()),
@@ -411,8 +559,10 @@ class LangSightLangChainCallback(BaseIntegration):
             session_id=self._session_id,
             trace_id=self._trace_id,
             parent_span_id=chain.parent_span_id,
-            span_type="agent",
+            span_type=span_type,
             project_id=getattr(self._client, "_project_id", None) or "",
+            input_args=input_args,
+            output_result=output_result,
         )
         self._client.buffer_span(span)  # type: ignore[union-attr]
         _try_flush(self._client)
@@ -435,6 +585,11 @@ class LangSightLangChainCallback(BaseIntegration):
         if not chain or not chain.is_agent:
             return
 
+        if chain.is_langgraph_node:
+            self._active_lg_nodes.discard(chain.name)
+
+        span_type = "node" if chain.is_langgraph_node else "agent"
+
         ended_at = datetime.now(UTC)
         span = ToolCallSpan(
             span_id=chain.agent_span_id or str(uuid.uuid4()),
@@ -448,7 +603,7 @@ class LangSightLangChainCallback(BaseIntegration):
             session_id=self._session_id,
             trace_id=self._trace_id,
             parent_span_id=chain.parent_span_id,
-            span_type="agent",
+            span_type=span_type,
             project_id=getattr(self._client, "_project_id", None) or "",
         )
         self._client.buffer_span(span)  # type: ignore[union-attr]
@@ -572,7 +727,35 @@ class LangSightLangChainCallback(BaseIntegration):
         run_id: UUID,
         **kwargs: Any,
     ) -> None:
-        """Capture the first human message as session input (auto-capture)."""
+        """Capture LLM call start time, messages, and model name."""
+        key = str(run_id)
+
+        # Extract model name from serialized
+        model_name: str | None = None
+        try:
+            kw = (serialized or {}).get("kwargs", {})
+            model_name = kw.get("model") or kw.get("model_name")
+            if not model_name:
+                model_name = (serialized or {}).get("model") or (serialized or {}).get("model_name")
+        except (AttributeError, TypeError):
+            pass
+
+        # Serialize messages for llm_input
+        messages_str: str | None = None
+        if not self._redact:
+            try:
+                messages_str = _serialize_messages(messages)
+            except Exception:  # noqa: BLE001
+                pass
+
+        # Store in _pending_llm (fixes 0ms latency for chat models)
+        self._pending_llm[key] = {
+            "started_at": datetime.now(UTC),
+            "messages_str": messages_str,
+            "model_name": model_name,
+        }
+
+        # Session input auto-capture (existing behavior)
         if self._session_input_captured:
             return
         try:
@@ -586,58 +769,154 @@ class LangSightLangChainCallback(BaseIntegration):
                         logger.debug("integration.prompt_captured", length=len(content))
                         return
         except (IndexError, TypeError, AttributeError):
-            pass  # Defensive — don't crash on unexpected message format
+            pass
 
     def on_llm_start(self, serialized: dict[str, Any], prompts: list[str], **kwargs: Any) -> None:
-        """Record LLM call start time for token/cost tracking."""
+        """Record LLM call start time for completion models."""
         run_id = kwargs.get("run_id")
         if run_id:
-            self._pending_llm[str(run_id)] = datetime.now(UTC)
+            key = str(run_id)
+            if key not in self._pending_llm:
+                model_name: str | None = None
+                try:
+                    kw = (serialized or {}).get("kwargs", {})
+                    model_name = kw.get("model") or kw.get("model_name")
+                except (AttributeError, TypeError):
+                    pass
+                messages_str: str | None = None
+                if not self._redact and prompts:
+                    messages_str = _truncate("\n".join(prompts))
+                self._pending_llm[key] = {
+                    "started_at": datetime.now(UTC),
+                    "messages_str": messages_str,
+                    "model_name": model_name,
+                }
 
     def on_llm_end(self, response: Any, **kwargs: Any) -> None:
-        """Extract token counts and model from LLM response → emit agent span.
-
-        LangChain passes token usage in:
-        - response.generations[0][0].message.usage_metadata (Gemini, OpenAI)
-        - response.generations[0][0].generation_info["model_name"]
-        """
+        """Extract tokens, model, LLM I/O from response -> emit agent span."""
         run_id = kwargs.get("run_id")
-        started_at = self._pending_llm.pop(str(run_id), None) if run_id else None
-        if started_at is None:
-            started_at = datetime.now(UTC)
+        pending_data = self._pending_llm.pop(str(run_id), None) if run_id else None
 
-        # Extract token counts + model from the LLM response
+        if pending_data:
+            started_at = pending_data.get("started_at", datetime.now(UTC))
+            stored_messages = pending_data.get("messages_str")
+            stored_model = pending_data.get("model_name")
+        else:
+            started_at = datetime.now(UTC)
+            stored_messages = None
+            stored_model = None
+
         input_tokens: int | None = None
         output_tokens: int | None = None
-        model_id: str | None = None
+        thinking_tokens: int | None = None
+        model_id: str | None = stored_model
+        llm_output_text: str | None = None
+        finish_reason: str | None = None
 
         try:
             generations = getattr(response, "generations", None) or []
             for gen_list in generations:
                 for gen in gen_list:
-                    # Token usage from message.usage_metadata
                     msg = getattr(gen, "message", None)
                     um = getattr(msg, "usage_metadata", None) if msg else None
                     if um and isinstance(um, dict):
                         input_tokens = um.get("input_tokens")
                         output_tokens = um.get("output_tokens")
+                        # Extract thinking tokens for models that provide total_tokens
+                        # (Gemini: thinking = total - input - output)
+                        total_tokens_raw = um.get("total_tokens")
+                        if total_tokens_raw and input_tokens is not None and output_tokens is not None:
+                            thinking = total_tokens_raw - input_tokens - output_tokens
+                            if thinking > 0:
+                                thinking_tokens = thinking
 
-                    # Model name from generation_info
                     gi = getattr(gen, "generation_info", None)
                     if gi and isinstance(gi, dict):
-                        model_id = gi.get("model_name")
+                        gi_model = gi.get("model_name")
+                        if gi_model:
+                            model_id = gi_model
+                        if not finish_reason:
+                            finish_reason = gi.get("finish_reason")
+
+                    if not self._redact and llm_output_text is None:
+                        msg_content = getattr(msg, "content", None) if msg else None
+                        if msg_content and isinstance(msg_content, str):
+                            llm_output_text = _truncate(msg_content)
+                        elif hasattr(gen, "text") and gen.text:
+                            llm_output_text = _truncate(gen.text)
 
                     if input_tokens is not None:
-                        break  # found tokens, stop searching
+                        break
                 if input_tokens is not None:
                     break
         except (AttributeError, TypeError, IndexError):
-            pass  # Defensive — don't crash on unexpected response
+            pass
+
+        if not model_id:
+            try:
+                llm_out = getattr(response, "llm_output", None)
+                if llm_out and isinstance(llm_out, dict):
+                    model_id = llm_out.get("model") or llm_out.get("model_name")
+            except (AttributeError, TypeError):
+                pass
 
         if input_tokens is None and output_tokens is None:
-            return  # No token data — skip (avoid noisy empty spans)
+            return
 
-        # Resolve agent name from the enclosing context
+        # --- Tier 2: Budget enforcement ---
+        if self._budget is not None and input_tokens is not None:
+            cost_usd = 0.0
+            _mid = model_id or ""
+            # Try exact match, then strip provider prefix
+            pricing = self._pricing_table.get(_mid)
+            if not pricing:
+                for prefix in ("models/", "anthropic/", "openai/", "google/", "meta/"):
+                    if _mid.startswith(prefix):
+                        pricing = self._pricing_table.get(_mid[len(prefix):])
+                        break
+            if pricing:
+                cost_usd = (
+                    (input_tokens or 0) / 1_000_000 * pricing[0]
+                    + (output_tokens or 0) / 1_000_000 * pricing[1]
+                )
+            else:
+                # Conservative fallback
+                cost_usd = (
+                    (input_tokens or 0) / 1_000_000 * 10.0
+                    + (output_tokens or 0) / 1_000_000 * 30.0
+                )
+
+            violation = self._budget.record_step_and_cost(cost_usd)
+            if violation is not None:
+                logger.warning(
+                    "integration.budget_exceeded",
+                    limit_type=violation.limit_type,
+                    actual=violation.actual_value,
+                    limit=violation.limit_value,
+                    session_id=self._session_id,
+                )
+                # Set flag — exception raised on next on_chain_start
+                # (LangChain swallows exceptions from on_llm_end)
+                self._budget_violated = True
+                self._budget_violation = violation
+                # Emit prevented span
+                try:
+                    if self._client is not None:
+                        self._client.buffer_span(ToolCallSpan(
+                            server_name="langgraph",
+                            tool_name="budget_exceeded",
+                            started_at=datetime.now(UTC),
+                            ended_at=datetime.now(UTC),
+                            status=ToolCallStatus.PREVENTED,
+                            error=f"budget_exceeded: {violation.limit_type}={violation.actual_value} (limit: {violation.limit_value})",
+                            session_id=self._session_id,
+                            trace_id=self._trace_id,
+                            span_type="agent",
+                            project_id=getattr(self._client, "_project_id", None) or "",
+                        ))
+                except Exception:  # noqa: BLE001
+                    pass
+
         parent_run_id = kwargs.get("parent_run_id")
         agent_name = self._agent_name
         parent_span_id: str | None = None
@@ -663,7 +942,11 @@ class LangSightLangChainCallback(BaseIntegration):
             project_id=getattr(self._client, "_project_id", None) or "",
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            thinking_tokens=thinking_tokens,
             model_id=model_id,
+            llm_input=stored_messages,
+            llm_output=llm_output_text,
+            finish_reason=finish_reason,
         )
         self._client.buffer_span(span)  # type: ignore[union-attr]
         _try_flush(self._client)

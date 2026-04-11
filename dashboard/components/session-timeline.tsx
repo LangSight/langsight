@@ -15,7 +15,7 @@ export function SessionTimeline({ spans, sessionDurationMs, onSelectNode }: Prop
   const segments = useMemo(() => {
     if (!spans.length || !sessionDurationMs) return [];
     const times = spans
-      .filter((s) => s.span_type === "tool_call" && s.started_at)
+      .filter((s) => (s.span_type === "tool_call" || s.span_type === "node") && s.started_at)
       .map((s) => ({ span: s, start: new Date(s.started_at).getTime() }))
       .sort((a, b) => a.start - b.start);
     if (!times.length) return [];

@@ -65,6 +65,111 @@ function buildCallLabels(spans: SpanNode[]): string[] {
   });
 }
 
+function buildTopologyGraph(
+  topologyJson: string,
+  spans: SpanNode[],
+): SessionGraphResult {
+  // Parse topology
+  let topo: {
+    nodes: string[];
+    edges: { source: string; target: string }[];
+    conditional_edges: { source: string; targets: Record<string, string> }[];
+    entry_point: string;
+  };
+  try {
+    topo = JSON.parse(topologyJson);
+  } catch {
+    // Invalid JSON — fall through to normal graph
+    return { nodes: [], edges: [], serverCallers: new Map(), edgeMetrics: new Map(), edgeSpans: new Map() };
+  }
+
+  // Filter out __start__ and __end__ from display
+  const displayNodes = topo.nodes.filter(n => n !== "__start__" && n !== "__end__");
+
+  // Build node metrics from runtime spans
+  // Count node spans for call count + latency, agent spans for tokens + model
+  const nodeMetrics: Map<string, { calls: number; errors: number; totalLatency: number; inputTokens: number; outputTokens: number; thinkingTokens: number; models: Set<string> }> = new Map();
+  for (const span of spans) {
+    const name = span.agent_name;
+    if (!name || !displayNodes.includes(name)) continue;
+    if (span.span_type !== "node" && span.span_type !== "agent") continue;
+
+    const m = nodeMetrics.get(name) ?? { calls: 0, errors: 0, totalLatency: 0, inputTokens: 0, outputTokens: 0, thinkingTokens: 0, models: new Set<string>() };
+    // Only count node spans for call count and latency (agent spans are LLM calls within the node)
+    if (span.span_type === "node") {
+      m.calls++;
+      if (span.status !== "success") m.errors++;
+      m.totalLatency += span.latency_ms ?? 0;
+    }
+    m.inputTokens += span.input_tokens ?? 0;
+    m.outputTokens += span.output_tokens ?? 0;
+    m.thinkingTokens += span.thinking_tokens ?? 0;
+    if (span.model_id) m.models.add(span.model_id);
+    nodeMetrics.set(name, m);
+  }
+
+  // Create GraphNode[] — use type="agent" for all workflow nodes
+  const graphNodes: GraphNode[] = displayNodes.map(name => {
+    const m = nodeMetrics.get(name);
+    return {
+      id: `agent:${name}`,
+      type: "agent" as const,
+      label: name,
+      hasError: (m?.errors ?? 0) > 0,
+      callCount: m?.calls ?? 0,
+      errorCount: m?.errors ?? 0,
+      avgLatencyMs: m && m.calls > 0 ? m.totalLatency / m.calls : 0,
+      meta: m ? {
+        input_tokens: m.inputTokens,
+        output_tokens: m.outputTokens,
+        thinking_tokens: m.thinkingTokens,
+        model: [...m.models].join(", "),
+      } : undefined,
+    };
+  });
+
+  // Create GraphEdge[] from topology edges
+  const graphEdges: GraphEdge[] = [];
+
+  // Direct edges — type="calls" (solid line)
+  for (const edge of topo.edges) {
+    if (edge.source === "__start__" || edge.target === "__end__") continue;
+    // Skip if source or target is not a display node
+    if (!displayNodes.includes(edge.source) || !displayNodes.includes(edge.target)) continue;
+    graphEdges.push({
+      source: `agent:${edge.source}`,
+      target: `agent:${edge.target}`,
+      type: "calls",
+    });
+  }
+
+  // Conditional edges — type="handoff" (dashed line, perfect for conditional)
+  for (const ce of topo.conditional_edges) {
+    if (!displayNodes.includes(ce.source)) continue;
+    for (const [_result, target] of Object.entries(ce.targets)) {
+      if (target === "__end__" || !displayNodes.includes(target)) continue;
+      graphEdges.push({
+        source: `agent:${ce.source}`,
+        target: `agent:${target}`,
+        type: "handoff",
+        label: _result === target ? undefined : _result,
+      });
+    }
+  }
+
+  // Handle entry point — add edge from first node if __start__ connects to it
+  // (Already handled by filtering __start__ from edges — the first display node
+  //  just appears as a root in the dagre layout)
+
+  return {
+    nodes: graphNodes,
+    edges: graphEdges,
+    serverCallers: new Map(),
+    edgeMetrics: new Map(),
+    edgeSpans: new Map(),
+  };
+}
+
 export function buildSessionGraph(
   trace: SessionTrace | null,
   expandedGroups: Set<string>,
@@ -78,6 +183,16 @@ export function buildSessionGraph(
     edgeSpans: new Map(),
   };
   if (!trace) return empty;
+
+  // Tier 2: If a topology span exists, render the designed graph instead of inferred lineage
+  const topoSpan = trace.spans_flat.find((s: SpanNode) => s.span_type === "topology" && s.input_json);
+  if (topoSpan?.input_json) {
+    const topoResult = buildTopologyGraph(topoSpan.input_json, trace.spans_flat);
+    if (topoResult.nodes.length > 0) {
+      return topoResult;
+    }
+    // Fall through to normal lineage if topology parsing failed
+  }
 
   const pathData = new Map<string, { agentName: string; serverName: string; spans: SpanNode[] }>();
   const agents = new Set<string>();

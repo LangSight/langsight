@@ -1,126 +1,532 @@
 ---
 title: "LangGraph"
-description: "Graph-aware tracing — see which node called which tool."
+description: "Full observability and runtime safety for LangGraph agents — topology capture, loop detection, budget enforcement, and thinking token tracking."
 ---
 
+## What You Get
+
+LangSight provides comprehensive observability and runtime safety for LangGraph agents with **zero configuration required**. Every node execution, LLM call, tool invocation, and conditional edge traversal is captured automatically.
+
+<CardGroup cols={3}>
+  <Card title="Graph Topology" icon="diagram-project">
+    Visualize the entire StateGraph structure — nodes, edges, conditional branches — as an interactive DAG in the dashboard
+  </Card>
+  <Card title="Loop Detection" icon="arrow-rotate-left">
+    Catch infinite loops before they burn through your budget — configurable node iteration limits with automatic termination
+  </Card>
+  <Card title="Budget Enforcement" icon="circle-dollar-to-slot">
+    Per-session cost caps enforced at runtime — stop execution when cumulative cost exceeds your limit
+  </Card>
+</CardGroup>
+
+---
+
+## Zero-Config Setup
+
+<Steps>
+  <Step title="Install">
+    ```bash
+    pip install langsight langgraph
+    ```
+  </Step>
+
+  <Step title="Set environment variables">
+    ```bash
+    export LANGSIGHT_URL=http://localhost:8000
+    export LANGSIGHT_API_KEY=your-api-key
+    export LANGSIGHT_PROJECT_ID=your-project-id
+    ```
+  </Step>
+
+  <Step title="Patch and run">
+    ```python
+    import langsight
+    from langsight.sdk import auto_patch
+
+    auto_patch()  # One-line instrumentation
+
+    # Your existing LangGraph code runs unchanged
+    result = await graph.ainvoke(
+        {"input": "Analyze Q4 sales data"},
+        config={"configurable": {"thread_id": "sess-123"}}
+    )
+    ```
+  </Step>
+</Steps>
+
 <Note>
-  Since v0.4, `LangSightLangGraphCallback` is an **alias** for `LangSightLangChainCallback`. The unified callback handles both LangChain and LangGraph automatically with auto-detect mode. This page covers the LangGraph-specific setup. For the full reference, see the [LangChain integration](/sdk/integrations/langchain).
+  `auto_patch()` installs monkey-patches on `langgraph.pregel.Pregel.{stream,astream,invoke,ainvoke}` and `StateGraph.compile()`. Your existing code runs unchanged — no callback wiring required.
 </Note>
 
-## Install
+---
 
-```bash
-pip install langsight langgraph
-```
+## What Gets Captured
 
-<Note>
-  `langchain-core` ships with `langgraph` — you don't need the full `langchain` package. LangSight's callback will find `BaseCallbackHandler` in `langchain-core` automatically.
-</Note>
+Every graph execution produces detailed traces with 12 critical data points:
 
-## Setup (auto-detect mode)
+| Data Point | Source | Description |
+|------------|--------|-------------|
+| **Node name** | `metadata["langgraph_node"]` | The node that executed (e.g., `"planner"`, `"generate"`) |
+| **Node inputs** | `on_chain_start` | The state dict passed to the node |
+| **Node outputs** | `on_chain_end` | The state dict returned by the node |
+| **LLM messages** | `on_chat_model_start` | Full prompt + chat history sent to the model |
+| **Model ID** | `kwargs["model"]` | Model name (e.g., `"gpt-4"`, `"claude-sonnet-4-6"`) |
+| **Input tokens** | `usage_metadata["input_tokens"]` | Prompt tokens consumed |
+| **Output tokens** | `usage_metadata["output_tokens"]` | Completion tokens generated |
+| **Thinking tokens** | Derived (see below) | Extended thinking tokens (for models with CoT) |
+| **Latency** | Wall-clock measurement | Per-node and per-LLM-call latency in milliseconds |
+| **Cost** | Pricing table lookup | USD cost computed from token counts + model pricing |
+| **Graph topology** | `StateGraph.compile()` | Full graph structure: nodes, edges, conditional branches |
+| **Parent-child relationships** | `run_id` tracking | Which node spawned which tool call or sub-agent |
+| **Conditional edges** | Builder metadata | Branches taken during execution (e.g., `continue` vs. `end`) |
 
-The recommended setup for LangGraph omits `server_name`, enabling auto-detect mode. Agent names, parent links, and prompts are detected automatically from graph names.
+<Tip>
+  All 12 data points appear in the dashboard Session Detail page under the **Trace** and **Topology** tabs. The Topology tab renders an interactive DAG with real-time highlighting of the execution path.
+</Tip>
+
+---
+
+## Graph Topology Capture
+
+When you call `StateGraph.compile()`, LangSight patches the compile step to extract and stash the graph structure:
 
 ```python
-import os
-import langsight
+from langgraph.graph import StateGraph
+
+graph = StateGraph(AgentState)
+graph.add_node("planner", planner_node)
+graph.add_node("executor", executor_node)
+graph.add_conditional_edges("planner", should_continue, {"continue": "executor", "end": END})
+graph.set_entry_point("planner")
+
+compiled = graph.compile()  # LangSight captures the topology here
+```
+
+The topology is stored as:
+
+```python
+_langsight_topology = {
+    "nodes": ["planner", "executor"],
+    "edges": [("planner", "executor")],
+    "conditional_branches": {
+        "planner": {"continue": "executor", "end": "__end__"}
+    },
+    "entry_point": "__start__"
+}
+```
+
+This structure is sent to LangSight on the first `invoke()` or `ainvoke()` call and rendered as an interactive graph in the dashboard.
+
+### How It Works
+
+1. `auto_patch()` wraps `StateGraph.compile()`
+2. When you call `compiled_graph = graph.compile()`, the wrapper:
+   - Calls the original `compile()`
+   - Extracts `nodes`, `edges`, `branches`, and `entry_point` from the builder
+   - Stashes the topology as `_langsight_topology` on the compiled graph object
+3. On the first `ainvoke()` call, the patched method reads `_langsight_topology` and emits a topology span
+4. The dashboard receives the topology and renders it in the **Topology** tab
+
+<Note>
+  Topology capture is idempotent — calling `compile()` multiple times on the same graph does not create duplicate topology spans.
+</Note>
+
+---
+
+## Node Deduplication
+
+LangGraph's `ainvoke()` internally calls `astream()`, which fires `on_chain_start` twice for the same node: once for the outer invoke and once for the inner stream iteration. Without deduplication, this produces duplicate node spans in the trace.
+
+LangSight uses `_active_lg_nodes` to track which nodes are currently executing:
+
+```python
+def on_chain_start(self, serialized, inputs, *, run_id, metadata=None, **kwargs):
+    node_name = metadata.get("langgraph_node")
+    if node_name:
+        if node_name in self._active_lg_nodes:
+            # Duplicate — mark this run as non-agent to skip span emission
+            self._active_chains[str(run_id)].is_agent = False
+            return
+        else:
+            # First time seeing this node in this invocation
+            self._active_lg_nodes.add(node_name)
+```
+
+When `on_chain_end` fires, the node is removed from `_active_lg_nodes` so subsequent invocations of the same node are treated as separate executions.
+
+<Warning>
+  If you manually fire `on_chain_start` without a corresponding `on_chain_end`, the node will remain in `_active_lg_nodes` and future invocations will be incorrectly deduplicated. Always pair `on_chain_start` and `on_chain_end`.
+</Warning>
+
+---
+
+## Loop Detection
+
+LangSight enforces a **node iteration limit** to catch infinite loops before they consume your entire budget. This is separate from the tool-call loop detection in Prevention Config.
+
+### How It Works
+
+Every time a node executes, LangSight increments a counter for that node name:
+
+```python
+# In on_chain_start()
+node_name = metadata.get("langgraph_node")
+if node_name and self._max_node_iterations > 0:
+    self._node_counter[node_name] = self._node_counter.get(node_name, 0) + 1
+    if self._node_counter[node_name] > self._max_node_iterations:
+        raise GraphLoopDetectedError(
+            node_name=node_name,
+            loop_count=self._node_counter[node_name],
+            max_iterations=self._max_node_iterations,
+        )
+```
+
+**Default limit**: 10 iterations per node per session.
+
+When the limit is exceeded, a `GraphLoopDetectedError` is raised and the session is tagged `loop_detected` in the dashboard.
+
+### Configuration
+
+Set the limit per session via `LangSightClient`:
+
+```python
 from langsight.sdk import LangSightClient
-from langsight.integrations.langgraph import LangSightLangGraphCallback
 
 client = LangSightClient(
-    url=os.getenv("LANGSIGHT_URL", "http://localhost:8000"),
-    api_key=os.getenv("LANGSIGHT_API_KEY"),
-    project_id=os.getenv("LANGSIGHT_PROJECT_ID"),
-)
-
-# session_id is generated and managed by langsight.session()
-async with langsight.session(agent_name="my-graph") as session_id:
-    callback = LangSightLangGraphCallback(
-        client=client,
-        session_id=session_id,
-    )
-```
-
-## Setup (fixed mode)
-
-If you don't need auto-detection, pass `server_name` for v0.3-compatible behavior:
-
-```python
-callback = LangSightLangGraphCallback(
-    client=client,
-    agent_name="my-graph",
-    server_name="my-tools",
-    session_id="sess-001",
-    trace_id="trace-abc",
+    url="http://localhost:8000",
+    max_node_iterations=5,  # Default: 10
 )
 ```
 
-## Usage
-
-Pass as a callback to your LangGraph invocation:
+Or disable loop detection entirely:
 
 ```python
-result = await graph.ainvoke(
-    {"input": "Analyze sales data for Q4"},
-    config={"callbacks": [callback]},
+client = LangSightClient(
+    url="http://localhost:8000",
+    max_node_iterations=0,  # 0 = disabled
 )
 ```
 
-Works with synchronous `graph.invoke()` too.
-
-## Multi-agent workflows
-
-In auto-detect mode, each named graph in your LangGraph workflow becomes an agent span. Cross-`ainvoke` parent linking happens automatically via a thread-local tool stack:
+### Catching the Exception
 
 ```python
-# Supervisor graph calls "call_analyst" tool, which invokes analyst graph
-result = await supervisor.ainvoke(
-    {"input": "Analyze Q4 sales"},
-    config={"callbacks": [callback]},
+from langsight.exceptions import GraphLoopDetectedError
+
+try:
+    result = await graph.ainvoke({"input": "..."})
+except GraphLoopDetectedError as e:
+    print(f"Loop detected in node {e.node_name}")
+    print(f"Executed {e.loop_count} times (limit: {e.max_iterations})")
+    # Clean up, alert, or retry with modified state
+```
+
+<Tip>
+  Use this to catch infinite loops caused by:
+  - Conditional edges that always return to the same node
+  - State updates that never trigger the exit condition
+  - Recursive sub-graphs without a base case
+</Tip>
+
+---
+
+## Budget Enforcement
+
+LangSight tracks cumulative LLM cost across all nodes in a session and enforces a hard budget limit at runtime.
+
+### How It Works
+
+1. **Cost accumulation**: Every time `on_llm_end` fires, LangSight computes the cost from token counts and adds it to the session's running total:
+
+   ```python
+   # In on_llm_end()
+   cost = (input_tokens / 1_000_000 * input_price_per_1m) + \
+          (output_tokens / 1_000_000 * output_price_per_1m)
+   
+   if self._budget:
+       violation = self._budget.record_cost(cost)
+       if violation:
+           self._budget_violated = True
+           self._budget_violation = violation
+   ```
+
+2. **Flag-based termination**: LangSight does not raise immediately in `on_llm_end` because that would interrupt the current node mid-execution. Instead, it sets a flag and raises on the **next** `on_chain_start`:
+
+   ```python
+   # In on_chain_start()
+   if self._budget_violated:
+       raise BudgetExceededError(
+           limit_type=self._budget_violation.limit_type,
+           limit_value=self._budget_violation.limit_value,
+           actual_value=self._budget_violation.actual_value,
+       )
+   ```
+
+This ensures the current node completes cleanly before the session is terminated.
+
+### Configuration
+
+Set a per-session budget via `LangSightClient`:
+
+```python
+from langsight.sdk import LangSightClient
+
+client = LangSightClient(
+    url="http://localhost:8000",
+    max_cost_usd=0.50,  # Hard cap at $0.50
 )
 ```
 
-Result in the dashboard:
-
-```
-Session: sess-001
-├── supervisor (agent)
-│   ├── call_analyst                 120ms  success
-│   │   └── analyst (agent)
-│   │       └── read_query            42ms  success
-│   └── summarize                     15ms  success
-```
-
-## Migration from v0.3
-
-The import path is unchanged — no code changes needed:
+### Catching the Exception
 
 ```python
-# This still works (backward-compatible alias)
-from langsight.integrations.langgraph import LangSightLangGraphCallback
+from langsight.exceptions import BudgetExceededError
 
-# Or use the canonical import
-from langsight.integrations.langchain import LangSightLangChainCallback
+try:
+    result = await graph.ainvoke({"input": "..."})
+except BudgetExceededError as e:
+    print(f"Budget exceeded: ${e.actual_value:.4f} (limit: ${e.limit_value})")
+    # Save partial results, notify user, or upgrade plan
 ```
 
-The only behavioral change: if you omit `server_name`, the callback now enters auto-detect mode instead of defaulting to `"langgraph"`. To preserve v0.3 behavior exactly, pass `server_name` explicitly.
+### Pricing Table
 
-## What gets traced
+LangSight uses a built-in pricing table for major models (Claude, GPT-4, Gemini). For custom or fine-tuned models, provide your own pricing:
 
-| Field | Auto-detect mode | Fixed mode |
-|-------|-----------------|------------|
-| `tool_name` | Tool function name | Tool function name |
-| `server_name` | Agent name (auto-detected) | Value from constructor |
-| `agent_name` | Auto-detected from graph names | Value from constructor |
-| `span_type` | `"agent"` for agents, `"tool_call"` for tools | `"tool_call"` |
-| `parent_span_id` | Auto-linked | Manual or `None` |
-| `latency_ms` | Auto-computed | Auto-computed |
-| `status` | `success`, `error`, or `timeout` | `success`, `error`, or `timeout` |
-
-## View traces
-
-```bash
-langsight sessions --id sess-001
+```python
+client = LangSightClient(
+    url="http://localhost:8000",
+    max_cost_usd=1.00,
+    pricing_table={
+        "my-custom-model": (5.00, 20.00),  # (input_per_1m_usd, output_per_1m_usd)
+        "gpt-4o-mini": (0.15, 0.60),
+    },
+)
 ```
 
-Or open **http://localhost:3003/sessions/sess-001**.
+Unknown models fall back to conservative estimates ($10/1M input, $30/1M output) to prevent silent budget bypass.
+
+<Warning>
+  **Dashboard budget vs. SDK budget**: The budget configured in the dashboard (via Prevention Config / Guards) is enforced **before** tool calls are made. The SDK budget is enforced **after** LLM calls complete. Use both for defense-in-depth.
+</Warning>
+
+---
+
+## Thinking Tokens
+
+For models that support extended thinking (e.g., Claude Sonnet with chain-of-thought, GPT-o1 reasoning mode), LangSight captures thinking tokens separately from input/output tokens.
+
+### How It Works
+
+LangChain's `usage_metadata` includes three token counts:
+
+```python
+{
+    "input_tokens": 120,
+    "output_tokens": 45,
+    "total_tokens": 190  # input + output + thinking
+}
+```
+
+LangSight derives thinking tokens as:
+
+```python
+thinking_tokens = total_tokens - input_tokens - output_tokens
+```
+
+When `total_tokens > input_tokens + output_tokens`, the difference is attributed to thinking.
+
+### Pricing
+
+Thinking tokens are priced separately. For Claude Sonnet 4.6:
+
+- Input: $3.00 / 1M tokens
+- Output: $15.00 / 1M tokens
+- **Thinking (extended)**: $3.00 / 1M tokens (same as input)
+
+If the pricing table does not specify a separate thinking rate, it defaults to the input rate.
+
+```python
+client = LangSightClient(
+    url="http://localhost:8000",
+    pricing_table={
+        "claude-sonnet-4-6": {
+            "input": 3.00,
+            "output": 15.00,
+            "thinking": 3.00,  # Optional — defaults to input price
+        }
+    },
+)
+```
+
+---
+
+## Dashboard Views
+
+### Session Summary
+
+The **Sessions** page shows all graph executions in a project:
+
+| Column | Description |
+|--------|-------------|
+| **Session ID** | Unique identifier for the graph invocation |
+| **Agent Name** | Top-level graph name (auto-detected from `StateGraph`) |
+| **Status** | `success`, `error`, `loop_detected`, `budget_exceeded` |
+| **Duration** | Wall-clock time from `ainvoke()` start to finish |
+| **Cost** | Cumulative LLM cost across all nodes |
+| **Nodes Executed** | Count of unique nodes executed |
+| **Health Tags** | `loop_detected`, `budget_exceeded`, `stale`, etc. |
+
+### Topology Tab
+
+Click a session to open the detail view. The **Topology** tab shows:
+
+- **Interactive DAG**: Nodes rendered as boxes, edges as arrows, conditional branches highlighted
+- **Execution path**: Nodes that executed are highlighted in green; unexecuted nodes are grey
+- **Hover tooltips**: Node name, input/output summary, latency, cost
+- **Zoom and pan**: Navigate large graphs with 100+ nodes
+
+### Trace Tab
+
+The **Trace** tab shows a parent-child tree of all spans:
+
+```
+Session: sess-123
+├── planner (node)                 420ms  $0.0042  success
+│   └── gpt-4 (llm)                380ms  $0.0042
+├── executor (node)                 680ms  $0.0120  success
+│   ├── gpt-4 (llm)                 320ms  $0.0060
+│   └── search_tool (tool_call)     240ms  $0.0000  success
+└── finalizer (node)                120ms  $0.0018  success
+    └── gpt-4 (llm)                 100ms  $0.0018
+```
+
+Each span includes:
+- Node/tool/LLM name
+- Latency in milliseconds
+- Cost in USD
+- Status (`success`, `error`, `timeout`)
+- Input/output payloads (expandable)
+
+---
+
+## Comparison with LangSmith
+
+LangSight and LangSmith both provide observability for LangGraph, but LangSight adds **runtime safety features** that LangSmith does not.
+
+| Feature | LangSmith | LangSight |
+|---------|-----------|-----------|
+| Capture node inputs/outputs | ✅ | ✅ |
+| LLM token tracking | ✅ | ✅ |
+| Parent-child span hierarchy | ✅ | ✅ |
+| Cost calculation | ✅ | ✅ |
+| **Graph topology visualization** | ❌ | ✅ |
+| **Loop detection + termination** | ❌ | ✅ |
+| **Runtime budget enforcement** | ❌ | ✅ |
+| **Thinking token capture** | Partial | ✅ |
+| **Zero-config instrumentation** | ❌ (requires callback wiring) | ✅ (one-line `auto_patch()`) |
+| **Per-project MCP server catalog** | ❌ | ✅ |
+| **Health checks for MCP servers** | ❌ | ✅ |
+
+<Tip>
+  Use LangSight for **runtime reliability** (prevent loops, enforce budgets, catch failures) and LangSmith for **post-hoc analysis** (prompt playground, dataset curation, annotation). They are complementary — run both in parallel.
+</Tip>
+
+---
+
+## Troubleshooting
+
+### Graph is not instrumented
+
+**Symptom**: No spans appear in the dashboard after running your graph.
+
+**Solutions**:
+
+1. Ensure `auto_patch()` is called **before** importing `langgraph`:
+
+   ```python
+   import langsight
+   from langsight.sdk import auto_patch
+
+   auto_patch()  # Must come first
+
+   from langgraph.graph import StateGraph  # Now import LangGraph
+   ```
+
+2. Check that `LANGSIGHT_URL`, `LANGSIGHT_API_KEY`, and `LANGSIGHT_PROJECT_ID` are set.
+
+3. Verify the LangSight backend is reachable:
+
+   ```bash
+   curl http://localhost:8000/health
+   ```
+
+### Loop detection fires too early
+
+**Symptom**: `GraphLoopDetectedError` is raised for graphs that intentionally iterate multiple times.
+
+**Solutions**:
+
+1. Increase the node iteration limit:
+
+   ```python
+   client = LangSightClient(
+       url="http://localhost:8000",
+       max_node_iterations=20,  # Default: 10
+   )
+   ```
+
+2. Disable loop detection if your graph has unbounded iteration:
+
+   ```python
+   client = LangSightClient(
+       url="http://localhost:8000",
+       max_node_iterations=0,  # 0 = disabled
+   )
+   ```
+
+### Budget enforcement triggers after limit is exceeded
+
+**Symptom**: The session continues past the budget limit before terminating.
+
+**Explanation**: Budget enforcement is **flag-based** — LangSight checks the budget after each LLM call completes, but only raises on the **next** `on_chain_start`. This means the node that triggered the budget violation always completes before the session is terminated.
+
+**Solution**: Set your budget limit slightly lower than your hard cap to account for the final node's cost:
+
+```python
+client = LangSightClient(
+    url="http://localhost:8000",
+    max_cost_usd=0.45,  # Leave $0.05 buffer for the final node
+)
+```
+
+### Thinking tokens are not captured
+
+**Symptom**: `thinking_tokens` is `null` in the dashboard even though the model supports extended thinking.
+
+**Cause**: LangChain's `usage_metadata` does not include `total_tokens` for some providers.
+
+**Solution**: Verify that your LangChain integration populates `total_tokens` in `usage_metadata`. If not, file an issue with LangChain or use LangSight's direct SDK integration instead:
+
+```python
+from langsight.sdk import wrap_llm
+
+client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+client = wrap_llm(client)  # Captures tokens directly from Anthropic SDK
+```
+
+### Topology does not appear in dashboard
+
+**Symptom**: The Topology tab shows "No topology data available" even though the graph executed successfully.
+
+**Cause**: `StateGraph.compile()` was called before `auto_patch()`.
+
+**Solution**: Move `auto_patch()` to the top of your script, before any `StateGraph` imports or instantiations.
+
+---
+
+## Related
+
+- [LangChain Integration](/sdk/integrations/langchain) — LangSight's unified callback for LangChain and LangGraph
+- [Prevention Config (Guards)](/agents/prevention-config) — Dashboard-configured loop detection, budget controls, and circuit breakers
+- [Session Health](/session-health) — Full health tag reference including `loop_detected` and `budget_exceeded`
+- [Costs & Model Pricing](/costs-model-pricing) — How LangSight computes session costs and thinking token pricing

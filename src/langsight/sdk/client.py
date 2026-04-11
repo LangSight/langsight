@@ -99,6 +99,7 @@ class LangSightClient:
         circuit_breaker_threshold: int = 5,
         circuit_breaker_cooldown: float = 60.0,
         circuit_breaker_half_open_max: int = 2,
+        max_node_iterations: int = 10,
         # Optional Redis URL — enables cross-replica circuit breaker state sharing.
         # When set, all SDK instances pointing at the same Redis converge on the
         # same OPEN/CLOSED state for each MCP server.
@@ -191,6 +192,7 @@ class LangSightClient:
         self._redis_url: str | None = redis_url
         self._redis_client: object | None = None  # lazy — created on first CB access
         self._circuit_breakers: dict[str, CircuitBreaker | AsyncCircuitBreaker] = {}
+        self._max_node_iterations = max_node_iterations
 
     # --- Prevention state accessors ---
 

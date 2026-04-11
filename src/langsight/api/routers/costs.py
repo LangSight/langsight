@@ -73,6 +73,7 @@ class ModelPricingResponse(BaseModel):
     input_per_1m_usd: float
     output_per_1m_usd: float
     cache_read_per_1m_usd: float
+    thinking_per_1m_usd: float
     effective_from: str
     effective_to: str | None
     notes: str | None
@@ -87,6 +88,7 @@ class CreateModelPricingRequest(BaseModel):
     input_per_1m_usd: float = 0.0
     output_per_1m_usd: float = 0.0
     cache_read_per_1m_usd: float = 0.0
+    thinking_per_1m_usd: float = 0.0
     notes: str | None = None
 
 
@@ -99,6 +101,7 @@ def _pricing_to_response(p: ModelPricing) -> ModelPricingResponse:
         input_per_1m_usd=p.input_per_1m_usd,
         output_per_1m_usd=p.output_per_1m_usd,
         cache_read_per_1m_usd=p.cache_read_per_1m_usd,
+        thinking_per_1m_usd=p.thinking_per_1m_usd,
         effective_from=p.effective_from.isoformat(),
         effective_to=p.effective_to.isoformat() if p.effective_to else None,
         notes=p.notes,
@@ -229,6 +232,7 @@ async def create_model_pricing(
         input_per_1m_usd=body.input_per_1m_usd,
         output_per_1m_usd=body.output_per_1m_usd,
         cache_read_per_1m_usd=body.cache_read_per_1m_usd,
+        thinking_per_1m_usd=body.thinking_per_1m_usd,
         effective_from=datetime.now(UTC),
         notes=body.notes,
         is_custom=True,
@@ -272,6 +276,7 @@ async def update_model_pricing(
         input_per_1m_usd=body.input_per_1m_usd,
         output_per_1m_usd=body.output_per_1m_usd,
         cache_read_per_1m_usd=body.cache_read_per_1m_usd,
+        thinking_per_1m_usd=body.thinking_per_1m_usd,
         effective_from=datetime.now(UTC),
         notes=body.notes,
         is_custom=True,

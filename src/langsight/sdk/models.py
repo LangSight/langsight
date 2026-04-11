@@ -35,11 +35,13 @@ class ToolCallStatus(StrEnum):
 #               Never counted in agent→server metrics.  Still registered in
 #               the pending-tool queue so the real tool_call can claim it.
 SpanType = Literal[
-    "tool_call",  # MCP/tool execution
-    "agent",  # LLM generation or agent lifecycle
-    "handoff",  # agent-to-agent delegation
-    "llm_intent",  # LLM decided to call a tool (not actual execution)
+    "tool_call",  # MCP/tool execution — external server call
+    "node",       # workflow node execution — LangGraph node, CrewAI task step, etc.
+    "agent",      # LLM generation or agent lifecycle
+    "handoff",    # agent-to-agent delegation
+    "llm_intent", # LLM decided to call a tool (not actual execution)
     "user_message",  # human input mid-session (HITL, clarification, approval)
+    "topology",   # graph structure snapshot from StateGraph.compile()
 ]
 
 # Lineage provenance — how parent/child was determined
@@ -115,6 +117,7 @@ class ToolCallSpan(BaseModel):
     finish_reason: str | None = None  # gen_ai.response.finish_reasons — why LLM stopped
     cache_read_tokens: int | None = None  # Anthropic: gen_ai.usage.cache_read_input_tokens
     cache_creation_tokens: int | None = None  # Anthropic: gen_ai.usage.cache_creation_input_tokens
+    thinking_tokens: int | None = None  # thinking/reasoning tokens (Gemini 2.5, o1, etc.)
 
     # --- Lineage protocol v1.0 fields ---
     target_agent_name: str | None = None  # explicit handoff destination (handoff spans only)
@@ -154,6 +157,7 @@ class ToolCallSpan(BaseModel):
         finish_reason: str | None = None,
         cache_read_tokens: int | None = None,
         cache_creation_tokens: int | None = None,
+        thinking_tokens: int | None = None,
         target_agent_name: str | None = None,
         lineage_provenance: LineageProvenance = "explicit",
         lineage_status: LineageStatus = "complete",
@@ -187,6 +191,7 @@ class ToolCallSpan(BaseModel):
             finish_reason=finish_reason,
             cache_read_tokens=cache_read_tokens,
             cache_creation_tokens=cache_creation_tokens,
+            thinking_tokens=thinking_tokens,
             target_agent_name=target_agent_name,
             lineage_provenance=lineage_provenance,
             lineage_status=lineage_status,

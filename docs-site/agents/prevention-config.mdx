@@ -70,6 +70,95 @@ When a pattern is detected, the call is blocked and a `loop_detected` health tag
 
 ---
 
+## LangGraph Runtime Guards
+
+LangGraph graphs have two additional safety controls that run inside the LangSight SDK during graph execution. These are separate from the Prevention Config guards (which apply to tool calls) and are configured via the `LangSightClient` constructor.
+
+### Node Iteration Limit
+
+LangGraph graphs can loop indefinitely when conditional edges always route back to the same node or when state updates never trigger the exit condition. The **node iteration limit** prevents infinite loops by counting how many times each node executes per session and raising when the limit is exceeded.
+
+**Default limit**: 10 iterations per node per session.
+
+**Configuration**:
+
+```python
+from langsight.sdk import LangSightClient
+
+client = LangSightClient(
+    url="http://localhost:8000",
+    max_node_iterations=5,  # Default: 10, set to 0 to disable
+)
+```
+
+**Exception raised**: `langsight.exceptions.GraphLoopDetectedError`
+
+**Catch the exception**:
+
+```python
+from langsight.exceptions import GraphLoopDetectedError
+
+try:
+    result = await graph.ainvoke({"input": "..."})
+except GraphLoopDetectedError as e:
+    print(f"Loop detected in node {e.node_name}")
+    print(f"Executed {e.loop_count} times (limit: {e.max_iterations})")
+    # Alert, retry, or terminate
+```
+
+When the limit is exceeded, the session is tagged `loop_detected` in the dashboard and a span with `status=PREVENTED` is emitted.
+
+<Warning>
+  If your graph intentionally iterates more than 10 times (e.g., a multi-step planner-executor loop), increase the limit or set `max_node_iterations=0` to disable loop detection.
+</Warning>
+
+### Budget Enforcement for LangGraph
+
+LangSight tracks cumulative LLM cost across all nodes in a graph execution and enforces a hard budget limit at runtime. This is **separate** from the dashboard budget configured in Prevention Config.
+
+**How it works**:
+
+1. After each LLM call completes (`on_llm_end`), LangSight computes the cost and adds it to the session's running total.
+2. If the total exceeds `max_cost_usd`, LangSight sets a flag.
+3. On the **next** `on_chain_start` (when a new node is about to execute), LangSight raises `BudgetExceededError`.
+
+This flag-based approach ensures the current node completes cleanly before the session is terminated.
+
+**Configuration**:
+
+```python
+from langsight.sdk import LangSightClient
+
+client = LangSightClient(
+    url="http://localhost:8000",
+    max_cost_usd=0.50,  # Hard cap at $0.50
+)
+```
+
+**Exception raised**: `langsight.exceptions.BudgetExceededError`
+
+**Catch the exception**:
+
+```python
+from langsight.exceptions import BudgetExceededError
+
+try:
+    result = await graph.ainvoke({"input": "..."})
+except BudgetExceededError as e:
+    print(f"Budget exceeded: ${e.actual_value:.4f} (limit: ${e.limit_value})")
+    # Save partial results, notify user, or upgrade plan
+```
+
+When the budget is exceeded, the session is tagged `budget_exceeded` in the dashboard.
+
+**Difference from dashboard budget**: The dashboard budget (configured in Prevention Config / Guards) is checked **before** each tool call. The SDK budget is checked **after** each LLM call. Use both for defense-in-depth.
+
+<Tip>
+  Set your SDK budget slightly lower than your hard cap (e.g., $0.45 instead of $0.50) to account for the final node's cost. The node that triggers the violation always completes before the exception is raised.
+</Tip>
+
+---
+
 ## Budget Controls
 
 Budget controls enforce cost and time limits per session. Limits are evaluated before each LLM call and tool call.

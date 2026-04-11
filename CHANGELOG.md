@@ -6,6 +6,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-04-11
+
+**LangGraph full instrumentation: auto-patching, topology capture, loop detection, budget enforcement, thinking tokens, and comprehensive dashboard integration.**
+
+### Added
+- **LangGraph auto-instrumentation** (`src/langsight/sdk/auto_patch.py`): `auto_patch()` now patches `langgraph.pregel.Pregel.{stream,astream,invoke,ainvoke}` to auto-inject a `LangSightLangChainCallback` into the config. Zero code changes required — existing LangGraph apps are fully instrumented by calling `auto_patch()` once at module init.
+- **StateGraph topology capture** (`src/langsight/sdk/auto_patch.py`): `auto_patch()` wraps `StateGraph.compile()` to extract the full graph structure (nodes, edges, conditional branches, entry point) and stash it as `_langsight_topology` on the compiled graph object. The topology is sent to LangSight on the first `invoke()` call and rendered as an interactive DAG in the dashboard Topology tab.
+- **Span parent-child hierarchy** (`src/langsight/integrations/langchain.py`): LangChain `run_id` tracking correctly maps node → LLM → tool call relationships. The dashboard Trace tab now shows the full execution tree.
+- **Node deduplication** (`src/langsight/integrations/langchain.py`): `_active_lg_nodes` set prevents duplicate node spans when `invoke()` delegates to `stream()` internally. Each node execution produces exactly one span.
+- **Loop detection for LangGraph nodes** (`src/langsight/integrations/langchain.py`, `src/langsight/exceptions.py`): `_node_counter` tracks how many times each node executes per session. When a node exceeds `max_node_iterations` (default 10), a `GraphLoopDetectedError` is raised and the session is tagged `loop_detected`. Configurable via `LangSightClient(max_node_iterations=N)`.
+- **Budget enforcement for LangGraph** (`src/langsight/integrations/langchain.py`, `src/langsight/exceptions.py`): Cumulative LLM cost is tracked across all nodes. When cost exceeds `max_cost_usd`, a flag is set in `on_llm_end` and `BudgetExceededError` is raised on the next `on_chain_start`, allowing the current node to complete cleanly before termination. Session is tagged `budget_exceeded`.
+- **Thinking token capture** (`src/langsight/integrations/langchain.py`): When `usage_metadata["total_tokens"]` exceeds `input_tokens + output_tokens`, the difference is attributed to thinking (extended reasoning tokens). Thinking tokens are priced separately per model and appear as a distinct column in the dashboard cost breakdowns.
+- **`span_type='node'` for LangGraph nodes** (`src/langsight/integrations/langchain.py`): Nodes are tagged with `span_type='node'` (distinct from `tool_call` and `llm`) for filtering and aggregation in the dashboard.
+- **Cost normalization** (`src/langsight/storage/clickhouse.py`): `coalesce(cost_usd, 0)` applied to all cost aggregation queries to prevent NULL errors in projects with no LLM spans.
+
+### Changed
+- **LLM span latency field renamed** (`src/langsight/integrations/langchain.py`, `dashboard/`): `latency_ms` on LLM spans now represents the actual LLM call latency (time between `on_chat_model_start` and `on_llm_end`), not the parent node's total latency. Node latency is stored separately on the node span.
+- **Dashboard Trace tab**: Node spans are now collapsible tree nodes with child LLM and tool call spans nested underneath. Topology tab shows the graph structure; Trace tab shows the execution sequence.
+
+### Fixed
+- **LLM latency calculation** (`src/langsight/integrations/langchain.py`): LLM span `latency_ms` was incorrectly using the node's start time instead of the LLM call's start time, inflating latency by the time spent executing the node logic before the LLM call. Fixed to use `_pending_llm[run_id]["started_at"]`.
+- **Duplicate node spans** (`src/langsight/integrations/langchain.py`): `invoke()` → `stream()` delegation caused two `on_chain_start` events for the same node. Deduplication via `_active_lg_nodes` eliminates duplicate spans.
+
 ## [0.14.18] - 2026-04-09
 
 **Security hardening release: SSRF protection, tenant isolation, RBAC enforcement, DoS mitigation, alert injection, and P0-P2 audit findings.**

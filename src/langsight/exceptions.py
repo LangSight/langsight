@@ -117,3 +117,24 @@ class CircuitBreakerOpenError(LangSightError):
         self,
     ) -> tuple[type[CircuitBreakerOpenError], tuple[str, float]]:
         return (self.__class__, (self.server_name, self.cooldown_remaining_s))
+
+
+class GraphLoopDetectedError(LoopDetectedError):
+    """LangGraph node executed more times than max_node_iterations."""
+
+    def __init__(
+        self,
+        node_name: str,
+        iteration_count: int,
+        max_iterations: int,
+        session_id: str | None = None,
+    ) -> None:
+        self.node_name = node_name
+        self.max_iterations = max_iterations
+        super().__init__(
+            tool_name=node_name,
+            loop_count=iteration_count,
+            args_hash="",
+            pattern="node_iteration_limit",
+            session_id=session_id,
+        )

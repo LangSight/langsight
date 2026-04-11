@@ -117,6 +117,12 @@ _parent_span_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 _mcp_proxy_active: contextvars.ContextVar[bool] = contextvars.ContextVar(
     "langsight_mcp_proxy_active", default=False
 )
+# Set to True when _patch_langgraph() has already injected a callback into the
+# current Pregel call chain — prevents double-injection when invoke() internally
+# calls stream() (which it does in all LangGraph versions).
+_lg_callback_injected: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "langsight_lg_callback_injected", default=False
+)
 
 # ---------------------------------------------------------------------------
 # Module-level state — patched SDK originals + global client
@@ -1181,6 +1187,360 @@ def _build_claude_sdk_hooks() -> dict[Any, list[Any]] | None:
     }
 
 
+# ---------------------------------------------------------------------------
+# LangGraph auto-patch
+# ---------------------------------------------------------------------------
+
+
+def _patch_langgraph() -> None:
+    """Inject ``LangSightLangChainCallback`` into LangGraph Pregel methods.
+
+    Patches ``Pregel.stream``, ``Pregel.astream``, ``Pregel.invoke``, and
+    ``Pregel.ainvoke`` to auto-inject a LangSight callback into the config.
+    The callback captures the full agent tree — agents, tools, LLM calls,
+    parent links — with zero user code changes.
+
+    Uses ``_lg_callback_injected`` ContextVar to prevent double-injection when
+    ``invoke()`` internally delegates to ``stream()`` (true in all LangGraph
+    versions as of 0.2.x).
+
+    Safe to call multiple times (idempotent via ``_patched_sdks``).
+    No-op when ``langgraph`` is not installed.
+    """
+    if "langgraph" in _patched_sdks:
+        return
+
+    try:
+        from langgraph.pregel import Pregel
+    except ImportError:
+        return
+
+    # --- Helper: extract topology from compiled graph ------------------------
+
+    def _extract_topology(compiled_graph: Any) -> dict[str, Any] | None:
+        """Extract graph structure from a CompiledStateGraph's builder."""
+        try:
+            builder = getattr(compiled_graph, 'builder', None)
+            if builder is None:
+                return None
+            nodes = [name for name in (getattr(compiled_graph, 'nodes', {}) or {}).keys()]
+            edges = []
+            for src, tgt in (getattr(builder, 'edges', set()) or set()):
+                edges.append({"source": str(src), "target": str(tgt)})
+            conditional_edges = []
+            branches = getattr(builder, 'branches', {}) or {}
+            for source_node, branch_dict in branches.items():
+                for _branch_name, branch_obj in branch_dict.items():
+                    ends = getattr(branch_obj, 'ends', None)
+                    if ends and isinstance(ends, dict):
+                        conditional_edges.append({
+                            "source": str(source_node),
+                            "targets": {str(k): str(v) for k, v in ends.items()},
+                        })
+                    else:
+                        conditional_edges.append({
+                            "source": str(source_node),
+                            "targets": {},
+                        })
+            entry_point = str(getattr(builder, 'entry_point', '__start__') or '__start__')
+            return {
+                "nodes": nodes,
+                "edges": edges,
+                "conditional_edges": conditional_edges,
+                "entry_point": entry_point,
+            }
+        except Exception:  # noqa: BLE001
+            return None
+
+    # --- Patch StateGraph.compile() to stash topology ------------------------
+
+    def _patch_langgraph_compile() -> None:
+        """Patch StateGraph.compile() to stash topology on the compiled graph."""
+        try:
+            from langgraph.graph.state import StateGraph
+        except ImportError:
+            return
+        if hasattr(StateGraph.compile, '_langsight_patched'):
+            return
+        orig_compile = StateGraph.compile
+        _originals["langgraph_compile"] = orig_compile
+
+        def _patched_compile(self_graph: Any, *args: Any, **kwargs: Any) -> Any:
+            compiled = orig_compile(self_graph, *args, **kwargs)
+            topology = _extract_topology(compiled)
+            if topology is not None:
+                try:
+                    object.__setattr__(compiled, '_langsight_topology', topology)
+                except (TypeError, AttributeError):
+                    compiled._langsight_topology = topology  # type: ignore[attr-defined]
+            return compiled
+
+        _patched_compile._langsight_patched = True  # type: ignore[attr-defined]
+        StateGraph.compile = _patched_compile  # type: ignore[method-assign]
+
+    _patch_langgraph_compile()
+
+    # --- Helper: emit topology span ------------------------------------------
+
+    def _emit_topology_span(topology: dict[str, Any], session_id: str | None, trace_id: str | None, agent_name: str | None) -> None:
+        """Emit a span_type='topology' span with graph structure."""
+        client = _resolve_client()
+        if client is None:
+            return
+        try:
+            from langsight.sdk.models import ToolCallSpan, ToolCallStatus
+            span = ToolCallSpan.record(
+                server_name="langgraph",
+                tool_name="graph_topology",
+                started_at=datetime.now(UTC),
+                status=ToolCallStatus.SUCCESS,
+                session_id=session_id,
+                trace_id=trace_id,
+                agent_name=agent_name,
+                span_type="topology",
+                input_args=topology,
+                project_id=getattr(client, '_project_id', None) or '',
+            )
+            client.buffer_span(span)
+        except Exception:  # noqa: BLE001
+            pass
+
+    # --- Helper: build a fresh callback for the current context -------------
+
+    def _make_lg_callback() -> Any | None:
+        """Create a ``LangSightLangChainCallback`` for the current context."""
+        client = _resolve_client()
+        if client is None:
+            return None
+        try:
+            from langsight.integrations.langchain import LangSightLangChainCallback
+        except ImportError:
+            return None
+
+        # Tier 2: Create per-run budget if client has budget config
+        budget = None
+        if getattr(client, '_budget_config', None) is not None:
+            from langsight.sdk.budget import SessionBudget
+            budget = SessionBudget(client._budget_config)
+
+        return LangSightLangChainCallback(
+            client=client,
+            server_name=None,  # auto-detect mode
+            agent_name=_agent_ctx.get() or None,
+            session_id=_session_ctx.get() or None,
+            trace_id=_trace_ctx.get() or None,
+            max_node_iterations=getattr(client, '_max_node_iterations', 10),
+            budget=budget,
+            pricing_table=getattr(client, '_pricing_table', None),
+        )
+
+    # --- Helper: inject callback into config --------------------------------
+
+    def _inject_callback(
+        config: dict[str, Any] | None,
+        self_graph: Any = None,
+    ) -> tuple[dict[str, Any] | None, Any | None]:
+        """Return ``(new_config, callback)`` with our callback prepended.
+
+        Returns ``(original_config, None)`` when injection is not needed:
+        no client, already injected, or user already added our callback.
+        """
+        if _lg_callback_injected.get():
+            return config, None
+
+        # Check if user already provided a LangSight callback
+        if config is not None:
+            existing = config.get("callbacks")
+            if isinstance(existing, list):
+                try:
+                    from langsight.integrations.langchain import (
+                        LangSightLangChainCallback,
+                    )
+
+                    if any(
+                        isinstance(cb, LangSightLangChainCallback) for cb in existing
+                    ):
+                        return config, None
+                except ImportError:
+                    pass
+
+        cb = _make_lg_callback()
+        if cb is None:
+            return config, None
+
+        # Emit topology span if graph has it
+        if self_graph is not None:
+            topo = getattr(self_graph, '_langsight_topology', None)
+            if topo is not None:
+                _emit_topology_span(
+                    topo,
+                    session_id=_session_ctx.get() or None,
+                    trace_id=_trace_ctx.get() or None,
+                    agent_name=_agent_ctx.get() or None,
+                )
+                # Only emit once per graph instance
+                try:
+                    object.__setattr__(self_graph, '_langsight_topology', None)
+                except (TypeError, AttributeError):
+                    self_graph._langsight_topology = None  # type: ignore[attr-defined]
+
+        # Build config with our callback prepended
+        if config is None:
+            return {"callbacks": [cb]}, cb
+
+        new_config = dict(config)  # shallow copy — don't mutate caller's dict
+        existing_cbs = new_config.get("callbacks")
+        if existing_cbs is None:
+            new_config["callbacks"] = [cb]
+        elif isinstance(existing_cbs, list):
+            new_config["callbacks"] = [cb, *existing_cbs]
+        else:
+            # existing_cbs is a CallbackManager — try merge_configs
+            try:
+                from langchain_core.runnables.config import merge_configs
+
+                new_config = merge_configs(new_config, {"callbacks": [cb]})
+            except ImportError:
+                new_config["callbacks"] = [cb]
+
+        return new_config, cb
+
+    # --- Helper: flush after graph execution --------------------------------
+
+    def _try_flush_lg() -> None:
+        """Best-effort sync flush of buffered spans."""
+        client = _resolve_client()
+        if client is None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+            if not loop.is_closed():
+                loop.create_task(client.flush())
+        except RuntimeError:
+            # No running event loop — try blocking flush
+            try:
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(client.flush())
+                loop.close()
+            except Exception:  # noqa: BLE001
+                pass
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def _try_flush_lg_async() -> None:
+        """Best-effort async flush of buffered spans."""
+        client = _resolve_client()
+        if client is None:
+            return
+        try:
+            await client.flush()
+        except Exception:  # noqa: BLE001
+            pass
+
+    # ── Patch stream() ─────────────────────────────────────────────────────
+
+    orig_stream = Pregel.stream
+    _originals["langgraph_stream"] = orig_stream
+
+    def _patched_stream(
+        self_graph: Any,
+        input: Any,  # noqa: A002
+        config: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        new_config, cb = _inject_callback(config, self_graph=self_graph)
+        if cb is None:
+            yield from orig_stream(self_graph, input, new_config, **kwargs)
+            return
+
+        token = _lg_callback_injected.set(True)
+        try:
+            yield from orig_stream(self_graph, input, new_config, **kwargs)
+        finally:
+            _lg_callback_injected.reset(token)
+            _try_flush_lg()
+
+    Pregel.stream = _patched_stream  # type: ignore[method-assign]
+
+    # ── Patch astream() ────────────────────────────────────────────────────
+
+    orig_astream = Pregel.astream
+    _originals["langgraph_astream"] = orig_astream
+
+    async def _patched_astream(
+        self_graph: Any,
+        input: Any,  # noqa: A002
+        config: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        new_config, cb = _inject_callback(config, self_graph=self_graph)
+        if cb is None:
+            async for chunk in orig_astream(self_graph, input, new_config, **kwargs):
+                yield chunk
+            return
+
+        token = _lg_callback_injected.set(True)
+        try:
+            async for chunk in orig_astream(self_graph, input, new_config, **kwargs):
+                yield chunk
+        finally:
+            _lg_callback_injected.reset(token)
+            await _try_flush_lg_async()
+
+    Pregel.astream = _patched_astream  # type: ignore[method-assign]
+
+    # ── Patch invoke() ─────────────────────────────────────────────────────
+
+    orig_invoke = Pregel.invoke
+    _originals["langgraph_invoke"] = orig_invoke
+
+    def _patched_invoke(
+        self_graph: Any,
+        input: Any,  # noqa: A002
+        config: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        new_config, cb = _inject_callback(config, self_graph=self_graph)
+        if cb is None:
+            return orig_invoke(self_graph, input, new_config, **kwargs)
+
+        token = _lg_callback_injected.set(True)
+        try:
+            return orig_invoke(self_graph, input, new_config, **kwargs)
+        finally:
+            _lg_callback_injected.reset(token)
+            _try_flush_lg()
+
+    Pregel.invoke = _patched_invoke  # type: ignore[method-assign]
+
+    # ── Patch ainvoke() ────────────────────────────────────────────────────
+
+    orig_ainvoke = Pregel.ainvoke
+    _originals["langgraph_ainvoke"] = orig_ainvoke
+
+    async def _patched_ainvoke(
+        self_graph: Any,
+        input: Any,  # noqa: A002
+        config: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        new_config, cb = _inject_callback(config, self_graph=self_graph)
+        if cb is None:
+            return await orig_ainvoke(self_graph, input, new_config, **kwargs)
+
+        token = _lg_callback_injected.set(True)
+        try:
+            return await orig_ainvoke(self_graph, input, new_config, **kwargs)
+        finally:
+            _lg_callback_injected.reset(token)
+            await _try_flush_lg_async()
+
+    Pregel.ainvoke = _patched_ainvoke  # type: ignore[method-assign]
+
+    _patched_sdks.add("langgraph")
+    logger.debug("auto_patch.patched", sdk="langgraph")
+
+
 def auto_patch(
     url: str | None = None,
     api_key: str | None = None,
@@ -1276,6 +1636,7 @@ def auto_patch(
     _patch_mcp()
     _patch_claude_sdk()
     _patch_crewai()
+    _patch_langgraph()
 
     logger.info(
         "auto_patch.complete",
@@ -1290,6 +1651,7 @@ def auto_patch(
                 "mcp",
                 "claude_sdk",
                 "crewai",
+                "langgraph",
             ]
             if sdk not in _patched_sdks
         ],
@@ -1475,6 +1837,27 @@ def unpatch() -> None:
                 _CAC.kickoff = _originals.pop("crewai_agent_kickoff")
             except ImportError:
                 _originals.pop("crewai_agent_kickoff", None)
+    except (ImportError, AttributeError):
+        pass
+
+    try:
+        from langgraph.pregel import Pregel
+
+        if "langgraph_stream" in _originals:
+            Pregel.stream = _originals.pop("langgraph_stream")  # type: ignore[method-assign]
+        if "langgraph_astream" in _originals:
+            Pregel.astream = _originals.pop("langgraph_astream")  # type: ignore[method-assign]
+        if "langgraph_invoke" in _originals:
+            Pregel.invoke = _originals.pop("langgraph_invoke")  # type: ignore[method-assign]
+        if "langgraph_ainvoke" in _originals:
+            Pregel.ainvoke = _originals.pop("langgraph_ainvoke")  # type: ignore[method-assign]
+    except (ImportError, AttributeError):
+        pass
+
+    try:
+        from langgraph.graph.state import StateGraph
+        if "langgraph_compile" in _originals:
+            StateGraph.compile = _originals.pop("langgraph_compile")  # type: ignore[method-assign]
     except (ImportError, AttributeError):
         pass
 

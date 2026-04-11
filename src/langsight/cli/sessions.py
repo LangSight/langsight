@@ -187,7 +187,7 @@ async def _show_trace(
 
 def _render_trace(session_id: str, spans: list[dict[str, Any]]) -> None:
     """Render spans as an indented tree in the terminal."""
-    tool_spans = [s for s in spans if s.get("span_type") == "tool_call"]
+    tool_spans = [s for s in spans if s.get("span_type") in ("tool_call", "node")]
     failed = sum(1 for s in tool_spans if s.get("status") != "success")
     total_ms = sum(float(s.get("latency_ms") or 0) for s in tool_spans)
 

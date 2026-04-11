@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { X, Copy, Check, WrapText } from "lucide-react";
+import { X, Copy, Check, WrapText, FileText, Code2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MarkdownContentFull } from "@/components/markdown-content";
 
 interface PayloadTab {
   label: string;
@@ -16,12 +17,21 @@ export interface PayloadSlideoutProps {
   tabs: PayloadTab[];
 }
 
+/**
+ * Detects if content is likely JSON (starts with { or [).
+ */
+function isLikelyJson(text: string): boolean {
+  const trimmed = text.trim();
+  return (trimmed.startsWith("{") || trimmed.startsWith("[")) && trimmed.length > 2;
+}
+
 export function PayloadSlideout({ open, onClose, title, tabs }: PayloadSlideoutProps) {
   const [activeTab, setActiveTab] = useState(0);
   const [wordWrap, setWordWrap] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [viewMode, setViewMode] = useState<"markdown" | "raw">("markdown");
 
-  useEffect(() => { if (open) { setActiveTab(0); setCopied(false); } }, [open]);
+  useEffect(() => { if (open) { setActiveTab(0); setCopied(false); setViewMode("markdown"); } }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -34,6 +44,10 @@ export function PayloadSlideout({ open, onClose, title, tabs }: PayloadSlideoutP
   let formatted = raw;
   try { formatted = JSON.stringify(JSON.parse(raw), null, 2); } catch { /* keep raw */ }
   const lines = formatted.split("\n");
+
+  // Determine if content is text (markdown-renderable) vs JSON
+  const isJson = isLikelyJson(raw);
+  const showMarkdown = viewMode === "markdown" && !isJson;
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(formatted);
@@ -71,13 +85,46 @@ export function PayloadSlideout({ open, onClose, title, tabs }: PayloadSlideoutP
         >
           <span className="text-[13px] font-semibold text-foreground truncate">{title}</span>
           <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setWordWrap((w) => !w)}
-              className={cn("p-1.5 rounded hover:bg-accent/60 transition-colors", wordWrap ? "text-primary" : "text-muted-foreground")}
-              title="Toggle word wrap"
-            >
-              <WrapText size={14} />
-            </button>
+            {/* Markdown / Raw toggle — only for non-JSON content */}
+            {!isJson && (
+              <div className="flex items-center rounded-md overflow-hidden mr-1" style={{ border: "1px solid hsl(var(--border))" }}>
+                <button
+                  onClick={() => setViewMode("markdown")}
+                  className={cn(
+                    "p-1.5 transition-colors flex items-center gap-1 text-[10px] font-medium",
+                    viewMode === "markdown"
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent/40",
+                  )}
+                  title="Rendered markdown"
+                >
+                  <FileText size={12} />
+                  <span>Markdown</span>
+                </button>
+                <button
+                  onClick={() => setViewMode("raw")}
+                  className={cn(
+                    "p-1.5 transition-colors flex items-center gap-1 text-[10px] font-medium",
+                    viewMode === "raw"
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent/40",
+                  )}
+                  title="Raw text"
+                >
+                  <Code2 size={12} />
+                  <span>Raw</span>
+                </button>
+              </div>
+            )}
+            {!showMarkdown && (
+              <button
+                onClick={() => setWordWrap((w) => !w)}
+                className={cn("p-1.5 rounded hover:bg-accent/60 transition-colors", wordWrap ? "text-primary" : "text-muted-foreground")}
+                title="Toggle word wrap"
+              >
+                <WrapText size={14} />
+              </button>
+            )}
             <button onClick={handleCopy} className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors" title="Copy">
               {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
             </button>
@@ -110,37 +157,43 @@ export function PayloadSlideout({ open, onClose, title, tabs }: PayloadSlideoutP
         {/* Content */}
         <div className="flex-1 overflow-auto">
           {raw ? (
-            <div className="flex min-h-full">
-              {/* Line numbers */}
-              <div
-                className="flex-shrink-0 px-3 py-3 text-right select-none border-r"
-                style={{
-                  borderColor: "hsl(var(--border))",
-                  background: "hsl(var(--muted))",
-                  fontFamily: "var(--font-geist-mono)",
-                  fontSize: 11,
-                  lineHeight: "1.6",
-                  color: "hsl(var(--muted-foreground))",
-                }}
-              >
-                {lines.map((_, i) => <div key={i}>{i + 1}</div>)}
+            showMarkdown ? (
+              /* Markdown rendered view */
+              <MarkdownContentFull content={raw} wordWrap={wordWrap} />
+            ) : (
+              /* Raw / JSON code view */
+              <div className="flex min-h-full">
+                {/* Line numbers */}
+                <div
+                  className="flex-shrink-0 px-3 py-3 text-right select-none border-r"
+                  style={{
+                    borderColor: "hsl(var(--border))",
+                    background: "hsl(var(--muted))",
+                    fontFamily: "var(--font-geist-mono)",
+                    fontSize: 11,
+                    lineHeight: "1.6",
+                    color: "hsl(var(--muted-foreground))",
+                  }}
+                >
+                  {lines.map((_, i) => <div key={i}>{i + 1}</div>)}
+                </div>
+                {/* Code */}
+                <pre
+                  className="flex-1 p-3"
+                  style={{
+                    fontFamily: "var(--font-geist-mono)",
+                    fontSize: 12,
+                    lineHeight: "1.6",
+                    color: "hsl(var(--foreground))",
+                    whiteSpace: wordWrap ? "pre-wrap" : "pre",
+                    wordBreak: wordWrap ? "break-all" : "normal",
+                    overflowX: wordWrap ? "hidden" : "auto",
+                  }}
+                >
+                  {formatted}
+                </pre>
               </div>
-              {/* Code */}
-              <pre
-                className="flex-1 p-3"
-                style={{
-                  fontFamily: "var(--font-geist-mono)",
-                  fontSize: 12,
-                  lineHeight: "1.6",
-                  color: "hsl(var(--foreground))",
-                  whiteSpace: wordWrap ? "pre-wrap" : "pre",
-                  wordBreak: wordWrap ? "break-all" : "normal",
-                  overflowX: wordWrap ? "hidden" : "auto",
-                }}
-              >
-                {formatted}
-              </pre>
-            </div>
+            )
           ) : (
             <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
               No data

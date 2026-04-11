@@ -76,6 +76,8 @@
       "group": "SDK & Integrations",
       "pages": [
         "sdk/python",
+        "sdk/integrations/langgraph",
+        "sdk/integrations/langchain",
         "sdk/integrations/anthropic-sdk",
         "sdk/integrations/anthropic",
         "sdk/integrations/crewai",

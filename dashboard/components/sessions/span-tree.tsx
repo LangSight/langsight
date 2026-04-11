@@ -9,6 +9,7 @@ import { useState } from "react";
 import { ChevronRight, ChevronDown, ExternalLink, AlertCircle } from "lucide-react";
 import { Timestamp } from "@/components/timestamp";
 import { cn, SPAN_TYPE_ICON } from "@/lib/utils";
+import { MarkdownContent } from "@/components/markdown-content";
 import type { SessionTrace, SpanNode } from "@/lib/types";
 
 /* ── PayloadPanel ────────────────────────────────────────────── */
@@ -16,9 +17,11 @@ interface PayloadPanelProps {
   label: string;
   json: string | null;
   onViewFull?: () => void;
+  /** When true, render content as markdown instead of raw/JSON */
+  markdown?: boolean;
 }
 
-export function PayloadPanel({ label, json, onViewFull }: PayloadPanelProps) {
+export function PayloadPanel({ label, json, onViewFull, markdown }: PayloadPanelProps) {
   if (!json) return null;
   let formatted = json;
   try {
@@ -45,17 +48,21 @@ export function PayloadPanel({ label, json, onViewFull }: PayloadPanelProps) {
           </button>
         )}
       </div>
-      <pre
-        className="text-[11px] rounded-xl p-3 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed max-h-48 overflow-y-auto"
-        style={{
-          fontFamily: "var(--font-geist-mono)",
-          background: "hsl(var(--muted))",
-          color: "hsl(var(--foreground))",
-          border: "1px solid hsl(var(--border))",
-        }}
-      >
-        {formatted}
-      </pre>
+      {markdown ? (
+        <MarkdownContent content={json} className="max-h-48" fontSize="text-[11px]" />
+      ) : (
+        <pre
+          className="text-[11px] rounded-xl p-3 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed max-h-48 overflow-y-auto"
+          style={{
+            fontFamily: "var(--font-geist-mono)",
+            background: "hsl(var(--muted))",
+            color: "hsl(var(--foreground))",
+            border: "1px solid hsl(var(--border))",
+          }}
+        >
+          {formatted}
+        </pre>
+      )}
     </div>
   );
 }
@@ -207,18 +214,20 @@ export function SpanRow({ span, depth = 0, onViewPayload }: SpanRowProps) {
                 <PayloadPanel
                   label="Prompt"
                   json={span.llm_input ?? null}
+                  markdown
                   onViewFull={
                     span.llm_input
-                      ? () => onViewPayload?.(`Prompt — ${span.tool_name}`, [{ label: "JSON", json: span.llm_input ?? null }])
+                      ? () => onViewPayload?.(`Prompt — ${span.tool_name}`, [{ label: "Text", json: span.llm_input ?? null }])
                       : undefined
                   }
                 />
                 <PayloadPanel
                   label="Completion"
                   json={span.llm_output ?? null}
+                  markdown
                   onViewFull={
                     span.llm_output
-                      ? () => onViewPayload?.(`Completion — ${span.tool_name}`, [{ label: "JSON", json: span.llm_output ?? null }])
+                      ? () => onViewPayload?.(`Completion — ${span.tool_name}`, [{ label: "Text", json: span.llm_output ?? null }])
                       : undefined
                   }
                 />
@@ -345,9 +354,11 @@ export function SpanTree({ trace, loading, error, onViewPayload }: SpanTreeProps
         </tr>
       </thead>
       <tbody>
-        {trace.root_spans.map((span) => (
-          <SpanRow key={span.span_id} span={span} depth={0} onViewPayload={onViewPayload} />
-        ))}
+        {trace.root_spans
+          .filter((span) => span.span_type !== "topology" && span.tool_name !== "session")
+          .map((span) => (
+            <SpanRow key={span.span_id} span={span} depth={0} onViewPayload={onViewPayload} />
+          ))}
       </tbody>
     </table>
   );
