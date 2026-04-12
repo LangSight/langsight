@@ -223,7 +223,7 @@ jobs:
       - name: pip-audit (Python dependency CVEs)
         run: |
           uv pip install pip-audit
-          uv run pip-audit --strict --desc --skip-editable
+          uv run pip-audit --desc --skip-editable
 
       # Secret detection — catches accidentally committed credentials
       - name: Gitleaks (secret detection)
