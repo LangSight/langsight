@@ -58,6 +58,13 @@ EOF
   echo ""
 fi
 
+# ── Create default config file if missing ────────────────────────────────────
+CONFIG_FILE="$ROOT_DIR/.langsight.yaml"
+if [ ! -f "$CONFIG_FILE" ]; then
+  echo "servers: []" > "$CONFIG_FILE"
+  echo "[ok] .langsight.yaml created."
+fi
+
 # ── Build images ─────────────────────────────────────────────────────────────
 echo "[..] Building images (first run takes 3-5 min — downloading dependencies)..."
 cd "$ROOT_DIR"
