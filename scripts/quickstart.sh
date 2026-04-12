@@ -1,26 +1,125 @@
 #!/usr/bin/env bash
-# LangSight quickstart — generates .env and starts the full stack.
-# Usage: ./scripts/quickstart.sh
+# LangSight quickstart — idempotent, safe to re-run at any time.
+#
+# Usage:
+#   ./scripts/quickstart.sh           # normal start / resume
+#   ./scripts/quickstart.sh --reset   # wipe volumes + .env and start fresh
+#   ./scripts/quickstart.sh --build   # force rebuild of Docker images
+#
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$ROOT_DIR/.env"
+CONFIG_FILE="$ROOT_DIR/.langsight.yaml"
+
+# ── Parse flags ──────────────────────────────────────────────────────────────
+RESET=false
+FORCE_BUILD=false
+for arg in "$@"; do
+  case "$arg" in
+    --reset) RESET=true ;;
+    --build) FORCE_BUILD=true ;;
+    --help)
+      echo "Usage: ./scripts/quickstart.sh [--reset] [--build]"
+      echo ""
+      echo "  --reset   Wipe all data (volumes + .env) and start fresh"
+      echo "  --build   Force rebuild of Docker images"
+      exit 0
+      ;;
+  esac
+done
+
+# ── Colours ───────────────────────────────────────────────────────────────────
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+ok()    { echo -e "${GREEN}[ok]${NC} $*"; }
+info()  { echo -e "     $*"; }
+warn()  { echo -e "${YELLOW}[warn]${NC} $*"; }
+error() { echo -e "${RED}[error]${NC} $*" >&2; }
 
 echo "──────────────────────────────────────────────────────"
 echo "  LangSight Quickstart"
 echo "──────────────────────────────────────────────────────"
 echo ""
 
-# ── Check Docker is running ─────────────────────────────────────────────────
+# ── Pre-flight checks ─────────────────────────────────────────────────────────
+echo "[..] Running pre-flight checks..."
+
+# Docker
 if ! docker info > /dev/null 2>&1; then
-  echo "[error] Docker is not running. Start Docker Desktop and try again."
+  error "Docker is not running."
+  info  "Start Docker Desktop and try again."
   exit 1
 fi
+ok "Docker is running"
 
-# ── Generate .env if it doesn't exist ───────────────────────────────────────
+# docker compose (v2 plugin)
+if ! docker compose version > /dev/null 2>&1; then
+  error "docker compose not found."
+  info  "Install Docker Desktop (includes Compose v2): https://docs.docker.com/get-docker/"
+  exit 1
+fi
+ok "docker compose available"
+
+# openssl (for secret generation)
+if ! command -v openssl > /dev/null 2>&1; then
+  error "openssl not found — required to generate secrets."
+  info  "Install with: brew install openssl"
+  exit 1
+fi
+ok "openssl available"
+
+# Disk space — warn if less than 4 GB free
+FREE_KB=$(df -k "$ROOT_DIR" | awk 'NR==2 {print $4}')
+FREE_GB=$(( FREE_KB / 1024 / 1024 ))
+if [ "$FREE_GB" -lt 4 ]; then
+  warn "Less than 4 GB free disk space (${FREE_GB} GB). Docker images need ~3 GB."
+  warn "Continuing anyway — free up space if the build fails."
+else
+  ok "Disk space OK (${FREE_GB} GB free)"
+fi
+
+# Ports — warn if already in use (don't fail: reverse proxy may be running)
+PORTS=(3003 8000 5432 8123 9000)
+PORT_CONFLICTS=()
+for port in "${PORTS[@]}"; do
+  if lsof -i ":$port" -sTCP:LISTEN -t > /dev/null 2>&1; then
+    PORT_CONFLICTS+=("$port")
+  fi
+done
+if [ ${#PORT_CONFLICTS[@]} -gt 0 ]; then
+  warn "Port(s) already in use: ${PORT_CONFLICTS[*]}"
+  warn "This may cause startup failures. Stop conflicting services first."
+else
+  ok "Ports 3003, 8000, 5432, 8123 are free"
+fi
+
+echo ""
+
+# ── Reset mode ───────────────────────────────────────────────────────────────
+if [ "$RESET" = true ]; then
+  warn "--reset: stopping containers and wiping all data..."
+  cd "$ROOT_DIR"
+  docker compose down -v 2>/dev/null || true
+  rm -f "$ENV_FILE"
+  ok "Reset complete — starting fresh"
+  echo ""
+fi
+
+# ── Clean up stale Docker directory mounts ───────────────────────────────────
+# When .langsight.yaml is absent, Docker Compose creates a *directory* at the
+# mount point. This causes the API to crash on startup. Remove it if present.
+if [ -d "$CONFIG_FILE" ]; then
+  rm -rf "$CONFIG_FILE"
+fi
+
+# ── Generate .env if missing ──────────────────────────────────────────────────
 if [ -f "$ENV_FILE" ]; then
-  echo "[ok] .env already exists — skipping generation."
+  ok ".env already exists — using existing credentials"
+  echo ""
 else
   echo "[..] Generating .env with secure random secrets..."
 
@@ -50,7 +149,7 @@ CLICKHOUSE_USER=langsight
 CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
 EOF
 
-  echo "[ok] .env created."
+  ok ".env created"
   echo ""
   echo "  Admin email:    admin@langsight.dev"
   echo "  Admin password: ${ADMIN_PASSWORD}"
@@ -58,77 +157,111 @@ EOF
   echo ""
 fi
 
-# ── Create default config file if missing ────────────────────────────────────
-CONFIG_FILE="$ROOT_DIR/.langsight.yaml"
-# A previous failed run may have left a directory here (Docker creates one
-# when the file is absent from the host). Remove it so we can write the file.
-if [ -d "$CONFIG_FILE" ]; then
-  rm -rf "$CONFIG_FILE"
-fi
+# ── Create config file ────────────────────────────────────────────────────────
 if [ ! -f "$CONFIG_FILE" ]; then
   echo "servers: []" > "$CONFIG_FILE"
-  echo "[ok] .langsight.yaml created."
+  ok ".langsight.yaml created"
 fi
 
-# ── Build images ─────────────────────────────────────────────────────────────
-echo "[..] Building images (first run takes 3-5 min — downloading dependencies)..."
+# ── Build images ──────────────────────────────────────────────────────────────
 cd "$ROOT_DIR"
-docker compose build
+
+# Check if images already exist
+API_IMAGE_EXISTS=false
+DASH_IMAGE_EXISTS=false
+if docker image inspect langsight/api:latest > /dev/null 2>&1; then
+  API_IMAGE_EXISTS=true
+fi
+if docker image inspect langsight/dashboard:latest > /dev/null 2>&1; then
+  DASH_IMAGE_EXISTS=true
+fi
+
+if [ "$FORCE_BUILD" = true ] || [ "$API_IMAGE_EXISTS" = false ] || [ "$DASH_IMAGE_EXISTS" = false ]; then
+  echo "[..] Building images (3-5 min on first run — downloading dependencies)..."
+  if ! docker compose build; then
+    error "Docker build failed."
+    info  "Check the output above for details."
+    info  "Common causes: no internet connection, insufficient disk space."
+    exit 1
+  fi
+  ok "Images built"
+else
+  ok "Images already exist — skipping build (use --build to force rebuild)"
+fi
+
+echo ""
 
 # ── Start services ────────────────────────────────────────────────────────────
-echo ""
 echo "[..] Starting services..."
 docker compose up -d
+echo ""
 
 # ── Wait for healthy ──────────────────────────────────────────────────────────
-echo "[..] Waiting for all services to be healthy..."
-SECONDS=0
+echo "[..] Waiting for services to be healthy..."
 TIMEOUT=120
-while true; do
-  # Count healthy containers
-  TOTAL=$(docker compose ps --services | wc -l | tr -d ' ')
-  HEALTHY=$(docker compose ps | grep -c "healthy" || true)
+ELAPSED=0
+INTERVAL=3
 
-  if [ "$HEALTHY" -ge "$TOTAL" ]; then
+while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
+  # Count services that have a health check and are healthy
+  HEALTHY=$(docker compose ps 2>/dev/null | grep -c "(healthy)" || true)
+  # Services with healthchecks: api, postgres, clickhouse, dashboard = 4
+  if [ "$HEALTHY" -ge 4 ]; then
     break
   fi
 
-  # Check for any failed/exited containers
-  if docker compose ps | grep -qE "Exit|Error|unhealthy"; then
+  # Check for any crashed/exited containers
+  if docker compose ps 2>/dev/null | grep -qE "Exit [^0]|unhealthy"; then
     echo ""
-    echo "[error] A service failed to start. Logs:"
     echo ""
-    # Show logs for the failed service
+    error "A service failed to start."
+    echo ""
+
+    # Find and show logs for the failing service
     for svc in api postgres clickhouse dashboard; do
-      STATUS=$(docker compose ps "$svc" 2>/dev/null | tail -1 || true)
-      if echo "$STATUS" | grep -qE "Exit|Error|unhealthy"; then
-        echo "── $svc logs ──────────────────────────"
-        docker compose logs --tail=20 "$svc"
+      SVC_STATE=$(docker compose ps "$svc" 2>/dev/null | tail -1 || true)
+      if echo "$SVC_STATE" | grep -qE "Exit [^0]|unhealthy"; then
+        echo "── $svc logs (last 30 lines) ──────────────────────────"
+        docker compose logs --tail=30 "$svc" 2>/dev/null || true
         echo ""
       fi
     done
-    echo "For full logs: docker compose logs"
-    echo "To retry:      docker compose down -v && ./scripts/quickstart.sh"
-    exit 1
-  fi
 
-  if [ "$SECONDS" -ge "$TIMEOUT" ]; then
-    echo ""
-    echo "[error] Timed out after ${TIMEOUT}s. Current status:"
-    docker compose ps
-    echo ""
-    echo "For full logs: docker compose logs"
+    echo "── Recovery options ────────────────────────────────────"
+    echo "  View all logs:      docker compose logs"
+    echo "  Fresh start:        ./scripts/quickstart.sh --reset"
+    echo "  Rebuild images:     ./scripts/quickstart.sh --build"
     exit 1
   fi
 
   printf "."
-  sleep 3
+  sleep "$INTERVAL"
+  ELAPSED=$(( ELAPSED + INTERVAL ))
 done
 
+if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+  echo ""
+  echo ""
+  error "Timed out after ${TIMEOUT}s waiting for services."
+  echo ""
+  docker compose ps
+  echo ""
+  echo "  View logs:      docker compose logs"
+  echo "  Fresh start:    ./scripts/quickstart.sh --reset"
+  exit 1
+fi
+
+# ── Verify API is responding ──────────────────────────────────────────────────
 echo ""
+LIVENESS=$(curl -sf http://localhost:8000/api/liveness 2>/dev/null || true)
+if [ -z "$LIVENESS" ]; then
+  warn "API liveness check did not respond — dashboard may take a few more seconds to be ready."
+fi
+
+# ── Print success ─────────────────────────────────────────────────────────────
 echo ""
 echo "──────────────────────────────────────────────────────"
-echo "  LangSight is running!"
+echo -e "  ${GREEN}LangSight is running!${NC}"
 echo "──────────────────────────────────────────────────────"
 echo ""
 echo "  Dashboard:  http://localhost:3003"
@@ -140,19 +273,24 @@ echo "    Password: $(grep LANGSIGHT_ADMIN_PASSWORD "$ENV_FILE" | cut -d= -f2)"
 echo ""
 echo "  API Key:    $(grep LANGSIGHT_API_KEYS "$ENV_FILE" | cut -d= -f2)"
 echo ""
-echo "  Containers running:"
-docker compose ps --format "table {{.Service}}\t{{.Status}}" | tail -n +2 | sed 's/^/    /'
+echo "  Services:"
+docker compose ps --format "table {{.Service}}\t{{.Status}}" 2>/dev/null | tail -n +2 | sed 's/^/    /'
 echo ""
 echo "  Next steps:"
 echo "    1. Open http://localhost:3003 and log in"
-echo "    2. Instrument your agent:"
+echo "    2. Create a project in the dashboard"
+echo "    3. Instrument your agent:"
+echo ""
+echo "       pip install langsight"
+echo "       export LANGSIGHT_URL=http://localhost:8000"
+echo "       export LANGSIGHT_API_KEY=<your-api-key>"
+echo "       export LANGSIGHT_PROJECT_ID=<from dashboard Settings>"
 echo ""
 echo "       import langsight"
 echo "       langsight.auto_patch()"
 echo ""
-echo "       export LANGSIGHT_URL=http://localhost:8000"
-echo "       export LANGSIGHT_API_KEY=<your-api-key>"
-echo ""
-echo "  Full guide: https://docs.langsight.dev/quickstart"
+echo "  Docs:       https://docs.langsight.dev"
+echo "  Stop:       docker compose down"
+echo "  Reset:      ./scripts/quickstart.sh --reset"
 echo ""
 echo "──────────────────────────────────────────────────────"
