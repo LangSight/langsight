@@ -24,7 +24,7 @@ CLI and the dashboard.
 
     ```bash
     git clone https://github.com/LangSight/langsight && cd langsight
-    ./scripts/quickstart.sh      # generates secrets, writes .env, starts everything
+    ./scripts/quickstart.sh
     ```
 
     The script builds the Docker images (3–5 min on first run) then starts everything. When it's done you'll see:
@@ -39,25 +39,29 @@ CLI and the dashboard.
 
       Login credentials:
         Email:    admin@langsight.dev
-        Password: ls-ceab2f29f600f9b2f2d6   ← your generated password
+        Password: ls-ceab2f29f600               ← your generated password
 
       API Key:    ls_2dc63dbddeb...
 
-      Containers running:
-        api        Up (healthy)
-        clickhouse Up (healthy)
-        dashboard  Up (healthy)
-        postgres   Up (healthy)
+      Services:
+        postgres     healthy
+        clickhouse   healthy
+        api          healthy
+        dashboard    healthy
     ──────────────────────────────────────────────────────
     ```
 
-    All 4 containers must show **Up (healthy)**. Open **http://localhost:3003** and log in with the credentials printed above.
+    All 4 services must show **healthy**. Open **http://localhost:3003** and log in with the credentials printed above.
 
     <Note>
-      Credentials are also saved in `.env`. If you lose them: `grep LANGSIGHT_ADMIN .env`
+      Credentials are also saved in `.env`. If you lose them:
+      ```bash
+      grep LANGSIGHT_ADMIN .env    # email + password
+      grep LANGSIGHT_API_KEYS .env # API key
+      ```
     </Note>
 
-    If a container shows **unhealthy** or the script exits with an error, it will print the logs automatically. Run `docker compose logs` for the full output.
+    If a service fails, the script prints its logs automatically and tells you exactly what to do.
   </Tab>
   <Tab title="CLI only (no Docker)">
     The CLI works immediately with zero config — no server, no database:
@@ -73,6 +77,64 @@ CLI and the dashboard.
     dashboard experience, come back and run `./scripts/quickstart.sh`.
   </Tab>
 </Tabs>
+
+### Quickstart flags
+
+| Flag | What it does |
+|------|-------------|
+| *(none)* | Start / resume the stack |
+| `--redis` | Also start Redis (enables multi-worker mode and SSE broadcasting across workers) |
+| `--reset` | Wipe all volumes + `.env` and start completely fresh |
+| `--build` | Force-rebuild Docker images (pick up code changes) |
+
+Flags can be combined:
+
+```bash
+./scripts/quickstart.sh --reset          # clean slate
+./scripts/quickstart.sh --redis          # start with Redis
+./scripts/quickstart.sh --reset --build  # clean slate + fresh images
+```
+
+### Troubleshooting the quickstart
+
+<AccordionGroup>
+  <Accordion title="API is unhealthy — password authentication failed">
+    Your Postgres volume was initialised with a different password than your current `.env`.
+    This happens when `.env` was deleted or regenerated while volumes still existed.
+
+    ```bash
+    ./scripts/quickstart.sh --reset
+    ```
+
+    `--reset` wipes both the volumes and `.env` so they're always in sync.
+  </Accordion>
+  <Accordion title="Script times out after ~4 minutes">
+    On a slow machine or first run the cold-start chain (postgres → clickhouse → api → dashboard)
+    can take up to 3–4 minutes. If it times out, the script shows which service is still starting
+    and its last 20 log lines.
+
+    Check logs directly:
+    ```bash
+    docker compose logs api --tail=50
+    docker compose logs clickhouse --tail=50
+    ```
+  </Accordion>
+  <Accordion title="Port already in use">
+    If ports 3003, 8000, 5432, or 8123 are taken by another service, the script warns you before starting.
+
+    Find what's using a port:
+    ```bash
+    lsof -i :8000   # macOS / Linux
+    netstat -ano | findstr :8000   # Windows
+    ```
+  </Accordion>
+  <Accordion title="Running on Windows">
+    Use **Git Bash** (included with Git for Windows) or **WSL** to run the script.
+    PowerShell and CMD are not supported. Docker Desktop must be running.
+  </Accordion>
+</AccordionGroup>
+
+---
 
 ## 2. Instrument your agent
 
@@ -163,6 +225,8 @@ result = await traced.call_tool("query", {"sql": "SELECT 1"})
   </Tab>
 </Tabs>
 
+---
+
 ## 3. See your first trace
 
 Run your agent, then check results:
@@ -204,6 +268,8 @@ Run your agent, then check results:
   </Tab>
 </Tabs>
 
+---
+
 ## 3 (optional). Add prevention guardrails
 
 Prevent runaway loops and budget overruns with a few extra parameters:
@@ -218,6 +284,8 @@ client = LangSightClient(
 ```
 
 See [Prevention Guardrails](/sdk/python#prevention-guardrails) for full configuration options.
+
+---
 
 ## 4. What's next
 

@@ -32,14 +32,25 @@ cd langsight
 ./scripts/quickstart.sh
 ```
 
-The script prints your login credentials and API key:
+The script prints your login credentials and API key when done:
 
 ```
-Login credentials:
-  Email:    admin@langsight.dev
-  Password: ls-b58e870f8831cf17988c    ← randomly generated
+──────────────────────────────────────────────────────
+  LangSight is running!
+──────────────────────────────────────────────────────
 
-API Key:    ls_f487cebe9e0fbafe...      ← use this in your agent code
+  Login credentials:
+    Email:    admin@langsight.dev
+    Password: ls-b58e870f8831cf17988c    ← randomly generated
+
+  API Key:    ls_f487cebe9e0fbafe...      ← use this in your agent code
+
+  Services:
+    postgres     healthy
+    clickhouse   healthy
+    api          healthy
+    dashboard    healthy
+──────────────────────────────────────────────────────
 ```
 
 Open **http://localhost:3003** and log in. You're done — skip to [Send your first span](#send-your-first-span).
@@ -51,6 +62,21 @@ Open **http://localhost:3003** and log in. You're done — skip to [Send your fi
   grep LANGSIGHT_API_KEYS .env  # API key for your agent
   ```
 </Note>
+
+#### Quickstart flags
+
+| Flag | What it does |
+|------|-------------|
+| *(none)* | Start or resume the stack |
+| `--redis` | Also start Redis (required for `LANGSIGHT_WORKERS > 1`) |
+| `--reset` | Wipe all volumes + `.env` and start completely fresh |
+| `--build` | Force-rebuild Docker images |
+
+```bash
+./scripts/quickstart.sh --redis          # start with Redis
+./scripts/quickstart.sh --reset          # clean slate
+./scripts/quickstart.sh --reset --build  # clean slate + fresh images
+```
 
 ### Option B: Manual setup
 
@@ -263,6 +289,17 @@ Your OTEL SDK  ──►  OTEL Collector  ──►  LangSight API
 
 ## Troubleshooting
 
+### API unhealthy — password authentication failed
+
+Your Postgres volume was initialised with a different password than your current `.env`.
+This is the most common failure after deleting `.env` or running `--reset` without wiping volumes.
+
+```bash
+./scripts/quickstart.sh --reset
+```
+
+`--reset` wipes both the volumes and `.env` so they're always in sync.
+
 ### "Invalid email or password" on login
 
 Verify your admin credentials match what's in `.env`:
@@ -274,8 +311,7 @@ grep LANGSIGHT_ADMIN .env
 The admin user is created on first startup only. If you change the password in `.env` after the first run, the database still has the original password. To reset:
 
 ```bash
-docker compose down -v    # WARNING: destroys all data
-docker compose up -d      # recreates admin with current .env values
+./scripts/quickstart.sh --reset   # wipes volumes + .env and starts fresh
 ```
 
 ### Dashboard can't reach the API (500 errors)

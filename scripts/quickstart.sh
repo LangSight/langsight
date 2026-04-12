@@ -3,8 +3,13 @@
 #
 # Usage:
 #   ./scripts/quickstart.sh           # normal start / resume
+#   ./scripts/quickstart.sh --redis   # start with Redis (multi-worker mode)
 #   ./scripts/quickstart.sh --reset   # wipe volumes + .env and start fresh
 #   ./scripts/quickstart.sh --build   # force rebuild of Docker images
+#
+# Flags can be combined:
+#   ./scripts/quickstart.sh --reset --redis
+#   ./scripts/quickstart.sh --reset --build
 #
 set -euo pipefail
 
@@ -16,15 +21,18 @@ CONFIG_FILE="$ROOT_DIR/.langsight.yaml"
 # ── Parse flags ──────────────────────────────────────────────────────────────
 RESET=false
 FORCE_BUILD=false
+WITH_REDIS=false
 for arg in "$@"; do
   case "$arg" in
     --reset) RESET=true ;;
     --build) FORCE_BUILD=true ;;
+    --redis) WITH_REDIS=true ;;
     --help)
-      echo "Usage: ./scripts/quickstart.sh [--reset] [--build]"
+      echo "Usage: ./scripts/quickstart.sh [--reset] [--build] [--redis]"
       echo ""
       echo "  --reset   Wipe all data (volumes + .env) and start fresh"
       echo "  --build   Force rebuild of Docker images"
+      echo "  --redis   Start Redis alongside the core stack (enables multi-worker mode)"
       exit 0
       ;;
   esac
@@ -42,6 +50,9 @@ error() { echo -e "${RED}[error]${NC} $*" >&2; }
 
 echo "──────────────────────────────────────────────────────"
 echo "  LangSight Quickstart"
+if [ "$WITH_REDIS" = true ]; then
+  echo "  (Redis mode)"
+fi
 echo "──────────────────────────────────────────────────────"
 echo ""
 
@@ -88,18 +99,21 @@ fi
 
 # Ports — warn if already in use (lsof is not available on Git Bash/Windows)
 if command -v lsof > /dev/null 2>&1; then
-  PORTS=(3003 8000 5432 8123 9000)
-  PORT_CONFLICTS=()
-  for port in "${PORTS[@]}"; do
+  CHECK_PORTS="3003 8000 5432 8123 9000"
+  if [ "$WITH_REDIS" = true ]; then
+    CHECK_PORTS="$CHECK_PORTS 6379"
+  fi
+  PORT_CONFLICTS=""
+  for port in $CHECK_PORTS; do
     if lsof -i ":$port" -sTCP:LISTEN -t > /dev/null 2>&1; then
-      PORT_CONFLICTS+=("$port")
+      PORT_CONFLICTS="$PORT_CONFLICTS $port"
     fi
   done
-  if [ ${#PORT_CONFLICTS[@]} -gt 0 ]; then
-    warn "Port(s) already in use: ${PORT_CONFLICTS[*]}"
+  if [ -n "$PORT_CONFLICTS" ]; then
+    warn "Port(s) already in use:$PORT_CONFLICTS"
     warn "This may cause startup failures. Stop conflicting services first."
   else
-    ok "Ports 3003, 8000, 5432, 8123 are free"
+    ok "Required ports are free"
   fi
 else
   warn "lsof not found — skipping port conflict check (on Windows: use Git Bash or WSL)"
@@ -111,7 +125,7 @@ echo ""
 if [ "$RESET" = true ]; then
   warn "--reset: stopping containers and wiping all data..."
   cd "$ROOT_DIR"
-  docker compose down -v 2>/dev/null || true
+  docker compose --profile redis down -v 2>/dev/null || true
   rm -f "$ENV_FILE"
   ok "Reset complete — starting fresh"
   echo ""
@@ -132,6 +146,7 @@ fi
 # User-facing credentials (API key, admin password, auth secret) stay random.
 POSTGRES_PASSWORD_DEFAULT="langsight-local-db"
 CLICKHOUSE_PASSWORD_DEFAULT="langsight-local-db"
+REDIS_PASSWORD_DEFAULT="langsight-local-redis"
 
 if [ -f "$ENV_FILE" ]; then
   ok ".env already exists — using existing credentials"
@@ -169,6 +184,21 @@ EOF
   echo "  Admin password: ${ADMIN_PASSWORD}"
   echo "  API key:        ${API_KEY}"
   echo ""
+fi
+
+# ── Inject Redis env vars if --redis and not already in .env ──────────────────
+if [ "$WITH_REDIS" = true ]; then
+  if ! grep -q "REDIS_PASSWORD" "$ENV_FILE" 2>/dev/null; then
+    cat >> "$ENV_FILE" <<EOF
+
+# Redis — enabled with --redis flag (port is loopback-only)
+REDIS_PASSWORD=${REDIS_PASSWORD_DEFAULT}
+LANGSIGHT_REDIS_URL=redis://:${REDIS_PASSWORD_DEFAULT}@redis:6379
+EOF
+    ok "Redis credentials added to .env"
+  else
+    ok "Redis credentials already in .env"
+  fi
 fi
 
 # ── Create config file ────────────────────────────────────────────────────────
@@ -210,7 +240,11 @@ echo "[..] Starting services..."
 # Allow non-zero exit — Docker Compose returns non-zero when a dependency
 # health check condition is used (e.g. dashboard depends_on api: healthy) and
 # a service is still starting. The health loop below catches real failures.
-docker compose up -d 2>&1 || true
+if [ "$WITH_REDIS" = true ]; then
+  docker compose --profile redis up -d 2>&1 || true
+else
+  docker compose up -d 2>&1 || true
+fi
 echo ""
 
 # ── Map service names to container names (bash 3.2 compatible) ───────────────
@@ -221,6 +255,7 @@ svc_to_container() {
     clickhouse) echo "langsight-clickhouse" ;;
     api)        echo "langsight-api" ;;
     dashboard)  echo "langsight-dashboard" ;;
+    redis)      echo "langsight-redis" ;;
     *)          echo "$1" ;;
   esac
 }
@@ -236,6 +271,15 @@ container_health() {
   docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$1" 2>/dev/null || echo "missing"
 }
 
+# ── Set services list and healthy target based on flags ───────────────────────
+if [ "$WITH_REDIS" = true ]; then
+  CORE_SERVICES="postgres clickhouse api dashboard redis"
+  HEALTHY_TARGET=5
+else
+  CORE_SERVICES="postgres clickhouse api dashboard"
+  HEALTHY_TARGET=4
+fi
+
 # ── Wait for healthy ──────────────────────────────────────────────────────────
 echo "[..] Waiting for services to be healthy..."
 echo "     (cold start: ~3-4 min on first run)"
@@ -246,6 +290,7 @@ echo ""
 #   clickhouse: 20s start_period + 5 × 10s retries =  70s max
 #   api:        waits for postgres+clickhouse, then 20s + 5×10s = ~140s total
 #   dashboard:  waits for api,                then 20s + 3×15s  = ~205s total
+#   redis:      5s start_period + 5 × 5s retries   =  30s max (parallel)
 # Adding buffer: timeout = 240s
 TIMEOUT=240
 ELAPSED=0
@@ -255,7 +300,7 @@ while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
   HEALTHY=0
   CRASHED=""
 
-  for svc in postgres clickhouse api dashboard; do
+  for svc in $CORE_SERVICES; do
     cname=$(svc_to_container "$svc")
     state=$(container_state "$cname")
     health=$(container_health "$cname")
@@ -270,8 +315,8 @@ while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
     fi
   done
 
-  # All 4 healthy — success
-  if [ "$HEALTHY" -ge 4 ]; then
+  # All services healthy — success
+  if [ "$HEALTHY" -ge "$HEALTHY_TARGET" ]; then
     break
   fi
 
@@ -294,7 +339,7 @@ while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
     done
 
     echo "── Container states ────────────────────────────────────"
-    for svc in postgres clickhouse api dashboard; do
+    for svc in $CORE_SERVICES; do
       cname=$(svc_to_container "$svc")
       state=$(container_state "$cname")
       health=$(container_health "$cname")
@@ -321,7 +366,7 @@ while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
       error "Port conflict — another process is using a required port"
       echo ""
       echo "  Check which ports are in use:"
-      echo "    lsof -i :5432 -i :8123 -i :8000 -i :3003"
+      echo "    lsof -i :5432 -i :8123 -i :8000 -i :3003 -i :6379"
     else
       echo "  Common causes:"
       echo "    Stale .env + existing volumes → ./scripts/quickstart.sh --reset"
@@ -335,8 +380,8 @@ while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
   fi
 
   # Progress indicator
-  printf "  [%3ds] healthy: %d/4 —" "$ELAPSED" "$HEALTHY"
-  for svc in postgres clickhouse api dashboard; do
+  printf "  [%3ds] healthy: %d/%d —" "$ELAPSED" "$HEALTHY" "$HEALTHY_TARGET"
+  for svc in $CORE_SERVICES; do
     cname=$(svc_to_container "$svc")
     state=$(container_state "$cname")
     health=$(container_health "$cname")
@@ -359,7 +404,7 @@ if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
   error "Timed out after ${TIMEOUT}s waiting for services."
   echo ""
   echo "── Container states ────────────────────────────────────"
-  for svc in postgres clickhouse api dashboard; do
+  for svc in $CORE_SERVICES; do
     cname=$(svc_to_container "$svc")
     state=$(container_state "$cname")
     health=$(container_health "$cname")
@@ -367,7 +412,7 @@ if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
   done
   echo ""
   echo "── Logs from unhealthy services ────────────────────────"
-  for svc in postgres clickhouse api dashboard; do
+  for svc in $CORE_SERVICES; do
     cname=$(svc_to_container "$svc")
     health=$(container_health "$cname")
     if [ "$health" != "healthy" ]; then
@@ -404,7 +449,7 @@ echo ""
 echo "  API Key:    $(grep LANGSIGHT_API_KEYS "$ENV_FILE" | cut -d= -f2)"
 echo ""
 echo "  Services:"
-for svc in postgres clickhouse api dashboard; do
+for svc in $CORE_SERVICES; do
   cname=$(svc_to_container "$svc")
   health=$(container_health "$cname")
   printf "    %-12s %s\n" "$svc" "$health"

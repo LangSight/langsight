@@ -27,16 +27,22 @@ docker compose logs clickhouse --tail=50
 
 ## PostgreSQL connection failed
 
-**Symptom:** API exits at startup with `asyncpg.InvalidCatalogNameError` or `Connection refused on port 5432`.
+**Symptom:** API exits at startup with `asyncpg.InvalidPasswordError: password authentication failed` or `Connection refused on port 5432`.
 
 **Causes and fixes:**
 
 | Cause | Fix |
 |-------|-----|
+| DB password mismatch (stale volumes) | `./scripts/quickstart.sh --reset` — wipes volumes + `.env` so they're in sync |
 | Postgres container not running | `docker compose up -d postgres` |
-| Wrong `LANGSIGHT_POSTGRES_URL` | Default: `postgresql://langsight:langsight@postgres:5432/langsight` inside Docker Compose |
+| Wrong `LANGSIGHT_POSTGRES_URL` | Default: `postgresql://langsight:langsight-local-db@postgres:5432/langsight` inside Docker Compose |
 | Database not created | Run `docker compose exec postgres createdb -U langsight langsight` |
 | Migrations not run | `docker compose exec api uv run alembic upgrade head` |
+
+<Note>
+  The most common cause is running `./scripts/quickstart.sh --reset` without `--reset` after deleting or regenerating `.env`.
+  The Postgres volume still has the old password. Always use `--reset` to wipe both together.
+</Note>
 
 Check Postgres logs:
 

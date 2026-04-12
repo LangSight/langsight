@@ -63,7 +63,29 @@ The pool is created lazily on first use and closed gracefully on shutdown.
 
 ## Setup
 
-### 1. Install the Redis extra
+### Option A: Quickstart script (recommended)
+
+Pass `--redis` to the quickstart script — it handles everything:
+
+```bash
+./scripts/quickstart.sh --redis
+```
+
+This will:
+1. Add `REDIS_PASSWORD` and `LANGSIGHT_REDIS_URL` to `.env` (if not already present)
+2. Start Redis alongside the core stack using `--profile redis`
+3. Wait for all 5 services (postgres, clickhouse, api, dashboard, redis) to be healthy
+4. Print confirmation in the success output
+
+To start fresh with Redis:
+
+```bash
+./scripts/quickstart.sh --reset --redis
+```
+
+### Option B: Manual setup
+
+#### 1. Install the Redis extra
 
 ```bash
 # If using pip
@@ -75,30 +97,32 @@ uv add "langsight[redis]"
 
 This installs `redis[hiredis]>=5` — the `hiredis` C extension provides 10x faster parsing.
 
-### 2. Generate a Redis password
+#### 2. Add Redis credentials to .env
 
 ```bash
-echo "REDIS_PASSWORD=$(openssl rand -hex 24)" >> .env
+cat >> .env <<EOF
+REDIS_PASSWORD=langsight-local-redis
+LANGSIGHT_REDIS_URL=redis://:langsight-local-redis@redis:6379
+EOF
 ```
 
-### 3. Start Redis
+#### 3. Start Redis
 
 ```bash
 docker compose --profile redis up -d
 ```
 
-This starts Redis 7 (Alpine) alongside your existing stack. Redis is bound to `127.0.0.1:6379` — not accessible from outside the host.
+Redis 7 (Alpine) starts alongside the existing stack, bound to `127.0.0.1:6379`.
 
-### 4. Configure the API
+#### 4. Enable multi-worker mode (optional)
 
-Add to your `.env`:
+Add to `.env` to use multiple API workers:
 
 ```bash
-LANGSIGHT_REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
 LANGSIGHT_WORKERS=4    # CPU count is a good starting point
 ```
 
-### 5. Restart the API
+Then restart the API to pick up the new env:
 
 ```bash
 docker compose up -d --force-recreate api
