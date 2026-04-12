@@ -11,7 +11,7 @@ The root `docker-compose.yml` starts the full LangSight production stack.
 |---------|------|---------|
 | `clickhouse` | 127.0.0.1:8123 (localhost only) | Time-series span storage + reliability analytics |
 | `postgres` | 127.0.0.1:5432 (localhost only) | App state: configs, users, alert rules, model pricing |
-| `otel-collector` | 4317, 4318 | Receives OTLP traces from agent frameworks |
+| `otel-collector` | 4317, 4318 | *(optional)* Receives OTLP traces from agent frameworks |
 | `api` | 127.0.0.1:8000 (localhost only) | LangSight REST API |
 | `dashboard` | 127.0.0.1:3003 (localhost only) | Next.js dashboard |
 
@@ -90,20 +90,7 @@ POSTGRES_PASSWORD=your-secure-postgres-password
 CLICKHOUSE_USER=langsight
 CLICKHOUSE_PASSWORD=your-secure-clickhouse-password
 
-# ── OTEL Collector (required by Docker Compose) ───────────────────────────
-#
-# These two tokens secure the trace delivery pipeline inside Docker.
-# You do NOT need to understand OTEL to use LangSight — the quickstart
-# script generates these automatically. For manual setup, just generate
-# two random tokens and paste them here.
-
-# Token 1: Authenticates inbound OTLP connections to the collector.
-# Generate: python3 -c "import secrets; print(secrets.token_hex(32))"
-OTEL_COLLECTOR_TOKEN=replace-with-random-token
-
-# Token 2: The collector's API key to forward traces to LangSight API.
-# Simplest: copy your LANGSIGHT_API_KEYS value here.
-LANGSIGHT_OTEL_COLLECTOR_KEY=ls_your-api-key-here
+# That's it — no OTEL tokens needed. The SDK sends traces directly to the API.
 ```
 
 ```bash
@@ -214,8 +201,6 @@ docker compose up -d
 | `POSTGRES_PASSWORD` | PostgreSQL password |
 | `CLICKHOUSE_USER` | ClickHouse username |
 | `CLICKHOUSE_PASSWORD` | ClickHouse password |
-| `OTEL_COLLECTOR_TOKEN` | Bearer token for OTLP inbound connections (just a random string — see [note](#otel-tokens-explained)) |
-| `LANGSIGHT_OTEL_COLLECTOR_KEY` | API key for Collector → API forwarding (can reuse `LANGSIGHT_API_KEYS`) |
 
 ### Security (recommended for production)
 
@@ -248,21 +233,32 @@ Enable with `docker compose --profile redis up -d`:
 | `LANGSIGHT_REDIS_URL` | `redis://:${REDIS_PASSWORD}@redis:6379` |
 | `LANGSIGHT_WORKERS` | Number of API workers (default: 1) |
 
-## OTEL tokens explained
+## OTEL Collector (optional)
 
-The Docker Compose stack includes an OpenTelemetry Collector. Two tokens secure the trace pipeline:
+The OTEL Collector is **not started by default**. Most users don't need it — `langsight.auto_patch()` sends traces directly to the API.
+
+Enable it only if you have existing OpenTelemetry instrumentation you want to forward:
+
+```bash
+# Add OTEL tokens to .env
+OTEL_COLLECTOR_TOKEN=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+LANGSIGHT_OTEL_COLLECTOR_KEY=ls_your-api-key   # reuse LANGSIGHT_API_KEYS
+
+# Start the collector alongside the main stack
+docker compose --profile otel up -d
+```
+
+The two tokens secure the trace pipeline:
 
 ```
-Your Agent SDK  ──►  OTEL Collector  ──►  LangSight API
-                     (OTEL_COLLECTOR_TOKEN)  (LANGSIGHT_OTEL_COLLECTOR_KEY)
+Your OTEL SDK  ──►  OTEL Collector  ──►  LangSight API
+                    (OTEL_COLLECTOR_TOKEN)  (LANGSIGHT_OTEL_COLLECTOR_KEY)
 ```
 
-- **`OTEL_COLLECTOR_TOKEN`** — A random string that authenticates inbound OTLP connections to the collector. Prevents anyone from sending fake traces.
-- **`LANGSIGHT_OTEL_COLLECTOR_KEY`** — An API key the collector uses to forward traces to the LangSight API. You can reuse your `LANGSIGHT_API_KEYS` value here.
-
-**Important:** If you use `langsight.auto_patch()` (the recommended approach), your agent sends traces directly to the API — it bypasses the OTEL Collector entirely. These tokens are only needed because Docker Compose starts the collector service and it requires them to boot.
-
-For the quickstart script, both tokens are generated automatically.
+| Variable | Purpose |
+|----------|---------|
+| `OTEL_COLLECTOR_TOKEN` | Bearer token for inbound OTLP connections |
+| `LANGSIGHT_OTEL_COLLECTOR_KEY` | API key the collector uses to forward traces to the API |
 
 ## Troubleshooting
 

@@ -104,30 +104,29 @@ services:
           memory: 128M
           cpus: "0.5"
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # OTEL Collector — optional, for teams with existing OTEL instrumentation.
+  #
+  # NOT required for langsight.auto_patch() — the SDK sends traces directly
+  # to the API. Enable with:   docker compose --profile otel up -d
+  #
+  # Set in .env:
+  #   OTEL_COLLECTOR_TOKEN=<random>           (inbound OTLP auth)
+  #   LANGSIGHT_OTEL_COLLECTOR_KEY=<api-key>  (collector → API auth)
+  # ─────────────────────────────────────────────────────────────────────────────
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.120.0
     container_name: langsight-otel-collector
+    profiles: [otel]
     command: ["--config=/etc/otel-collector.yaml"]
     volumes:
       - ./otel-collector.yaml:/etc/otel-collector.yaml:ro
     environment:
-      # Bearer token required on inbound OTLP connections. Set in .env.
-      # SDK clients must send: OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer <token>
-      # Leave empty for local dev (no auth). Required for shared/production deployments.
-      # OTEL_COLLECTOR_TOKEN is required — no default to prevent guessable tokens.
-      # Generate: python3 -c "import secrets; print(secrets.token_hex(32))"
-      # Add to your .env file: OTEL_COLLECTOR_TOKEN=<generated-token>
-      OTEL_COLLECTOR_TOKEN: "${OTEL_COLLECTOR_TOKEN:?OTEL_COLLECTOR_TOKEN is required}"
-      # OTEL collector key — use a SEPARATE key from the dashboard/API admin key.
-      # Generate a dedicated collector key: python3 -c "import secrets; print(secrets.token_hex(32))"
-      # Then create a viewer-role API key in the dashboard for the collector.
-      LANGSIGHT_API_KEY: "${LANGSIGHT_OTEL_COLLECTOR_KEY:?LANGSIGHT_OTEL_COLLECTOR_KEY env var is required}"
+      OTEL_COLLECTOR_TOKEN: "${OTEL_COLLECTOR_TOKEN:-}"
+      LANGSIGHT_API_KEY: "${LANGSIGHT_OTEL_COLLECTOR_KEY:-}"
     ports:
       - "127.0.0.1:4317:4317"  # gRPC OTLP — loopback only
       - "127.0.0.1:4318:4318"  # HTTP OTLP — loopback only
-    # No depends_on for api: the OTEL collector receives traces independently.
-    # Waiting for the API to be healthy blocks SDK clients during cold starts
-    # (e.g. slow DB migrations) causing connection-refused errors and lost spans.
     networks: [langsight-net]
     restart: unless-stopped
 
