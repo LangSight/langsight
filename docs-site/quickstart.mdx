@@ -75,11 +75,12 @@ async with langsight.session(
     sess.set_output(result)  # records the final agent response
 ```
 
-Set environment variables before running:
+Set environment variables before running (all three values are in your `.env`):
 
 ```bash
 export LANGSIGHT_URL=http://localhost:8000
-export LANGSIGHT_API_KEY=ls_your_key
+export LANGSIGHT_API_KEY=ls_your_key         # grep LANGSIGHT_API_KEYS .env
+export LANGSIGHT_PROJECT_ID=your-project-id  # copy from dashboard Settings > Project ID
 ```
 
 <Note>
@@ -105,14 +106,17 @@ result = await traced.call_tool("query", {"sql": "SELECT 1"})
 <Tabs>
   <Tab title="LangChain / LangGraph">
     ```python
-    from langsight.integrations.langchain import LangSightLangChainCallback
+    import langsight
+    langsight.auto_patch()  # zero config — patches LangGraph automatically
 
-    langsight = LangSightClient(url="http://localhost:8000")
-    callback = LangSightLangChainCallback(client=langsight, agent_name="my-agent")
-
-    # Pass as a callback — all tool calls traced automatically
-    agent.invoke({"input": "..."}, config={"callbacks": [callback]})
+    # No callbacks needed — auto_patch() injects tracing into
+    # graph.stream(), graph.invoke(), and all LLM calls.
+    graph = builder.compile()
+    result = graph.invoke({"task": "Write a report on EU inflation"})
     ```
+
+    See [LangGraph Integration](/sdk/integrations/langgraph) for topology capture,
+    loop detection, and budget enforcement.
   </Tab>
   <Tab title="CrewAI">
     ```python

@@ -19,10 +19,136 @@ The root `docker-compose.yml` starts the full LangSight production stack.
   All service ports bind to `127.0.0.1` only — they are not accessible from other machines on the network by default. If you need public access, configure a reverse proxy (nginx, Caddy) in front of port 3003. Do not change the bind address directly — this bypasses the authentication layer.
 </Warning>
 
+## Start the stack
+
+### Option A: Quickstart script (recommended)
+
+The quickstart script generates all secrets, writes `.env`, and starts everything:
+
+```bash
+git clone https://github.com/LangSight/langsight
+cd langsight
+./scripts/quickstart.sh
+```
+
+The script prints your login credentials and API key:
+
+```
+Login credentials:
+  Email:    admin@langsight.dev
+  Password: ls-b58e870f8831cf17988c    ← randomly generated
+
+API Key:    ls_f487cebe9e0fbafe...      ← use this in your agent code
+```
+
+Open **http://localhost:3003** and log in. You're done — skip to [Send your first span](#send-your-first-span).
+
+<Note>
+  Credentials are saved in `.env`. If you forget them:
+  ```bash
+  grep LANGSIGHT_ADMIN .env     # login email + password
+  grep LANGSIGHT_API_KEYS .env  # API key for your agent
+  ```
+</Note>
+
+### Option B: Manual setup
+
+```bash
+git clone https://github.com/LangSight/langsight
+cd langsight
+cp .env.example .env
+```
+
+Edit `.env` and fill in the required values:
+
+<Note>
+  All passwords must be at least 12 characters. Generate secrets with:
+  ```bash
+  python3 -c "import secrets; print(secrets.token_hex(32))"
+  ```
+</Note>
+
+```bash
+# .env
+
+# ── Core (required) ────────────────────────────────────────────────────────
+
+# API key — your agents use this to send traces.
+# Generate: python3 -c "import secrets; print('ls_' + secrets.token_hex(32))"
+LANGSIGHT_API_KEYS=ls_your-api-key-here
+
+# JWT signing for dashboard sessions.
+# Generate: openssl rand -base64 32
+AUTH_SECRET=replace-with-32-char-random-string
+
+# Admin login — created on first startup only.
+LANGSIGHT_ADMIN_EMAIL=you@example.com
+LANGSIGHT_ADMIN_PASSWORD=your-secure-admin-password   # min 12 characters
+
+# Database passwords — choose strong values.
+POSTGRES_PASSWORD=your-secure-postgres-password
+CLICKHOUSE_USER=langsight
+CLICKHOUSE_PASSWORD=your-secure-clickhouse-password
+
+# ── OTEL Collector (required by Docker Compose) ───────────────────────────
+#
+# These two tokens secure the trace delivery pipeline inside Docker.
+# You do NOT need to understand OTEL to use LangSight — the quickstart
+# script generates these automatically. For manual setup, just generate
+# two random tokens and paste them here.
+
+# Token 1: Authenticates inbound OTLP connections to the collector.
+# Generate: python3 -c "import secrets; print(secrets.token_hex(32))"
+OTEL_COLLECTOR_TOKEN=replace-with-random-token
+
+# Token 2: The collector's API key to forward traces to LangSight API.
+# Simplest: copy your LANGSIGHT_API_KEYS value here.
+LANGSIGHT_OTEL_COLLECTOR_KEY=ls_your-api-key-here
+```
+
+```bash
+docker compose up -d
+docker compose ps    # all services should show "healthy"
+```
+
+## Login
+
+Open **http://localhost:3003** and log in with the email and password from your `.env`:
+
+```bash
+grep LANGSIGHT_ADMIN .env
+```
+
+After login you'll see a "Default" project. It's empty until you instrument your first agent.
+
+## Send your first span
+
+Your agent needs 3 environment variables:
+
+```bash
+export LANGSIGHT_URL=http://localhost:8000
+export LANGSIGHT_API_KEY=ls_your-api-key      # from LANGSIGHT_API_KEYS in .env
+export LANGSIGHT_PROJECT_ID=your-project-id   # copy from dashboard Settings > Project ID
+```
+
+Then in your Python code:
+
+```python
+import langsight
+langsight.auto_patch()   # traces LLM calls, MCP tools, LangGraph, CrewAI — all automatic
+```
+
+That's it. Run your agent and traces will appear in the dashboard.
+
+<Note>
+  `auto_patch()` sends traces directly to the LangSight API — it does **not** use the OTEL Collector. The collector is only needed if you have existing OTEL instrumentation you want to forward.
+</Note>
+
 ## Reverse proxy (public access)
 
-To expose the dashboard over HTTPS, put a reverse proxy in front of the dashboard port. Example with Caddy:
+To expose the dashboard over HTTPS, put a reverse proxy in front of port 3003.
 
+Example with Caddy:
 ```
 your-host.example.com {
     reverse_proxy localhost:3003
@@ -30,7 +156,6 @@ your-host.example.com {
 ```
 
 Example with nginx:
-
 ```nginx
 server {
     listen 443 ssl;
@@ -44,129 +169,14 @@ server {
 }
 ```
 
-Never expose the FastAPI port (8000) directly to the internet. Only the dashboard (3003) should be behind the reverse proxy; the dashboard's Next.js proxy layer enforces authentication before forwarding to FastAPI.
-
-## Start the stack
-
-```bash
-# Clone the repo
-git clone https://github.com/LangSight/langsight
-cd langsight
-
-# Option A: quickstart script (recommended — generates all secrets automatically)
-./scripts/quickstart.sh
-
-# Option B: manual setup
-cp .env.example .env
-# Edit .env — fill in ALL required values (see below)
-```
-
-### Required environment variables
-
-Edit `.env` — all of these are **required**. The stack will fail fast if any are unset.
-
-<Note>
-  All passwords — including `LANGSIGHT_ADMIN_PASSWORD` and database passwords — must be at least 12 characters. If you use `./scripts/quickstart.sh`, all secrets are randomly generated and written to `.env` automatically.
-</Note>
-
-```bash
-# .env
-
-# ── Authentication ──────────────────────────────────────────────────────────
-
-# API key(s) — required for all API access. Comma-separated for multiple keys.
-# Generate with: python3 -c "import secrets; print('ls_' + secrets.token_hex(32))"
-LANGSIGHT_API_KEYS=ls_your-api-key-here
-
-# JWT signing secret for dashboard sessions (min 32 characters)
-# Generate with: openssl rand -base64 32
-AUTH_SECRET=replace-with-32-char-random-string
-
-# ── Admin bootstrap (consumed once on first startup) ────────────────────────
-
-LANGSIGHT_ADMIN_EMAIL=you@example.com
-LANGSIGHT_ADMIN_PASSWORD=your-secure-admin-password   # min 12 characters
-
-# ── Database credentials ────────────────────────────────────────────────────
-
-POSTGRES_PASSWORD=your-secure-postgres-password
-CLICKHOUSE_USER=langsight
-CLICKHOUSE_PASSWORD=your-secure-clickhouse-password
-
-# ── OTEL Collector ──────────────────────────────────────────────────────────
-
-# Bearer token for inbound OTLP connections (SDK → Collector).
-# SDK clients must send: OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
-# Generate with: python3 -c "import secrets; print(secrets.token_hex(32))"
-OTEL_COLLECTOR_TOKEN=replace-with-random-token
-
-# API key the OTEL Collector uses to forward traces to the LangSight API.
-# For production: create a dedicated viewer-role API key in the dashboard.
-# For dev: you can reuse LANGSIGHT_API_KEYS.
-LANGSIGHT_OTEL_COLLECTOR_KEY=ls_your-collector-key-here
-```
-
-```bash
-# Start everything
-docker compose up -d
-
-# Check status — all services should show "healthy"
-docker compose ps
-```
-
-<Note>
-  On first run, LangSight creates the admin user (from `LANGSIGHT_ADMIN_EMAIL` / `LANGSIGHT_ADMIN_PASSWORD`) and a "Default" project automatically. Log in at **http://localhost:3003** with the admin credentials you set in `.env`.
-</Note>
-
-## Login
-
-Open **http://localhost:3003** in your browser and log in with the email and password you set in `LANGSIGHT_ADMIN_EMAIL` and `LANGSIGHT_ADMIN_PASSWORD`.
-
-After login, you'll see the dashboard with a "Default" project. The project is empty until you instrument your first agent — see [Quickstart](/quickstart) to send your first trace.
-
-## Send your first span
-
-Point your agent SDK at the LangSight API:
-
-```bash
-export LANGSIGHT_URL=http://localhost:8000
-export LANGSIGHT_API_KEY=ls_your-api-key-here    # same as LANGSIGHT_API_KEYS in .env
-export LANGSIGHT_PROJECT_ID=your-project-id       # from the dashboard Settings page
-```
-
-Or send a raw span via curl:
-
-```bash
-curl -X POST http://localhost:8000/api/traces/spans \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: ls_your-api-key-here" \
-  -d '[{
-    "server_name": "my-mcp",
-    "tool_name": "query",
-    "span_type": "tool_call",
-    "started_at": "2026-03-17T12:00:00Z",
-    "ended_at": "2026-03-17T12:00:00.042Z",
-    "latency_ms": 42.0,
-    "status": "success",
-    "project_id": "your-project-id"
-  }]'
-```
-
-## Connect your OTEL exporter
-
-```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-otel-collector-token"
-```
+Never expose the FastAPI port (8000) directly. Only the dashboard (3003) should be public — it enforces authentication before forwarding to the API.
 
 ## Health and readiness probes
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/liveness` | Instant liveness probe — returns `{"status": "alive"}` with no I/O |
-| `GET /api/readiness` | Readiness probe — checks storage connectivity before returning `200` |
-
-Use `/api/liveness` for container restart checks and `/api/readiness` for load balancer routing.
+| `GET /api/liveness` | Instant liveness — returns `{"status": "alive"}` with no I/O |
+| `GET /api/readiness` | Readiness — checks storage connectivity before returning `200` |
 
 ## Upgrade
 
@@ -181,7 +191,7 @@ Data persists in named Docker volumes:
 
 | Volume | Contains |
 |--------|---------|
-| `clickhouse_data` | All span data, health history, reliability aggregations |
+| `clickhouse_data` | Span data, health history, reliability aggregations |
 | `postgres_data` | Users, projects, server configs, alert rules, model pricing |
 
 To completely reset (destroys all data):
@@ -204,8 +214,8 @@ docker compose up -d
 | `POSTGRES_PASSWORD` | PostgreSQL password |
 | `CLICKHOUSE_USER` | ClickHouse username |
 | `CLICKHOUSE_PASSWORD` | ClickHouse password |
-| `OTEL_COLLECTOR_TOKEN` | Bearer token for OTLP inbound connections |
-| `LANGSIGHT_OTEL_COLLECTOR_KEY` | API key for Collector → API forwarding |
+| `OTEL_COLLECTOR_TOKEN` | Bearer token for OTLP inbound connections (just a random string — see [note](#otel-tokens-explained)) |
+| `LANGSIGHT_OTEL_COLLECTOR_KEY` | API key for Collector → API forwarding (can reuse `LANGSIGHT_API_KEYS`) |
 
 ### Security (recommended for production)
 
@@ -222,7 +232,7 @@ docker compose up -d
 | `LANGSIGHT_LOG_LEVEL` | `INFO` | Log verbosity |
 | `LANGSIGHT_CORS_ORIGINS` | `http://localhost:3003` | CORS allowed origins |
 | `LANGSIGHT_DASHBOARD_URL` | `http://localhost:3003` | Dashboard public URL (used in invite links) |
-| `LANGSIGHT_TRUSTED_HOSTS` | `api` | Extra trusted Host header values (comma-separated). The Docker service name `api` is included by default so the dashboard container can reach the API. |
+| `LANGSIGHT_TRUSTED_HOSTS` | `api` | Extra trusted Host header values (comma-separated) |
 | `LANGSIGHT_STORAGE_MODE` | `dual` | Storage backend: `postgres`, `clickhouse`, or `dual` |
 | `LANGSIGHT_REDACT_PAYLOADS` | `false` | Set `true` to omit span payloads |
 | `LANGSIGHT_SSE_MAX_CLIENTS` | `1000` | Max SSE connections per worker |
@@ -237,6 +247,22 @@ Enable with `docker compose --profile redis up -d`:
 | `REDIS_PASSWORD` | Redis auth password |
 | `LANGSIGHT_REDIS_URL` | `redis://:${REDIS_PASSWORD}@redis:6379` |
 | `LANGSIGHT_WORKERS` | Number of API workers (default: 1) |
+
+## OTEL tokens explained
+
+The Docker Compose stack includes an OpenTelemetry Collector. Two tokens secure the trace pipeline:
+
+```
+Your Agent SDK  ──►  OTEL Collector  ──►  LangSight API
+                     (OTEL_COLLECTOR_TOKEN)  (LANGSIGHT_OTEL_COLLECTOR_KEY)
+```
+
+- **`OTEL_COLLECTOR_TOKEN`** — A random string that authenticates inbound OTLP connections to the collector. Prevents anyone from sending fake traces.
+- **`LANGSIGHT_OTEL_COLLECTOR_KEY`** — An API key the collector uses to forward traces to the LangSight API. You can reuse your `LANGSIGHT_API_KEYS` value here.
+
+**Important:** If you use `langsight.auto_patch()` (the recommended approach), your agent sends traces directly to the API — it bypasses the OTEL Collector entirely. These tokens are only needed because Docker Compose starts the collector service and it requires them to boot.
+
+For the quickstart script, both tokens are generated automatically.
 
 ## Troubleshooting
 
@@ -266,9 +292,9 @@ docker logs langsight-api  # check for startup errors
 
 ### OTEL spans not arriving
 
-Verify the collector token matches:
+Only relevant if you're using OTEL (not `auto_patch()`). Verify the collector token matches:
 
 ```bash
-# In your agent's environment:
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer $(grep OTEL_COLLECTOR_TOKEN .env | cut -d= -f2)"
 ```
