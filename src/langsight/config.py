@@ -241,7 +241,7 @@ def _resolve_path(path: Path | None) -> Path | None:
 
     for candidate in _CONFIG_SEARCH_PATHS:
         expanded = candidate.expanduser()
-        if expanded.exists():
+        if expanded.is_file():
             return expanded
 
     return None

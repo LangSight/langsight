@@ -76,6 +76,23 @@ class TestLoadConfig:
         with pytest.raises(ConfigError, match="Config validation error"):
             load_config(config_file)
 
+    def test_returns_defaults_when_config_path_is_a_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: Docker Compose creates a directory when the host file is missing.
+
+        When .langsight.yaml doesn't exist on the host, Docker creates a directory
+        at the mount point. The API must not crash — it should fall back to defaults.
+        Previously used .exists() which returns True for directories, causing
+        read_text() to raise 'Is a directory'. Fixed to use .is_file().
+        """
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        # Simulate Docker Compose creating a directory instead of a file
+        (tmp_path / ".langsight.yaml").mkdir()
+        config = load_config()
+        assert config.servers == []
+
     def test_auto_discovers_in_current_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         config_file = tmp_path / ".langsight.yaml"
