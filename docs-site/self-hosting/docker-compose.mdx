@@ -3,17 +3,18 @@ title: "Docker Compose"
 description: "Production deployment with ClickHouse, PostgreSQL, and OTEL Collector"
 ---
 
-The root `docker-compose.yml` starts the full LangSight production stack.
+The root `docker-compose.yml` starts 4 core services by default. The OTEL Collector is optional.
 
 ## Services
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| `clickhouse` | 127.0.0.1:8123 (localhost only) | Time-series span storage + reliability analytics |
-| `postgres` | 127.0.0.1:5432 (localhost only) | App state: configs, users, alert rules, model pricing |
-| `otel-collector` | 4317, 4318 | *(optional)* Receives OTLP traces from agent frameworks |
-| `api` | 127.0.0.1:8000 (localhost only) | LangSight REST API |
-| `dashboard` | 127.0.0.1:3003 (localhost only) | Next.js dashboard |
+| Service | Port | Default? | Purpose |
+|---------|------|----------|---------|
+| `api` | 127.0.0.1:8000 | Yes | LangSight REST API |
+| `dashboard` | 127.0.0.1:3003 | Yes | Next.js dashboard |
+| `postgres` | 127.0.0.1:5432 | Yes | App state: users, projects, configs, alert rules |
+| `clickhouse` | 127.0.0.1:8123 | Yes | Time-series span storage + reliability analytics |
+| `otel-collector` | 4317, 4318 | No | OTLP trace receiver — enable with `--profile otel` |
+| `redis` | 6379 | No | Multi-worker mode — enable with `--profile redis` |
 
 <Warning>
   All service ports bind to `127.0.0.1` only — they are not accessible from other machines on the network by default. If you need public access, configure a reverse proxy (nginx, Caddy) in front of port 3003. Do not change the bind address directly — this bypasses the authentication layer.
