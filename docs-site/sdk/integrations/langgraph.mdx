@@ -522,6 +522,22 @@ client = wrap_llm(client)  # Captures tokens directly from Anthropic SDK
 
 **Solution**: Move `auto_patch()` to the top of your script, before any `StateGraph` imports or instantiations.
 
+### Using langchain_mcp_adapters with auto_patch()
+
+**Symptom**: `TypeError: _patched_call_tool() got an unexpected keyword argument 'progress_callback'` when calling MCP tools.
+
+**Cause**: Fixed in v0.14.16. Earlier versions of LangSight's MCP autopatch did not forward unknown keyword arguments (such as `progress_callback` used by `langchain_mcp_adapters`) to the original `call_tool` method.
+
+**Fix**: Upgrade to v0.14.16 or later:
+
+```bash
+pip install --upgrade langsight
+# or
+uv add "langsight>=0.14.16"
+```
+
+`auto_patch()` now passes all kwargs through transparently, making it fully compatible with `langchain_mcp_adapters` and any other library that extends the MCP `call_tool` signature.
+
 ---
 
 ## Related

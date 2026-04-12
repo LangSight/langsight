@@ -42,7 +42,7 @@ That is the complete integration. No `wrap()`, no `wrap_llm()`, no `create_hando
 | What | How | Since |
 |---|---|---|
 | LLM generation calls | Patches `OpenAI`, `Anthropic`, `google.genai`, `google.generativeai` at the class level | v0.11.0 |
-| MCP tool calls | Patches `mcp.ClientSession.call_tool` | **v0.12.0** |
+| MCP tool calls | Patches `mcp.ClientSession.call_tool` — compatible with `langchain_mcp_adapters`, `progress_callback`, and any other kwargs | **v0.12.0** |
 | Agent handoffs | Auto-emits handoff spans when LLM selects `call_*`, `delegate_*`, `invoke_*`, `transfer_to_*`, `run_*`, `dispatch_*` tools | **v0.12.0** |
 
 ### Environment variables
