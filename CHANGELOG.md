@@ -6,9 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-## [0.15.0] - 2026-04-11
+## [0.15.0] - 2026-04-12
 
-**LangGraph full instrumentation: auto-patching, topology capture, loop detection, budget enforcement, thinking tokens, and comprehensive dashboard integration.**
+**LangGraph full instrumentation, `langchain_mcp_adapters` compatibility fix, and security dependency updates.**
+
+### Fixed
+- **`_patched_call_tool` drops kwargs** (`src/langsight/sdk/auto_patch.py`): The MCP autopatch was dropping unknown keyword arguments such as `progress_callback` passed by `langchain_mcp_adapters`, causing a `TypeError` on every MCP tool call when `auto_patch()` was active alongside that adapter library. Added `**kwargs` to the patched signature and forwarded it in all three `orig_call_tool` call sites.
+- **Unused `type: ignore` comments** (`src/langsight/sdk/auto_patch.py`): Removed redundant `# type: ignore[import-not-found]` annotations on LangGraph imports that were superseded by the `--ignore-missing-imports` mypy flag, eliminating mypy's `[unused-ignore]` errors.
+- **LangGraph `merge_configs` type mismatch** (`src/langsight/sdk/auto_patch.py`): `langchain-core 1.2.28` tightened `merge_configs` to accept only `RunnableConfig | None`. Updated call site to pass a properly constructed `RunnableConfig` rather than a plain dict.
+- **`BaseCallbackHandler` redefinition warning** (`src/langsight/integrations/langchain.py`): Added `# noqa: F811` and `# type: ignore[no-redef]` to the fallback import path that shadows the primary import, silencing mypy's `[no-redef]` false positive on the `try/except` import pattern.
+
+### Security
+- **Dependency updates**: Bumped `aiohttp` 3.13.3 → 3.13.5 (10 CVEs fixed, including CVE-2026-34513 through CVE-2026-34525), `cryptography` 46.0.5 → 46.0.7 (CVE-2026-39892), `flask` 3.1.2 → 3.1.3 (CVE-2026-27205), `langchain-core` 1.2.20 → 1.2.28 (CVE-2026-40087), `requests` 2.32.5 → 2.33.1 (CVE-2026-25645), `werkzeug` 3.1.4 → 3.1.8 (CVE-2026-21860, CVE-2026-27199). No LangSight API changes.
 
 ### Added
 - **LangGraph auto-instrumentation** (`src/langsight/sdk/auto_patch.py`): `auto_patch()` now patches `langgraph.pregel.Pregel.{stream,astream,invoke,ainvoke}` to auto-inject a `LangSightLangChainCallback` into the config. Zero code changes required — existing LangGraph apps are fully instrumented by calling `auto_patch()` once at module init.

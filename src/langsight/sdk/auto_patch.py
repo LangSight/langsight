@@ -1211,7 +1211,7 @@ def _patch_langgraph() -> None:
         return
 
     try:
-        from langgraph.pregel import Pregel  # type: ignore[import-not-found]
+        from langgraph.pregel import Pregel
     except ImportError:
         return
 
@@ -1261,7 +1261,7 @@ def _patch_langgraph() -> None:
     def _patch_langgraph_compile() -> None:
         """Patch StateGraph.compile() to stash topology on the compiled graph."""
         try:
-            from langgraph.graph.state import StateGraph  # type: ignore[import-not-found]
+            from langgraph.graph.state import StateGraph
         except ImportError:
             return
         if hasattr(StateGraph.compile, "_langsight_patched"):
@@ -1406,9 +1406,12 @@ def _patch_langgraph() -> None:
         else:
             # existing_cbs is a CallbackManager — try merge_configs
             try:
-                from langchain_core.runnables.config import merge_configs
+                from langchain_core.runnables.config import RunnableConfig, merge_configs
 
-                new_config = merge_configs(new_config, {"callbacks": [cb]})
+                new_config = merge_configs(  # type: ignore[assignment]
+                    RunnableConfig(**new_config),  # type: ignore[typeddict-item]
+                    {"callbacks": [cb]},
+                )
             except ImportError:
                 new_config["callbacks"] = [cb]
 

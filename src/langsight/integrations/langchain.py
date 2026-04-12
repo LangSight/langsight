@@ -270,9 +270,11 @@ class LangSightLangChainCallback(BaseIntegration):
         # Lazy import — try langchain-core first, fall back to langchain
         try:
             try:
-                from langchain_core.callbacks.base import BaseCallbackHandler
+                from langchain_core.callbacks.base import BaseCallbackHandler  # noqa: F811
             except ImportError:
-                from langchain.callbacks.base import BaseCallbackHandler
+                from langchain.callbacks.base import (
+                    BaseCallbackHandler,  # type: ignore[no-redef]  # noqa: F811
+                )
 
             self.__class__.__bases__ = (BaseIntegration, BaseCallbackHandler)
             BaseCallbackHandler.__init__(self)
