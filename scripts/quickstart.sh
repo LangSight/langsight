@@ -276,11 +276,15 @@ while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
     error "Service(s) failed to start:$CRASHED"
     echo ""
 
+    # Collect logs and scan for known error patterns
+    ALL_LOGS=""
     for svc in $CRASHED; do
       cname=$(svc_to_container "$svc")
+      SVC_LOGS=$(docker compose logs --tail=40 "$svc" 2>/dev/null || true)
       echo "── $svc logs (last 40 lines) ──────────────────────────"
-      docker compose logs --tail=40 "$svc" 2>/dev/null || true
+      echo "$SVC_LOGS"
       echo ""
+      ALL_LOGS="$ALL_LOGS $SVC_LOGS"
     done
 
     echo "── Container states ────────────────────────────────────"
@@ -292,18 +296,34 @@ while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
     done
     echo ""
 
-    echo "── Common causes ───────────────────────────────────────"
-    echo "  Stale .env + wiped volumes → DB password mismatch"
-    echo "    Fix: ./scripts/quickstart.sh --reset"
+    # Targeted fix based on detected error pattern
+    echo "── Diagnosis ───────────────────────────────────────────"
+    if echo "$ALL_LOGS" | grep -q "password authentication failed\|Invalid password\|InvalidPasswordError"; then
+      error "DB password mismatch — .env credentials don't match existing volumes"
+      echo ""
+      echo "  This happens when .env was regenerated but the database"
+      echo "  volumes still hold data from the previous password."
+      echo ""
+      echo -e "  ${GREEN}Fix:${NC} ./scripts/quickstart.sh --reset"
+      echo ""
+      echo "  (--reset wipes volumes + .env and starts fresh)"
+    elif echo "$ALL_LOGS" | grep -q "No space left on device\|no space left"; then
+      error "Out of disk space"
+      echo ""
+      echo "  Free up disk space and re-run."
+    elif echo "$ALL_LOGS" | grep -q "address already in use\|port is already allocated\|bind.*failed"; then
+      error "Port conflict — another process is using a required port"
+      echo ""
+      echo "  Check which ports are in use:"
+      echo "    lsof -i :5432 -i :8123 -i :8000 -i :3003"
+    else
+      echo "  Common causes:"
+      echo "    Stale .env + existing volumes → ./scripts/quickstart.sh --reset"
+      echo "    Stale image                  → ./scripts/quickstart.sh --reset --build"
+      echo "    Port conflict                → stop conflicting service, re-run"
+    fi
     echo ""
-    echo "  Stale or corrupted image"
-    echo "    Fix: ./scripts/quickstart.sh --reset --build"
-    echo ""
-    echo "  Port conflict with another service"
-    echo "    Fix: stop conflicting service, then re-run"
-    echo ""
-    echo "  Full log output:"
-    echo "    docker compose logs"
+    echo "  Full logs:  docker compose logs"
     echo ""
     exit 1
   fi
