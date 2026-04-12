@@ -11,7 +11,7 @@ Use projects to separate environments (production vs staging), teams (platform v
 
 ## Default project
 
-On first run, LangSight creates a **Sample Project** with demo data so you can explore the dashboard immediately. Create your own project via the sidebar → **New Project**.
+On first run, LangSight creates a **Default** project automatically. All dashboard pages scope to this project. Create additional projects via the sidebar → **New Project**.
 
 ## Creating projects
 
@@ -46,8 +46,8 @@ curl http://localhost:8000/api/projects \
 Response:
 ```json
 [
-  { "id": "abc123def456...", "name": "IRIS", "slug": "iris" },
-  { "id": "xyz789...", "name": "Sample Project", "slug": "sample-project" }
+  { "id": "abc123def456...", "name": "Default", "slug": "default" },
+  { "id": "xyz789...", "name": "Production", "slug": "production" }
 ]
 ```
 
