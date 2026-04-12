@@ -60,6 +60,11 @@ fi
 
 # ── Create default config file if missing ────────────────────────────────────
 CONFIG_FILE="$ROOT_DIR/.langsight.yaml"
+# A previous failed run may have left a directory here (Docker creates one
+# when the file is absent from the host). Remove it so we can write the file.
+if [ -d "$CONFIG_FILE" ]; then
+  rm -rf "$CONFIG_FILE"
+fi
 if [ ! -f "$CONFIG_FILE" ]; then
   echo "servers: []" > "$CONFIG_FILE"
   echo "[ok] .langsight.yaml created."
