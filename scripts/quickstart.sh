@@ -125,16 +125,22 @@ if [ -d "$CONFIG_FILE" ]; then
 fi
 
 # ── Generate .env if missing ──────────────────────────────────────────────────
+# DB passwords are fixed for local dev (ports are loopback-only: 127.0.0.1).
+# Using random DB passwords causes mismatch when volumes already exist and .env
+# is regenerated — the DB was initialised with the old password and rejects the
+# new one. Static DB passwords eliminate this failure mode completely.
+# User-facing credentials (API key, admin password, auth secret) stay random.
+POSTGRES_PASSWORD_DEFAULT="langsight-local-db"
+CLICKHOUSE_PASSWORD_DEFAULT="langsight-local-db"
+
 if [ -f "$ENV_FILE" ]; then
   ok ".env already exists — using existing credentials"
   echo ""
 else
-  echo "[..] Generating .env with secure random secrets..."
+  echo "[..] Generating .env..."
 
   API_KEY="ls_$(openssl rand -hex 32)"
   AUTH_SECRET="$(openssl rand -base64 32)"
-  POSTGRES_PASSWORD="$(openssl rand -hex 16)"
-  CLICKHOUSE_PASSWORD="$(openssl rand -hex 16)"
   ADMIN_PASSWORD="ls-$(openssl rand -hex 10)"
 
   cat > "$ENV_FILE" <<EOF
@@ -151,10 +157,10 @@ AUTH_SECRET=${AUTH_SECRET}
 LANGSIGHT_ADMIN_EMAIL=admin@langsight.dev
 LANGSIGHT_ADMIN_PASSWORD=${ADMIN_PASSWORD}
 
-# Database passwords
-POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+# Database passwords — fixed for local dev (ports are loopback-only)
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD_DEFAULT}
 CLICKHOUSE_USER=langsight
-CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD_DEFAULT}
 EOF
 
   ok ".env created"
