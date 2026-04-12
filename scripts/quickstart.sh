@@ -72,29 +72,37 @@ if ! command -v openssl > /dev/null 2>&1; then
 fi
 ok "openssl available"
 
-# Disk space — warn if less than 4 GB free
-FREE_KB=$(df -k "$ROOT_DIR" | awk 'NR==2 {print $4}')
-FREE_GB=$(( FREE_KB / 1024 / 1024 ))
-if [ "$FREE_GB" -lt 4 ]; then
-  warn "Less than 4 GB free disk space (${FREE_GB} GB). Docker images need ~3 GB."
-  warn "Continuing anyway — free up space if the build fails."
+# Disk space — warn if less than 4 GB free (skip on systems without df/awk)
+if command -v df > /dev/null 2>&1 && command -v awk > /dev/null 2>&1; then
+  FREE_KB=$(df -k "$ROOT_DIR" 2>/dev/null | awk 'NR==2 {print $4}' || echo "0")
+  FREE_GB=$(( FREE_KB / 1024 / 1024 ))
+  if [ "$FREE_GB" -lt 4 ]; then
+    warn "Less than 4 GB free disk space (${FREE_GB} GB). Docker images need ~3 GB."
+    warn "Continuing anyway — free up space if the build fails."
+  else
+    ok "Disk space OK (${FREE_GB} GB free)"
+  fi
 else
-  ok "Disk space OK (${FREE_GB} GB free)"
+  warn "Cannot check disk space — skipping check"
 fi
 
-# Ports — warn if already in use (don't fail: reverse proxy may be running)
-PORTS=(3003 8000 5432 8123 9000)
-PORT_CONFLICTS=()
-for port in "${PORTS[@]}"; do
-  if lsof -i ":$port" -sTCP:LISTEN -t > /dev/null 2>&1; then
-    PORT_CONFLICTS+=("$port")
+# Ports — warn if already in use (lsof is not available on Git Bash/Windows)
+if command -v lsof > /dev/null 2>&1; then
+  PORTS=(3003 8000 5432 8123 9000)
+  PORT_CONFLICTS=()
+  for port in "${PORTS[@]}"; do
+    if lsof -i ":$port" -sTCP:LISTEN -t > /dev/null 2>&1; then
+      PORT_CONFLICTS+=("$port")
+    fi
+  done
+  if [ ${#PORT_CONFLICTS[@]} -gt 0 ]; then
+    warn "Port(s) already in use: ${PORT_CONFLICTS[*]}"
+    warn "This may cause startup failures. Stop conflicting services first."
+  else
+    ok "Ports 3003, 8000, 5432, 8123 are free"
   fi
-done
-if [ ${#PORT_CONFLICTS[@]} -gt 0 ]; then
-  warn "Port(s) already in use: ${PORT_CONFLICTS[*]}"
-  warn "This may cause startup failures. Stop conflicting services first."
 else
-  ok "Ports 3003, 8000, 5432, 8123 are free"
+  warn "lsof not found — skipping port conflict check (on Windows: use Git Bash or WSL)"
 fi
 
 echo ""
@@ -193,62 +201,156 @@ echo ""
 
 # ── Start services ────────────────────────────────────────────────────────────
 echo "[..] Starting services..."
-# Allow non-zero exit — dependency health failures are caught by the health
-# check loop below, which shows actionable logs and recovery instructions.
-docker compose up -d || true
+# Allow non-zero exit — Docker Compose returns non-zero when a dependency
+# health check condition is used (e.g. dashboard depends_on api: healthy) and
+# a service is still starting. The health loop below catches real failures.
+docker compose up -d 2>&1 || true
 echo ""
+
+# ── Map service names to container names (bash 3.2 compatible) ───────────────
+# Matches the container_name values in docker-compose.yml
+svc_to_container() {
+  case "$1" in
+    postgres)   echo "langsight-app-postgres" ;;
+    clickhouse) echo "langsight-clickhouse" ;;
+    api)        echo "langsight-api" ;;
+    dashboard)  echo "langsight-dashboard" ;;
+    *)          echo "$1" ;;
+  esac
+}
+
+# ── Helper: inspect a container's state and health ────────────────────────────
+container_state() {
+  # running | exited | dead | created | paused | missing
+  docker inspect --format '{{.State.Status}}' "$1" 2>/dev/null || echo "missing"
+}
+
+container_health() {
+  # healthy | unhealthy | starting | none | missing
+  docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$1" 2>/dev/null || echo "missing"
+}
 
 # ── Wait for healthy ──────────────────────────────────────────────────────────
 echo "[..] Waiting for services to be healthy..."
-TIMEOUT=120
+echo "     (cold start: ~3-4 min on first run)"
+echo ""
+
+# Worst-case startup chain when starting from scratch:
+#   postgres:   10s start_period + 5 × 5s retries  =  35s max
+#   clickhouse: 20s start_period + 5 × 10s retries =  70s max
+#   api:        waits for postgres+clickhouse, then 20s + 5×10s = ~140s total
+#   dashboard:  waits for api,                then 20s + 3×15s  = ~205s total
+# Adding buffer: timeout = 240s
+TIMEOUT=240
 ELAPSED=0
-INTERVAL=3
+INTERVAL=5
 
 while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
-  # Count services that have a health check and are healthy
-  HEALTHY=$(docker compose ps 2>/dev/null | grep -c "(healthy)" || true)
-  # Services with healthchecks: api, postgres, clickhouse, dashboard = 4
+  HEALTHY=0
+  CRASHED=""
+
+  for svc in postgres clickhouse api dashboard; do
+    cname=$(svc_to_container "$svc")
+    state=$(container_state "$cname")
+    health=$(container_health "$cname")
+
+    if [ "$state" = "running" ] && [ "$health" = "healthy" ]; then
+      HEALTHY=$(( HEALTHY + 1 ))
+    fi
+
+    # Crashed = container exited/died, or running but health probe failed
+    if [ "$state" = "exited" ] || [ "$state" = "dead" ] || [ "$health" = "unhealthy" ]; then
+      CRASHED="$CRASHED $svc"
+    fi
+  done
+
+  # All 4 healthy — success
   if [ "$HEALTHY" -ge 4 ]; then
     break
   fi
 
-  # Check for any crashed/exited containers
-  if docker compose ps 2>/dev/null | grep -qE "Exit [^0]|unhealthy"; then
+  # Crashed containers — show diagnostics and exit with clear instructions
+  if [ -n "$CRASHED" ]; then
     echo ""
     echo ""
-    error "A service failed to start."
+    error "Service(s) failed to start:$CRASHED"
     echo ""
 
-    # Find and show logs for the failing service
-    for svc in api postgres clickhouse dashboard; do
-      SVC_STATE=$(docker compose ps "$svc" 2>/dev/null | tail -1 || true)
-      if echo "$SVC_STATE" | grep -qE "Exit [^0]|unhealthy"; then
-        echo "── $svc logs (last 30 lines) ──────────────────────────"
-        docker compose logs --tail=30 "$svc" 2>/dev/null || true
-        echo ""
-      fi
+    for svc in $CRASHED; do
+      cname=$(svc_to_container "$svc")
+      echo "── $svc logs (last 40 lines) ──────────────────────────"
+      docker compose logs --tail=40 "$svc" 2>/dev/null || true
+      echo ""
     done
 
-    echo "── Recovery options ────────────────────────────────────"
-    echo "  View all logs:      docker compose logs"
-    echo "  Fresh start:        ./scripts/quickstart.sh --reset"
-    echo "  Rebuild images:     ./scripts/quickstart.sh --build"
+    echo "── Container states ────────────────────────────────────"
+    for svc in postgres clickhouse api dashboard; do
+      cname=$(svc_to_container "$svc")
+      state=$(container_state "$cname")
+      health=$(container_health "$cname")
+      printf "  %-12s state=%-8s health=%s\n" "$svc" "$state" "$health"
+    done
+    echo ""
+
+    echo "── Common causes ───────────────────────────────────────"
+    echo "  Stale .env + wiped volumes → DB password mismatch"
+    echo "    Fix: ./scripts/quickstart.sh --reset"
+    echo ""
+    echo "  Stale or corrupted image"
+    echo "    Fix: ./scripts/quickstart.sh --reset --build"
+    echo ""
+    echo "  Port conflict with another service"
+    echo "    Fix: stop conflicting service, then re-run"
+    echo ""
+    echo "  Full log output:"
+    echo "    docker compose logs"
+    echo ""
     exit 1
   fi
 
-  printf "."
+  # Progress indicator
+  printf "  [%3ds] healthy: %d/4 —" "$ELAPSED" "$HEALTHY"
+  for svc in postgres clickhouse api dashboard; do
+    cname=$(svc_to_container "$svc")
+    state=$(container_state "$cname")
+    health=$(container_health "$cname")
+    if [ "$state" = "running" ] && [ "$health" = "healthy" ]; then
+      printf " %s✓" "$svc"
+    elif [ "$state" = "running" ]; then
+      printf " %s…" "$svc"
+    else
+      printf " %s?" "$svc"
+    fi
+  done
+  echo ""
+
   sleep "$INTERVAL"
   ELAPSED=$(( ELAPSED + INTERVAL ))
 done
 
 if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
   echo ""
-  echo ""
   error "Timed out after ${TIMEOUT}s waiting for services."
   echo ""
-  docker compose ps
+  echo "── Container states ────────────────────────────────────"
+  for svc in postgres clickhouse api dashboard; do
+    cname=$(svc_to_container "$svc")
+    state=$(container_state "$cname")
+    health=$(container_health "$cname")
+    printf "  %-12s state=%-8s health=%s\n" "$svc" "$state" "$health"
+  done
   echo ""
-  echo "  View logs:      docker compose logs"
+  echo "── Logs from unhealthy services ────────────────────────"
+  for svc in postgres clickhouse api dashboard; do
+    cname=$(svc_to_container "$svc")
+    health=$(container_health "$cname")
+    if [ "$health" != "healthy" ]; then
+      echo "  -- $svc --"
+      docker compose logs --tail=20 "$svc" 2>/dev/null || true
+    fi
+  done
+  echo ""
+  echo "  View all logs:  docker compose logs"
   echo "  Fresh start:    ./scripts/quickstart.sh --reset"
   exit 1
 fi
@@ -257,7 +359,7 @@ fi
 echo ""
 LIVENESS=$(curl -sf http://localhost:8000/api/liveness 2>/dev/null || true)
 if [ -z "$LIVENESS" ]; then
-  warn "API liveness check did not respond — dashboard may take a few more seconds to be ready."
+  warn "API liveness check did not respond — may take a few more seconds."
 fi
 
 # ── Print success ─────────────────────────────────────────────────────────────
@@ -276,7 +378,11 @@ echo ""
 echo "  API Key:    $(grep LANGSIGHT_API_KEYS "$ENV_FILE" | cut -d= -f2)"
 echo ""
 echo "  Services:"
-docker compose ps --format "table {{.Service}}\t{{.Status}}" 2>/dev/null | tail -n +2 | sed 's/^/    /'
+for svc in postgres clickhouse api dashboard; do
+  cname=$(svc_to_container "$svc")
+  health=$(container_health "$cname")
+  printf "    %-12s %s\n" "$svc" "$health"
+done
 echo ""
 echo "  Next steps:"
 echo "    1. Open http://localhost:3003 and log in"
