@@ -193,7 +193,9 @@ echo ""
 
 # ── Start services ────────────────────────────────────────────────────────────
 echo "[..] Starting services..."
-docker compose up -d
+# Allow non-zero exit — dependency health failures are caught by the health
+# check loop below, which shows actionable logs and recovery instructions.
+docker compose up -d || true
 echo ""
 
 # ── Wait for healthy ──────────────────────────────────────────────────────────
