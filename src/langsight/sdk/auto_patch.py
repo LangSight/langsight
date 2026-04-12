@@ -1211,7 +1211,7 @@ def _patch_langgraph() -> None:
         return
 
     try:
-        from langgraph.pregel import Pregel
+        from langgraph.pregel import Pregel  # type: ignore[import-not-found]
     except ImportError:
         return
 
@@ -1261,7 +1261,7 @@ def _patch_langgraph() -> None:
     def _patch_langgraph_compile() -> None:
         """Patch StateGraph.compile() to stash topology on the compiled graph."""
         try:
-            from langgraph.graph.state import StateGraph
+            from langgraph.graph.state import StateGraph  # type: ignore[import-not-found]
         except ImportError:
             return
         if hasattr(StateGraph.compile, "_langsight_patched"):
