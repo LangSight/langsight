@@ -12,13 +12,18 @@ echo "  LangSight Quickstart"
 echo "──────────────────────────────────────────────────────"
 echo ""
 
+# ── Check Docker is running ─────────────────────────────────────────────────
+if ! docker info > /dev/null 2>&1; then
+  echo "[error] Docker is not running. Start Docker Desktop and try again."
+  exit 1
+fi
+
 # ── Generate .env if it doesn't exist ───────────────────────────────────────
 if [ -f "$ENV_FILE" ]; then
   echo "[ok] .env already exists — skipping generation."
 else
   echo "[..] Generating .env with secure random secrets..."
 
-  # Generate secrets
   API_KEY="ls_$(openssl rand -hex 32)"
   AUTH_SECRET="$(openssl rand -base64 32)"
   POSTGRES_PASSWORD="$(openssl rand -hex 16)"
@@ -53,11 +58,62 @@ EOF
   echo ""
 fi
 
-# ── Start Docker Compose ────────────────────────────────────────────────────
-echo "[..] Starting LangSight stack (this may take 1-2 min on first run)..."
+# ── Build images ─────────────────────────────────────────────────────────────
+echo "[..] Building images (first run takes 3-5 min — downloading dependencies)..."
 cd "$ROOT_DIR"
-docker compose up -d --build --wait 2>&1 | tail -5
+docker compose build
 
+# ── Start services ────────────────────────────────────────────────────────────
+echo ""
+echo "[..] Starting services..."
+docker compose up -d
+
+# ── Wait for healthy ──────────────────────────────────────────────────────────
+echo "[..] Waiting for all services to be healthy..."
+SECONDS=0
+TIMEOUT=120
+while true; do
+  # Count healthy containers
+  TOTAL=$(docker compose ps --services | wc -l | tr -d ' ')
+  HEALTHY=$(docker compose ps | grep -c "healthy" || true)
+
+  if [ "$HEALTHY" -ge "$TOTAL" ]; then
+    break
+  fi
+
+  # Check for any failed/exited containers
+  if docker compose ps | grep -qE "Exit|Error|unhealthy"; then
+    echo ""
+    echo "[error] A service failed to start. Logs:"
+    echo ""
+    # Show logs for the failed service
+    for svc in api postgres clickhouse dashboard; do
+      STATUS=$(docker compose ps "$svc" 2>/dev/null | tail -1 || true)
+      if echo "$STATUS" | grep -qE "Exit|Error|unhealthy"; then
+        echo "── $svc logs ──────────────────────────"
+        docker compose logs --tail=20 "$svc"
+        echo ""
+      fi
+    done
+    echo "For full logs: docker compose logs"
+    echo "To retry:      docker compose down -v && ./scripts/quickstart.sh"
+    exit 1
+  fi
+
+  if [ "$SECONDS" -ge "$TIMEOUT" ]; then
+    echo ""
+    echo "[error] Timed out after ${TIMEOUT}s. Current status:"
+    docker compose ps
+    echo ""
+    echo "For full logs: docker compose logs"
+    exit 1
+  fi
+
+  printf "."
+  sleep 3
+done
+
+echo ""
 echo ""
 echo "──────────────────────────────────────────────────────"
 echo "  LangSight is running!"
@@ -71,6 +127,9 @@ echo "    Email:    $(grep LANGSIGHT_ADMIN_EMAIL "$ENV_FILE" | cut -d= -f2)"
 echo "    Password: $(grep LANGSIGHT_ADMIN_PASSWORD "$ENV_FILE" | cut -d= -f2)"
 echo ""
 echo "  API Key:    $(grep LANGSIGHT_API_KEYS "$ENV_FILE" | cut -d= -f2)"
+echo ""
+echo "  Containers running:"
+docker compose ps --format "table {{.Service}}\t{{.Status}}" | tail -n +2 | sed 's/^/    /'
 echo ""
 echo "  Next steps:"
 echo "    1. Open http://localhost:3003 and log in"

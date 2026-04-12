@@ -27,16 +27,37 @@ CLI and the dashboard.
     ./scripts/quickstart.sh      # generates secrets, writes .env, starts everything
     ```
 
-    Open **http://localhost:3003** and log in with the admin credentials
-    printed by the script (also saved in `.env`). You'll see an empty
-    dashboard with a "Default" project — instrument your first agent below
-    to start seeing traces.
+    The script builds the Docker images (3–5 min on first run) then starts everything. When it's done you'll see:
+
+    ```
+    ──────────────────────────────────────────────────────
+      LangSight is running!
+    ──────────────────────────────────────────────────────
+
+      Dashboard:  http://localhost:3003
+      API:        http://localhost:8000
+
+      Login credentials:
+        Email:    admin@langsight.dev
+        Password: ls-ceab2f29f600f9b2f2d6   ← your generated password
+
+      API Key:    ls_2dc63dbddeb...
+
+      Containers running:
+        api        Up (healthy)
+        clickhouse Up (healthy)
+        dashboard  Up (healthy)
+        postgres   Up (healthy)
+    ──────────────────────────────────────────────────────
+    ```
+
+    All 4 containers must show **Up (healthy)**. Open **http://localhost:3003** and log in with the credentials printed above.
 
     <Note>
-      The quickstart script generates all required secrets, starts Docker
-      Compose, and creates your admin account automatically. Check `.env`
-      for the generated credentials if you need them later.
+      Credentials are also saved in `.env`. If you lose them: `grep LANGSIGHT_ADMIN .env`
     </Note>
+
+    If a container shows **unhealthy** or the script exits with an error, it will print the logs automatically. Run `docker compose logs` for the full output.
   </Tab>
   <Tab title="CLI only (no Docker)">
     The CLI works immediately with zero config — no server, no database:
