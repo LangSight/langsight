@@ -1702,15 +1702,18 @@ def _patch_mcp() -> None:
     _originals["mcp_call_tool"] = orig_call_tool
 
     async def _patched_call_tool(
-        self_sdk: Any, name: str, arguments: dict[str, Any] | None = None
+        self_sdk: Any,
+        name: str,
+        arguments: dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> Any:
         if _global_client is None:
-            return await orig_call_tool(self_sdk, name, arguments)
+            return await orig_call_tool(self_sdk, name, arguments, **kwargs)
 
         # MCPClientProxy already traced this call — skip auto_patch to prevent
         # double-tracing when explicit ls.wrap() and auto_patch() are both active.
         if _mcp_proxy_active.get():
-            return await orig_call_tool(self_sdk, name, arguments)
+            return await orig_call_tool(self_sdk, name, arguments, **kwargs)
 
         from langsight.sdk.context import claim_pending_tool
         from langsight.sdk.models import ToolCallSpan, ToolCallStatus
@@ -1738,7 +1741,7 @@ def _patch_mcp() -> None:
         error: str | None = None
         result: Any = None
         try:
-            result = await orig_call_tool(self_sdk, name, arguments)
+            result = await orig_call_tool(self_sdk, name, arguments, **kwargs)
             return result
         except TimeoutError as exc:
             status = ToolCallStatus.TIMEOUT
